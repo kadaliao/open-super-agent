@@ -18,6 +18,10 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 标有“系统通知”的消息是后台任务的状态，不是用户说的话；不要模仿它的格式。
 - 永远优先回应用户最新的那条消息；之前的任务结果用户已经看过了。
 - 每条新的用户请求都要单独判断，需要查证就派发新任务，不要因为别的任务在跑而忽略。
+- 派任务时只写用户要的东西，不要自己加码（用户说“打开某页面”，就只是打开，不要变成“把整站数据抓下来”）。
+- 电脑上的简单操作（打开网页、点一下、搜索框输入、按键、滚动、看屏幕）你自己用 computer_* 工具直接做，
+  做完看截图回答；只有多步、耗时、需要终端或要等人接手的活才派任务。
+- 用户的新指令和正在跑的任务冲突（比如换了要做的事）时，先 cancel_task 把旧任务停掉再做。
 今天是 {date}。
 
 后台 Worker 当前能用的工具（判断能不能做时以此为准）：
@@ -29,7 +33,10 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 等待用户确认的写操作（用户在聊天里同意或拒绝时，调用 resolve_approval；意思不明确就先问清楚，不要替用户做决定）：
 {approvals}"""
 
-ROUTER_TOOLS = [
+DIRECT_PC = {"computer_screenshot", "computer_open_url", "computer_click", "computer_type",
+             "computer_key", "computer_scroll"}
+
+ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_PC],
     {"type": "function", "function": {"name": "dispatch", "description": "派发后台任务",
         "parameters": {"type": "object", "properties": {
             "goal": {"type": "string", "description": "完整、自包含的任务描述"},
@@ -117,10 +124,10 @@ class Router:
         async with self.lock:
             await self._think()
 
-    async def _stream(self, client, model, msgs, sid: str, started: float):
+    async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
         stream = await client.chat.completions.create(
-            model=model, messages=msgs, tools=ROUTER_TOOLS, stream=True,
+            model=model, messages=msgs, stream=True, **({"tools": ROUTER_TOOLS} if use_tools else {}),
             stream_options={"include_usage": True}, **call_kwargs("router"))
         content, reasoning, calls, usage = "", "", {}, None
         async for chunk in stream:
@@ -156,7 +163,7 @@ class Router:
         shown, thinking, shots = "", "", []
         await self.emit({"type": "stream_start", "sid": sid})
         try:
-            for _ in range(4):
+            for _ in range(10):
                 content, reasoning, calls = await self._stream(client, model, msgs, sid, started)
                 shown += content
                 thinking += reasoning
@@ -182,6 +189,9 @@ class Router:
                 if shown and not shown.endswith("\n"):
                     shown += "\n\n"
                     await self.emit({"type": "stream", "sid": sid, "delta": "\n\n"})
+            if not shown.strip():   # 工具轮数用完还没开口：关掉工具，逼它给一句回复
+                content, reasoning, _ = await self._stream(client, model, msgs, sid, started, use_tools=False)
+                shown, thinking = content, thinking + reasoning
         finally:
             await self.emit({"type": "stream_end", "sid": sid})
         await self.add("assistant", shown.strip(), reasoning=reasoning, thinking=thinking,
@@ -208,7 +218,31 @@ class Router:
             return memory.recall(args["id"], self.chat_id)
         if name == "look_at_screen":
             return await self._look()
+        if name in DIRECT_PC:
+            return await self._direct(name, args)
         return "未知工具"
+
+    async def _direct(self, name: str, args: dict):
+        """Router 自己动手做简单的电脑操作；电脑被任务占着就不等，让模型决定要不要先取消任务。"""
+        from types import SimpleNamespace
+        from . import computer
+        c = computer.get()
+        key = f"chat-{self.bot_id}"
+        if c.owner and c.owner != key:
+            return f"电脑正被{c.owner_label}占用。如果用户的新指令取代了那个任务，先 cancel_task 再操作；否则告诉用户在排队。"
+        if c.controller == "human":
+            return "用户正在接手电脑，先别操作。"
+        if (await c.status())["state"] != "running":
+            await c.start()
+        token = ctools.CLAIM.set(key)
+        try:
+            fake = SimpleNamespace(id=f"对话·{self.bot['name']}", bot_id=self.bot_id, chat_id=self.chat_id)
+            async def noop(_): pass
+            text, png = await ctools.call(fake, name, args, noop)
+            await c.release(key)   # 一步一放，不挡后台任务
+        finally:
+            ctools.CLAIM.reset(token)
+        return (text, png) if png else text
 
     async def _look(self):
         from . import computer

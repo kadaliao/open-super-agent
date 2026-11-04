@@ -5,7 +5,7 @@ ARG APT_MIRROR=
 RUN if [ -n "$APT_MIRROR" ]; then sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; fi
 ENV DEBIAN_FRONTEND=noninteractive LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 TZ=Asia/Shanghai
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      xvfb x11vnc fluxbox xdotool scrot imagemagick dbus-x11 x11-utils \
+      xvfb x11vnc fluxbox xdotool xclip scrot imagemagick dbus-x11 x11-utils \
       chromium fonts-noto-cjk fonts-noto-color-emoji locales tzdata \
       ca-certificates curl wget git jq procps python3 python3-pip python3-venv sudo less nano \
   && sed -i 's/# zh_CN.UTF-8/zh_CN.UTF-8/' /etc/locale.gen && locale-gen \

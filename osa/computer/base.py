@@ -173,8 +173,14 @@ class Computer:
         await self._desktop(f"xdotool click --repeat {max(1, min(100, int(amount)))} --delay 30 {w}")
 
     async def type(self, text: str):
-        if text:
+        if not text:
+            return
+        if text.isascii():
             await self._desktop("xdotool type --delay 12 --file -", stdin=text)
+        else:
+            # xdotool 打中文会丢字，改成写进剪贴板再粘贴；没有 xclip 时退回逐字输入
+            await self._desktop("if command -v xclip >/dev/null; then xclip -selection clipboard -i && sleep 0.1 "
+                                "&& xdotool key ctrl+v; else xdotool type --delay 30 --file -; fi", stdin=text)
 
     async def press(self, keys: str | list[str]):
         ks = keys if isinstance(keys, list) else [k for k in str(keys).replace(" ", "").split("+") if k]

@@ -58,7 +58,7 @@ async def call(task, name: str, args: dict, notify_progress) -> tuple[str, bytes
     from .. import approvals
     c = get()
     if name not in ("ask_approval",):
-        await c.claim(CLAIM.get() or str(task.id), f"任务 #{task.id}", notify_progress)
+        await c.claim(CLAIM.get() or str(task.id), task.id if isinstance(task.id, str) else f"任务 #{task.id}", notify_progress)
     labels = {
         "computer_screenshot": "截图", "computer_open_url": f"打开 {args.get('url', '')}",
         "computer_click": f"点击 ({args.get('x')}, {args.get('y')})", "computer_type": f"输入 “{str(args.get('text', ''))[:30]}”",
