@@ -4,9 +4,15 @@
 """
 import asyncio
 import base64
+import hashlib
+import json
 import shlex
 import time
 from dataclasses import dataclass
+from pathlib import Path
+
+_HELPER = (Path(__file__).parent / "cdp_helper.py").read_bytes()
+HELPER_PATH = f"/tmp/osa-cdp-{hashlib.sha1(_HELPER).hexdigest()[:8]}.py"
 
 DISPLAY = ":1"
 BUTTONS = {"left": 1, "middle": 2, "right": 3}
@@ -188,9 +194,30 @@ class Computer:
             raise ComputerError("没有按键")
         await self._desktop(f"xdotool key -- {shlex.quote('+'.join(keysym(k) for k in ks))}")
 
+    async def browser(self, op: str, **args) -> dict:
+        """用 CDP 操作浏览器（见 cdp_helper.py）。脚本第一次用时写进电脑；电脑重建过就重新写。"""
+        stdin = json.dumps({"op": op, **args}, ensure_ascii=False)
+        for attempt in (0, 1):
+            r = await self.exec(f"test -f {HELPER_PATH}", 10) if attempt == 0 else None
+            if r is None or r.exit_code:
+                await self.write_bytes(HELPER_PATH, _HELPER)
+            try:
+                out = await self._desktop(f"python3 {HELPER_PATH}", stdin=stdin, timeout=90)
+                return json.loads(out.stdout.strip().splitlines()[-1])
+            except ComputerError as e:
+                if attempt == 0 and ("No such file" in str(e) or "can't open file" in str(e)):
+                    continue
+                raise
+        raise ComputerError("浏览器控制脚本运行失败")
+
     async def open_url(self, url: str):
         if not url.startswith(("http://", "https://")):
             raise ComputerError("只能打开 http / https 网址")
+        try:
+            await self.browser("open", url=url)
+            return
+        except ComputerError:
+            pass   # CDP 不可用时退回老办法：命令行打开新标签页
         await self._desktop(
             "b=$(command -v chromium || command -v chromium-browser || command -v google-chrome) || "
             "{ echo '电脑里没有浏览器' >&2; exit 127; }; "

@@ -23,7 +23,7 @@
 2. 对应 Bot 的 Router 把这条消息写入数据库，组装上下文（人设 + 能力说明 + 当前任务 + 最近的消息），然后流式调用模型。
 3. 模型要么直接回答，要么调用工具：
    - `dispatch`：创建一个 Task，在后台运行 Worker，Router 马上回复。
-   - `computer_*` / `look_at_screen`：Router 自己做一步电脑操作，看截图后回答。
+   - `browser_*` / `computer_*` / `look_at_screen`：Router 自己做一步电脑操作，看页面文字或截图后回答。
 4. Worker 每走一步都推送一个 `task` 事件，前端的任务卡片随之更新。结束时写入一条 `kind=result` 的消息，以结果卡片显示。
 5. Watchdog 每隔 `watchdog_interval_s` 秒巡检一次，取消超时、没有进展、死循环或超预算的任务。
 
@@ -44,10 +44,11 @@ osa/
   watchdog.py      任务巡检
   config.py        读取 config.yaml，按角色创建模型客户端
   computer/
-    base.py        电脑接口、桌面动作（xdotool / scrot）、控制权、任务排队
+    base.py        电脑接口、桌面动作（xdotool / scrot）、浏览器动作（CDP）、控制权、任务排队
+    cdp_helper.py  在电脑里运行的浏览器控制脚本（只用标准库），通过 DevTools 端口操作 Chromium
     local.py       本地 Docker 后端
     instabox.py    Instabox 后端
-    tools.py       computer_* 工具定义、截图消息、给 Worker 的操作说明
+    tools.py       browser_* / computer_* 工具定义、截图消息、给 Worker 的操作说明
     image/         本地电脑镜像
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
@@ -83,6 +84,11 @@ web/src/
 - **验证码不自动解**：遇到验证码、扫码、登录、短信验证时，立刻调用 `ask_human`。项目不会加入任何绕过验证码的功能。
 - 不同后端的分辨率不一样，所以截图的文字说明里写的是实际宽高，点击坐标以截图像素为准。
 - 非 ASCII 文本先写进剪贴板再粘贴（`xclip`），因为 `xdotool type` 打中文会丢字。
+- **网页优先走 CDP。** `browser_*` 工具把页面上可操作的元素编上号（`data-osa-ref`），模型按编号点击、输入，
+  返回的是页面文字而不是截图：更快、更省 token，也不会点偏。输入用 `Input.insertText`，中文不丢字。
+  页面上有弹窗时只列弹窗里的元素并提示（登录、验证码就请人接手）。截图和 xdotool 留给浏览器以外的窗口、画布类页面和组合键。
+- `cdp_helper.py` 第一次用时由服务端写进电脑的 `/tmp`（文件名带内容哈希，改了会自动更新），每个动作执行一次，
+  所以两个后端都不需要额外开端口。DevTools 端口只监听电脑内部的 127.0.0.1；旧浏览器没开端口时脚本会重启它（登录状态在配置目录里，不会丢）。
 - Worker 的上下文里只保留最近 2 张截图（`prune_images`），用来控制 token 成本。
 
 ### 模型接口（DeepSeek）

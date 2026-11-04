@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && sed -i 's/# zh_CN.UTF-8/zh_CN.UTF-8/' /etc/locale.gen && locale-gen \
   && rm -rf /var/lib/apt/lists/*
 # 容器里以 root 运行 Chromium 需要 --no-sandbox；浏览器配置放在 /data 里，登录状态能保留
-RUN printf '#!/bin/sh\nexec /usr/bin/chromium --no-sandbox --test-type --no-first-run --hide-crash-restore-bubble --disable-dev-shm-usage --user-data-dir=/data/chrome --window-size=1280,800 --window-position=0,0 "$@"\n' \
+# DevTools 端口只监听容器内的 127.0.0.1，给 Bot 的浏览器工具（CDP）用
+RUN printf '#!/bin/sh\nexec /usr/bin/chromium --no-sandbox --test-type --no-first-run --hide-crash-restore-bubble --disable-dev-shm-usage --user-data-dir=/data/chrome --window-size=1280,800 --window-position=0,0 --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 "--remote-allow-origins=*" "$@"\n' \
       > /usr/local/bin/chromium && chmod +x /usr/local/bin/chromium
 COPY start-desktop.sh /usr/local/bin/start-desktop.sh
 RUN chmod +x /usr/local/bin/start-desktop.sh && mkdir -p /data/workspace

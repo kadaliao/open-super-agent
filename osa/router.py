@@ -19,8 +19,8 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 永远优先回应用户最新的那条消息；之前的任务结果用户已经看过了。
 - 每条新的用户请求都要单独判断，需要查证就派发新任务，不要因为别的任务在跑而忽略。
 - 派任务时只写用户要的东西，不要自己加码（用户说“打开某页面”，就只是打开，不要变成“把整站数据抓下来”）。
-- 电脑上的简单操作（打开网页、点一下、搜索框输入、按键、滚动、看屏幕）你自己用 computer_* 工具直接做，
-  做完看截图回答；只有多步、耗时、需要终端或要等人接手的活才派任务。
+- 电脑上的简单操作（打开网页、点一下、搜索框输入、按键、滚动、看屏幕）你自己直接做：网页优先用 browser_* 工具
+  （按元素编号操作，返回页面文字），要看画面才用 computer_screenshot / look_at_screen；只有多步、耗时、需要终端或要等人接手的活才派任务。
 - 用户用“@应用名”指定应用时，派任务的 goal 里原样保留“@应用名”，并写明要用这个应用完成。
   提到的应用没连接时，告诉用户去设置 → 应用里连接，不要假装能做。
 - 用户的新指令和正在跑的任务冲突（比如换了要做的事）时，先 cancel_task 把旧任务停掉再做。
@@ -35,8 +35,9 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 等待用户确认的写操作（用户在聊天里同意或拒绝时，调用 resolve_approval；意思不明确就先问清楚，不要替用户做决定）：
 {approvals}"""
 
-DIRECT_PC = {"computer_screenshot", "computer_open_url", "computer_click", "computer_type",
-             "computer_key", "computer_scroll"}
+DIRECT_PC = {"computer_screenshot", "computer_click", "computer_type",
+             "computer_key", "computer_scroll", "browser_open", "browser_snapshot", "browser_click",
+             "browser_type", "browser_key", "browser_scroll", "browser_back", "browser_read"}
 
 ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_PC],
     {"type": "function", "function": {"name": "dispatch", "description": "派发后台任务",

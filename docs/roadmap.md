@@ -97,7 +97,7 @@ Vite + React + TypeScript，构建产物由 FastAPI 直接提供，不需要单�
 - 2026-11-04 P3 完成：确认卡片三选项（拒绝 / 允许一次 / 总是允许）；规则（自动允许 / 先问我，先问我优先）；
   后台任务的卡片过期、对话任务一直等；界面里添加、配置、启停应用（预设：文件系统、GitHub、Notion、网页抓取）；
   保险库（Fernet 加密，主密钥 OSA_VAULT_KEY 或 data/vault.key）；`@应用` 补全。
-- 待办：电脑操作改用 CDP（Chrome DevTools Protocol）控制浏览器，比截图 + xdotool 更快更准；排在 P4 之前。
+- 2026-11-04 电脑优化：网页操作改用 CDP（按元素编号操作、返回页面文字、识别弹窗），截图 + xdotool 作为备用。
 
 ## 资料来源
 - https://docs.x.ai/grok-bot/overview
