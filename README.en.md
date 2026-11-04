@@ -21,8 +21,9 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 - 🤖 **Multiple bots**: each with its own name, avatar, persona and conversation. Replies stream in, and the model's reasoning can be expanded or collapsed.
 - ⚡ **Background tasks**: workers run long jobs while you keep chatting. **Heavy mode** runs several workers on the same problem and has a reviewer merge their answers.
-- 🖥️ **A computer**: one shared Linux desktop with Chromium and a terminal. Watch it live and take over or hand back at any time; for captchas and logins, the bot asks you to step in.
-- 🔌 **Apps via MCP**: Notion, GitHub, the filesystem and more. Write operations need your approval first.
+- 🖥️ **A computer**: one shared Linux desktop with Chromium and a terminal. Web pages are driven directly over CDP (by element, reading page text), which is fast and precise. Watch it live and take over or hand back at any time; for captchas and logins, the bot asks you to step in.
+- 🔌 **Apps via MCP**: connect the filesystem, GitHub, Notion and more from Settings; mention one in chat with `@app`.
+- ✅ **Approvals & vault**: write operations ask first (allow once / deny / always allow), with rules you manage in Settings; secrets are stored encrypted and never enter the chat.
 - ⏰ **Triggers**: schedules and webhooks. Events go through rule filters, then a cheap model decides whether to act on them.
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
 - 🔄 **Any model**: any OpenAI-compatible API (DeepSeek, OpenRouter, Ollama, vLLM), configurable per role.
@@ -57,7 +58,7 @@ The detailed docs are currently in Chinese:
 
 - [x] P1 Bots & chat
 - [x] P2 Computer (Instabox and local Docker backends, live view, takeover, task queueing)
-- [ ] P3 Approval rules, app management and a vault (in progress)
+- [x] P3 Approval rules, app management, a vault and `@app` mentions; browser control over CDP
 - [ ] P4 Skills & routines
 - [ ] P5 Memory & library
 - [ ] P6 Group chat
