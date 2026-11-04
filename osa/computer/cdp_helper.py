@@ -68,6 +68,62 @@ SNAPSHOT_JS = r"""
 """
 
 
+# “演示一遍”的录制脚本：注入每个页面，把用户的点击、输入、选择、回车交给 CDP 绑定 __osaRec。
+# 密码、验证码一类的输入只记成 ******。
+RECORDER_JS = r"""
+(() => {
+  if (window.__osaRecOn) return; window.__osaRecOn = true;
+  const clean = s => (s || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const send = ev => { try { window.__osaRec(JSON.stringify(Object.assign(ev, {url: location.href, title: document.title}))); } catch (e) {} };
+  const SEL = 'a[href],button,input,textarea,select,summary,label,[role=button],[role=link],[role=tab],[role=menuitem],' +
+              '[role=checkbox],[role=radio],[role=option],[role=switch],[role=combobox],[onclick]';
+  const label = e => {
+    if (!e || !e.getAttribute) return '';
+    const l = e.labels && e.labels[0] ? e.labels[0].innerText : '';
+    return clean(e.getAttribute('aria-label') || l || e.placeholder || e.getAttribute('name') || e.getAttribute('title') || '');
+  };
+  const describe = e => {
+    const tag = e.tagName.toLowerCase(), role = e.getAttribute('role');
+    let kind = role || tag;
+    if (tag === 'input') kind = 'input(' + (e.type || 'text') + ')';
+    let name = clean(e.getAttribute('aria-label') || e.innerText || e.value || e.title || e.alt || '');
+    if (!name && tag === 'a') { const img = e.querySelector('img[alt]'); if (img) name = clean(img.alt); }
+    if (!name) name = label(e);
+    const d = {kind, name};
+    const h = tag === 'a' ? e.getAttribute('href') || '' : '';
+    if (h && !h.startsWith('javascript')) d.href = e.href.slice(0, 200);
+    return d;
+  };
+  const secret = e => e.type === 'password' ||
+    /pass|pwd|密码|otp|验证码|captcha|cvv|cvc|card/i.test([e.name, e.id, e.autocomplete, label(e)].join(' '));
+  const typed = e => ({type: 'input', field: label(e) || describe(e).name, value: secret(e) ? '******' : (e.value || '').slice(0, 300), secret: secret(e)});
+  const TEXT = /^(text|search|email|url|tel|number|password)$/;
+  document.addEventListener('click', ev => {
+    const e = ev.target && ev.target.closest ? ev.target.closest(SEL) : null;
+    if (!e) return;
+    if ((e.tagName === 'INPUT' && TEXT.test(e.type || 'text')) || e.tagName === 'TEXTAREA') return;   // 点输入框只是聚焦，输入时再记
+    send(Object.assign({type: 'click'}, describe(e)));
+  }, true);
+  document.addEventListener('change', ev => {
+    const e = ev.target; if (!e || !e.tagName) return;
+    const tag = e.tagName.toLowerCase();
+    if (tag === 'select') return send({type: 'select', field: label(e), value: clean(e.selectedOptions[0] && e.selectedOptions[0].innerText)});
+    if (tag === 'input' && (e.type === 'checkbox' || e.type === 'radio')) return send({type: 'check', field: label(e) || describe(e).name, checked: e.checked});
+    if (tag === 'input' || tag === 'textarea') send(typed(e));
+  }, true);
+  document.addEventListener('keydown', ev => {
+    const e = ev.target;
+    if (ev.key === 'Enter' && e && e.tagName === 'INPUT') return send(Object.assign(typed(e), {submit: true}));   // 回车提交时 change 还没来
+    if (ev.key === 'Escape') send({type: 'key', key: 'Escape'});
+  }, true);
+  document.addEventListener('focusout', ev => {
+    const e = ev.target;
+    if (e && e.isContentEditable) send({type: 'input', field: label(e) || '编辑区', value: clean(e.innerText).slice(0, 300)});
+  }, true);
+})()
+"""
+
+
 class WS:
     """最小 WebSocket 客户端（只支持文本帧，够 CDP 用）。"""
 
@@ -246,8 +302,109 @@ def key(ws: WS, name: str):
     ws.call("Input.dispatchKeyEvent", {"type": "keyUp", **base})
 
 
+# ---------- 演示录制 ----------
+def record(path: str, max_s: float):
+    """后台进程：连到浏览器，自动附加到所有标签页（包括之后新开的），把操作一行一个 JSON 写进 path。"""
+    import select
+    import signal
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    ensure_browser()
+    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/version", timeout=5) as r:
+        ws = WS(json.load(r)["webSocketDebuggerUrl"])
+    out = open(path, "a", buffering=1, encoding="utf-8")
+    n = 0
+
+    def send(method: str, params: dict | None = None, session: str | None = None):
+        nonlocal n
+        n += 1
+        ws.send(json.dumps({"id": n, "method": method, "params": params or {}, **({"sessionId": session} if session else {})}))
+
+    def emit(ev: dict):
+        ev["t"] = round(time.time(), 2)
+        out.write(json.dumps(ev, ensure_ascii=False) + "\n")
+
+    send("Target.setDiscoverTargets", {"discover": True})
+    send("Target.setAutoAttach", {"autoAttach": True, "waitForDebuggerOnStart": False, "flatten": True})
+    urls: dict[str, str] = {}
+    started = time.time()
+    end = started + max_s
+    while time.time() < end:
+        if not ws.buf and not select.select([ws.sock], [], [], 1)[0]:
+            continue   # 先确认有数据再读，免得读到一半超时把帧读乱
+        m = json.loads(ws.recv())
+        method, p = m.get("method"), m.get("params") or {}
+        if method == "Target.attachedToTarget" and p.get("targetInfo", {}).get("type") == "page":
+            sid = p["sessionId"]
+            send("Runtime.addBinding", {"name": "__osaRec"}, sid)
+            send("Runtime.enable", {}, sid)
+            send("Page.enable", {}, sid)    # 不开 Page 域，下面的脚本不会注入到之后打开的页面
+            send("Page.addScriptToEvaluateOnNewDocument", {"source": RECORDER_JS}, sid)
+            send("Runtime.evaluate", {"expression": RECORDER_JS}, sid)
+        elif method in ("Target.targetCreated", "Target.targetInfoChanged"):
+            t = p.get("targetInfo") or {}
+            url = t.get("url", "")
+            if t.get("type") == "page" and urls.get(t["targetId"]) != url:
+                # 开始录制时已经开着的标签页也会报一次 targetCreated：只记下网址，不算操作（起始页由 rec_start 记）
+                if url.startswith("http") and not (method == "Target.targetCreated" and time.time() - started < 2):
+                    emit({"type": "navigate", "url": url[:300], "title": t.get("title", "")[:100],
+                          "new_tab": method == "Target.targetCreated"})
+                urls[t["targetId"]] = url
+        elif method == "Runtime.bindingCalled" and p.get("name") == "__osaRec":
+            try:
+                emit(json.loads(p.get("payload") or "{}"))
+            except ValueError:
+                pass
+
+
+def rec_start(path: str, max_s: float) -> dict:
+    rec_stop(path, keep=False)
+    ts = ensure_browser()
+    if ts and ts[0]["url"].startswith("http"):   # 最前面的标签页就是演示开始时的页面
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"type": "navigate", "url": ts[0]["url"][:300], "title": ts[0].get("title", "")[:100],
+                                "start": True, "t": round(time.time(), 2)}, ensure_ascii=False) + "\n")
+    p = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--record", path, str(max_s)],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(path + ".err", "w"),
+                         start_new_session=True)
+    with open(path + ".pid", "w") as f:
+        f.write(str(p.pid))
+    time.sleep(1.0)
+    if p.poll() is not None:
+        raise RuntimeError("录制没能启动：" + open(path + ".err").read()[-300:])
+    return {"ok": True}
+
+
+def rec_stop(path: str, keep: bool = True) -> dict:
+    """停掉录制进程，返回录到的操作，然后删掉临时文件。"""
+    try:
+        pid = int(open(path + ".pid").read())
+        os.kill(pid, 15)
+        for _ in range(20):
+            time.sleep(0.1)
+            os.kill(pid, 0)
+    except (OSError, ValueError):
+        pass   # 进程已经结束（比如到了时长上限）
+    events = []
+    if keep and os.path.exists(path):
+        for line in open(path, encoding="utf-8"):
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                pass
+    for f in (path, path + ".pid", path + ".err"):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    return {"events": events}
+
+
 def run(a: dict) -> dict:
     op = a["op"]
+    if op == "rec_start":
+        return rec_start(a["file"], float(a.get("max_s") or 600))
+    if op == "rec_stop":
+        return rec_stop(a["file"])
     ws = page()
     if op == "open":
         ws.call("Page.enable")
@@ -301,6 +458,9 @@ def run(a: dict) -> dict:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--record"]:
+        record(sys.argv[2], float(sys.argv[3]))
+        sys.exit(0)
     try:
         print(json.dumps(run(json.loads(sys.stdin.read())), ensure_ascii=False))
     except Exception as e:

@@ -93,6 +93,19 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
   -H "X-OSA-Token: $OSA_WEBHOOK_TOKEN" -d '{"issue":{"title":"Bug: ..."}}'
 ```
 
+## 手机、语音与推送
+
+- **要用 https 访问**：推送、添加到主屏幕、语音输入都要求安全连接（本机 `localhost` 也算）。手机上建议用下面“远程访问”里 Tailscale 的 https 地址。
+- **推送**：在每台设备的“设置 → 通知”里开启。iPhone / iPad 要先在 Safari 里“添加到主屏幕”，从主屏幕打开再开启（iOS 16.4 起支持）。
+  VAPID 密钥第一次用时自动生成，存在数据库里；换数据库后各设备要重新开启。可以设置联系地址（推送服务出问题时可能用它联系你）：
+
+  ```yaml
+  push:
+    subject: "mailto:you@example.com"   # 默认是项目的 GitHub 地址
+  ```
+- **语音输入**用浏览器自带的识别：Safari（含 iPhone）直接可用；Chrome 要能连上 Google 的语音服务，连不上时会提示。不支持的浏览器不显示麦克风。
+- **演示一遍**最长 10 分钟（`osa/teach.py` 的 `MAX_S`），到时自动结束并生成草稿。
+
 ## 群聊
 
 不需要配置。限制：每个群 2–6 个 Bot，最多 50 个群；每一轮（用户的一条消息或一次任务交接）最多 8 次 Bot 发言（`osa/groups.py` 的 `MAX_TURNS`）。

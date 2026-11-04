@@ -19,7 +19,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     <div className="modal-bg" onMouseDown={onClose}>
       <div className="modal wide" onMouseDown={e => e.stopPropagation()}>
         <div className="modal-tabs">
-          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['apps', '应用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务']].map(([k, v]) =>
+          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['apps', '应用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务'], ['notify', '通知']].map(([k, v]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{v}</button>)}
           <span className="grow" /><button className="icon-btn" onClick={onClose}>✕</button>
         </div>
@@ -31,6 +31,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           {tab === 'rules' && <Rules />}
           {tab === 'vault' && <Vault />}
           {tab === 'triggers' && <Triggers />}
+          {tab === 'notify' && <Notifications />}
         </div>
       </div>
     </div>
@@ -133,6 +134,62 @@ function Triggers() {
       )) : <div className="muted small">暂无</div>}
       <p className="muted small">定时任务属于各个 Bot：在对话里说“每天 9 点帮我……”，或者在右栏 Bot 详情的“定时”里新建和管理。
         webhook 类的地址是 POST /hooks/名字。</p>
+    </div>
+  )
+}
+
+// 推送：在这台设备上订阅，没开着页面时，需要你处理的事推送过来
+const b64ToBytes = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)), c => c.charCodeAt(0))
+
+function Notifications() {
+  const [info, setInfo] = useState<{ key: string; count: number } | null>(null)
+  const [sub, setSub] = useState<PushSubscription | null>(null)
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+  const ios = /iPhone|iPad/.test(navigator.userAgent)
+  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone
+  useEffect(() => {
+    api('/api/push').then(setInfo).catch((e: any) => setMsg(e.message))
+    if (supported && isSecureContext) navigator.serviceWorker.ready.then(r => r.pushManager.getSubscription()).then(setSub)
+  }, [])
+  const on = async () => {
+    setBusy(true); setMsg('')
+    try {
+      if (await Notification.requestPermission() !== 'granted') throw new Error('没有通知权限，请在浏览器或系统设置里允许这个网站发通知')
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+      const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(info!.key) })
+      const r = await api('/api/push/subscribe', { method: 'POST', body: { subscription: s.toJSON() } })
+      setSub(s); setInfo({ ...info!, count: r.count }); localStorage.setItem('osa.push', '1'); setMsg('已开启')
+    } catch (e: any) { setMsg(e.message) }
+    setBusy(false)
+  }
+  const off = async () => {
+    if (!sub) return
+    const r = await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } })
+    await sub.unsubscribe().catch(() => {})
+    setSub(null); setInfo({ ...info!, count: r.count }); localStorage.removeItem('osa.push'); setMsg('已关闭')
+  }
+  const test = async () => {
+    setMsg('')
+    try { const r = await api('/api/push/test', { method: 'POST' }); setMsg(r.results.every((x: string) => x === 'ok') ? '已发出，几秒内应该收到' : r.results.join('；')) }
+    catch (e: any) { setMsg(e.message) }
+  }
+  return (
+    <div>
+      <p className="muted">没开着这个页面时（比如手机锁屏），需要你确认、请你帮忙、任务做完和 Bot 的回复会推送到开启了推送的设备。页面开着时不推。</p>
+      {!isSecureContext ? <p className="error-line">推送需要 https 访问（本机 localhost 也行）。手机上建议用 Tailscale 的 https 地址，见文档“远程访问”。</p>
+        : !supported ? <p className="error-line">这个浏览器不支持推送。{ios ? '' : '请换用 Chrome、Edge、Firefox 或 Safari。'}</p>
+        : ios && !standalone ? <p className="muted">iPhone / iPad：先在 Safari 里点“分享 → 添加到主屏幕”，从主屏幕打开后再来这里开启。</p>
+        : <div className="row-actions">
+            {sub ? <><span className="pill ok">这台设备已开启</span><button className="btn" onClick={test}>发一条测试</button><button className="btn" onClick={off}>关闭</button></>
+              : <button className="btn primary" disabled={busy || !info} onClick={on}>{busy ? '开启中…' : '在这台设备上开启推送'}</button>}
+          </div>}
+      {info && <p className="muted small">已开启推送的设备：{info.count} 台</p>}
+      {msg && <p className="muted small">{msg}</p>}
+      <h4>添加到主屏幕</h4>
+      <p className="muted small">手机上可以把它当应用用：Safari 点“分享 → 添加到主屏幕”，Chrome 点菜单里的“添加到主屏幕”或“安装应用”。</p>
     </div>
   )
 }

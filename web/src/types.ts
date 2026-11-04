@@ -61,7 +61,9 @@ export type Page = {
   id: number; bot_id: number | null; title: string; format: 'markdown' | 'html'; share_token: string | null; pinned: boolean
   task_id: number | null; created: number; updated: number; size: number; content?: string
 }
-export type FileEntry = { name: string; path: string; dir: boolean; size: number; mtime: number; missing?: boolean }
+export type Teach = { bot_id: number; started: number; note: string; max_s: number }
+export type TeachDraft = { bot_id: number; draft: { name: string; description: string; body: string }; steps: string[] }
+export type FileEntry ={ name: string; path: string; dir: boolean; size: number; mtime: number; missing?: boolean }
 export type FileListing =
   | { running: false; state: string; path: string; root: string }
   | { running: true; path: string; root: string; entries: FileEntry[]; pins: FileEntry[] }

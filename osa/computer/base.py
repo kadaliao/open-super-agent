@@ -140,8 +140,9 @@ class Computer:
             await asyncio.wait_for(self._handback.wait(), timeout)
 
     # ---------- 桌面操作（公共实现） ----------
-    async def _desktop(self, cmd: str, stdin: str | None = None, timeout: int = 60) -> ExecResult:
-        await self.wait_for_control()
+    async def _desktop(self, cmd: str, stdin: str | None = None, timeout: int = 60, as_human: bool = False) -> ExecResult:
+        if not as_human:
+            await self.wait_for_control()   # 用户接手期间，Bot 的动作等用户交还
         await self.start()
         async with self.lock:
             self.last_used = time.time()
@@ -178,31 +179,32 @@ class Computer:
             raise ComputerError("direction 只能是 up / down / left / right")
         await self._desktop(f"xdotool click --repeat {max(1, min(100, int(amount)))} --delay 30 {w}")
 
-    async def type(self, text: str):
+    async def type(self, text: str, as_human: bool = False):
         if not text:
             return
         if text.isascii():
-            await self._desktop("xdotool type --delay 12 --file -", stdin=text)
+            await self._desktop("xdotool type --delay 12 --file -", stdin=text, as_human=as_human)
         else:
             # xdotool 打中文会丢字，改成写进剪贴板再粘贴；没有 xclip 时退回逐字输入
             await self._desktop("if command -v xclip >/dev/null; then xclip -selection clipboard -i && sleep 0.1 "
-                                "&& xdotool key ctrl+v; else xdotool type --delay 30 --file -; fi", stdin=text)
+                                "&& xdotool key ctrl+v; else xdotool type --delay 30 --file -; fi", stdin=text, as_human=as_human)
 
-    async def press(self, keys: str | list[str]):
+    async def press(self, keys: str | list[str], as_human: bool = False):
         ks = keys if isinstance(keys, list) else [k for k in str(keys).replace(" ", "").split("+") if k]
         if not ks:
             raise ComputerError("没有按键")
-        await self._desktop(f"xdotool key -- {shlex.quote('+'.join(keysym(k) for k in ks))}")
+        await self._desktop(f"xdotool key -- {shlex.quote('+'.join(keysym(k) for k in ks))}", as_human=as_human)
 
-    async def browser(self, op: str, **args) -> dict:
-        """用 CDP 操作浏览器（见 cdp_helper.py）。脚本第一次用时写进电脑；电脑重建过就重新写。"""
+    async def browser(self, op: str, *, as_human: bool = False, **args) -> dict:
+        """用 CDP 操作浏览器（见 cdp_helper.py）。脚本第一次用时写进电脑；电脑重建过就重新写。
+        as_human=True 是用户自己发起的操作（比如开始 / 结束演示录制），用户接手时也照常执行。"""
         stdin = json.dumps({"op": op, **args}, ensure_ascii=False)
         for attempt in (0, 1):
             r = await self.exec(f"test -f {HELPER_PATH}", 10) if attempt == 0 else None
             if r is None or r.exit_code:
                 await self.write_bytes(HELPER_PATH, _HELPER)
             try:
-                out = await self._desktop(f"python3 {HELPER_PATH}", stdin=stdin, timeout=90)
+                out = await self._desktop(f"python3 {HELPER_PATH}", stdin=stdin, timeout=90, as_human=as_human)
                 return json.loads(out.stdout.strip().splitlines()[-1])
             except ComputerError as e:
                 if attempt == 0 and ("No such file" in str(e) or "can't open file" in str(e)):

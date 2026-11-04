@@ -34,6 +34,12 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 - **群聊**：`POST /api/groups {"bot_ids":[1,2]}` 建群，然后通过 WebSocket 往群的 chat_id 发
   “@A 查……，查完交给 @B 写总结”，应该看到 A 派任务（带 handoff_to）、B 不抢话、任务结果出来后出现交接记录、B 写出总结。
   再让 A 派一个要 `ask_approval` 的任务，确认卡片应该出现在 A 的私聊里（`chat_id` 是私聊，`origin_chat_id` 是群）。
+- **演示一遍**：`POST /api/bots/<id>/teach/start` 开始后，可以在电脑里直接跑浏览器控制脚本模拟用户操作：
+  `echo '{"op":"open","url":"https://example.com"}' | docker exec -i osa-computer env DISPLAY=:1 python3 /tmp/osa-cdp-*.py`；
+  再 `POST /api/teach/stop` 拿到 `steps` 和 `draft`，存成技能后在对话里 `/名字` 重放。
+- **推送**：Playwright 默认的浏览器上下文算无痕模式，Chrome 在无痕里不支持推送；要用 `launch_persistent_context`，
+  并 `grant_permissions(["notifications"])`。开启后 `POST /api/push/test`，用 `registration.getNotifications()` 确认收到。
+- **手机**：Playwright 用 `is_mobile=True, has_touch=True` 的上下文（`pointer: coarse` 才会出现接手时的输入栏）。
 - **资料库**：让 Bot 把结果做成页面，`GET /api/pages` 看列表；HTML 页面在沙箱 iframe 里，
   可以写一个会 `fetch('/api/bootstrap')` 的探针页，确认请求被 CSP 拦下。
 

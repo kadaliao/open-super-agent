@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, loadSkills, useStore } from '../store'
+import { api, loadSkills, setTeachDraft, useStore } from '../store'
 import type { Bot, Routine, RoutineRun, Skill, Trigger } from '../types'
 
 const when = (ts: number | null) => ts ? new Date(ts * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -21,16 +21,47 @@ export function describe(t: Trigger) {
 // ---------- 技能 ----------
 export function SkillsPanel({ bot }: { bot: Bot }) {
   const skills = useStore(s => s.skills[bot.id])
+  const draft = useStore(s => (s.teachDraft?.bot_id === bot.id ? s.teachDraft : null))
+  const teach = useStore(s => s.teach)
   const [edit, setEdit] = useState<Partial<Skill> & { shared?: boolean } | null>(null)
+  const [teaching, setTeaching] = useState(false)
+  const [note, setNote] = useState('')
+  const [err, setErr] = useState('')
   useEffect(() => { loadSkills(bot.id) }, [bot.id])
-  if (edit) return <SkillEditor bot={bot} skill={edit} onDone={() => { setEdit(null); loadSkills(bot.id) }} />
+  // 演示录完生成了草稿：直接打开编辑器让你审核
+  useEffect(() => { if (draft) setEdit({ ...draft.draft, source: 'teach' }) }, [draft])
+  const startTeach = async () => {
+    setErr('')
+    try { await api(`/api/bots/${bot.id}/teach/start`, { method: 'POST', body: { note } }); setTeaching(false); setNote('') }
+    catch (e: any) { setErr(e.message) }
+  }
+  if (edit) return <SkillEditor bot={bot} skill={edit} steps={edit.source === 'teach' ? draft?.steps : undefined}
+    onDone={() => { setEdit(null); setTeachDraft(null); loadSkills(bot.id) }} />
   return (
     <div>
-      <div className="section-head"><h4>技能</h4><button className="btn" onClick={() => setEdit({})}>＋ 新建</button></div>
-      <p className="muted small">在对话里输入 /名字 调用。也可以让 {bot.name} “把刚才的做法存成技能”。</p>
+      <div className="section-head"><h4>技能</h4>
+        <div className="app-actions">
+          <button className="btn" disabled={!!teach} title="在电脑上做一遍，Bot 整理成技能" onClick={() => setTeaching(!teaching)}>演示一遍</button>
+          <button className="btn" onClick={() => setEdit({})}>＋ 新建</button>
+        </div>
+      </div>
+      {teaching && (
+        <div className="teach-start">
+          <label className="field">要演示什么？（可选，帮 {bot.name} 理解）
+            <input value={note} maxLength={200} autoFocus placeholder="例如：在 GitHub 上给仓库提一个 issue" onChange={e => setNote(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && startTeach()} /></label>
+          <p className="muted small">开始后电脑交给你操作：在浏览器里完整做一遍，做完点“完成，生成技能”。最长 10 分钟。
+            只记浏览器里的点击、输入和打开的网址，密码不会记录。录制期间后台任务会排队等电脑。</p>
+          {err && <div className="error-line">{err}</div>}
+          <div className="row-actions"><button className="btn primary" onClick={startTeach}>开始录制</button><button className="btn" onClick={() => setTeaching(false)}>取消</button></div>
+        </div>
+      )}
+      {teach && <div className="muted small">● 正在录制演示，在右栏“电脑”里操作，做完点“完成”。</div>}
+      <p className="muted small">在对话里输入 /名字 调用。也可以让 {bot.name} “把刚才的做法存成技能”，或者点“演示一遍”做给它看。</p>
       {!skills ? <div className="muted">加载中…</div> : skills.length ? skills.map(k => (
         <button key={k.id} className="list-item" onClick={() => setEdit({ ...k, shared: k.bot_id === null })}>
           <b>/{k.name}</b>{k.bot_id === null && <span className="tag">共用</span>}{k.source === 'chat' && <span className="tag">对话里保存</span>}
+          {k.source === 'teach' && <span className="tag">演示生成</span>}
           <div className="muted small">{k.description || k.body.slice(0, 60)}</div>
         </button>
       )) : <div className="muted small">还没有技能</div>}
@@ -38,15 +69,17 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
   )
 }
 
-function SkillEditor({ bot, skill, onDone }: { bot: Bot; skill: Partial<Skill> & { shared?: boolean }; onDone: () => void }) {
+function SkillEditor({ bot, skill, steps, onDone }: { bot: Bot; skill: Partial<Skill> & { shared?: boolean }; steps?: string[]; onDone: () => void }) {
   const [name, setName] = useState(skill.name || '')
   const [desc, setDesc] = useState(skill.description || '')
   const [body, setBody] = useState(skill.body || '')
   const [shared, setShared] = useState(!!skill.shared)
   const [err, setErr] = useState('')
+  const [showSteps, setShowSteps] = useState(false)
+  const fromTeach = skill.source === 'teach' && !skill.id
   const save = async () => {
     try {
-      const data = { name, description: desc, body, shared, bot_id: bot.id }
+      const data = { name, description: desc, body, shared, bot_id: bot.id, source: fromTeach ? 'teach' : undefined }
       if (skill.id) await api(`/api/skills/${skill.id}`, { method: 'PUT', body: data })
       else await api(`/api/bots/${bot.id}/skills`, { method: 'POST', body: data })
       onDone()
@@ -58,7 +91,12 @@ function SkillEditor({ bot, skill, onDone }: { bot: Bot; skill: Partial<Skill> &
   }
   return (
     <div>
-      <h4>{skill.id ? '编辑技能' : '新建技能'}</h4>
+      <h4>{skill.id ? '编辑技能' : fromTeach ? '审核演示生成的技能' : '新建技能'}</h4>
+      {fromTeach && <p className="muted small">{bot.name} 根据你的演示写了下面的做法，还没保存。改好后保存，再在对话里输入 /名字 试一次。</p>}
+      {steps && steps.length > 0 && <>
+        <button className="ghost-btn" onClick={() => setShowSteps(!showSteps)}>录到的操作（{steps.length} 步）{showSteps ? '▾' : '▸'}</button>
+        {showSteps && <pre className="teach-steps">{steps.join('\n')}</pre>}
+      </>}
       <label className="field">名字（/ 后面的部分）<input value={name} maxLength={40} placeholder="例如：日报" onChange={e => setName(e.target.value)} /></label>
       <label className="field">一句话说明<input value={desc} maxLength={200} placeholder="什么时候用" onChange={e => setDesc(e.target.value)} /></label>
       <label className="field">做法<textarea rows={10} value={body} placeholder="步骤、要用的网站或应用、输出格式……" onChange={e => setBody(e.target.value)} /></label>
@@ -66,7 +104,7 @@ function SkillEditor({ bot, skill, onDone }: { bot: Bot; skill: Partial<Skill> &
       {err && <div className="error-line">{err}</div>}
       <div className="row-actions">
         <button className="btn primary" onClick={save}>保存</button>
-        <button className="btn" onClick={onDone}>返回</button>
+        <button className="btn" onClick={() => (!fromTeach || confirm('不保存这个草稿？')) && onDone()}>{fromTeach ? '不要了' : '返回'}</button>
         {skill.id && <button className="btn danger" onClick={del}>删除</button>}
       </div>
     </div>

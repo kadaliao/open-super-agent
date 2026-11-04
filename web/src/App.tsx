@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { bootstrap, chatById, connect, openLibrary, useStore } from './store'
+import { bootstrap, chatById, connect, getState, openChat, openLibrary, useStore } from './store'
 import Chat from './components/Chat'
 import Library from './components/Library'
 import Sidebar from './components/Sidebar'
@@ -27,6 +27,29 @@ export default function App() {
     }
     window.addEventListener('osa-open-computer', h)
     return () => window.removeEventListener('osa-open-computer', h)
+  }, [])
+
+  // 演示一遍：开始录制时打开这个 Bot 的电脑画面；录完有草稿时打开它的技能面板
+  const teach = useStore(s => s.teach)
+  const draft = useStore(s => s.teachDraft)
+  const showBot = (botId: number, t: string) => {
+    const b = getState().bots.find(x => x.id === botId)
+    if (b && getState().active !== b.chat_id) openChat(b.chat_id)
+    setDetails(true); setTab(t)
+  }
+  useEffect(() => { if (teach) showBot(teach.bot_id, 'computer') }, [teach?.started])
+  useEffect(() => { if (draft) showBot(draft.bot_id, 'skills') }, [draft])
+
+  // 点了推送通知：Service Worker 把通知里的地址（/?chat=12）发过来
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const h = (e: MessageEvent) => {
+      if (e.data?.type !== 'open') return
+      const chat = Number(new URL(e.data.url, location.origin).searchParams.get('chat'))
+      if (chat && getState().chats.some(c => c.id === chat)) openChat(chat)
+    }
+    navigator.serviceWorker.addEventListener('message', h)
+    return () => navigator.serviceWorker.removeEventListener('message', h)
   }, [])
 
   // 对话里的页面链接（/library/pages/12）：在资料库里打开，不刷新页面

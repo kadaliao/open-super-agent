@@ -10,12 +10,14 @@ from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from . import approvals, bots, computer, groups, library, mcp_hub, memories, memory, router as rt, routines, settings, skills, vault
+from . import approvals, bots, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import settings, skills, teach, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
 DIST = Path(__file__).parent / "static" / "dist"
 clients: set[WebSocket] = set()
+watching: dict[WebSocket, bool] = {}   # 每个页面现在是不是正被看着（前端在切换前后台时上报）
 
 
 async def broadcast(event: dict):
@@ -24,12 +26,17 @@ async def broadcast(event: dict):
             await ws.send_json(event)
         except Exception:
             clients.discard(ws)
+            watching.pop(ws, None)
+    # 没有任何页面正被看着时，需要你知道的事推送到手机
+    if not any(watching.get(ws, True) for ws in clients) and (msg := push.message_for(event)) and push.count():
+        asyncio.create_task(push.send(*msg, urgency="high" if event.get("type") == "approval" else "normal"))
 
 rt.notify = broadcast
 approvals.notify = broadcast
 mcp_hub.notify = broadcast
 routines.notify = broadcast
 groups.notify = broadcast
+teach.notify = broadcast
 
 
 async def _pages_changed():
@@ -65,7 +72,7 @@ async def bootstrap():
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
-            "apps": mcp_hub.public()}
+            "apps": mcp_hub.public(), "teach": teach.public()}
 
 
 @app.post("/api/bots")
@@ -192,11 +199,63 @@ async def create_skill(bot_id: int, data: dict = Body(...)):
     _bot_or_404(bot_id)
     try:
         s = skills.save(None if data.get("shared") else bot_id, data.get("name", ""), data.get("body", ""),
-                        data.get("description", ""))
+                        data.get("description", ""), "teach" if data.get("source") == "teach" else "manual")
     except ValueError as e:
         _err(e)
     await broadcast({"type": "skills_changed"})
     return s
+
+
+# ---------- 演示一遍 ----------
+@app.post("/api/bots/{bot_id}/teach/start")
+async def teach_start(bot_id: int, data: dict = Body(default={})):
+    _bot_or_404(bot_id)
+    try:
+        return await teach.start(bot_id, data.get("note", ""))
+    except (ValueError, computer.ComputerError) as e:
+        _err(e)
+
+
+@app.post("/api/teach/{action}")
+async def teach_action(action: str):
+    """stop：结束并生成技能草稿（不保存，交给用户审核）；cancel：放弃这段录制。"""
+    if action not in ("stop", "cancel"):
+        raise HTTPException(404, "未知操作")
+    try:
+        if action == "stop":
+            return await teach.stop()
+        await teach.cancel()
+        return {"ok": True}
+    except (ValueError, computer.ComputerError) as e:
+        _err(e)
+
+
+# ---------- 推送 ----------
+@app.get("/api/push")
+async def push_info():
+    return {"key": push.public_key(), "count": push.count()}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(request: Request, data: dict = Body(...)):
+    try:
+        n = push.subscribe(data.get("subscription") or {}, request.headers.get("user-agent", ""))
+    except ValueError as e:
+        _err(e)
+    return {"count": n}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(data: dict = Body(...)):
+    push.unsubscribe(data.get("endpoint", ""))
+    return {"count": push.count()}
+
+
+@app.post("/api/push/test")
+async def push_test():
+    if not push.count():
+        raise HTTPException(400, "还没有设备开启推送")
+    return {"results": await push.send("推送测试", "能收到这条，说明这台设备的推送是通的。", "/", "test")}
 
 
 @app.put("/api/skills/{sid}")
@@ -529,15 +588,29 @@ def _pc(bot_id: int):
 
 
 async def _pc_state(bot_id: int) -> dict:
-    c = _pc(bot_id)
-    st = await c.status()
-    return {"bot_id": bot_id, "backend": c.backend, "controller": c.controller,
-            "width": c.width, "height": c.height, **st}
+    _pc(bot_id)
+    return await computer.public_state(bot_id)
 
 
 @app.get("/api/bots/{bot_id}/computer")
 async def pc_status(bot_id: int):
     return await _pc_state(bot_id)
+
+
+@app.post("/api/bots/{bot_id}/computer/type")   # 要放在 /computer/{action} 前面，否则会被它先匹配
+async def pc_type(bot_id: int, data: dict = Body(...)):
+    """你接手电脑时从网页输入文字或按键（手机上点画面弹不出键盘，用这个）。"""
+    c = _pc(bot_id)
+    if c.controller != "human":
+        raise HTTPException(400, "先接手电脑再输入")
+    try:
+        if data.get("text"):
+            await c.type(str(data["text"])[:2000], as_human=True)
+        if data.get("key"):
+            await c.press(str(data["key"]), as_human=True)
+    except computer.ComputerError as e:
+        _err(e)
+    return {"ok": True}
 
 
 @app.post("/api/bots/{bot_id}/computer/{action}")
@@ -790,6 +863,8 @@ async def ws(sock: WebSocket):
             data = await sock.receive_json()
             if data.get("type") == "approve":
                 approvals.resolve(int(data["id"]), bool(data.get("ok")), data.get("note", ""), bool(data.get("always")))
+            elif data.get("type") == "visibility":
+                watching[sock] = bool(data.get("visible"))
             elif data.get("type") == "send":
                 text = (data.get("text") or "").strip()
                 chat = bots.chat(int(data.get("chat_id", 0)))
@@ -797,6 +872,7 @@ async def ws(sock: WebSocket):
                     asyncio.create_task(safe_handle(chat, text))
     except WebSocketDisconnect:
         clients.discard(sock)
+        watching.pop(sock, None)
 
 
 async def safe_handle(chat: dict, text: str):

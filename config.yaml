@@ -66,6 +66,10 @@ mcp_servers:
     deny: ["delete", "archive"]   # 工具名包含这些词的不开放
     confirm: auto                 # 写操作前要你确认：auto（只读放行，写入词要确认）/ all / none / 词列表
 
+# 手机推送（Web Push）：联系地址，推送服务出问题时可能用它联系你；不写就用项目地址
+# push:
+#   subject: "mailto:you@example.com"
+
 # 电脑：所有 Bot 共用一台（浏览器 + 终端），任务排队独占；用户能实时观看、接手
 computer:
   enabled: true

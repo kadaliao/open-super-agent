@@ -1,7 +1,52 @@
 import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
-import { api, useStore, setComputer } from '../store'
-import type { ComputerState } from '../types'
+import { api, useStore, setComputer, setTeachDraft } from '../store'
+import type { ComputerState, Teach } from '../types'
+
+const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
+
+/** 演示录制中：计时、完成（生成技能草稿）、放弃。 */
+function TeachBar({ t }: { t: Teach }) {
+  const [now, setNow] = useState(Date.now())
+  const [busy, setBusy] = useState('')
+  const bot = useStore(s => s.bots.find(b => b.id === t.bot_id))
+  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i) }, [])
+  const act = async (a: 'stop' | 'cancel') => {
+    if (a === 'cancel' && !confirm('放弃这段录制？录到的操作不会保存。')) return
+    setBusy(a)
+    try {
+      const r = await api(`/api/teach/${a}`, { method: 'POST' })
+      if (a === 'stop') setTeachDraft({ bot_id: r.bot_id, draft: r.draft, steps: r.steps })
+    } catch (e: any) { alert(e.message) }
+    setBusy('')
+  }
+  const left = Math.max(0, t.max_s - (now / 1000 - t.started))
+  return (
+    <div className="teach-bar">
+      <span className="rec-dot" />
+      <span className="teach-text">{busy === 'stop' ? `正在把操作整理成 ${bot?.name || 'Bot'} 的技能…` : `正在录制演示 ${mmss(now / 1000 - t.started)}`}
+        <span className="muted small">{busy ? '' : ` · 还能录 ${mmss(left)} · 只记浏览器里的操作，密码不会记录`}</span></span>
+      <button className="btn" disabled={!!busy} onClick={() => act('cancel')}>放弃</button>
+      <button className="btn primary" disabled={!!busy} onClick={() => act('stop')}>{busy === 'stop' ? '整理中…' : '完成，生成技能'}</button>
+    </div>
+  )
+}
+
+/** 接手时在手机上输入：点画面弹不出键盘，就在这里打字再发给电脑。 */
+function TypeBar({ botId }: { botId: number }) {
+  const [text, setText] = useState('')
+  const send = (body: any) => api(`/api/bots/${botId}/computer/type`, { method: 'POST', body }).catch((e: any) => alert(e.message))
+  return (
+    <div className="type-bar">
+      <input value={text} placeholder="输入文字发到电脑（先在画面上点一下输入框）" onChange={e => setText(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && text) { send({ text }); setText('') } }} />
+      <button className="btn" disabled={!text} onClick={() => { send({ text }); setText('') }}>发送</button>
+      <button className="btn" onClick={() => send({ key: 'Return' })}>回车</button>
+      <button className="btn" onClick={() => send({ key: 'BackSpace' })}>⌫</button>
+    </div>
+  )
+}
 
 const STATE: Record<string, string> = {
   none: '还没启动', starting: '启动中', running: '运行中', paused: '已暂停', stopped: '已停止', error: '出错了',
@@ -82,9 +127,11 @@ function MachinePicker({ botId, onErr }: { botId: number; onErr: (e: string) => 
 export function ComputerPanel({ botId }: { botId: number }) {
   const st = useStore(s => s.computers[botId])
   const task = useStore(s => Object.values(s.tasks).find(t => t.bot_id === botId && t.status === 'running'))
+  const teach = useStore(s => s.teach)
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
   const [big, setBig] = useState(false)
+  useEffect(() => { if (teach) setBig(true) }, [teach?.started])   // 开始录制就放大画面
 
   useEffect(() => { api<ComputerState>(`/api/bots/${botId}/computer`).then(setComputer).catch(() => {}) }, [botId])
   const act = async (a: string) => {
@@ -117,7 +164,9 @@ export function ComputerPanel({ botId }: { botId: number }) {
           <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? '启动中…（首次需要一会儿）' : st.state === 'paused' ? '恢复' : st.state === 'none' ? '新建并启动电脑' : '启动电脑'}</button>
         </div>
       )}
-      {running && (
+      {teach && <TeachBar t={teach} />}
+      {running && human && touch && <TypeBar botId={botId} />}
+      {running && !teach && (
         <div className="pc-actions">
           {human ? <>
             <span className="pc-you">你正在操作</span>
@@ -137,11 +186,13 @@ export function ComputerPanel({ botId }: { botId: number }) {
             <div className="pc-bar">
               <span className={'pc-dot ' + st.state} /><b>电脑</b>
               <span className="muted small">{human ? '· 你正在操作' : '· Bot 控制中'}</span><span className="grow" />
-              {human ? <button className="btn primary" onClick={() => act('handback')}>交还给 Bot</button>
+              {teach ? null : human ? <button className="btn primary" onClick={() => act('handback')}>交还给 Bot</button>
                 : <button className="btn" onClick={() => act('takeover')}>接手</button>}
               <button className="icon-btn" onClick={() => setBig(false)}>✕</button>
             </div>
+            {teach && <TeachBar t={teach} />}
             <ComputerView botId={botId} interactive={human} />
+            {human && touch && <TypeBar botId={botId} />}
           </div>
         </div>
       )}

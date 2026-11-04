@@ -37,6 +37,8 @@ osa/
   server.py        HTTP / WebSocket 入口、REST 接口、VNC 桥、前端静态文件
   router.py        Bot 的常驻会话：提示词、流式输出、Router 工具；每一轮都明确在哪个对话（私聊或群聊）里
   groups.py        群聊：解析 @、协调者、handoff 队列、任务做完自动交接、每轮发言上限
+  teach.py         演示一遍：开始 / 结束录制、把录到的事件排成步骤、让模型写技能草稿
+  push.py          手机推送：VAPID 密钥、RFC 8291 加密、订阅、哪些事件要推
   worker.py        后台任务：Task、ReAct 循环、Heavy 模式
   memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
@@ -52,11 +54,12 @@ osa/
   config.py        读取 config.yaml，按角色创建模型客户端
   computer/
     base.py        电脑接口、桌面动作（xdotool / scrot）、浏览器动作（CDP）、控制权、任务排队
-    cdp_helper.py  在电脑里运行的浏览器控制脚本（只用标准库），通过 DevTools 端口操作 Chromium
+    cdp_helper.py  在电脑里运行的浏览器控制脚本（只用标准库），通过 DevTools 端口操作 Chromium；也负责演示录制
     local.py       本地 Docker 后端
     instabox.py    Instabox 后端
     tools.py       browser_* / computer_* 工具定义、截图消息、给 Worker 的操作说明
     image/         本地电脑镜像
+web/public/         PWA：manifest.json、sw.js（推送和离线提示页）、图标
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
   components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、
@@ -74,6 +77,7 @@ web/src/
 | `llm_usage` | 每次模型调用的 token 数和费用 |
 | `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
+| `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |
 | `settings` | 界面里改过的设置 |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
 
@@ -114,6 +118,19 @@ web/src/
 - **确认卡片只进私聊**：任务带 `approval_chat_id`（Bot 的私聊），确认请求的 `chat_id` 是私聊，`origin_chat_id` 是任务所在的群；
   前端在群里只显示“去处理”的提示。
 - 群聊里不解析 `/技能`；技能、定时任务、记忆都属于单个 Bot，在它的私聊和右栏里管理。
+
+### 演示一遍
+- 录制在电脑里跑：`cdp_helper.py --record` 是一个后台进程，用浏览器级的 DevTools 连接 `Target.setAutoAttach` 附加到所有标签页（包括之后新开的），
+  给每页加 `__osaRec` 绑定，并用 `Page.addScriptToEvaluateOnNewDocument` 注入监听脚本。**必须先 `Page.enable`**，否则新打开的页面不会注入。
+- 只记浏览器里的操作：点击（按元素文字描述）、输入（失去焦点或回车时记一次）、选择、勾选、Escape、网址变化。密码和名字像验证码、卡号的输入框只记 `******`。
+- 开始前先占住电脑（`Computer.claim`），后台任务排队；然后交给用户（`takeover`）。开始和结束录制的命令用 `as_human=True`，不等控制权。
+- 结束后先交还电脑，再调模型写草稿，所以画面上马上能看到交还。草稿不自动保存，在技能面板里审核。
+
+### 推送与 PWA
+- 推送按 RFC 8291（aes128gcm）加密、RFC 8292（VAPID）签名，只用 `cryptography` 和 `httpx`。推送服务只看得到密文。
+- 什么时候推：所有页面都没被看着时（前端在切前后台时发 `visibility`），把确认、帮忙、任务结果、Bot 回复推出去；流式输出之类的过程事件不推。
+- 开了推送的设备不再弹页面自己的系统通知（`localStorage osa.push`），免得重复。
+- Service Worker 不缓存接口和页面，只在连不上服务器时返回一个提示页。
 
 ### 记忆与资料库
 - **两种“记忆”别混**：`memory.py` 是对话记录（Inline & Spill，只在本对话里有效）；`memories.py` 是长期记忆，

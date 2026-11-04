@@ -13,7 +13,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 [简体中文](README.md) · English
 
-<img src="docs/images/screenshot.png" alt="Chat with a bot and its computer" width="860">
+<img src="docs/images/screenshot.png" alt="Two Bots handing off work in a group chat, with their shared computer on the right" width="860">
 
 </div>
 
@@ -25,10 +25,11 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 🖥️ **A computer**: one shared Linux desktop with Chromium and a terminal. Web pages are driven directly over CDP (by element, reading page text), which is fast and precise. Watch it live and take over or hand back at any time; for captchas and logins, the bot asks you to step in.
 - 🔌 **Apps via MCP**: connect the filesystem, GitHub, Notion and more from Settings; mention one in chat with `@app`.
 - ✅ **Approvals & vault**: write operations ask first (allow once / deny / always allow), with rules you manage in Settings; secrets are stored encrypted and never enter the chat.
-- 🧩 **Skills**: reusable procedures invoked with `/name`. Ask a Bot to save what it just did as a skill, or edit skills in the side panel.
+- 🧩 **Skills**: reusable procedures invoked with `/name`. Ask a Bot to save what it just did as a skill, or edit skills in the side panel. With **Teach a task**, do it once yourself on the computer and the Bot turns the recording into a draft skill for you to review.
 - 🧠 **Memory**: each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots. Just say "remember ...", or view, edit, delete and import (e.g. from ChatGPT) in the side panel. Start a **new topic** to drop old messages from the context while keeping memories.
 - 📚 **Library**: finished reports and web pages are saved as Pages you can pin and share by link; browse, upload and download files on the shared computer, and attach files in chat.
 - ⏰ **Routines**: per-Bot schedules (daily / weekdays, every N minutes, webhook) with pause, resume, test and the last 20 runs. Create one by saying "every day at 9, ...". Webhook events go through keyword filters, then a cheap model decides whether to act.
+- 📱 **Mobile**: install it to your home screen as an app, dictate messages by voice, and get push notifications for approvals and finished tasks when no page is open. Watch the screen, take over and type, and handle approvals from your phone.
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
 - 🔄 **Any model**: any OpenAI-compatible API (DeepSeek, OpenRouter, Ollama, vLLM), configurable per role.
 
@@ -66,7 +67,7 @@ The detailed docs are currently in Chinese:
 - [x] P4 Skills & routines
 - [x] P5 Memory & library
 - [x] P6 Group chat
-- [ ] P7 Teach-a-task & mobile
+- [x] P7 Teach-a-task & mobile
 
 ## License
 

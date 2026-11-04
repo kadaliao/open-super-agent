@@ -39,6 +39,13 @@ def get(bot_id: int = SHARED) -> Computer:
     return c
 
 
+async def public_state(bot_id: int = SHARED) -> dict:
+    """给前端的电脑状态。"""
+    c = get(bot_id)
+    return {"bot_id": bot_id, "backend": c.backend, "controller": c.controller,
+            "width": c.width, "height": c.height, **(await c.status())}
+
+
 async def idle_pauser():
     """闲置一段时间的电脑自动暂停，省资源（Instabox 那边也设置了自动暂停，这里是双保险）。"""
     while True:

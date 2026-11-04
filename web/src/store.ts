@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { App, Approval, Bot, Chat, ComputerState, Message, Settings, Skill, Stream, Task } from './types'
+import type { App, Approval, Bot, Chat, ComputerState, Message, Settings, Skill, Stream, Task, Teach, TeachDraft } from './types'
 
 type State = {
   ready: boolean
@@ -22,12 +22,14 @@ type State = {
   skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
   view: 'chat' | 'library'           // 主区显示对话还是资料库
   libraryPage: number | null         // 资料库里打开的页面
+  teach: Teach | null                // 正在“演示一遍”的录制
+  teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
 }
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
   active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], skills: {},
-  view: 'chat', libraryPage: null,
+  view: 'chat', libraryPage: null, teach: null, teachDraft: null,
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -35,7 +37,10 @@ const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
   subs.forEach(f => f())
 }
 export const getState = () => state
-export const setComputer = (c: ComputerState) => set(s => ({ computers: { ...s.computers, [c.bot_id]: c } }))
+// 所有 Bot 共用一台电脑：任何一个 Bot 的电脑状态变了，其他 Bot 的面板也跟着变
+export const setComputer = (c: ComputerState) => set(s => ({
+  computers: Object.fromEntries([...new Set([...Object.keys(s.computers).map(Number), c.bot_id])].map(k => [k, { ...c, bot_id: k }])),
+}))
 
 export function useStore<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(cb => (subs.add(cb), () => subs.delete(cb)), () => sel(state))
@@ -59,12 +64,17 @@ export async function bootstrap() {
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   const approvals: Record<number, Approval> = {}
   b.approvals.forEach((a: Approval) => (approvals[a.id] = { ...a, status: 'pending' }))
-  const saved = Number(localStorage.getItem('osa.active'))
+  // 从推送通知点进来时地址是 /?chat=12
+  const fromUrl = Number(new URLSearchParams(location.search).get('chat'))
+  if (fromUrl) history.replaceState(null, '', location.pathname)
+  const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
-        tasks, approvals, apps: b.apps || [], ready: true })
+        tasks, approvals, apps: b.apps || [], teach: b.teach || null, ready: true })
   if (active) openChat(active)
 }
+
+export const setTeachDraft = (d: TeachDraft | null) => set({ teachDraft: d })
 
 export async function refreshLists() {
   const b = await api('/api/bootstrap')
@@ -111,9 +121,15 @@ export async function loadOlder(chatId: number) {
 
 // ---------- WebSocket ----------
 let ws: WebSocket | null = null
+// 告诉服务端这个页面是不是正被看着：没有页面被看着时，服务端才推送到手机
+const reportVisibility = () => {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'visibility', visible: document.visibilityState === 'visible' }))
+}
+document.addEventListener('visibilitychange', reportVisibility)
+
 export function connect() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws')
-  ws.onopen = () => { set({ connected: true }); if (state.ready) resync() }
+  ws.onopen = () => { set({ connected: true }); reportVisibility(); if (state.ready) resync() }
   ws.onclose = () => { set({ connected: false }); setTimeout(connect, 1500) }
   ws.onmessage = e => handle(JSON.parse(e.data))
 }
@@ -124,7 +140,7 @@ async function resync() {
   const b = await api('/api/bootstrap')
   const tasks: Record<number, Task> = {}
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
-  set({ messages: {}, streams: {}, tasks })
+  set({ messages: {}, streams: {}, tasks, teach: b.teach || null })
   if (state.active) loadChat(state.active)
 }
 
@@ -194,11 +210,16 @@ function handle(d: any) {
     case 'pages_changed':
       window.dispatchEvent(new CustomEvent('osa-pages'))
       break
+    case 'teach':   // 录制开始 / 结束；到时自动结束时会带上草稿
+      set({ teach: d.teach || null, ...(d.draft ? { teachDraft: { bot_id: d.bot_id, draft: d.draft, steps: d.steps || [] } } : {}) })
+      if (d.error) alert(d.error)
+      break
   }
 }
 
 function notifyOS(chatId: number, m: Message | null, text?: string) {
   if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return
+  if (localStorage.getItem('osa.push') === '1') return   // 这台设备开了推送，由服务端推，免得重复
   const chat = state.chats.find(c => c.id === chatId)
   const n = new Notification(chat?.title || 'Open Super Agent', { body: text || m?.content.slice(0, 120) })
   n.onclick = () => { window.focus(); openChat(chatId) }
