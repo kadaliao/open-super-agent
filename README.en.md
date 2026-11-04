@@ -13,7 +13,9 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 [简体中文](README.md) · English
 
-<img src="docs/images/screenshot.png" alt="Two Bots handing off work in a group chat, with their shared computer on the right" width="860">
+<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="Demo: Scout researches on the computer and hands off to Quill in a group chat; teaching a task; the library" width="860"></a>
+
+<sub>Group handoff → teach a task → library (model wait times sped up) · <a href="docs/images/demo.mp4">HD MP4</a></sub>
 
 </div>
 

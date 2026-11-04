@@ -13,7 +13,9 @@
 
 简体中文 · [English](README.en.md)
 
-<img src="docs/images/screenshot.png" alt="群聊里两个 Bot 交接工作，右边是它们共用的电脑" width="860">
+<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="演示：群聊里 Scout 在电脑上查资料后交给 Quill 写介绍；演示一遍生成技能；资料库" width="860"></a>
+
+<sub>群聊交接 → 演示一遍生成技能 → 资料库（等待模型的部分已加速）· <a href="docs/images/demo.mp4">看高清版 MP4</a></sub>
 
 </div>
 

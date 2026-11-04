@@ -145,17 +145,30 @@ DRAFT_PROMPT = """用户刚在浏览器里演示了一遍怎么做一件事，�
 只输出 JSON：{"name": "...", "description": "...", "body": "..."}"""
 
 
+def _parse(text: str) -> dict:
+    """模型偶尔会在 JSON 外面包代码块或多说一句：先整段解析，不行就取最外层的 {...}。"""
+    for s in (text, (m.group(0) if (m := re.search(r"\{[\s\S]*\}", text or "")) else "")):
+        try:
+            d = json.loads(s)
+            if isinstance(d, dict):
+                return d
+        except ValueError:
+            pass
+    return {}
+
+
 async def draft_skill(steps: list[str], note: str = "") -> dict:
     client, model = client_for("router")
     user = (f"用户说要演示的是：{note}\n\n" if note else "") + "录到的操作：\n" + "\n".join(steps)
-    resp = await client.chat.completions.create(model=model, messages=[
-        {"role": "system", "content": DRAFT_PROMPT}, {"role": "user", "content": user}],
-        response_format={"type": "json_object"}, **call_kwargs("router"))
-    memory.record_usage("router", model, resp.usage)
-    try:
-        d = json.loads(resp.choices[0].message.content or "{}")
-    except ValueError:
-        d = {}
+    d = {}
+    for _ in range(2):   # 解析不出来就再问一次
+        resp = await client.chat.completions.create(model=model, messages=[
+            {"role": "system", "content": DRAFT_PROMPT}, {"role": "user", "content": user}],
+            response_format={"type": "json_object"}, **call_kwargs("router"))
+        memory.record_usage("router", model, resp.usage)
+        d = _parse(resp.choices[0].message.content or "")
+        if d.get("body"):
+            break
     name = re.sub(r"[^\w一-鿿-]", "", str(d.get("name") or ""))[:40]
     if not name or not skills.NAME_RE.match(name):
         name = f"演示{time.strftime('%m%d%H%M')}"
