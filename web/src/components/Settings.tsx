@@ -3,7 +3,7 @@ import { api, refreshApps, refreshLists, useStore } from '../store'
 import type { App, Preset, Rule, Settings as S } from '../types'
 
 const ROLE_NAMES: Record<string, string> = {
-  router: '对话（Bot 本身）', worker: '后台任务', reviewer: 'Heavy 汇总审稿', filter: '触发器过滤',
+  router: '对话（Bot 本身）', worker: '后台任务', reviewer: 'Heavy 汇总审稿', filter: '定时任务的事件过滤',
 }
 const order = (r: string) => { const i = Object.keys(ROLE_NAMES).indexOf(r); return i < 0 ? 99 : i }
 const LIMIT_NAMES: Record<string, [string, string]> = {
@@ -19,7 +19,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     <div className="modal-bg" onMouseDown={onClose}>
       <div className="modal wide" onMouseDown={e => e.stopPropagation()}>
         <div className="modal-tabs">
-          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['apps', '应用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '触发器']].map(([k, v]) =>
+          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['apps', '应用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务']].map(([k, v]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{v}</button>)}
           <span className="grow" /><button className="icon-btn" onClick={onClose}>✕</button>
         </div>
@@ -121,15 +121,18 @@ function Usage() {
 
 function Triggers() {
   const [s, setS] = useState<any>(null)
+  const bots = useStore(x => x.bots)
   useEffect(() => { api('/api/status').then(setS) }, [])
   if (!s) return <div className="muted">加载中…</div>
   return (
     <div>
-      <h4>触发器</h4>
-      {s.triggers.map((t: any) => <div className="kv" key={t.name}><span>{t.name}（{t.type}）</span><span className="muted">{t.enabled ? '启用' : '关闭'}</span></div>)}
-      <h4>最近触发</h4>
-      {s.trigger_log.length ? s.trigger_log.map((l: any, i: number) => <div className="kv" key={i}><span>{l.ts} {l.trigger}：{l.detail}</span><span className="muted">{l.verdict}</span></div>) : <div className="muted small">暂无</div>}
-      <p className="muted small">触发器在 config.yaml 的 triggers 里配置；下一阶段会换成每个 Bot 的定时任务。</p>
+      <h4>所有定时任务</h4>
+      {s.routines.length ? s.routines.map((r: any) => (
+        <div className="kv" key={r.id}><span>{bots.find(b => b.id === r.bot_id)?.name} · {r.name}（{r.trigger}）</span>
+          <span className="muted">{r.enabled ? '运行中' : '已暂停'}</span></div>
+      )) : <div className="muted small">暂无</div>}
+      <p className="muted small">定时任务属于各个 Bot：在对话里说“每天 9 点帮我……”，或者在右栏 Bot 详情的“定时”里新建和管理。
+        webhook 类的地址是 POST /hooks/名字。</p>
     </div>
   )
 }

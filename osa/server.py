@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from . import approvals, bots, computer, mcp_hub, memory, router as rt, settings, triggers, vault
+from . import approvals, bots, computer, mcp_hub, memory, router as rt, routines, settings, skills, vault
 from .watchdog import watchdog
 
 DIST = Path(__file__).parent / "static" / "dist"
@@ -23,14 +23,16 @@ async def broadcast(event: dict):
 rt.notify = broadcast
 approvals.notify = broadcast
 mcp_hub.notify = broadcast
+routines.notify = broadcast
 
 
 @asynccontextmanager
 async def lifespan(app):
     bots.ensure_default()
     settings.apply()
+    routines.import_legacy(bots.primary()["id"])
     await mcp_hub.start()
-    bg = [asyncio.create_task(watchdog()), asyncio.create_task(triggers.scheduler()),
+    bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
           asyncio.create_task(computer.idle_pauser())]
     yield
     for t in bg:
@@ -92,6 +94,9 @@ async def delete_bot(bot_id: int):
         bots.delete(bot_id)
     except ValueError as e:
         _err(e)
+    routines.delete_for_bot(bot_id)
+    memory.conn.execute("delete from skills where bot_id=?", (bot_id,))
+    memory.conn.commit()
     rt.RUNTIMES.pop(bot_id, None)
     await broadcast({"type": "bots_changed"})
     return {"ok": True}
@@ -105,6 +110,120 @@ async def messages(chat_id: int, before: int | None = None, limit: int = 60):
 @app.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: int):
     return {"result": rt.cancel(task_id, "用户在界面上取消")}
+
+
+# ---------- 技能 ----------
+def _bot_or_404(bot_id: int) -> dict:
+    b = bots.get(bot_id)
+    if not b:
+        raise HTTPException(404, "没有这个 Bot")
+    return b
+
+
+@app.get("/api/bots/{bot_id}/skills")
+async def list_skills(bot_id: int):
+    _bot_or_404(bot_id)
+    return skills.list_for(bot_id)
+
+
+@app.post("/api/bots/{bot_id}/skills")
+async def create_skill(bot_id: int, data: dict = Body(...)):
+    _bot_or_404(bot_id)
+    try:
+        s = skills.save(None if data.get("shared") else bot_id, data.get("name", ""), data.get("body", ""),
+                        data.get("description", ""))
+    except ValueError as e:
+        _err(e)
+    await broadcast({"type": "skills_changed"})
+    return s
+
+
+@app.put("/api/skills/{sid}")
+async def update_skill(sid: int, data: dict = Body(...)):
+    old = skills.get(sid)
+    if not old:
+        raise HTTPException(404, "没有这个技能")
+    owner = old["bot_id"] if "shared" not in data else (None if data["shared"] else data.get("bot_id", old["bot_id"]))
+    try:
+        s = skills.save(owner, data.get("name", old["name"]), data.get("body", old["body"]),
+                        data.get("description", old["description"]), old["source"], sid=sid)
+    except ValueError as e:
+        _err(e)
+    await broadcast({"type": "skills_changed"})
+    return s
+
+
+@app.delete("/api/skills/{sid}")
+async def delete_skill(sid: int):
+    skills.delete(sid)
+    await broadcast({"type": "skills_changed"})
+    return {"ok": True}
+
+
+# ---------- 定时任务 ----------
+def _routine_or_404(rid: int) -> dict:
+    r = routines.get(rid)
+    if not r:
+        raise HTTPException(404, "没有这个定时任务")
+    return r
+
+
+@app.get("/api/bots/{bot_id}/routines")
+async def list_routines(bot_id: int):
+    _bot_or_404(bot_id)
+    return routines.list_for(bot_id)
+
+
+@app.post("/api/bots/{bot_id}/routines")
+async def create_routine(bot_id: int, data: dict = Body(...)):
+    _bot_or_404(bot_id)
+    try:
+        r = routines.save(bot_id, data)
+    except (ValueError, TypeError) as e:
+        _err(e)
+    await broadcast({"type": "routines_changed", "bot_id": bot_id})
+    return r
+
+
+@app.put("/api/routines/{rid}")
+async def update_routine(rid: int, data: dict = Body(...)):
+    old = _routine_or_404(rid)
+    try:
+        r = routines.save(old["bot_id"], data, rid)
+    except (ValueError, TypeError) as e:
+        _err(e)
+    await broadcast({"type": "routines_changed", "bot_id": old["bot_id"]})
+    return r
+
+
+@app.post("/api/routines/{rid}/{action}")
+async def routine_action(rid: int, action: str):
+    r = _routine_or_404(rid)
+    if action in ("pause", "resume"):
+        r = routines.set_enabled(rid, action == "resume")
+    elif action == "test":
+        res = await routines.fire(r, "test", "（这是一次手动测试运行）" if r["trigger"]["kind"] == "webhook" else "")
+        if not res["accepted"]:
+            _err(ValueError(res["reason"]))
+        r = routines.get(rid)
+    else:
+        raise HTTPException(404, "未知操作")
+    await broadcast({"type": "routines_changed", "bot_id": r["bot_id"]})
+    return r
+
+
+@app.delete("/api/routines/{rid}")
+async def delete_routine(rid: int):
+    r = _routine_or_404(rid)
+    routines.delete(rid)
+    await broadcast({"type": "routines_changed", "bot_id": r["bot_id"]})
+    return {"ok": True}
+
+
+@app.get("/api/routines/{rid}/runs")
+async def routine_runs(rid: int):
+    _routine_or_404(rid)
+    return routines.runs(rid)
 
 
 # ---------- 电脑 ----------
@@ -304,9 +423,8 @@ async def usage():
 @app.get("/api/status")
 async def status():
     return {"mcp": mcp_hub.status, "mcp_tools": sorted(mcp_hub.TOOLS), "mcp_confirm": sorted(mcp_hub.CONFIRM),
-            "triggers": [{"name": t["name"], "type": t["type"], "enabled": t.get("enabled", True)}
-                         for t in triggers.CFG.get("triggers", [])],
-            "trigger_log": triggers.log}
+            "routines": [{"id": r["id"], "bot_id": r["bot_id"], "name": r["name"], "enabled": r["enabled"],
+                          "trigger": routines.describe(r["trigger"])} for r in routines.list_for()]}
 
 
 # ---------- Webhook ----------
@@ -321,15 +439,15 @@ async def hook(name: str, request: Request):
             h in request.headers for h in ("x-forwarded-for", "forwarded", "tailscale-user-login")):
         # 经反向代理（如 tailscale serve）转发的请求来源也显示为本机，按外部请求处理
         raise HTTPException(403, "未设置 OSA_WEBHOOK_TOKEN 时只接受本机请求")
-    t = triggers.get(name)
-    if not t or t.get("type") != "webhook":
-        raise HTTPException(404, f"没有启用的 webhook 触发器：{name}")
+    r = routines.by_hook(name)
+    if not r or not r["enabled"]:
+        raise HTTPException(404, f"没有启用的 webhook 定时任务：{name}")
     body = (await request.body()).decode(errors="replace")
     try:
         body = json.dumps(json.loads(body), ensure_ascii=False, indent=1)
     except Exception:
         pass
-    return await triggers.fire(t, body[:20000])
+    return await routines.fire(r, "webhook", body[:20000])
 
 
 # ---------- 实时通道 ----------

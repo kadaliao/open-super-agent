@@ -24,7 +24,7 @@ roles:
   router:   { provider: deepseek, model: deepseek-flash }
   worker:   { provider: deepseek, model: deepseek-flash }
   reviewer: { provider: deepseek, model: deepseek-flash }   # Heavy 模式里负责汇总
-  filter:   { provider: deepseek, model: deepseek-flash }   # 触发器的 LLM 过滤
+  filter:   { provider: deepseek, model: deepseek-flash }   # 定时任务 webhook 事件的 LLM 过滤
 ```
 
 只要是 OpenAI 兼容的接口都能用。电脑功能要求 `worker` 和 `router` 用的模型**支持图片输入**。
@@ -77,10 +77,16 @@ mcp_servers:
 - **过期**：只有定时 / webhook 触发的后台任务，卡片在 `approval_timeout_s` 后按拒绝处理；对话里的任务一直等。
 - **保险库**（设置 → 保险库）：Fernet 加密存在 SQLite。主密钥取 `OSA_VAULT_KEY`，没设置时自动生成 `data/vault.key`（权限 600）。换主密钥后旧密钥解不开，需要重新录入。
 
-## 触发器
+## 定时任务
 
-- **定时**：`type: schedule`，用 `at: ["09:00"]` 表示每天几点，或用 `every: 3600` 表示每隔多少秒。
-- **Webhook**：`type: webhook`，外部系统 POST 到 `/hooks/<name>`。可以用 `include` / `exclude` 关键词过滤，`llm_filter` 让模型判断要不要处理，`prompt` 写交给 Bot 时的说明。
+定时任务属于各个 Bot，在右栏“定时”里管理，或在对话里说“每天 9 点帮我……”。触发后直接派一个后台任务，结果发到 Bot 的对话里。
+
+- **每天 / 每周几**：一个或多个 `HH:MM`，可选周几（不选就是每天）。
+- **每隔一段时间**：至少 5 分钟。
+- **Webhook**：外部系统 POST 到 `/hooks/<名字>`。可以设关键词（至少包含一个 / 包含就忽略），以及一句话规则让 `filter` 角色的模型判断要不要处理。
+
+每个 Bot 最多 50 个，每个保留最近 20 次运行记录；上一次还没跑完时这一次跳过。服务停着时错过的定时只补跑一次。
+旧版 `config.yaml` 里的 `triggers` 会在首次启动时导入成主 Bot 的定时任务，之后改配置文件不再生效。
 
 ```bash
 curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \

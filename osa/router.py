@@ -4,7 +4,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, memory
+from . import approvals, bots, memory, routines, skills
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -13,7 +13,10 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 闲聊、常识、能直接答的问题：直接回答。
 - 需要联网查证、多步研究的：调用 dispatch 派给后台 Worker，然后简短告诉用户已开始（用户可以继续聊别的）。
   难题、高风险判断用 mode=heavy（多个 Worker 并行互审，更贵），其余用 single。
-- 收到“触发器”通知时：值得做就派任务，不值得就一句话说明为什么忽略。
+- 用户用“/技能名”调用技能时，按消息里附带的技能做法执行（需要查证、多步的就派任务，并把做法完整写进 goal）。
+- 用户说“把刚才的做法存成技能”之类时，用 save_skill 把可复用的步骤写清楚（不写这次的具体数据）。
+- 用户要求定期 / 每天 / 每隔一段时间做某事，或收到外部事件时做某事，用 create_routine 建定时任务；
+  建好后告诉用户什么时候运行、可以在右栏“定时”里暂停或修改。
 - 用户问进度用 list_tasks；要取消用 cancel_task；需要早先对话原文用 recall。
 - 标有“系统通知”的消息是后台任务的状态，不是用户说的话；不要模仿它的格式。
 - 永远优先回应用户最新的那条消息；之前的任务结果用户已经看过了。
@@ -28,6 +31,12 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 
 后台 Worker 当前能用的工具（判断能不能做时以此为准）：
 {capabilities}
+
+你的技能（用户用 /名字 调用）：
+{skills}
+
+你的定时任务：
+{routines}
 
 当前任务：
 {tasks}
@@ -44,6 +53,22 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
         "parameters": {"type": "object", "properties": {
             "goal": {"type": "string", "description": "完整、自包含的任务描述"},
             "mode": {"type": "string", "enum": ["single", "heavy"]}}, "required": ["goal"]}}},
+    {"type": "function", "function": {"name": "save_skill", "description": "保存或覆盖一个技能（可复用的做事方法）",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "简短的名字，用于 /名字 调用，不含空格"},
+            "description": {"type": "string", "description": "一句话说明什么时候用"},
+            "body": {"type": "string", "description": "完整的做法：步骤、要用的网站或应用、输出格式"}},
+            "required": ["name", "body"]}}},
+    {"type": "function", "function": {"name": "create_routine", "description": "新建定时任务",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "名字；webhook 类只能用字母数字 - _"},
+            "prompt": {"type": "string", "description": "每次运行要做的事，写完整"},
+            "skill": {"type": "string", "description": "可选：每次按哪个技能做（不带 /）"},
+            "kind": {"type": "string", "enum": ["daily", "every", "webhook"]},
+            "times": {"type": "array", "items": {"type": "string"}, "description": "daily 用：HH:MM 列表"},
+            "days": {"type": "array", "items": {"type": "integer"}, "description": "daily 用：周几运行，周一=1，留空=每天"},
+            "minutes": {"type": "integer", "description": "every 用：间隔分钟，至少 5"}},
+            "required": ["name", "kind"]}}},
     {"type": "function", "function": {"name": "list_tasks", "description": "查看任务状态",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "cancel_task", "description": "取消任务",
@@ -118,19 +143,12 @@ class Router:
         return memory.tokens_today() > CFG["limits"]["daily_token_budget"]
 
     async def handle_user(self, text: str):
-        await self.add("user", text)
+        meta = {}
+        if hit := skills.parse(self.bot_id, text):
+            meta = {"skill": hit[0]["name"], "skill_prompt": skills.expand(*hit)}
+        await self.add("user", text, **meta)
         async with self.lock:
             await self._think()
-
-    async def handle_event(self, source: str, text: str):
-        """触发器事件：作为系统通知进入对话，由 Bot 决定回复、派任务还是忽略。"""
-        await self.add("task", f"[触发器 {source}] {text}", kind="trigger", source=source)
-        async with self.lock:
-            self._background = True       # 这一轮派出的任务算后台任务
-            try:
-                await self._think()
-            finally:
-                self._background = False
 
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
@@ -164,7 +182,8 @@ class Router:
         b = self.bot
         msgs = [{"role": "system", "content": ROUTER_PROMPT.format(
             name=b["name"], instructions=b["instructions"] or "你的具体职责以用户在对话里交代的为准。",
-            date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), capabilities=self._capabilities(),
+            date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), skills=skills.summary(self.bot_id),
+            routines=self._routine_list(), capabilities=self._capabilities(),
             approvals=approvals.summary(self.bot_id))}] + memory.context(self.chat_id)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
@@ -208,15 +227,32 @@ class Router:
         if name == "dispatch":
             if self._over_budget():
                 return "今日 token 预算已用完，没有派发。请告诉用户。"
-            mode = args.get("mode", "single")
-            tid = await self.add("task", f"[任务已派发] {args['goal']}", kind="dispatch", mode=mode, status="running")
-            task = Task(id=tid, goal=args["goal"], mode=mode, bot_id=self.bot_id, chat_id=self.chat_id,
-                        background=getattr(self, "_background", False))
-            task.handle = asyncio.create_task(self._run(task))
-            TASKS[tid] = task
-            getattr(self, "_turn_tasks", []).append(tid)
-            await self.emit({"type": "task", "task": task.public()})
-            return f"已派发任务 #{tid}"
+            task = await self.dispatch(args["goal"], args.get("mode", "single"))
+            self._turn_tasks.append(task.id)
+            return f"已派发任务 #{task.id}"
+        if name == "save_skill":
+            try:
+                s = skills.save(self.bot_id, args.get("name", ""), args.get("body", ""), args.get("description", ""), "chat")
+            except ValueError as e:
+                return f"没保存：{e}"
+            await self.emit({"type": "skills_changed"})
+            return f"已保存技能 /{s['name']}"
+        if name == "create_routine":
+            kind = args.get("kind")
+            trig = {"kind": kind, "times": args.get("times") or [], "days": args.get("days") or [],
+                    "minutes": args.get("minutes")}
+            try:
+                r = routines.save(self.bot_id, {"name": args.get("name", ""), "prompt": args.get("prompt", ""),
+                                                "skill": args.get("skill", ""), "trigger": trig})
+            except (ValueError, TypeError) as e:
+                return f"没建成：{e}"
+            await self.emit({"type": "routines_changed"})
+            when = routines.describe(r["trigger"])
+            if r["next_run"]:
+                when += "，下次 " + time.strftime("%m-%d %H:%M", time.localtime(r["next_run"]))
+            if kind == "webhook":
+                when += f"，地址 POST /hooks/{r['name']}"
+            return f"已建定时任务「{r['name']}」：{when}"
         if name == "list_tasks":
             return self._task_list()
         if name == "cancel_task":
@@ -289,6 +325,22 @@ class Router:
             lines.append(f"- 未连接的应用（现在用不了）：{', '.join('@' + n for n in off)}")
         return "\n".join(lines)
 
+    async def dispatch(self, goal: str, mode: str = "single", background: bool = False,
+                       on_done=None, label: str = "") -> Task:
+        """派一个后台任务。定时任务也走这里（background=True，确认卡片会过期）。"""
+        tid = await self.add("task", f"[任务已派发] {label + ' ' if label else ''}{goal}", kind="dispatch",
+                             mode=mode, status="running")
+        task = Task(id=tid, goal=goal, mode=mode, bot_id=self.bot_id, chat_id=self.chat_id,
+                    background=background, on_done=on_done)
+        task.handle = asyncio.create_task(self._run(task))
+        TASKS[tid] = task
+        await self.emit({"type": "task", "task": task.public()})
+        return task
+
+    def _routine_list(self) -> str:
+        return "\n".join(f"- {r['name']}（{routines.describe(r['trigger'])}{'' if r['enabled'] else '，已暂停'}）"
+                         for r in routines.list_for(self.bot_id)) or "暂无"
+
     def _task_list(self) -> str:
         return "\n".join(f"#{t.id} [{'等待确认' if t.waiting_approval else t.status}] {t.mode} 步数={t.steps} {t.goal[:50]}"
                          for t in self.tasks.values()) or "暂无任务"
@@ -299,6 +351,7 @@ class Router:
             task.status = "done"
         except asyncio.CancelledError:
             task.status = "cancelled"
+            await self._done(task)
             return
         except Exception as e:
             task.status, task.result = "failed", f"任务失败：{e}"
@@ -306,6 +359,14 @@ class Router:
         await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", kind="result", task_id=task.id,
                        status=task.status, elapsed=round(time.time() - task.started))
         await self.emit({"type": "task", "task": task.public()})
+        await self._done(task)
+
+    async def _done(self, task: Task):
+        if task.on_done:
+            try:
+                await task.on_done(task)
+            except Exception:
+                pass
 
     def cancel(self, tid: int, reason: str) -> str:
         t = self.tasks.get(tid)

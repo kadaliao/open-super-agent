@@ -3,6 +3,7 @@ import { api, openChat, refreshLists, useStore } from '../store'
 import type { Avatar, Bot } from '../types'
 import BotAvatar, { SHAPE_NAMES } from './BotAvatar'
 import { ComputerPanel } from './Computer'
+import { RoutinesPanel, SkillsPanel } from './Routines'
 
 // 新建 Bot：和 Grok Bot 一样只问名字和头像，职责在第一条消息里交代
 export function NewBotDialog({ onClose }: { onClose: () => void }) {
@@ -66,12 +67,16 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
       <div className="panel-head">
         <div className="panel-tabs">
           <button className={tab === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>电脑</button>
+          <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>技能</button>
+          <button className={tab === 'routines' ? 'on' : ''} onClick={() => setTab('routines')}>定时</button>
           <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}>详情</button>
         </div>
         <button className="icon-btn" onClick={onClose}>✕</button>
       </div>
       {tab === 'computer'
         ? <div className="panel-body"><ComputerPanel key={bot.id} botId={bot.id} /></div>
+        : tab === 'skills' ? <div className="panel-body"><SkillsPanel key={bot.id} bot={bot} /></div>
+        : tab === 'routines' ? <div className="panel-body"><RoutinesPanel key={bot.id} bot={bot} /></div>
         : <BotPanelInner key={bot.id} bot={bot} tasks={Object.values(tasks).filter(t => t.bot_id === bot.id)} onClose={onClose} />}
     </aside>
   )
@@ -113,13 +118,13 @@ function BotPanelInner({ bot, tasks, onClose }: { bot: Bot; tasks: any[]; onClos
           <div key={t.id} className="mini-task"><span className="dot" />#{t.id} {t.goal.slice(0, 60)}</div>
         )) : <div className="muted small">没有正在进行的任务</div>}
 
-        <h4>技能 · 定时任务 · 记忆</h4>
+        <h4>记忆</h4>
         <div className="muted small">后续阶段实现（见 docs/roadmap.md）</div>
 
         <h4>管理</h4>
         {!bot.is_primary
           ? <button className="btn" onClick={() => api(`/api/bots/${bot.id}/primary`, { method: 'POST' })}>★ 设为主 Bot</button>
-          : <div className="muted small">★ 这是主 Bot：定时任务和 webhook 事件默认交给它。</div>}
+          : <div className="muted small">★ 这是主 Bot。</div>}
         {!bot.is_primary && <button className="btn danger" onClick={del}>删除这个 Bot</button>}
       </div>
   )

@@ -11,7 +11,7 @@ roles:
   router:   {provider: deepseek, model: deepseek-flash}
   worker:   {provider: deepseek, model: deepseek-flash}
   reviewer: {provider: deepseek, model: deepseek-flash}
-  filter:   {provider: deepseek, model: deepseek-flash}   # 触发器的 LLM 过滤，用便宜模型
+  filter:   {provider: deepseek, model: deepseek-flash}   # webhook 事件的 LLM 过滤，用便宜模型
   # 每个角色还可以加：thinking: false（关闭思考模式，更快更便宜）、reasoning_effort: low/high/max
 
 heavy:
@@ -41,7 +41,7 @@ pricing:
     deepseek-v4-pro: {cache_hit: [0.30, 0.15], input: [9, 4.5], output: [27, 13.5]}
   # 本地模型不写单价，按 0 计
 
-# 自动触发：事件先过规则过滤，再过 LLM 过滤，通过的交给 Router 决定怎么处理
+# 旧版触发器：只在首次启动时导入成主 Bot 的定时任务，之后请在界面右栏“定时”里管理
 triggers:
   - name: daily-brief
     type: schedule

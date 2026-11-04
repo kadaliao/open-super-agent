@@ -33,6 +33,7 @@ class Task:
     last_action: str = ""                  # 最近一个动作，显示在任务卡片上
     result: str = ""
     handle: asyncio.Task | None = None
+    on_done: object = None                 # 定时任务用：async (task) -> None，任务结束时调用
 
 
 def _public(self) -> dict:

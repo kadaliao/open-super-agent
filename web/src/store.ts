@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { App, Approval, Bot, Chat, ComputerState, Message, Settings, Stream, Task } from './types'
+import type { App, Approval, Bot, Chat, ComputerState, Message, Settings, Skill, Stream, Task } from './types'
 
 type State = {
   ready: boolean
@@ -19,11 +19,12 @@ type State = {
   errors: Record<number, string | undefined>
   computers: Record<number, ComputerState>
   apps: App[]
+  skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
 }
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [],
+  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], skills: {},
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -71,6 +72,12 @@ export async function refreshApps() {
   const r = await api('/api/apps')
   set({ apps: r.apps })
   return r
+}
+
+export async function loadSkills(botId: number) {
+  const list: Skill[] = await api(`/api/bots/${botId}/skills`)
+  set(s => ({ skills: { ...s.skills, [botId]: list } }))
+  return list
 }
 
 export async function openChat(chatId: number) {
@@ -162,6 +169,12 @@ function handle(d: any) {
       break
     case 'bots_changed':
       refreshLists()
+      break
+    case 'skills_changed':
+      Object.keys(state.skills).forEach(id => loadSkills(Number(id)))
+      break
+    case 'routines_changed':
+      window.dispatchEvent(new CustomEvent('osa-routines', { detail: d.bot_id }))
       break
   }
 }

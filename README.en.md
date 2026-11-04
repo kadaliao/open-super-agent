@@ -24,7 +24,8 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 🖥️ **A computer**: one shared Linux desktop with Chromium and a terminal. Web pages are driven directly over CDP (by element, reading page text), which is fast and precise. Watch it live and take over or hand back at any time; for captchas and logins, the bot asks you to step in.
 - 🔌 **Apps via MCP**: connect the filesystem, GitHub, Notion and more from Settings; mention one in chat with `@app`.
 - ✅ **Approvals & vault**: write operations ask first (allow once / deny / always allow), with rules you manage in Settings; secrets are stored encrypted and never enter the chat.
-- ⏰ **Triggers**: schedules and webhooks. Events go through rule filters, then a cheap model decides whether to act on them.
+- 🧩 **Skills**: reusable procedures invoked with `/name`. Ask a Bot to save what it just did as a skill, or edit skills in the side panel.
+- ⏰ **Routines**: per-Bot schedules (daily / weekdays, every N minutes, webhook) with pause, resume, test and the last 20 runs. Create one by saying "every day at 9, ...". Webhook events go through keyword filters, then a cheap model decides whether to act.
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
 - 🔄 **Any model**: any OpenAI-compatible API (DeepSeek, OpenRouter, Ollama, vLLM), configurable per role.
 
@@ -59,7 +60,7 @@ The detailed docs are currently in Chinese:
 - [x] P1 Bots & chat
 - [x] P2 Computer (Instabox and local Docker backends, live view, takeover, task queueing)
 - [x] P3 Approval rules, app management, a vault and `@app` mentions; browser control over CDP
-- [ ] P4 Skills & routines
+- [x] P4 Skills & routines
 - [ ] P5 Memory & library
 - [ ] P6 Group chat
 - [ ] P7 Teach-a-task & mobile

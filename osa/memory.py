@@ -82,6 +82,8 @@ def context(chat_id: int) -> list[dict]:
         elif r == "assistant":
             # 旧记录没存思考内容，原样传回会被拒，改成通知形式
             msgs.append({"role": "user", "content": f"（系统通知：这是你之前给用户的回复）{c}"})
+        elif meta.get("skill_prompt"):   # /技能：把技能做法附在用户原话后面
+            msgs.append({"role": "user", "content": f"{c}\n\n{meta['skill_prompt']}"})
         else:
             msgs.append({"role": "user", "content": c})
     return msgs

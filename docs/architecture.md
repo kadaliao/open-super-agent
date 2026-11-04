@@ -40,7 +40,8 @@ osa/
   approvals.py     确认卡片：写操作确认（approval）、请你帮忙（help）
   mcp_hub.py       MCP 连接、工具命名（<server>__<tool>）、deny / confirm 规则
   tools.py         内置工具：web_search、fetch_url
-  triggers.py      定时和 webhook 触发器
+  skills.py        技能：增删改、/名字 解析、展开成给模型的说明
+  routines.py      定时任务：触发方式、调度、webhook 过滤、运行记录、旧 triggers 导入
   watchdog.py      任务巡检
   config.py        读取 config.yaml，按角色创建模型客户端
   computer/
@@ -52,7 +53,7 @@ osa/
     image/         本地电脑镜像
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
-  components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Markdown
+  components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、Markdown
 ```
 
 ## 数据

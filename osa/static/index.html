@@ -59,7 +59,7 @@ async function refresh(){
   <h4>按任务</h4>${u.by_task.map(t=>row('#'+t.id+' '+t.goal,f(t.cost))).join('')||'暂无'}`}
  if(!$('p-ext').hidden){const s=await (await fetch('/api/status')).json();
   $('p-ext').innerHTML=`<h4>MCP 插件</h4>${Object.entries(s.mcp).map(([k,v])=>row(k,v)).join('')||'未配置'}
-  <h4>触发器</h4>${s.triggers.map(t=>row(t.name+' ('+t.type+')',t.enabled?'启用':'关闭')).join('')}
+  <h4>定时任务</h4>${(s.routines||[]).map(t=>row(t.name+' ('+t.trigger+')',t.enabled?'启用':'暂停')).join('')}
   <h4>最近触发</h4>${s.trigger_log.map(l=>row(l.ts+' '+l.trigger+'：'+l.detail,l.verdict)).join('')||'暂无'}`}}
 setInterval(refresh,8000);
 q.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('f').requestSubmit()}};connect();
