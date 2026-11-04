@@ -1,0 +1,14 @@
+name: 问题反馈 / Bug report
+description: 某个功能没有按预期工作
+labels: [bug]
+body:
+  - type: textarea
+    attributes: { label: 发生了什么, description: 期望的结果和实际的结果 }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: 复现步骤, placeholder: "1. 对 Bot 说……\n2. ……" }
+    validations: { required: true }
+  - type: input
+    attributes: { label: 环境, placeholder: "版本 / 操作系统 / 电脑后端（local 或 instabox）/ 模型" }
+  - type: textarea
+    attributes: { label: 日志或截图, description: 请先删掉里面的密钥 }

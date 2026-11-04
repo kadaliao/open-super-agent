@@ -114,7 +114,7 @@ function BotPanelInner({ bot, tasks, onClose }: { bot: Bot; tasks: any[]; onClos
         )) : <div className="muted small">没有正在进行的任务</div>}
 
         <h4>技能 · 定时任务 · 记忆</h4>
-        <div className="muted small">后续阶段实现（见 docs/PLAN.md）</div>
+        <div className="muted small">后续阶段实现（见 docs/roadmap.md）</div>
 
         <h4>管理</h4>
         {!bot.is_primary

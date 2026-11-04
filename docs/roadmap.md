@@ -1,4 +1,4 @@
-# 开发计划：对齐 Grok Bot 的开源自部署版本
+# 路线图：对齐 Grok Bot
 
 参照对象：xAI 的 Grok Bot（https://x.ai/bot，2026-08 发布）。
 资料来源：docs.x.ai/grok-bot 概览、flaviocopes 的深度评测，以及多篇第三方评测（见文末）。
