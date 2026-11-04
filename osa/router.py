@@ -2,6 +2,7 @@
 import asyncio
 import json
 import time
+from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
 from . import approvals, bots, memory
 from . import worker as worker_mod
@@ -43,6 +44,10 @@ ROUTER_TOOLS = [
             "note": {"type": "string", "description": "用户附带的意见，例如修改要求"}}, "required": ["id", "approve"]}}},
     {"type": "function", "function": {"name": "recall", "description": "按 id 取回早先消息原文",
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
+    {"type": "function", "function": {"name": "look_at_screen",
+        "description": "看一眼共用电脑现在的屏幕（截图 + 当前窗口标题）。用户问屏幕上有什么、某个任务做到哪了、"
+                       "或者你要判断下一步该派什么任务时用。只看不操作；要操作就派任务。",
+        "parameters": {"type": "object", "properties": {}}}},
 ]
 
 
@@ -148,7 +153,7 @@ class Router:
             approvals=approvals.summary(self.bot_id))}] + memory.context(self.chat_id)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
-        shown, thinking = "", ""
+        shown, thinking, shots = "", "", []
         await self.emit({"type": "stream_start", "sid": sid})
         try:
             for _ in range(4):
@@ -167,7 +172,13 @@ class Router:
                     except json.JSONDecodeError:
                         args = {}
                     out = await self._tool(c["name"], args)
+                    if isinstance(out, tuple):          # look_at_screen：文字 + 截图
+                        out, png = out
+                        shots.append(png)
                     msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out})
+                if shots:   # 图片要放在所有 tool 消息之后；只在本轮用，不存进记录
+                    msgs.append(ctools.image_message(shots[-1], "共用电脑的当前屏幕"))
+                    shots = []
                 if shown and not shown.endswith("\n"):
                     shown += "\n\n"
                     await self.emit({"type": "stream", "sid": sid, "delta": "\n\n"})
@@ -195,7 +206,24 @@ class Router:
             return approvals.resolve(args["id"], args["approve"], args.get("note", ""))
         if name == "recall":
             return memory.recall(args["id"], self.chat_id)
+        if name == "look_at_screen":
+            return await self._look()
         return "未知工具"
+
+    async def _look(self):
+        from . import computer
+        c = computer.get()
+        try:
+            if (await c.status())["state"] != "running":
+                return "电脑现在没开（已暂停或还没创建）。需要的话派任务，任务会自动开机。"
+            png = await c.screenshot()
+            title = (await c.exec("DISPLAY=:1 xdotool getactivewindow getwindowname 2>/dev/null", timeout=10)).stdout.strip()
+        except Exception as e:
+            return f"看不了屏幕：{e}"
+        who = f"正在被{c.owner_label}使用" if c.owner else "空闲"
+        if c.controller == "human":
+            who = "用户正在接手操作"
+        return (f"截图见下一条消息。当前窗口：{title or '无'}；电脑{who}。", png)
 
     def _capabilities(self) -> str:
         from . import mcp_hub, tools
@@ -205,7 +233,9 @@ class Router:
                          "可以打开网页、点击、输入、登录后操作、下载文件、运行脚本。用户能在右栏实时看到屏幕。"
                          "遇到登录、验证码、付款这类必须用户本人做的步骤，Worker 会在任务中途暂停，"
                          "在对话里请用户「接手电脑」，用户交还后同一个任务接着做完。所以这类事情派一个任务就够，"
-                         "不要拆成两个任务，也不要让用户做完后再来找你。")
+                         "不要拆成两个任务，也不要让用户做完后再来找你。"
+                         "你自己也能用 look_at_screen 直接看屏幕：用户问屏幕上是什么、任务做到哪了，先看再答，"
+                         "不要说你看不见。")
         groups: dict[str, list[str]] = {}
         for full in mcp_hub.TOOLS:
             server, _, tool = full.partition("__")
