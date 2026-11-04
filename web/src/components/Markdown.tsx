@@ -14,11 +14,21 @@ function CodeBlock(props: any) {
   return <div className="code-wrap"><button className="code-copy" onClick={copy}>复制</button><pre {...rest}>{children}</pre></div>
 }
 
+// 站内的资料库链接（/library/pages/12）在应用里打开；其余链接开新标签页
+function Link({ node, href, ...p }: any) {
+  const page = href?.match(/^\/library\/pages\/(\d+)$/)
+  if (page) return <a {...p} href={href} onClick={e => {
+    if (e.metaKey || e.ctrlKey) return
+    e.preventDefault(); window.dispatchEvent(new CustomEvent('osa-open-page', { detail: Number(page[1]) }))
+  }} />
+  return <a {...p} href={href} target="_blank" rel="noreferrer" />
+}
+
 const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="md">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }]]}
-        components={{ pre: CodeBlock, a: ({ node, ...p }) => <a {...p} target="_blank" rel="noreferrer" /> }}>
+        components={{ pre: CodeBlock, a: Link }}>
         {text}
       </ReactMarkdown>
     </div>

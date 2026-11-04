@@ -25,6 +25,8 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 🔌 **Apps via MCP**: connect the filesystem, GitHub, Notion and more from Settings; mention one in chat with `@app`.
 - ✅ **Approvals & vault**: write operations ask first (allow once / deny / always allow), with rules you manage in Settings; secrets are stored encrypted and never enter the chat.
 - 🧩 **Skills**: reusable procedures invoked with `/name`. Ask a Bot to save what it just did as a skill, or edit skills in the side panel.
+- 🧠 **Memory**: each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots. Just say "remember ...", or view, edit, delete and import (e.g. from ChatGPT) in the side panel. Start a **new topic** to drop old messages from the context while keeping memories.
+- 📚 **Library**: finished reports and web pages are saved as Pages you can pin and share by link; browse, upload and download files on the shared computer, and attach files in chat.
 - ⏰ **Routines**: per-Bot schedules (daily / weekdays, every N minutes, webhook) with pause, resume, test and the last 20 runs. Create one by saying "every day at 9, ...". Webhook events go through keyword filters, then a cheap model decides whether to act.
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
 - 🔄 **Any model**: any OpenAI-compatible API (DeepSeek, OpenRouter, Ollama, vLLM), configurable per role.
@@ -61,7 +63,7 @@ The detailed docs are currently in Chinese:
 - [x] P2 Computer (Instabox and local Docker backends, live view, takeover, task queueing)
 - [x] P3 Approval rules, app management, a vault and `@app` mentions; browser control over CDP
 - [x] P4 Skills & routines
-- [ ] P5 Memory & library
+- [x] P5 Memory & library
 - [ ] P6 Group chat
 - [ ] P7 Teach-a-task & mobile
 

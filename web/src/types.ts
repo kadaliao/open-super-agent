@@ -53,3 +53,15 @@ export type Routine = {
   id: number; bot_id: number; name: string; prompt: string; skill: string; trigger: Trigger; enabled: boolean
   next_run: number | null; running: boolean; last_run: RoutineRun | null
 }
+export type Memory = {
+  id: number; bot_id: number | null; shared: boolean; kind: 'note' | 'work'; text: string; source: string; created: number; updated: number
+}
+export type MemoryList = { shared: Memory[]; own: Memory[]; work: Memory[] }
+export type Page = {
+  id: number; bot_id: number | null; title: string; format: 'markdown' | 'html'; share_token: string | null; pinned: boolean
+  task_id: number | null; created: number; updated: number; size: number; content?: string
+}
+export type FileEntry = { name: string; path: string; dir: boolean; size: number; mtime: number; missing?: boolean }
+export type FileListing =
+  | { running: false; state: string; path: string; root: string }
+  | { running: true; path: string; root: string; entries: FileEntry[]; pins: FileEntry[] }

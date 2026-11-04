@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, botForChat, loadOlder, useStore } from '../store'
+import { api, approve, botForChat, loadOlder, openLibrary, useStore } from '../store'
 import type { Approval, Bot, Message, Task } from '../types'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
@@ -76,7 +76,24 @@ function TaskCard({ m, task }: { m: Message; task?: Task }) {
   )
 }
 
-function ResultMessage({ bot, m }: { bot?: Bot; m: Message }) {
+// 任务结果存进资料库，标题取任务描述的第一行
+function SavePageBtn({ bot, text, goal, taskId }: { bot?: Bot; text: string; goal: string; taskId?: number }) {
+  const [saved, setSaved] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  if (saved) return <button className="ghost-btn" onClick={() => openLibrary(saved)}>已存为页面 · 打开</button>
+  const save = async () => {
+    setBusy(true)
+    try {
+      const h1 = text.match(/^#\s+(.+)$/m)?.[1]
+      const title = (h1 || goal.split('\n').find(l => l.trim()) || `任务 #${taskId} 的结果`).replace(/^\[定时任务 [^\]]+\]\s*/, '').slice(0, 60)
+      const p = await api('/api/pages', { method: 'POST', body: { bot_id: bot?.id, title, content: text, task_id: taskId } })
+      setSaved(p.id)
+    } finally { setBusy(false) }
+  }
+  return <button className="ghost-btn" disabled={busy} onClick={save}>存为页面</button>
+}
+
+function ResultMessage({ bot, m, goal }: { bot?: Bot; m: Message; goal: string }) {
   const text = m.content.replace(/^\[任务 #\d+ 结果\]\n?/, '')
   const [open, setOpen] = useState(text.length < 1800)
   const status = m.meta.status || 'done'
@@ -89,7 +106,8 @@ function ResultMessage({ bot, m }: { bot?: Bot; m: Message }) {
         </div>
         <div className={open ? '' : 'clamp'}><Markdown text={text} /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>展开全文</button>}
-        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} /></div>
+        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} />
+          {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}</div>
       </div>
     </div>
   )
@@ -188,7 +206,12 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
           <span className="head-name">{bot.name}</span>
           {bot.is_primary && <span className="star" title="主 Bot">★</span>}
         </button>
-        <button className="icon-btn" onClick={onToggleDetails} title="详情">☰</button>
+        <div className="head-actions">
+          <button className="ghost-btn" title="之前的对话不再带进上下文，省 token；长期记忆还在" onClick={() => {
+            if (confirm(`开始新话题？${bot.name} 不再参考之前的对话（记录还在，长期记忆也还在）。`)) api(`/api/chats/${active}/reset`, { method: 'POST' })
+          }}>新话题</button>
+          <button className="icon-btn" onClick={onToggleDetails} title="详情">☰</button>
+        </div>
       </header>
       <div className="scroller" ref={scroller} onScroll={onScroll}>
         <div className="thread">
@@ -208,7 +231,9 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
               </BotMessage>) : null
             const k = taskKind(m)
             if (k.kind === 'dispatch') return attached.has(m.id) ? null : <TaskCard key={m.id} m={m} task={tasks[m.id]} />
-            if (k.kind === 'result') return <ResultMessage key={m.id} bot={bot} m={m} />
+            if (k.kind === 'result') return <ResultMessage key={m.id} bot={bot} m={m}
+              goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />
+            if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>新话题 · 之前的对话不再带进上下文，长期记忆还在</span></div>
             if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, '触发器 $1：').slice(0, 160)}</div>
             return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>
           })}

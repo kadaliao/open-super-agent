@@ -1,12 +1,17 @@
 import asyncio
 import json
+import mimetypes
 import os
+import posixpath
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from . import approvals, bots, computer, mcp_hub, memory, router as rt, routines, settings, skills, vault
+from . import approvals, bots, computer, library, mcp_hub, memories, memory, router as rt, routines, settings, skills, vault
+from . import worker as worker_mod
 from .watchdog import watchdog
 
 DIST = Path(__file__).parent / "static" / "dist"
@@ -24,6 +29,12 @@ rt.notify = broadcast
 approvals.notify = broadcast
 mcp_hub.notify = broadcast
 routines.notify = broadcast
+
+
+async def _pages_changed():
+    await broadcast({"type": "pages_changed"})
+
+worker_mod.PAGES_CHANGED = _pages_changed
 
 
 @asynccontextmanager
@@ -95,6 +106,7 @@ async def delete_bot(bot_id: int):
     except ValueError as e:
         _err(e)
     routines.delete_for_bot(bot_id)
+    memories.delete_for_bot(bot_id)   # 共享的用户事实保留；页面留在资料库里
     memory.conn.execute("delete from skills where bot_id=?", (bot_id,))
     memory.conn.commit()
     rt.RUNTIMES.pop(bot_id, None)
@@ -105,6 +117,19 @@ async def delete_bot(bot_id: int):
 @app.get("/api/chats/{chat_id}/messages")
 async def messages(chat_id: int, before: int | None = None, limit: int = 60):
     return memory.page(chat_id, before, min(limit, 200))
+
+
+@app.post("/api/chats/{chat_id}/reset")
+async def new_topic(chat_id: int):
+    """新话题：之前的消息不再带进 Bot 的上下文，长期记忆还在。"""
+    chat = bots.chat(chat_id)
+    if not chat:
+        raise HTTPException(404, "没有这个对话")
+    bot_id = chat["bot_ids"][0]
+    mid = memory.add("task", "[新话题]", chat_id, bot_id, kind="reset")
+    await broadcast({"type": "message", "chat_id": chat_id, "bot_id": bot_id, "message": {
+        "id": mid, "ts": time.time(), "role": "task", "content": "[新话题]", "meta": {"kind": "reset"}, "bot_id": bot_id}})
+    return {"id": mid}
 
 
 @app.post("/api/tasks/{task_id}/cancel")
@@ -158,6 +183,240 @@ async def delete_skill(sid: int):
     skills.delete(sid)
     await broadcast({"type": "skills_changed"})
     return {"ok": True}
+
+
+# ---------- 长期记忆 ----------
+@app.get("/api/bots/{bot_id}/memories")
+async def list_memories(bot_id: int):
+    _bot_or_404(bot_id)
+    return memories.list_for(bot_id)
+
+
+@app.post("/api/bots/{bot_id}/memories")
+async def add_memory(bot_id: int, data: dict = Body(...)):
+    _bot_or_404(bot_id)
+    try:
+        m = memories.add(None if data.get("shared") else bot_id, data.get("text", ""), "manual")
+    except ValueError as e:
+        _err(e)
+    await broadcast({"type": "memories_changed"})
+    return m
+
+
+@app.post("/api/bots/{bot_id}/memories/import")
+async def import_memories(bot_id: int, data: dict = Body(...)):
+    _bot_or_404(bot_id)
+    try:
+        saved = await memories.import_text(bot_id, data.get("text", ""))
+    except ValueError as e:
+        _err(e)
+    await broadcast({"type": "memories_changed"})
+    return saved
+
+
+@app.patch("/api/memories/{mid}")
+async def update_memory(mid: int, data: dict = Body(...)):
+    m = memories.get(mid)
+    if not m:
+        raise HTTPException(404, "没有这条记忆")
+    owner = m["bot_id"]
+    if "shared" in data:
+        owner = None if data["shared"] else (m["bot_id"] or data.get("bot_id"))
+        if not data["shared"] and not (isinstance(owner, int) and bots.get(owner)):
+            raise HTTPException(400, "改成只给某个 Bot 时要说明是哪个 Bot")
+    try:
+        m = memories.update(mid, data.get("text"), owner)
+    except ValueError as e:
+        _err(e)
+    await broadcast({"type": "memories_changed"})
+    return m
+
+
+@app.delete("/api/memories/{mid}")
+async def delete_memory(mid: int):
+    memories.delete(mid)
+    await broadcast({"type": "memories_changed"})
+    return {"ok": True}
+
+
+# ---------- 资料库：页面 ----------
+def _page_or_404(pid: int, content: bool = False) -> dict:
+    p = library.get_page(pid, content)
+    if not p:
+        raise HTTPException(404, "没有这个页面")
+    return p
+
+
+def _raw(page: dict) -> Response:
+    """html 页面的原文，带 CSP：在沙箱里运行，碰不到这个站点的接口和数据。"""
+    if page["format"] != "html":
+        raise HTTPException(404, "只有 html 页面有原文地址")
+    return HTMLResponse(page["content"], headers={"Content-Security-Policy": library.RAW_CSP,
+                                                  "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"})
+
+
+@app.get("/api/pages")
+async def list_pages():
+    return library.list_pages()
+
+
+@app.post("/api/pages")
+async def create_page(data: dict = Body(...)):
+    try:
+        p = library.save_page(data.get("bot_id"), data.get("title", ""), data.get("content", ""),
+                              data.get("format") or "markdown", task_id=data.get("task_id"))
+    except (ValueError, TypeError) as e:
+        _err(e)
+    await broadcast({"type": "pages_changed"})
+    return p
+
+
+@app.get("/api/pages/{pid}")
+async def get_page(pid: int):
+    return _page_or_404(pid, True)
+
+
+@app.get("/api/pages/{pid}/raw")
+async def page_raw(pid: int):
+    return _raw(_page_or_404(pid, True))
+
+
+@app.patch("/api/pages/{pid}")
+async def update_page(pid: int, data: dict = Body(...)):
+    _page_or_404(pid)
+    p = library.update_page(pid, data.get("title"), data.get("pinned"))
+    await broadcast({"type": "pages_changed"})
+    return p
+
+
+@app.post("/api/pages/{pid}/share")
+async def share_page(pid: int, data: dict = Body(...)):
+    _page_or_404(pid)
+    p = library.share(pid, bool(data.get("on")))
+    await broadcast({"type": "pages_changed"})
+    return p
+
+
+@app.delete("/api/pages/{pid}")
+async def delete_page(pid: int):
+    library.delete_page(pid)
+    await broadcast({"type": "pages_changed"})
+    return {"ok": True}
+
+
+@app.get("/api/shared/{token}")
+async def shared_page(token: str):
+    p = library.by_token(token)
+    if not p:
+        raise HTTPException(404, "链接已失效")
+    b = bots.get(p["bot_id"]) if p["bot_id"] else None
+    return {k: p[k] for k in ("title", "format", "content", "updated")} | (
+        {"bot": {"name": b["name"], "avatar": b["avatar"]}} if b else {})
+
+
+@app.get("/api/shared/{token}/raw")
+async def shared_raw(token: str):
+    p = library.by_token(token)
+    if not p:
+        raise HTTPException(404, "链接已失效")
+    return _raw(p)
+
+
+# ---------- 资料库：电脑里的文件 ----------
+async def _files_pc(start: bool):
+    """文件都在共用电脑里。start=False 时电脑没开就返回 None，不替用户开机。"""
+    c = computer.get()
+    if (await c.status())["state"] != "running":
+        if not start:
+            return None
+        try:
+            await c.start()
+        except computer.ComputerError as e:
+            _err(e)
+    return c
+
+
+@app.get("/api/files")
+async def list_files(path: str = "", start: bool = False):
+    try:
+        p = library.norm(path)
+    except ValueError as e:
+        _err(e)
+    c = await _files_pc(start)
+    if not c:
+        return {"running": False, "state": (await computer.get().status())["state"], "path": p, "root": library.WORKSPACE}
+    try:
+        entries = await library.list_dir(c, p)
+        pinned = library.pins()
+        stats = await library.stat_many(c, pinned)
+    except (ValueError, computer.ComputerError) as e:
+        _err(e)
+    return {"running": True, "path": p, "root": library.WORKSPACE, "entries": entries,
+            "pins": [stats.get(x) or {"name": posixpath.basename(x), "path": x, "missing": True} for x in pinned]}
+
+
+@app.get("/api/files/download")
+async def download_file(path: str):
+    try:
+        p = library.norm(path)
+        c = await _files_pc(True)
+        data = await c.read_bytes(p, library.MAX_UPLOAD * 2)
+    except (ValueError, computer.ComputerError) as e:
+        _err(e)
+    name = posixpath.basename(p)
+    kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    # 图片、PDF、纯文本在浏览器里直接看，其余下载；html 一律当附件，免得在这个站点下运行
+    inline = kind.startswith("image/") and kind != "image/svg+xml" or kind in ("application/pdf", "text/plain")
+    return Response(data, media_type=kind if inline else "application/octet-stream", headers={
+        "Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(name)}",
+        "X-Content-Type-Options": "nosniff"})
+
+
+@app.put("/api/files/content")
+async def upload_file(request: Request, dir: str = "", name: str = ""):
+    """上传一个文件到电脑里的目录（请求体就是文件内容）。同名时自动加序号，不覆盖。"""
+    try:
+        d, name = library.norm(dir), library.check_name(name)
+    except ValueError as e:
+        _err(e)
+    data = await request.body()
+    if len(data) > library.MAX_UPLOAD:
+        raise HTTPException(413, f"文件太大（最多 {library.MAX_UPLOAD >> 20} MB）")
+    c = await _files_pc(True)
+    try:
+        try:
+            existing = {e["name"] for e in await library.list_dir(c, d)}
+        except ValueError:
+            existing = set()   # 目录还不存在，写文件时会自动建
+        stem, ext = posixpath.splitext(name)
+        final, n = name, 1
+        while final in existing:
+            n += 1
+            final = f"{stem} ({n}){ext}"
+        path = posixpath.join(d, final)
+        await c.write_bytes(path, data)
+    except (ValueError, computer.ComputerError) as e:
+        _err(e)
+    return {"path": path, "name": final, "size": len(data)}
+
+
+@app.delete("/api/files")
+async def delete_file(path: str):
+    c = await _files_pc(True)
+    try:
+        await library.remove(c, path)
+    except (ValueError, computer.ComputerError) as e:
+        _err(e)
+    return {"ok": True}
+
+
+@app.post("/api/files/pin")
+async def pin_file(data: dict = Body(...)):
+    try:
+        library.pin(data.get("path", "")) if data.get("on") else library.unpin(data.get("path", ""))
+    except ValueError as e:
+        _err(e)
+    return {"ok": True, "pins": library.pins()}
 
 
 # ---------- 定时任务 ----------
@@ -484,6 +743,10 @@ async def hook(name: str, request: Request):
 # ---------- 实时通道 ----------
 @app.websocket("/ws")
 async def ws(sock: WebSocket):
+    # 沙箱里的 html 页面来源是 null：不让它连上来替你发消息、点确认
+    if sock.headers.get("origin") == "null":
+        await sock.close(code=1008)
+        return
     await sock.accept()
     clients.add(sock)
     try:

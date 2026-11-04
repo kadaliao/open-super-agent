@@ -20,11 +20,14 @@ type State = {
   computers: Record<number, ComputerState>
   apps: App[]
   skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
+  view: 'chat' | 'library'           // 主区显示对话还是资料库
+  libraryPage: number | null         // 资料库里打开的页面
 }
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
   active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], skills: {},
+  view: 'chat', libraryPage: null,
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -82,11 +85,20 @@ export async function loadSkills(botId: number) {
 
 export async function openChat(chatId: number) {
   localStorage.setItem('osa.active', String(chatId))
-  set(s => ({ active: chatId, unread: { ...s.unread, [chatId]: 0 } }))
+  set(s => ({ active: chatId, view: 'chat', unread: { ...s.unread, [chatId]: 0 } }))
+  await loadChat(chatId)
+}
+
+// 对话还没加载过就拉最近 60 条（不切换主区显示什么）
+async function loadChat(chatId: number) {
   if (!state.messages[chatId]) {
     const list: Message[] = await api(`/api/chats/${chatId}/messages?limit=60`)
     set(s => ({ messages: { ...s.messages, [chatId]: list }, hasMore: { ...s.hasMore, [chatId]: list.length === 60 } }))
   }
+}
+
+export function openLibrary(pageId: number | null = null) {
+  set({ view: 'library', libraryPage: pageId })
 }
 
 export async function loadOlder(chatId: number) {
@@ -113,7 +125,7 @@ async function resync() {
   const tasks: Record<number, Task> = {}
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   set({ messages: {}, streams: {}, tasks })
-  if (state.active) openChat(state.active)
+  if (state.active) loadChat(state.active)
 }
 
 export function send(chatId: number, text: string) {
@@ -175,6 +187,12 @@ function handle(d: any) {
       break
     case 'routines_changed':
       window.dispatchEvent(new CustomEvent('osa-routines', { detail: d.bot_id }))
+      break
+    case 'memories_changed':
+      window.dispatchEvent(new CustomEvent('osa-memories'))
+      break
+    case 'pages_changed':
+      window.dispatchEvent(new CustomEvent('osa-pages'))
       break
   }
 }

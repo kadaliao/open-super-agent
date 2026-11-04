@@ -4,15 +4,18 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import approvals, memory, mcp_hub, tools
+from . import approvals, library, memories, memory, mcp_hub, tools
 from .computer import tools as ctools
 
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
+PAGES_CHANGED = None   # 由 server 设置：async () -> None，资料库有新页面时通知前端
 
 WORKER_PROMPT = """你是执行任务的 Worker。用工具查证事实，给出结论时附上来源链接。
 需要读写用户的外部服务（应用）时，使用名字带“应用名__”前缀的工具；任务里写了“@应用名”就必须用那个应用。
 写操作会先请用户确认；被拒绝时不要换个工具绕过去，按用户的意见调整或说明无法完成。
 完成后直接输出最终答案（中文，简洁、结构清晰）。今天是 {date}。"""
+PAGE_HINT = "任务要求做成页面或报告时，用 save_page 保存，最终答案里附上返回的链接。"
+
 
 
 @dataclass
@@ -56,9 +59,13 @@ async def run_worker(task: Task, goal: str, label: str = "") -> str:
 async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     client, model = client_for("worker")
     use_pc = (CFG.get("computer") or {}).get("enabled", True)
-    system = WORKER_PROMPT.format(date=time.strftime("%Y-%m-%d")) + ("\n\n" + ctools.SYSTEM_HINT if use_pc else "")
+    pages = not label   # Heavy 模式的几个 Worker 只出草稿，不各自存页面
+    system = WORKER_PROMPT.format(date=time.strftime("%Y-%m-%d")) + ("\n" + PAGE_HINT if pages else "") \
+        + ("\n\n" + ctools.SYSTEM_HINT if use_pc else "")
+    if known := memories.worker_block(task.bot_id):
+        system += f"\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}"
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": goal}]
-    schemas = tools.schemas() + (ctools.SCHEMAS if use_pc else [])
+    schemas = tools.schemas() + ([library.SAVE_PAGE] if pages else []) + (ctools.SCHEMAS if use_pc else [])
 
     async def progress(text: str):
         task.last_action = text
@@ -89,6 +96,13 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
                         shots.append(shot)
                     msgs.append({"role": "tool", "tool_call_id": call.id, "content": out[:8000]})
                     task.last_progress = time.time()
+                    continue
+                if call.function.name == "save_page" and pages:
+                    await progress("保存页面：" + str(args.get("title", ""))[:40])
+                    msgs.append({"role": "tool", "tool_call_id": call.id,
+                                 "content": library.tool_save_page(task.bot_id, args, task.id)})
+                    if PAGES_CHANGED:
+                        await PAGES_CHANGED()
                     continue
                 await progress({"web_search": "搜索：", "fetch_url": "读取网页："}.get(call.function.name, call.function.name + " ")
                                + str(args.get("query") or args.get("url") or "")[:60])

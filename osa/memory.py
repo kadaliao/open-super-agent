@@ -59,9 +59,17 @@ def recall(msg_id: int, chat_id: int) -> str:
     return f"[{row[0]}] {row[1]}" if row else f"没有 id={msg_id} 的消息"
 
 
+def topic_start(chat_id: int) -> int:
+    """最后一次“新话题”的消息 id；之前的消息不再带进上下文（长期记忆不受影响）。"""
+    r = conn.execute("""select max(id) from messages where chat_id=? and role='task'
+        and json_extract(meta, '$.kind')='reset'""", (chat_id,)).fetchone()
+    return r[0] or 0
+
+
 def context(chat_id: int) -> list[dict]:
     n = CFG["memory"]["inline_messages"]
-    rows = conn.execute("select id, role, content, meta from messages where chat_id=? order by id", (chat_id,)).fetchall()
+    rows = conn.execute("select id, role, content, meta from messages where chat_id=? and id > ? order by id",
+                        (chat_id, topic_start(chat_id))).fetchall()
     old, recent = rows[:-n], rows[-n:]
     msgs = []
     if old:

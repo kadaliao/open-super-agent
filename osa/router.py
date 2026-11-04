@@ -4,7 +4,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, memory, routines, skills
+from . import approvals, bots, library, memories, memory, routines, skills
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -15,6 +15,13 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
   难题、高风险判断用 mode=heavy（多个 Worker 并行互审，更贵），其余用 single。
 - 用户用“/技能名”调用技能时，按消息里附带的技能做法执行（需要查证、多步的就派任务，并把做法完整写进 goal）。
 - 用户说“把刚才的做法存成技能”之类时，用 save_skill 把可复用的步骤写清楚（不写这次的具体数据）。
+- 长期记忆：用户说“记住……”“以后都……”，或者说出了以后还用得上的稳定信息（偏好、背景、身份）时，用 remember 记下来，
+  回复里顺带一句“记住了”。一次性的事不记；每条写成独立完整的一句话。
+  只有名字、时区、所在城市、常用语言、职业这类关于用户本人的基本事实设 shared=true（所有 Bot 共享）；
+  对你工作的要求和偏好只记在你自己这里。新信息和旧记忆冲突时用 replace_id 改那一条；用户让你忘掉就 forget。
+- 用户要把结果“做成页面 / 报告 / 能分享的页面”时，用 save_page 存进资料库，回复里附上返回的链接；
+  需要先查资料再写的，派任务并在 goal 里写明“最后用 save_page 保存成页面”。
+- 消息里的“[附件] 路径”是用户上传到电脑里的文件；要读或处理它就派任务，goal 里写上完整路径。
 - 用户要求定期 / 每天 / 每隔一段时间做某事，或收到外部事件时做某事，用 create_routine 建定时任务；
   建好后告诉用户什么时候运行、可以在右栏“定时”里暂停或修改。
 - 用户问进度用 list_tasks；要取消用 cancel_task；需要早先对话原文用 recall。
@@ -37,6 +44,9 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 
 你的定时任务：
 {routines}
+
+你的长期记忆（每次对话都带着，按这些偏好做事；#后面是编号）：
+{memories}
 
 当前任务：
 {tasks}
@@ -69,6 +79,15 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
             "days": {"type": "array", "items": {"type": "integer"}, "description": "daily 用：周几运行，周一=1，留空=每天"},
             "minutes": {"type": "integer", "description": "every 用：间隔分钟，至少 5"}},
             "required": ["name", "kind"]}}},
+    {"type": "function", "function": {"name": "remember", "description": "记下一条长期记忆（以后的对话都会带着）",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "独立完整的一句话，例如“用户希望回答先给结论”"},
+            "shared": {"type": "boolean", "description": "关于用户本人的基本事实（名字、时区、所在城市等）为 true，所有 Bot 共享"},
+            "replace_id": {"type": "integer", "description": "可选：用这条替换已有的那条记忆"}},
+            "required": ["text"]}}},
+    {"type": "function", "function": {"name": "forget", "description": "删除一条长期记忆",
+        "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
+    library.SAVE_PAGE,
     {"type": "function", "function": {"name": "list_tasks", "description": "查看任务状态",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "cancel_task", "description": "取消任务",
@@ -183,7 +202,7 @@ class Router:
         msgs = [{"role": "system", "content": ROUTER_PROMPT.format(
             name=b["name"], instructions=b["instructions"] or "你的具体职责以用户在对话里交代的为准。",
             date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), skills=skills.summary(self.bot_id),
-            routines=self._routine_list(), capabilities=self._capabilities(),
+            routines=self._routine_list(), capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id),
             approvals=approvals.summary(self.bot_id))}] + memory.context(self.chat_id)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
@@ -253,6 +272,19 @@ class Router:
             if kind == "webhook":
                 when += f"，地址 POST /hooks/{r['name']}"
             return f"已建定时任务「{r['name']}」：{when}"
+        if name == "remember":
+            return await self._remember(args)
+        if name == "forget":
+            mid = args.get("id")
+            if not isinstance(mid, int) or not memories.visible(mid, self.bot_id):
+                return f"没有 #{mid} 这条记忆"
+            memories.delete(mid)
+            await self.emit({"type": "memories_changed"})
+            return f"已删除记忆 #{mid}"
+        if name == "save_page":
+            out = library.tool_save_page(self.bot_id, args)
+            await self.emit({"type": "pages_changed"})
+            return out
         if name == "list_tasks":
             return self._task_list()
         if name == "cancel_task":
@@ -266,6 +298,20 @@ class Router:
         if name in DIRECT_PC:
             return await self._direct(name, args)
         return "未知工具"
+
+    async def _remember(self, args: dict) -> str:
+        owner = None if args.get("shared") else self.bot_id
+        rid = args.get("replace_id")
+        try:
+            if isinstance(rid, int) and memories.visible(rid, self.bot_id):
+                # 没说 shared 就保持原来的归属，免得改一条共享事实时把它变成私有的
+                m = memories.update(rid, args.get("text", ""), owner if "shared" in args else memories.get(rid)["bot_id"])
+            else:
+                m = memories.add(owner, args.get("text", ""), "chat")
+        except ValueError as e:
+            return f"没记住：{e}"
+        await self.emit({"type": "memories_changed"})
+        return f"已记住 #{m['id']}（{'所有 Bot 共享' if m['shared'] else '只有你知道'}）：{m['text']}"
 
     async def _direct(self, name: str, args: dict):
         """Router 自己动手做简单的电脑操作；电脑被任务占着就不等，让模型决定要不要先取消任务。"""
@@ -349,6 +395,8 @@ class Router:
         try:
             task.result = await (run_heavy(task) if task.mode == "heavy" else run_worker(task, task.goal))
             task.status = "done"
+            if not task.background:   # 定时任务有自己的运行记录，不记进“做过的事”
+                memories.log_work(self.bot_id, task.id, task.goal)
         except asyncio.CancelledError:
             task.status = "cancelled"
             await self._done(task)

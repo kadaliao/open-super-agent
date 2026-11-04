@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { openChat, useStore } from '../store'
+import { openChat, openLibrary, useStore } from '../store'
 import BotAvatar from './BotAvatar'
 
 // 侧栏预览：去掉任务标记和 Markdown 符号
-const plain = (t: string) => t.replace(/^\[[^\]]+\]\s*/, '').replace(/[#*`>_~|]+/g, '').replace(/\s+/g, ' ').trim()
+const plain = (t: string) => t === '[新话题]' ? '— 新话题 —' : t.replace(/^\[[^\]]+\]\s*/, '').replace(/[#*`>_~|]+/g, '').replace(/\s+/g, ' ').trim()
 
 export default function Sidebar({ onNewBot, onSettings, onClose }: { onNewBot: () => void; onSettings: () => void; onClose: () => void }) {
   const chats = useStore(s => s.chats)
@@ -13,6 +13,7 @@ export default function Sidebar({ onNewBot, onSettings, onClose }: { onNewBot: (
   const tasks = useStore(s => s.tasks)
   const approvals = useStore(s => s.approvals)
   const connected = useStore(s => s.connected)
+  const view = useStore(s => s.view)
   const [menu, setMenu] = useState(false)
 
   return (
@@ -29,6 +30,9 @@ export default function Sidebar({ onNewBot, onSettings, onClose }: { onNewBot: (
           )}
         </div>
       </div>
+      <button className={'side-nav' + (view === 'library' ? ' active' : '')} onClick={() => { openLibrary(); onClose() }}>
+        <span className="side-nav-icon">▤</span>资料库
+      </button>
       <nav className="chat-list">
         {chats.map(c => {
           const bot = bots.find(b => b.id === c.bot_ids[0])
@@ -36,7 +40,7 @@ export default function Sidebar({ onNewBot, onSettings, onClose }: { onNewBot: (
           const busy = Object.values(tasks).some(t => t.chat_id === c.id && t.status === 'running')
           const needs = Object.values(approvals).some(a => a.chat_id === c.id && a.status === 'pending')
           return (
-            <button key={c.id} className={'chat-item' + (c.id === active ? ' active' : '')} onClick={() => { openChat(c.id); onClose() }}>
+            <button key={c.id} className={'chat-item' + (c.id === active && view === 'chat' ? ' active' : '')} onClick={() => { openChat(c.id); onClose() }}>
               <BotAvatar avatar={bot.avatar} size={34} busy={busy} />
               <div className="ci-text">
                 <div className="ci-name">{bot.name}{bot.is_primary && <span className="star">★</span>}</div>

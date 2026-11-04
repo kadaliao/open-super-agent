@@ -270,3 +270,73 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .mention-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .machine-list { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 12px; }
 .machine-list .kv { align-items: center; }
+
+/* ---------- 记忆 ---------- */
+.panel-head .panel-tabs button { padding: 6px 10px; }
+.mem-group { display: flex; gap: 8px; align-items: baseline; margin-top: 14px; font-size: 13px; font-weight: 600; color: var(--fg2); text-align: left; }
+.link-like:hover { color: var(--fg); }
+.mem-item { display: flex; gap: 6px; align-items: flex-start; padding: 7px 8px 7px 10px; border: 1px solid var(--line); border-radius: 10px; margin-top: 6px; font-size: 13.5px; cursor: pointer; }
+.mem-item:hover { background: var(--bg2); }
+.mem-item.static { cursor: default; } .mem-item.static:hover { background: none; }
+.mem-item.editing { flex-direction: column; align-items: stretch; cursor: default; background: var(--bg2); }
+.mem-item.editing textarea, textarea.full { width: 100%; resize: vertical; }
+.mem-item .ghost-btn { opacity: 0; } .mem-item:hover .ghost-btn { opacity: 1; }
+.mem-text { flex: 1; min-width: 0; word-break: break-word; }
+.export-prompt { display: flex; gap: 8px; align-items: flex-start; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; color: var(--fg2); }
+.export-prompt span { flex: 1; }
+
+/* ---------- 新话题 ---------- */
+.head-actions { display: flex; align-items: center; gap: 4px; }
+.head-actions .ghost-btn { font-size: 13px; padding: 5px 9px; }
+.topic-line { display: flex; align-items: center; gap: 12px; margin: 22px 0; color: var(--fg3); font-size: 12px; }
+.topic-line::before, .topic-line::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
+
+/* ---------- 附件 ---------- */
+.composer { padding-left: 8px; }
+.attach { width: 36px; height: 36px; border-radius: 50%; color: var(--fg2); font-size: 20px; flex: none; }
+.attach:hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
+.composer-hint.bad { color: var(--bad); }
+
+/* ---------- 资料库 ---------- */
+.side-nav { display: flex; align-items: center; gap: 10px; margin: 0 8px 4px; padding: 8px 12px; border-radius: 12px; color: var(--fg2); font-size: 14.5px; text-align: left; }
+.side-nav:hover { background: var(--bg3); color: var(--fg); } .side-nav.active { background: var(--line); color: var(--fg); }
+.side-nav-icon { width: 34px; text-align: center; font-size: 16px; }
+.library .chat-head { gap: 14px; justify-content: flex-start; }
+.lib-body { max-width: 860px; margin: 0 auto; padding: 18px 20px 40px; }
+.lib-list { display: flex; flex-direction: column; }
+.lib-row, .file-row { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--line); }
+.lib-row:hover, .file-row:hover { background: var(--bg2); }
+.lib-icon { width: 24px; text-align: center; color: var(--fg2); flex: none; }
+.lib-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lib-main b, .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.file-name { color: var(--fg); font-weight: 550; }
+.lib-meta { display: flex; align-items: center; gap: 4px; color: var(--fg3); font-size: 12.5px; flex-wrap: wrap; }
+.bot-tag { display: inline-flex; align-items: center; gap: 4px; }
+.pin-mark { font-size: 12px; }
+.lib-empty { text-align: center; padding: 40px 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.lib-empty p { margin: 0; max-width: 460px; }
+.file-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.crumbs { font-size: 14px; color: var(--fg2); } .crumbs button:hover { color: var(--fg); text-decoration: underline; }
+.file-actions { display: flex; gap: 2px; opacity: 0; } .file-row:hover .file-actions { opacity: 1; }
+.file-row.missing { opacity: .55; }
+.page-head { gap: 10px; }
+.page-head .back { font-size: 13.5px; padding: 5px 8px; white-space: nowrap; }
+.page-title { cursor: text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.page-title-input { min-width: 0; flex: 1; max-width: 420px; padding: 4px 8px; }
+.page-actions { display: flex; gap: 6px; flex: none; } .page-actions .btn { padding: 5px 10px; font-size: 13px; }
+.page-info { max-width: 820px; margin: 0 auto; padding: 14px 24px 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.page-md { max-width: 820px; margin: 0 auto; padding: 10px 24px 60px; }
+.frame-wrap { display: flex; overflow: hidden; }
+.page-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.shared { min-height: 100%; height: 100%; overflow-y: auto; display: flex; flex-direction: column; }
+.shared.html { overflow: hidden; }
+.shared-head { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex: none; }
+.shared-head .muted { margin-left: auto; }
+.shared.html .page-frame { flex: 1; }
+.shared-empty { margin: 20vh auto; color: var(--fg2); }
+@media (max-width: 760px) {
+  .library .chat-head, .page-head { padding-left: 46px; }
+  .page-actions .btn { padding: 4px 7px; font-size: 12px; }
+  .file-actions { opacity: 1; }
+  .lib-body { padding: 12px 12px 30px; }
+}

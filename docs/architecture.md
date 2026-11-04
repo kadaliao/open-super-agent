@@ -9,18 +9,20 @@
    │ Router：每个 Bot 一个（router.py）              │ 后台                             │
    │  · 和用户对话、派发任务、看屏幕、做简单电脑操作      │  Worker：ReAct 循环（worker.py）   │
    │  · 工具：dispatch / cancel_task / recall /      │  Watchdog：巡检（watchdog.py）     │
-   │    look_at_screen / computer_*                  │  Triggers：定时与 webhook          │
+   │    remember / forget / save_page /              │  Routines：定时与 webhook          │
+   │    look_at_screen / browser_* / computer_*      │                                  │
    └──────────────────────────────────────────────┴────────────────────────────────┘
               │                     │                          │
-        Memory（SQLite）      Approvals（确认卡片）        Computer 接口（osa/computer）
-        Inline & Spill                                     ├─ Instabox（云端微虚拟机）
+   Memory（SQLite）        Approvals（确认卡片）        Computer 接口（osa/computer）
+   Inline & Spill + 长期记忆  Library（页面、文件）         ├─ Instabox（云端微虚拟机）
                                                            └─ 本地 Docker（Xvfb + x11vnc）
 ```
 
 一条消息的处理过程：
 
 1. 浏览器通过 WebSocket 发送 `{type: "send", chat_id, text}`。
-2. 对应 Bot 的 Router 把这条消息写入数据库，组装上下文（人设 + 能力说明 + 当前任务 + 最近的消息），然后流式调用模型。
+2. 对应 Bot 的 Router 把这条消息写入数据库，组装上下文（人设 + 能力说明 + 长期记忆 + 当前任务 + 最近的消息），然后流式调用模型。
+   “最近的消息”从最后一次“新话题”之后算起。
 3. 模型要么直接回答，要么调用工具：
    - `dispatch`：创建一个 Task，在后台运行 Worker，Router 马上回复。
    - `browser_*` / `computer_*` / `look_at_screen`：Router 自己做一步电脑操作，看页面文字或截图后回答。
@@ -34,7 +36,9 @@ osa/
   server.py        HTTP / WebSocket 入口、REST 接口、VNC 桥、前端静态文件
   router.py        Bot 的常驻会话：提示词、流式输出、Router 工具
   worker.py        后台任务：Task、ReAct 循环、Heavy 模式
-  memory.py        SQLite 表、Inline & Spill 上下文、用量和费用
+  memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
+  memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
+  library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
   bots.py          Bot 和对话的增删改查、旧数据迁移
   settings.py      界面里改的设置（覆盖 config.yaml）
   approvals.py     确认卡片：写操作确认（approval）、请你帮忙（help）
@@ -53,7 +57,8 @@ osa/
     image/         本地电脑镜像
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
-  components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、Markdown
+  components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、
+                   Memories（记忆面板）、Library（资料库和分享页）、Markdown
 ```
 
 ## 数据
@@ -65,6 +70,8 @@ web/src/
 | `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊对话（`kind=direct`），以后的群聊 `bot_ids` 会有多个 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等 |
 | `llm_usage` | 每次模型调用的 token 数和费用 |
+| `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
+| `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `settings` | 界面里改过的设置 |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
 
@@ -91,6 +98,20 @@ web/src/
 - `cdp_helper.py` 第一次用时由服务端写进电脑的 `/tmp`（文件名带内容哈希，改了会自动更新），每个动作执行一次，
   所以两个后端都不需要额外开端口。DevTools 端口只监听电脑内部的 127.0.0.1；旧浏览器没开端口时脚本会重启它（登录状态在配置目录里，不会丢）。
 - Worker 的上下文里只保留最近 2 张截图（`prune_images`），用来控制 token 成本。
+
+### 记忆与资料库
+- **两种“记忆”别混**：`memory.py` 是对话记录（Inline & Spill，只在本对话里有效）；`memories.py` 是长期记忆，
+  写进每轮的系统提示词，跨新话题、跨对话保留。
+- 记忆由 Router 自己用 `remember` / `forget` 维护，不额外调模型去“提取”。共享的只放名字、时区这类关于用户本人的基本事实，
+  其余都记在 Bot 自己名下，所以 B 不会知道你对 A 提的要求。
+- Worker 的系统提示词带上用户事实和这个 Bot 的记忆（不含做过的事），这样派出去的任务也按偏好做。
+- “做过的事”只在对话里派的任务完成时记一笔（取任务描述第一行，不调模型）；定时任务有自己的运行记录，不重复记。
+- 页面的链接写成 `/library/pages/<id>`，对话里点击会在资料库里打开；分享链接是 `/s/<token>`，前端只渲染这一页。
+- **HTML 页面只能通过 `/raw` 地址显示**，响应头带 CSP：`sandbox`（来源变成 null）、`connect-src 'none'`（不能请求接口或开 WebSocket）。
+  WebSocket 另外拒绝来源为 `null` 的连接。不要把 HTML 页面内容直接塞进应用的 DOM。
+- 文件都在共用电脑的 `/data/workspace` 里，经 `exec` 读写，所以两个后端一样；路径一律先过 `library.norm`，跑出这个目录就拒绝。
+  电脑没开时列目录不会自动开机，由用户点“开机查看”。
+- Heavy 模式下并行的几个 Worker 拿不到 `save_page`，免得每个都存一份页面。
 
 ### 模型接口（DeepSeek）
 - 思考模式下，如果请求带了工具，历史回复的 `reasoning_content` 必须原样传回，所以它存在消息的 `meta.reasoning` 里。

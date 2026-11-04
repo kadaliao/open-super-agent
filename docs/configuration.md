@@ -93,6 +93,21 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
   -H "X-OSA-Token: $OSA_WEBHOOK_TOKEN" -d '{"issue":{"title":"Bug: ..."}}'
 ```
 
+## 记忆与资料库
+
+不需要额外配置，下面这些是代码里的上限：
+
+| 项目 | 上限 |
+|---|---|
+| 每个 Bot 自己的记忆 | 200 条，每条 500 字；写进提示词的是最近更新的 80 条 |
+| 共享的用户事实 | 50 条 |
+| 做过的事 | 每个 Bot 保留最近 20 条，提示词里带最近 10 条 |
+| 页面 | 共 1000 个，每个 50 万字 |
+| 上传文件 | 每个 20 MB，存到电脑的 `/data/workspace`（附件在 `uploads/` 下） |
+
+“从其他助手导入”用 `filter` 角色的模型把粘贴的内容拆成条目，费用记在这个角色下。
+`memory.inline_messages` 仍然控制对话里留在上下文的消息条数；点“新话题”之后从零算起。
+
 ## 远程访问（Tailscale）
 
 服务只监听本机，由 Tailscale 提供 HTTPS：
