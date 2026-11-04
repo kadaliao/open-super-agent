@@ -1,0 +1,7 @@
+data/
+.venv/
+__pycache__/
+web/node_modules/
+osa/static/dist/
+*.db
+.DS_Store

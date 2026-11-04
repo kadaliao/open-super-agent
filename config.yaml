@@ -1,0 +1,77 @@
+# 模型按角色配置；任何 OpenAI 兼容接口都可以（DeepSeek / OpenRouter / Ollama / vLLM）
+providers:
+  deepseek:
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY      # 只写环境变量名，不写明文
+  # ollama:
+  #   base_url: http://localhost:11434/v1
+  #   api_key_env: OLLAMA_API_KEY      # 可以是任意非空值
+
+roles:
+  router:   {provider: deepseek, model: deepseek-flash}
+  worker:   {provider: deepseek, model: deepseek-flash}
+  reviewer: {provider: deepseek, model: deepseek-flash}
+  filter:   {provider: deepseek, model: deepseek-flash}   # 触发器的 LLM 过滤，用便宜模型
+  # 每个角色还可以加：thinking: false（关闭思考模式，更快更便宜）、reasoning_effort: low/high/max
+
+heavy:
+  workers: 3                 # Heavy 模式并行 Worker 数（类似 Grok Heavy）
+
+search:
+  searxng_url: ""            # 例如 http://localhost:8080 ；留空则用 DuckDuckGo HTML
+
+limits:
+  worker_max_steps: 30        # 电脑操作一步一个动作，步数要多一些
+  task_timeout_s: 600
+  watchdog_interval_s: 15
+  approval_timeout_s: 1800   # 写操作等待确认的时限，超时按拒绝
+  daily_token_budget: 2000000
+
+memory:
+  db: data/osa.db
+  inline_messages: 20        # 最近 N 条留在上下文，更早的移出（Inline & Spill）
+
+# 单价：元 / 百万 tokens（2026-11-04 抄自 DeepSeek 官网，变价时改这里）
+# peak 为高峰价；工作日 peak_hours 内按 peak 计，其余时段按 offpeak 计
+pricing:
+  currency: "¥"
+  peak_hours: ["09:00-12:00", "14:00-18:00"]     # 北京时间，周一至周五
+  models:
+    deepseek-flash:  {cache_hit: [0.04, 0.02], input: [2, 1],   output: [8, 4]}       # [高峰, 空闲]
+    deepseek-v4-pro: {cache_hit: [0.30, 0.15], input: [9, 4.5], output: [27, 13.5]}
+  # 本地模型不写单价，按 0 计
+
+# 自动触发：事件先过规则过滤，再过 LLM 过滤，通过的交给 Router 决定怎么处理
+triggers:
+  - name: daily-brief
+    type: schedule
+    at: ["09:00"]                 # 每天定时；也可以用 every: 3600（秒）
+    enabled: false
+    prompt: "整理今天 AI agent 领域值得关注的新闻，5 条以内，附链接。"
+  - name: github
+    type: webhook                 # POST /hooks/github ，请求头 X-OSA-Token 要等于环境变量 OSA_WEBHOOK_TOKEN
+    enabled: true
+    include: ["issue", "bug", "error", "fail"]    # 规则过滤：至少命中一个（不区分大小写；留空则全部通过）
+    exclude: ["dependabot"]
+    llm_filter: "只有报告 bug、故障或需要回复的问题才处理；机器人消息、纯通知忽略。"
+    prompt: "收到一个 GitHub 事件，请判断要不要处理，需要的话派任务：\n{event}"
+
+# 外部能力：MCP server（stdio），工具会以 <名字>__<工具> 的形式交给 Worker
+mcp_servers:
+  notion:
+    enabled: false                # 设好 NOTION_TOKEN 后改成 true
+    command: npx
+    args: ["-y", "@notionhq/notion-mcp-server"]
+    env_from: [NOTION_TOKEN]      # 只写变量名，值从环境变量读取
+    deny: ["delete", "archive"]   # 工具名包含这些词的不开放
+    confirm: auto                 # 写操作前要你确认：auto（只读放行，写入词要确认）/ all / none / 词列表
+
+# 电脑：所有 Bot 共用一台（浏览器 + 终端），任务排队独占；用户能实时观看、接手
+computer:
+  enabled: true
+  backend: auto              # auto：有 INSTABOX_API_KEY 用 Instabox，否则本地 Docker；也可以写 instabox / local
+  width: 1280
+  height: 800
+  idle_pause_s: 900          # 闲置 15 分钟自动暂停（暂停时保留内存，恢复很快）
+  instabox_template: agent-browser
+  instabox_machine: ""            # 用已有的 Instabox 机器 id（免费版只能有一台，比如 m_xxx）；留空则自动创建

@@ -1,0 +1,148 @@
+"""会话记忆：SQLite 持久化。
+
+Inline & Spill：最近 N 条消息直接放进上下文，更早的只留 ID + 摘要行；
+Chain of Recall：模型可用 recall(id) 按需取回原文。
+"""
+import json
+import sqlite3
+import time
+from .config import CFG, ROOT
+
+db_path = ROOT / CFG["memory"]["db"]
+db_path.parent.mkdir(parents=True, exist_ok=True)
+conn = sqlite3.connect(db_path, check_same_thread=False)
+conn.execute("""create table if not exists messages(
+  id integer primary key, ts real, role text, content text, meta text)""")
+conn.execute("""create table if not exists bots(
+  id integer primary key, name text, avatar text, instructions text default '', is_primary integer default 0, created real)""")
+conn.execute("""create table if not exists chats(
+  id integer primary key, kind text, title text, bot_ids text, pinned integer default 0, updated real)""")
+conn.execute("""create table if not exists settings(key text primary key, value text)""")
+# v2 迁移：消息归属到对话
+_cols = {r[1] for r in conn.execute("pragma table_info(messages)")}
+if "chat_id" not in _cols:
+    conn.execute("alter table messages add column chat_id integer")
+    conn.execute("alter table messages add column bot_id integer")
+conn.execute("create index if not exists messages_chat on messages(chat_id, id)")
+conn.execute("""create table if not exists llm_usage(ts real, role text, model text, task_id integer,
+  cache_hit integer, cache_miss integer, output integer, cost real)""")
+conn.commit()
+
+
+def add(role: str, content: str, chat_id: int, bot_id: int | None = None, **meta) -> int:
+    now = time.time()
+    cur = conn.execute("insert into messages(ts, role, content, meta, chat_id, bot_id) values(?,?,?,?,?,?)",
+                       (now, role, content, json.dumps(meta, ensure_ascii=False), chat_id, bot_id))
+    conn.execute("update chats set updated=? where id=?", (now, chat_id))
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_meta(msg_id: int, **fields):
+    row = conn.execute("select meta from messages where id=?", (msg_id,)).fetchone()
+    if row:
+        meta = json.loads(row[0] or "{}") | fields
+        conn.execute("update messages set meta=? where id=?", (json.dumps(meta, ensure_ascii=False), msg_id))
+        conn.commit()
+
+
+def page(chat_id: int, before: int | None = None, limit: int = 60) -> list[dict]:
+    """前端翻页用：某个对话里 id < before 的最近 limit 条消息，按时间正序返回。"""
+    rows = conn.execute("""select id, ts, role, content, meta, bot_id from messages
+        where chat_id=? and id < ? order by id desc limit ?""", (chat_id, before or 1 << 62, limit)).fetchall()
+    return [{"id": i, "ts": ts, "role": r, "content": c, "meta": json.loads(m or "{}"), "bot_id": b}
+            for i, ts, r, c, m, b in reversed(rows)]
+
+
+def recall(msg_id: int, chat_id: int) -> str:
+    row = conn.execute("select role, content from messages where id=? and chat_id=?", (msg_id, chat_id)).fetchone()
+    return f"[{row[0]}] {row[1]}" if row else f"没有 id={msg_id} 的消息"
+
+
+def context(chat_id: int) -> list[dict]:
+    n = CFG["memory"]["inline_messages"]
+    rows = conn.execute("select id, role, content, meta from messages where chat_id=? order by id", (chat_id,)).fetchall()
+    old, recent = rows[:-n], rows[-n:]
+    msgs = []
+    if old:
+        index = "\n".join(f"#{i} [{r}] {c[:60].replace(chr(10), ' ')}" for i, r, c, _ in old[-200:])
+        msgs.append({"role": "system", "content": "更早的对话已移出上下文，需要时用 recall(id) 取回原文：\n" + index})
+    for _, r, c, meta in recent:
+        meta = json.loads(meta or "{}")
+        if r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式
+            note = "（系统通知，非用户发言；这份结果已作为卡片直接展示给用户，不用复述，除非用户问起）" \
+                if meta.get("kind") == "result" else "（系统通知，非用户发言）"
+            msgs.append({"role": "user", "content": note + c})
+        elif r == "assistant" and "reasoning" in meta:
+            # DeepSeek 思考模式：请求带工具时，历史回复的 reasoning_content 必须原样传回
+            m = {"role": "assistant", "content": c}
+            if meta["reasoning"] is not None:
+                m["reasoning_content"] = meta["reasoning"]
+            msgs.append(m)
+        elif r == "assistant":
+            # 旧记录没存思考内容，原样传回会被拒，改成通知形式
+            msgs.append({"role": "user", "content": f"（系统通知：这是你之前给用户的回复）{c}"})
+        else:
+            msgs.append({"role": "user", "content": c})
+    return msgs
+
+
+def _is_peak(ts: float) -> bool:
+    t = time.localtime(ts)  # 假定服务器在北京时间
+    if t.tm_wday >= 5:
+        return False
+    hm = time.strftime("%H:%M", t)
+    return any(a <= hm < b for a, b in (r.split("-") for r in CFG["pricing"]["peak_hours"]))
+
+
+def record_usage(role: str, model: str, usage, task_id: int | None = None):
+    """记录一次模型调用的 token 和费用。usage 是 OpenAI 格式的 usage 对象。"""
+    if usage is None:
+        return
+    prompt = usage.prompt_tokens or 0
+    hit = getattr(usage, "prompt_cache_hit_tokens", None)
+    if hit is None:  # 非 DeepSeek 接口：尝试 OpenAI 的 cached_tokens 字段
+        details = getattr(usage, "prompt_tokens_details", None)
+        hit = getattr(details, "cached_tokens", 0) or 0
+    miss, out = prompt - hit, usage.completion_tokens or 0
+    now = time.time()
+    price = CFG["pricing"]["models"].get(model)
+    cost = 0.0
+    if price:
+        k = 0 if _is_peak(now) else 1
+        cost = (hit * price["cache_hit"][k] + miss * price["input"][k] + out * price["output"][k]) / 1e6
+    conn.execute("insert into llm_usage values(?,?,?,?,?,?,?,?)", (now, role, model, task_id, hit, miss, out, cost))
+    conn.commit()
+
+
+def tokens_today() -> int:
+    return conn.execute("select coalesce(sum(cache_hit+cache_miss+output),0) from llm_usage where ts > ?",
+                        (time.time() - 86400,)).fetchone()[0]
+
+
+def usage_stats() -> dict:
+    """费用面板用：今天、近 7 天、近 30 天的汇总，以及按角色、按任务、按天的拆分。"""
+    now = time.time()
+    day0 = time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+
+    def total(since):
+        r = conn.execute("""select coalesce(sum(cost),0), coalesce(sum(cache_hit),0), coalesce(sum(cache_miss),0),
+            coalesce(sum(output),0), count(*) from llm_usage where ts >= ?""", (since,)).fetchone()
+        return {"cost": round(r[0], 4), "cache_hit": r[1], "cache_miss": r[2], "output": r[3], "calls": r[4],
+                "cache_rate": round(r[1] / (r[1] + r[2]), 3) if r[1] + r[2] else 0}
+
+    by_role = conn.execute("""select role, model, sum(cost), sum(cache_hit+cache_miss+output) from llm_usage
+        where ts >= ? group by role, model order by 3 desc""", (now - 30 * 86400,)).fetchall()
+    by_task = conn.execute("""select u.task_id, sum(u.cost), sum(u.cache_hit+u.cache_miss+u.output), m.content
+        from llm_usage u left join messages m on m.id = u.task_id where u.task_id is not null
+        group by u.task_id order by u.task_id desc limit 20""").fetchall()
+    by_day = conn.execute("""select date(ts, 'unixepoch', 'localtime') d, sum(cost) from llm_usage
+        where ts >= ? group by d order by d""", (now - 30 * 86400,)).fetchall()
+    return {
+        "currency": CFG["pricing"]["currency"],
+        "today": total(day0), "week": total(now - 7 * 86400), "month": total(now - 30 * 86400),
+        "by_role": [{"role": r, "model": m, "cost": round(c, 4), "tokens": t} for r, m, c, t in by_role],
+        "by_task": [{"id": i, "cost": round(c, 4), "tokens": t, "goal": (g or "").removeprefix("[任务已派发] ")[:60]}
+                    for i, c, t, g in by_task],
+        "by_day": [{"day": d, "cost": round(c, 4)} for d, c in by_day],
+    }
