@@ -268,3 +268,5 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .day-row button.on { background: var(--acc); color: var(--acc-fg); border-color: var(--acc); }
 .mention-list b { white-space: nowrap; }
 .mention-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.machine-list { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 12px; }
+.machine-list .kv { align-items: center; }

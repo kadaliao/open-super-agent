@@ -48,6 +48,25 @@ class InstaboxComputer(Computer):
         conn.execute("insert or replace into computers(bot_id, backend, ref) values(?, 'instabox', ?)", (self.bot_id, mid))
         conn.commit()
 
+    async def list_machines(self) -> list[dict]:
+        """账号下所有机器，给界面选“用已有的电脑”。"""
+        out, cursor = [], None
+        for _ in range(10):
+            d = await self._req("GET", "/v1/machines" + (f"?cursor={cursor}" if cursor else ""))
+            out += d.get("machines", [])
+            if not (cursor := d.get("nextCursor")):
+                break
+        cur = self.machine_id
+        return [{"id": m["id"], "name": m.get("name") or "", "state": STATE.get(m.get("state"), "error"),
+                 "template": m.get("template") or "", "created": m.get("createdAt"),
+                 "ours": (m.get("metadata") or {}).get("app") == "open-super-agent", "current": m["id"] == cur}
+                for m in out if m.get("state") not in ("deleting", "deleted")]
+
+    def use_machine(self, mid: str):
+        if self.fixed_machine:
+            raise ComputerError("config.yaml 的 computer.instabox_machine 已经指定了机器，要换请先清空那一项")
+        self._save_id(mid)
+
     async def _req(self, method: str, path: str, json: dict | None = None, idem: bool = False, timeout: float | None = None):
         h = _headers({"Idempotency-Key": str(uuid.uuid4())} if idem else None)
         r = await self.http.request(method, path, json=json, headers=h, timeout=timeout or httpx.USE_CLIENT_DEFAULT)
@@ -82,9 +101,15 @@ class InstaboxComputer(Computer):
             st = await self.status()
             mid = self.machine_id
             if st["state"] == "none" or not mid:
-                op = await self._req("POST", "/v1/machines", idem=True, json={
+                try:
+                    op = await self._req("POST", "/v1/machines", idem=True, json={
                     "name": "osa-computer", "templateId": self.template,
                     "autoSuspendAfterSeconds": self.idle_seconds, "metadata": {"app": "open-super-agent", "role": "shared"}})
+                except ComputerError as e:
+                    if " 429 " in str(e):
+                        raise ComputerError("Instabox 账号的机器数量到上限了（免费版只能有一台）。"
+                                            "可以在电脑面板里选“用已有的电脑”，或者去 Instabox 删掉一台。") from e
+                    raise
                 op = await self._wait_op(op)
                 self._save_id(op["machineId"])
                 mid = op["machineId"]

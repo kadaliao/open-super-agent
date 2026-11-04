@@ -44,6 +44,41 @@ export function ComputerView({ botId, interactive }: { botId: number; interactiv
   )
 }
 
+type Machine = { id: string; name: string; state: string; template: string; created: string; ours: boolean; current: boolean }
+
+/** Instabox：列出账号下已有的机器，选一台当共用电脑（免费版只能有一台，不用再新建）。 */
+function MachinePicker({ botId, onErr }: { botId: number; onErr: (e: string) => void }) {
+  const [list, setList] = useState<Machine[] | null>(null)
+  const [fixed, setFixed] = useState(false)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    api('/api/computer/machines').then(r => {
+      setList(r.machines); setFixed(r.fixed)
+      if (r.machines.length && !r.machines.some((m: Machine) => m.current)) setOpen(true)
+    }).catch(e => onErr(e.message))
+  }, [])
+  const use = async (id: string) => {
+    onErr('')
+    try { setComputer(await api('/api/computer/use', { method: 'POST', body: { machine_id: id, bot_id: botId } })); setOpen(false) }
+    catch (e: any) { onErr(e.message) }
+  }
+  if (!list || fixed || !list.length) return null
+  const others = list.filter(m => !m.current)
+  if (!others.length) return null
+  if (!open) return <button className="ghost-btn" onClick={() => setOpen(true)}>换成账号里已有的另一台电脑</button>
+  return (
+    <div className="machine-list">
+      <div className="muted small">你的 Instabox 账号里已经有 {list.length} 台电脑，可以直接用，不用新建：</div>
+      {others.map(m => (
+        <div key={m.id} className="kv">
+          <span>{m.name || m.id}<span className="muted small"> · {STATE[m.state] || m.state}{m.template && ` · ${m.template}`}{m.ours && ' · 之前为这里创建的'}</span></span>
+          <button className="btn" onClick={() => use(m.id)}>用这台</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ComputerPanel({ botId }: { botId: number }) {
   const st = useStore(s => s.computers[botId])
   const task = useStore(s => Object.values(s.tasks).find(t => t.bot_id === botId && t.status === 'running'))
@@ -78,7 +113,8 @@ export function ComputerPanel({ botId }: { botId: number }) {
       {running ? <ComputerView botId={botId} interactive={human} /> : (
         <div className="pc-empty">
           <p className="muted small">所有 Bot 共用一台电脑（浏览器 + 终端），同一时间只有一个任务在用，其他排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。</p>
-          <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? '启动中…（首次需要一会儿）' : st.state === 'paused' ? '恢复' : '启动电脑'}</button>
+          {st.backend === 'instabox' && <MachinePicker key={st.detail} botId={botId} onErr={setErr} />}
+          <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? '启动中…（首次需要一会儿）' : st.state === 'paused' ? '恢复' : st.state === 'none' ? '新建并启动电脑' : '启动电脑'}</button>
         </div>
       )}
       {running && (

@@ -271,6 +271,37 @@ async def pc_action(bot_id: int, action: str):
     return state
 
 
+@app.get("/api/computer/machines")
+async def pc_machines():
+    """Instabox 账号下已有的机器，可以选一台当共用电脑。"""
+    c = computer.get()
+    if not hasattr(c, "list_machines"):
+        return {"backend": c.backend, "machines": [], "fixed": False}
+    try:
+        return {"backend": c.backend, "machines": await c.list_machines(), "fixed": bool(c.fixed_machine)}
+    except computer.ComputerError as e:
+        _err(e)
+
+
+@app.post("/api/computer/use")
+async def pc_use(data: dict = Body(...)):
+    c = computer.get()
+    mid = (data.get("machine_id") or "").strip()
+    if not hasattr(c, "use_machine") or not mid:
+        raise HTTPException(400, "只有 Instabox 后端能选已有的机器")
+    if c.owner:
+        raise HTTPException(400, f"电脑正被{c.owner_label}使用，等它用完再换")
+    try:
+        if mid not in {m["id"] for m in await c.list_machines()}:
+            raise HTTPException(404, "账号下没有这台机器")
+        c.use_machine(mid)
+    except computer.ComputerError as e:
+        _err(e)
+    state = await _pc_state(int(data.get("bot_id") or bots.primary()["id"]))
+    await broadcast({"type": "computer", "computer": state})
+    return state
+
+
 @app.websocket("/api/bots/{bot_id}/computer/vnc")
 async def pc_vnc(sock: WebSocket, bot_id: int):
     """网页上的 noVNC ⇄ 电脑的 VNC。只做字节转发；能不能操作由前端的“接手”状态决定。"""
