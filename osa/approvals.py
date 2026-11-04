@@ -1,14 +1,20 @@
-"""写操作前的人工确认。
+"""写操作前的人工确认，以及确认规则。
 
-Worker 调用需要确认的工具时，在这里创建一个待确认请求并等待；
-用户在网页上点“允许/拒绝”，或在聊天里告诉 Router，请求就会被处理。
-超时没人处理按拒绝算。
+判断顺序：命中“先问我”规则 → 要确认；否则命中“自动允许”规则 → 直接执行；否则按应用的默认策略。
+确认卡片上点“总是允许”会生成一条针对这个工具的“自动允许”规则。
+后台任务（定时、webhook 触发的）的卡片超时按拒绝处理；对话里派的任务一直等用户。
 """
 import asyncio
+import fnmatch
 import itertools
 import json
 import time
 from .config import CFG
+from .memory import conn
+
+conn.execute("""create table if not exists rules(
+  id integer primary key, pattern text, action text, note text default '', created real)""")
+conn.commit()
 
 _ids = itertools.count(1)
 pending: dict[int, dict] = {}
@@ -18,13 +24,9 @@ DEFAULT_WORDS = ["create", "update", "delete", "remove", "archive", "append", "p
                  "edit", "move", "send", "insert", "upload", "publish", "comment", "set_", "add_"]
 
 
-def needs_confirm(server: str, tool) -> bool:
-    """按插件配置判断某个 MCP 工具是否需要确认。
-
-    confirm: auto（默认）—— 服务端标了只读的放行，其余按写入词判断
-             all —— 全部要确认；none —— 全部不用确认；也可以写一个词列表
-    """
-    rule = (CFG.get("mcp_servers", {}).get(server) or {}).get("confirm", "auto")
+def default_confirm(rule, tool) -> bool:
+    """应用的默认策略。confirm: auto —— 服务端标了只读的放行，其余按写入词判断；
+    all —— 全部要确认；none —— 全部不用；也可以写一个词列表。"""
     if rule == "none":
         return False
     if rule == "all":
@@ -41,17 +43,60 @@ def needs_confirm(server: str, tool) -> bool:
     return any(w.lower() in name for w in words)
 
 
+# ---------- 规则 ----------
+def rules() -> list[dict]:
+    return [{"id": i, "pattern": p, "action": a, "note": n, "created": c}
+            for i, p, a, n, c in conn.execute("select id, pattern, action, note, created from rules order by id")]
+
+
+def add_rule(pattern: str, action: str, note: str = "") -> dict:
+    pattern = pattern.strip()
+    if not pattern:
+        raise ValueError("规则不能为空")
+    if action not in ("allow", "ask"):
+        raise ValueError("action 只能是 allow 或 ask")
+    old = conn.execute("select id from rules where pattern=? and action=?", (pattern, action)).fetchone()
+    if old:
+        return next(r for r in rules() if r["id"] == old[0])
+    cur = conn.execute("insert into rules(pattern, action, note, created) values(?,?,?,?)",
+                       (pattern, action, note, time.time()))
+    conn.commit()
+    return next(r for r in rules() if r["id"] == cur.lastrowid)
+
+
+def delete_rule(rid: int):
+    conn.execute("delete from rules where id=?", (rid,))
+    conn.commit()
+
+
+def decide(tool: str) -> tuple[bool, str]:
+    """返回 (是否要确认, 原因)。规则用通配符匹配工具全名，例如 filesystem__* 。"""
+    rs = rules()
+    for r in rs:
+        if r["action"] == "ask" and fnmatch.fnmatchcase(tool, r["pattern"]):
+            return True, f"规则「{r['pattern']}」要求先问"
+    for r in rs:
+        if r["action"] == "allow" and fnmatch.fnmatchcase(tool, r["pattern"]):
+            return False, f"规则「{r['pattern']}」自动允许"
+    from . import mcp_hub
+    return (tool in mcp_hub.CONFIRM), "默认策略"
+
+
+# ---------- 确认请求 ----------
 async def request(task, tool: str, args: dict, kind: str = "approval") -> tuple[bool, str]:
     """创建确认请求并等待用户决定。返回 (是否允许, 用户附言)。"""
     aid = next(_ids)
     fut = asyncio.get_running_loop().create_future()
-    item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": task.chat_id, "tool": tool, "goal": task.goal[:80],
-            "args": json.dumps(args, ensure_ascii=False, indent=1)[:3000], "ts": time.time(), "future": fut}
+    background = bool(getattr(task, "background", False))
+    timeout = CFG["limits"].get("approval_timeout_s", 1800) if background else None
+    item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": task.chat_id, "tool": tool,
+            "goal": task.goal[:80], "args": json.dumps(args, ensure_ascii=False, indent=1)[:3000], "ts": time.time(),
+            "expires": time.time() + timeout if timeout else None, "future": fut}
     pending[aid] = item
     task.waiting_approval = aid
+    t0 = time.time()
     if notify:
         await notify(public(item) | {"type": "approval", "status": "pending"})
-    timeout = CFG["limits"].get("approval_timeout_s", 1800)
     try:
         ok, note = await asyncio.wait_for(fut, timeout)
     except asyncio.TimeoutError:
@@ -62,18 +107,22 @@ async def request(task, tool: str, args: dict, kind: str = "approval") -> tuple[
         pending.pop(aid, None)
         task.waiting_approval = None
         task.last_progress = time.time()
+        if hasattr(task, "paused_s"):
+            task.paused_s += time.time() - t0   # 等确认的时间不算进任务超时
     return ok, note
 
 
-def resolve(aid: int, ok: bool, note: str = "") -> str:
+def resolve(aid: int, ok: bool, note: str = "", always: bool = False) -> str:
     item = pending.get(aid)
     if not item or item["future"].done():
         return f"没有待确认的请求 #{aid}"
+    if ok and always and item["kind"] == "approval":
+        add_rule(item["tool"], "allow", "在确认卡片上点了总是允许")
     item["future"].set_result((ok, note))
     if notify:
         asyncio.create_task(notify({"type": "approval", "id": aid, "chat_id": item["chat_id"],
-                                    "status": "approved" if ok else "rejected"}))
-    return f"已{'允许' if ok else '拒绝'}请求 #{aid}"
+                                    "status": "approved" if ok else "rejected", "always": ok and always}))
+    return f"已{'允许' if ok else '拒绝'}请求 #{aid}" + ("，以后同类操作自动允许" if ok and always else "")
 
 
 def cancel_for_task(task_id: int):

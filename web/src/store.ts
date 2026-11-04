@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { Approval, Bot, Chat, ComputerState, Message, Settings, Stream, Task } from './types'
+import type { App, Approval, Bot, Chat, ComputerState, Message, Settings, Stream, Task } from './types'
 
 type State = {
   ready: boolean
@@ -18,11 +18,12 @@ type State = {
   unread: Record<number, number>
   errors: Record<number, string | undefined>
   computers: Record<number, ComputerState>
+  apps: App[]
 }
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {},
+  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [],
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -57,13 +58,19 @@ export async function bootstrap() {
   const saved = Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
-        tasks, approvals, ready: true })
+        tasks, approvals, apps: b.apps || [], ready: true })
   if (active) openChat(active)
 }
 
 export async function refreshLists() {
   const b = await api('/api/bootstrap')
-  set({ bots: b.bots, chats: b.chats, settings: b.settings })
+  set({ bots: b.bots, chats: b.chats, settings: b.settings, apps: b.apps || [] })
+}
+
+export async function refreshApps() {
+  const r = await api('/api/apps')
+  set({ apps: r.apps })
+  return r
 }
 
 export async function openChat(chatId: number) {
@@ -107,8 +114,8 @@ export function send(chatId: number, text: string) {
   ws?.send(JSON.stringify({ type: 'send', chat_id: chatId, text }))
 }
 
-export function approve(id: number, ok: boolean, note = '') {
-  ws?.send(JSON.stringify({ type: 'approve', id, ok, note }))
+export function approve(id: number, ok: boolean, note = '', always = false) {
+  ws?.send(JSON.stringify({ type: 'approve', id, ok, note, always }))
 }
 
 function handle(d: any) {
@@ -149,6 +156,9 @@ function handle(d: any) {
       break
     case 'computer':
       setComputer(d.computer)
+      break
+    case 'apps_changed':
+      refreshApps()
       break
     case 'bots_changed':
       refreshLists()

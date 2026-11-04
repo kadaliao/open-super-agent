@@ -18,7 +18,7 @@ async def watchdog():
                 t.last_progress = now
                 continue
             reason = None
-            if now - t.started > lim["task_timeout_s"]:
+            if now - t.started - t.paused_s > lim["task_timeout_s"]:
                 reason = f"运行超过 {lim['task_timeout_s']} 秒"
             elif now - t.last_progress > 180:
                 reason = "3 分钟没有进展"

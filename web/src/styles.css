@@ -234,3 +234,19 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .stat-row, .two-col { grid-template-columns: 1fr; }
   .msg-actions { opacity: 1; }
 }
+
+/* 应用、规则、保险库 */
+.app-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.app-tools { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.app-actions .btn { padding: 5px 10px; font-size: 13px; }
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.preset { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.preset:hover:not(:disabled) { background: var(--bg2); } .preset:disabled { opacity: .5; }
+.app-editor { display: flex; flex-direction: column; gap: 10px; }
+.env-row { display: flex; gap: 6px; align-items: center; margin-top: 4px; } .env-row input { flex: 1; min-width: 0; }
+.small-btn { align-self: flex-start; padding: 4px 10px; font-size: 13px; margin-top: 4px; }
+.mention-list { display: flex; flex-direction: column; margin: 0 0 6px 12px; max-width: 320px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgb(0 0 0 / .12); }
+.mention-list button { display: flex; justify-content: space-between; gap: 10px; padding: 7px 12px; text-align: left; }
+.mention-list button.on, .mention-list button:hover { background: var(--bg2); }

@@ -20,7 +20,7 @@ export type ComputerState = {
 }
 export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; tool: string; goal: string
-  args: string; ts: number; status?: string
+  args: string; ts: number; expires?: number | null; status?: string; always?: boolean
 }
 export type Stream = { sid: string; text: string; thinking: string; started: number }
 export type Settings = {
@@ -30,3 +30,12 @@ export type Settings = {
   heavy_workers: number
   known_models: string[]
 }
+export type App = {
+  name: string; command: string; args: string[]; env: Record<string, string>; deny: string[]; confirm: string | string[]
+  enabled: boolean; status: string; tools: string[]; connected: boolean; confirm_tools: string[]
+}
+export type Preset = {
+  title: string; desc: string; command: string; args: string[]; deny?: string[]
+  fields: { key: string; kind: 'arg' | 'env'; label: string; default?: string; secret?: boolean }[]
+}
+export type Rule = { id: number; pattern: string; action: 'allow' | 'ask'; note: string; created: number }

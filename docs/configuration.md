@@ -52,7 +52,10 @@ computer:
 | Instabox | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
 | 本地 Docker | 容器 `osa-computer`，数据在 `data/computers/shared`。VNC 只监听 127.0.0.1，由服务端转发给浏览器。 |
 
-## MCP 应用
+## 应用（MCP）
+
+推荐在界面里管理：**设置 → 应用**，选预设（文件系统、GitHub、Notion、网页抓取）或自定义命令，填好密钥后点“保存并连接”。
+应用配置存在数据库里。`config.yaml` 的 `mcp_servers` 只在第一次启动时导入一次，之后改界面即可：
 
 ```yaml
 mcp_servers:
@@ -60,15 +63,19 @@ mcp_servers:
     enabled: false
     command: npx
     args: ["-y", "@notionhq/notion-mcp-server"]
-    env_from: [NOTION_TOKEN]   # 只写变量名，值从环境变量读取
+    env_from: [NOTION_TOKEN]   # 导入后变成 env:NOTION_TOKEN，值从服务的环境变量读取
     deny: [delete, archive]    # 名字里含这些词的工具不会提供给模型
     confirm: auto              # auto：写操作需要确认 | all：全部需要确认 | none：都不需要 | 关键词列表
 ```
 
-接入 Notion 的步骤：
-1. 在 Notion 新建一个 internal integration。
-2. 把要访问的页面分享给它（页面右上角 ··· → Connections）。
-3. 设置环境变量 `NOTION_TOKEN`，并把 `enabled` 改成 `true`。
+环境变量的值有三种写法：明文、`env:名字`（服务的环境变量）、`vault:名字`（保险库）。
+在界面里填的密钥会自动存进保险库。
+
+## 确认规则与保险库
+
+- **确认规则**（设置 → 确认规则）：按工具全名匹配，支持 `*`，如 `filesystem__*`。“先问我”优先于“自动允许”；都不命中时按应用的 `confirm` 策略。确认卡片上点“总是允许”会自动加一条规则。
+- **过期**：只有定时 / webhook 触发的后台任务，卡片在 `approval_timeout_s` 后按拒绝处理；对话里的任务一直等。
+- **保险库**（设置 → 保险库）：Fernet 加密存在 SQLite。主密钥取 `OSA_VAULT_KEY`，没设置时自动生成 `data/vault.key`（权限 600）。换主密钥后旧密钥解不开，需要重新录入。
 
 ## 触发器
 

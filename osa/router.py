@@ -21,6 +21,8 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 派任务时只写用户要的东西，不要自己加码（用户说“打开某页面”，就只是打开，不要变成“把整站数据抓下来”）。
 - 电脑上的简单操作（打开网页、点一下、搜索框输入、按键、滚动、看屏幕）你自己用 computer_* 工具直接做，
   做完看截图回答；只有多步、耗时、需要终端或要等人接手的活才派任务。
+- 用户用“@应用名”指定应用时，派任务的 goal 里原样保留“@应用名”，并写明要用这个应用完成。
+  提到的应用没连接时，告诉用户去设置 → 应用里连接，不要假装能做。
 - 用户的新指令和正在跑的任务冲突（比如换了要做的事）时，先 cancel_task 把旧任务停掉再做。
 今天是 {date}。
 
@@ -48,7 +50,8 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
     {"type": "function", "function": {"name": "resolve_approval", "description": "处理一个待确认的写操作",
         "parameters": {"type": "object", "properties": {
             "id": {"type": "integer"}, "approve": {"type": "boolean"},
-            "note": {"type": "string", "description": "用户附带的意见，例如修改要求"}}, "required": ["id", "approve"]}}},
+            "note": {"type": "string", "description": "用户附带的意见，例如修改要求"},
+            "always": {"type": "boolean", "description": "用户明确说以后同类操作都不用问时为 true"}}, "required": ["id", "approve"]}}},
     {"type": "function", "function": {"name": "recall", "description": "按 id 取回早先消息原文",
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
     {"type": "function", "function": {"name": "look_at_screen",
@@ -122,7 +125,11 @@ class Router:
         """触发器事件：作为系统通知进入对话，由 Bot 决定回复、派任务还是忽略。"""
         await self.add("task", f"[触发器 {source}] {text}", kind="trigger", source=source)
         async with self.lock:
-            await self._think()
+            self._background = True       # 这一轮派出的任务算后台任务
+            try:
+                await self._think()
+            finally:
+                self._background = False
 
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
@@ -202,7 +209,8 @@ class Router:
                 return "今日 token 预算已用完，没有派发。请告诉用户。"
             mode = args.get("mode", "single")
             tid = await self.add("task", f"[任务已派发] {args['goal']}", kind="dispatch", mode=mode, status="running")
-            task = Task(id=tid, goal=args["goal"], mode=mode, bot_id=self.bot_id, chat_id=self.chat_id)
+            task = Task(id=tid, goal=args["goal"], mode=mode, bot_id=self.bot_id, chat_id=self.chat_id,
+                        background=getattr(self, "_background", False))
             task.handle = asyncio.create_task(self._run(task))
             TASKS[tid] = task
             getattr(self, "_turn_tasks", []).append(tid)
@@ -213,7 +221,7 @@ class Router:
         if name == "cancel_task":
             return self.cancel(args["task_id"], "用户要求取消")
         if name == "resolve_approval":
-            return approvals.resolve(args["id"], args["approve"], args.get("note", ""))
+            return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")))
         if name == "recall":
             return memory.recall(args["id"], self.chat_id)
         if name == "look_at_screen":
@@ -274,7 +282,10 @@ class Router:
         for full in mcp_hub.TOOLS:
             server, _, tool = full.partition("__")
             groups.setdefault(server, []).append(tool)
-        lines += [f"- 插件 {srv}：{', '.join(ts)}" for srv, ts in groups.items()]
+        lines += [f"- 应用 @{srv}：{', '.join(ts)}" for srv, ts in groups.items()]
+        off = [n for n in mcp_hub.all_apps() if n not in groups]
+        if off:
+            lines.append(f"- 未连接的应用（现在用不了）：{', '.join('@' + n for n in off)}")
         return "\n".join(lines)
 
     def _task_list(self) -> str:

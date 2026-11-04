@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from . import approvals, bots, computer, mcp_hub, memory, router as rt, settings, triggers
+from . import approvals, bots, computer, mcp_hub, memory, router as rt, settings, triggers, vault
 from .watchdog import watchdog
 
 DIST = Path(__file__).parent / "static" / "dist"
@@ -22,6 +22,7 @@ async def broadcast(event: dict):
 
 rt.notify = broadcast
 approvals.notify = broadcast
+mcp_hub.notify = broadcast
 
 
 @asynccontextmanager
@@ -49,7 +50,8 @@ async def bootstrap():
     return {"bots": bots.list_bots(), "chats": bots.list_chats(), "settings": settings.public(),
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
-            "approvals": [approvals.public(a) for a in approvals.pending.values()]}
+            "approvals": [approvals.public(a) for a in approvals.pending.values()],
+            "apps": mcp_hub.public()}
 
 
 @app.post("/api/bots")
@@ -188,6 +190,98 @@ async def pc_vnc(sock: WebSocket, bot_id: int):
         pass
 
 
+# ---------- 应用、确认规则、保险库 ----------
+@app.get("/api/apps")
+async def list_apps():
+    return {"apps": mcp_hub.public(), "presets": mcp_hub.PRESETS}
+
+
+@app.put("/api/apps/{name}")
+async def save_app(name: str, data: dict = Body(...)):
+    """新建或修改应用。secrets 里的明文先存进保险库，配置里只留 vault:名字。"""
+    try:
+        env = dict(data.get("env") or (mcp_hub.get(name) or {}).get("env") or {})
+        for k, v in (data.pop("secrets", None) or {}).items():
+            if v:
+                ref = f"{name}_{k}".upper().replace("-", "_")
+                vault.put(ref, v)
+                env[k] = f"vault:{ref}"
+        a = mcp_hub.save(name, data | {"env": env})
+    except ValueError as e:
+        _err(e)
+    if a["enabled"]:
+        await mcp_hub.connect(name)
+    else:
+        await mcp_hub.disconnect(name)
+        mcp_hub.status[name] = "未启用"
+    await broadcast({"type": "apps_changed"})
+    return next(x for x in mcp_hub.public() if x["name"] == name)
+
+
+@app.post("/api/apps/{name}/{action}")
+async def app_action(name: str, action: str):
+    if not mcp_hub.get(name):
+        raise HTTPException(404, "没有这个应用")
+    if action in ("enable", "reconnect"):
+        mcp_hub.save(name, {"enabled": True})
+        await mcp_hub.connect(name)
+    elif action == "disable":
+        mcp_hub.save(name, {"enabled": False})
+        await mcp_hub.disconnect(name)
+        mcp_hub.status[name] = "未启用"
+    else:
+        raise HTTPException(404, "未知操作")
+    await broadcast({"type": "apps_changed"})
+    return next(x for x in mcp_hub.public() if x["name"] == name)
+
+
+@app.delete("/api/apps/{name}")
+async def delete_app(name: str):
+    await mcp_hub.disconnect(name)
+    mcp_hub.remove(name)
+    await broadcast({"type": "apps_changed"})
+    return {"ok": True}
+
+
+@app.get("/api/rules")
+async def list_rules():
+    return approvals.rules()
+
+
+@app.post("/api/rules")
+async def add_rule(data: dict = Body(...)):
+    try:
+        return approvals.add_rule(data.get("pattern", ""), data.get("action", ""), data.get("note", ""))
+    except ValueError as e:
+        _err(e)
+
+
+@app.delete("/api/rules/{rid}")
+async def delete_rule(rid: int):
+    approvals.delete_rule(rid)
+    return {"ok": True}
+
+
+@app.get("/api/vault")
+async def list_vault():
+    return vault.names()
+
+
+@app.put("/api/vault/{name}")
+async def put_vault(name: str, data: dict = Body(...)):
+    try:
+        vault.put(name, data.get("value", ""))
+    except ValueError as e:
+        _err(e)
+    return {"ok": True}
+
+
+@app.delete("/api/vault/{name}")
+async def delete_vault(name: str):
+    vault.delete(name)
+    return {"ok": True}
+
+
 # ---------- 设置、费用、状态 ----------
 @app.get("/api/settings")
 async def get_settings():
@@ -247,7 +341,7 @@ async def ws(sock: WebSocket):
         while True:
             data = await sock.receive_json()
             if data.get("type") == "approve":
-                approvals.resolve(int(data["id"]), bool(data.get("ok")), data.get("note", ""))
+                approvals.resolve(int(data["id"]), bool(data.get("ok")), data.get("note", ""), bool(data.get("always")))
             elif data.get("type") == "send":
                 text = (data.get("text") or "").strip()
                 chat = bots.chat(int(data.get("chat_id", 0)))

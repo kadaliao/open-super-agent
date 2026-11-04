@@ -119,20 +119,21 @@ function ApprovalCard({ a }: { a: Approval }) {
   if (a.kind === 'help') return <HelpCard a={a} />
   const [note, setNote] = useState('')
   const done = a.status && a.status !== 'pending'
-  const label: Record<string, string> = { approved: '已允许', rejected: '已拒绝', expired: '超时未确认，按拒绝处理', cancelled: '任务已取消' }
+  const label: Record<string, string> = { approved: a.always ? '已允许，以后自动允许' : '已允许', rejected: '已拒绝', expired: '超时未确认，按拒绝处理', cancelled: '任务已取消' }
   if (done) return <div className="sys-line">{a.status === 'approved' ? '✓' : '✕'} {label[a.status!] || a.status} <code>{a.tool}</code>（任务 #{a.task_id}）</div>
+  const [app, tool] = a.tool.includes('__') ? a.tool.split('__', 2) : ['', a.tool]
   return (
-    <div className={'approval-card' + (done ? ' done' : '')}>
-      <div className="approval-title">需要你确认 <code>{a.tool}</code></div>
-      <div className="muted small">来自任务 #{a.task_id}：{a.goal}</div>
+    <div className="approval-card">
+      <div className="approval-title">需要你确认{app && <> · 应用 <b>@{app}</b></>} <code>{tool}</code></div>
+      <div className="muted small">来自任务 #{a.task_id}：{a.goal}
+        {a.expires ? ` · 后台任务，${new Date(a.expires * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 前没确认按拒绝处理` : ''}</div>
       <pre className="approval-args">{a.args}</pre>
-      {done ? <div className="muted">{label[a.status!] || a.status}</div> : (
-        <div className="approval-actions">
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="附一句意见（可选）" />
-          <button className="btn" onClick={() => approve(a.id, false, note)}>拒绝</button>
-          <button className="btn primary" onClick={() => approve(a.id, true, note)}>允许一次</button>
-        </div>
-      )}
+      <div className="approval-actions">
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="附一句意见（可选）" />
+        <button className="btn" onClick={() => approve(a.id, false, note)}>拒绝</button>
+        <button className="btn" onClick={() => approve(a.id, true, note)}>允许一次</button>
+        <button className="btn primary" title={`以后 ${a.tool} 不再询问，可在设置 → 确认规则里撤销`} onClick={() => approve(a.id, true, note, true)}>总是允许</button>
+      </div>
     </div>
   )
 }

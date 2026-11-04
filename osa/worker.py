@@ -10,7 +10,7 @@ from .computer import tools as ctools
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
 
 WORKER_PROMPT = """你是执行任务的 Worker。用工具查证事实，给出结论时附上来源链接。
-需要读写用户的外部服务（如 Notion）时，使用名字带“服务名__”前缀的工具。
+需要读写用户的外部服务（应用）时，使用名字带“应用名__”前缀的工具；任务里写了“@应用名”就必须用那个应用。
 写操作会先请用户确认；被拒绝时不要换个工具绕过去，按用户的意见调整或说明无法完成。
 完成后直接输出最终答案（中文，简洁、结构清晰）。今天是 {date}。"""
 
@@ -28,6 +28,8 @@ class Task:
     steps: int = 0
     recent_calls: list = field(default_factory=list)
     waiting_approval: int | None = None    # 正在等用户确认的请求 id
+    background: bool = False               # 定时 / webhook 触发的任务：确认卡片会过期
+    paused_s: float = 0                    # 等用户确认花掉的时间，不算进超时
     last_action: str = ""                  # 最近一个动作，显示在任务卡片上
     result: str = ""
     handle: asyncio.Task | None = None
@@ -89,7 +91,7 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
                     continue
                 await progress({"web_search": "搜索：", "fetch_url": "读取网页："}.get(call.function.name, call.function.name + " ")
                                + str(args.get("query") or args.get("url") or "")[:60])
-                if fn and call.function.name in mcp_hub.CONFIRM:
+                if fn and call.function.name in mcp_hub.TOOLS and approvals.decide(call.function.name)[0]:
                     ok, note = await approvals.request(task, call.function.name, args)
                     if not ok:
                         msgs.append({"role": "tool", "tool_call_id": call.id,
