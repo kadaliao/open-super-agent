@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.3.0] - 2026-11-04
 ### 新增
 - **演示一遍（P7）**：右栏“技能”里点“演示一遍”，电脑交给你操作，做完点“完成，生成技能”。录制只记浏览器里的点击、输入、选择、回车和打开的网址，
   密码、验证码一类的输入只记成 ******，最长 10 分钟；录完由模型整理成技能草稿（名字、说明、分步做法，会变的内容写成占位），你审核后保存
@@ -68,6 +70,7 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.2.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kadaliao/open-super-agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kadaliao/open-super-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kadaliao/open-super-agent/releases/tag/v0.1.0
