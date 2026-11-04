@@ -66,21 +66,40 @@ def topic_start(chat_id: int) -> int:
     return r[0] or 0
 
 
-def context(chat_id: int) -> list[dict]:
+def context(chat_id: int, viewer: int | None = None) -> list[dict]:
+    """组装给 Router 的历史消息。viewer 是群聊里正在发言的 Bot：
+    它自己的回复保持 assistant；别的 Bot 的发言、任务和交接都换成带名字的通知。私聊时 viewer 为空。"""
     n = CFG["memory"]["inline_messages"]
-    rows = conn.execute("select id, role, content, meta from messages where chat_id=? and id > ? order by id",
+    rows = conn.execute("select id, role, content, meta, bot_id from messages where chat_id=? and id > ? order by id",
                         (chat_id, topic_start(chat_id))).fetchall()
+    names = dict(conn.execute("select id, name from bots")) if viewer is not None else {}
+    name = lambda b: names.get(b, "已删除的 Bot")
     old, recent = rows[:-n], rows[-n:]
     msgs = []
     if old:
-        index = "\n".join(f"#{i} [{r}] {c[:60].replace(chr(10), ' ')}" for i, r, c, _ in old[-200:])
+        def who(r, b):
+            return name(b) if viewer is not None and r == "assistant" and b != viewer else r
+        index = "\n".join(f"#{i} [{who(r, b)}] {c[:60].replace(chr(10), ' ')}" for i, r, c, _, b in old[-200:])
         msgs.append({"role": "system", "content": "更早的对话已移出上下文，需要时用 recall(id) 取回原文：\n" + index})
-    for _, r, c, meta in recent:
+    for _, r, c, meta, b in recent:
         meta = json.loads(meta or "{}")
-        if r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式
-            note = "（系统通知，非用户发言；这份结果已作为卡片直接展示给用户，不用复述，除非用户问起）" \
-                if meta.get("kind") == "result" else "（系统通知，非用户发言）"
+        others = viewer is not None and b != viewer
+        if r == "task" and meta.get("kind") == "handoff" and viewer is not None:
+            to = meta.get("to")
+            if to == viewer:
+                text = f"（{name(b)} 把工作交给了你，现在轮到你）{meta.get('note') or c}"
+            elif b == viewer:
+                text = f"（系统通知：你把工作交给了 {name(to)}）{meta.get('note') or c}"
+            else:
+                text = f"（系统通知：{name(b)} 把工作交给了 {name(to)}）{meta.get('note') or c}"
+            msgs.append({"role": "user", "content": text})
+        elif r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式
+            whose = f"{name(b)} 的" if others and b else ""
+            note = f"（系统通知，非用户发言；这是{whose}任务结果，已作为卡片直接展示给用户，不用复述，除非用户问起）" \
+                if meta.get("kind") == "result" else f"（系统通知，非用户发言{'；' + whose + '任务' if whose else ''}）"
             msgs.append({"role": "user", "content": note + c})
+        elif r == "assistant" and others:
+            msgs.append({"role": "user", "content": f"【{name(b)}】{c}"})
         elif r == "assistant" and "reasoning" in meta:
             # DeepSeek 思考模式：请求带工具时，历史回复的 reasoning_content 必须原样传回
             m = {"role": "assistant", "content": c}

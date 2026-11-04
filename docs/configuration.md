@@ -93,6 +93,11 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
   -H "X-OSA-Token: $OSA_WEBHOOK_TOKEN" -d '{"issue":{"title":"Bug: ..."}}'
 ```
 
+## 群聊
+
+不需要配置。限制：每个群 2–6 个 Bot，最多 50 个群；每一轮（用户的一条消息或一次任务交接）最多 8 次 Bot 发言（`osa/groups.py` 的 `MAX_TURNS`）。
+群里的模型调用都记在各个 Bot 的 `router` 角色下。
+
 ## 记忆与资料库
 
 不需要额外配置，下面这些是代码里的上限：

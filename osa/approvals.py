@@ -3,6 +3,7 @@
 判断顺序：命中“先问我”规则 → 要确认；否则命中“自动允许”规则 → 直接执行；否则按应用的默认策略。
 确认卡片上点“总是允许”会生成一条针对这个工具的“自动允许”规则。
 后台任务（定时、webhook 触发的）的卡片超时按拒绝处理；对话里派的任务一直等用户。
+卡片总是出现在 Bot 的私聊里；群聊里派的任务，群里只显示一条提示（origin_chat_id 是任务所在的对话）。
 """
 import asyncio
 import fnmatch
@@ -89,7 +90,9 @@ async def request(task, tool: str, args: dict, kind: str = "approval") -> tuple[
     fut = asyncio.get_running_loop().create_future()
     background = bool(getattr(task, "background", False))
     timeout = CFG["limits"].get("approval_timeout_s", 1800) if background else None
-    item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": task.chat_id, "tool": tool,
+    chat_id = getattr(task, "approval_chat_id", 0) or task.chat_id
+    item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": chat_id,
+            "origin_chat_id": task.chat_id, "tool": tool,
             "goal": task.goal[:80], "args": json.dumps(args, ensure_ascii=False, indent=1)[:3000], "ts": time.time(),
             "expires": time.time() + timeout if timeout else None, "future": fut}
     pending[aid] = item
@@ -102,7 +105,7 @@ async def request(task, tool: str, args: dict, kind: str = "approval") -> tuple[
     except asyncio.TimeoutError:
         ok, note = False, f"{timeout // 60} 分钟内没有确认，按拒绝处理"
         if notify:
-            await notify({"type": "approval", "id": aid, "status": "expired", "chat_id": task.chat_id})
+            await notify({"type": "approval", "id": aid, "status": "expired", "chat_id": chat_id})
     finally:
         pending.pop(aid, None)
         task.waiting_approval = None

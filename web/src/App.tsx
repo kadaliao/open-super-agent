@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
-import { bootstrap, connect, openLibrary, useStore } from './store'
+import { bootstrap, chatById, connect, openLibrary, useStore } from './store'
 import Chat from './components/Chat'
 import Library from './components/Library'
 import Sidebar from './components/Sidebar'
 import Settings from './components/Settings'
 import { BotPanel, NewBotDialog } from './components/BotEditor'
+import { GroupPanel, NewGroupDialog } from './components/Groups'
 
 export default function App() {
   const ready = useStore(s => s.ready)
   const view = useStore(s => s.view)
+  const chat = useStore(s => chatById(s, s.active))
   const [newBot, setNewBot] = useState(false)
+  const [newGroup, setNewGroup] = useState(false)
   const [settings, setSettings] = useState(false)
   const [details, setDetails] = useState(() => localStorage.getItem('osa.details') === '1')
   const [side, setSide] = useState(false)   // 手机上的侧栏抽屉
@@ -51,10 +54,13 @@ export default function App() {
     <div className={'app' + (details && view === 'chat' ? ' with-panel' : '') + (details && tab === 'computer' ? ' wide-panel' : '') + (side ? ' side-open' : '')}>
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
       <div className="side-mask" onClick={() => setSide(false)} />
-      <Sidebar onNewBot={() => setNewBot(true)} onSettings={() => setSettings(true)} onClose={() => setSide(false)} />
+      <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings(true)} onClose={() => setSide(false)} />
       {view === 'library' ? <Library /> : <Chat onToggleDetails={() => setDetails(!details)} />}
-      {details && view === 'chat' && <BotPanel onClose={() => setDetails(false)} tab={tab} setTab={setTab} />}
+      {details && view === 'chat' && (chat?.kind === 'group'
+        ? <GroupPanel chat={chat} onClose={() => setDetails(false)} tab={tab} setTab={setTab} />
+        : <BotPanel onClose={() => setDetails(false)} tab={tab} setTab={setTab} />)}
       {newBot && <NewBotDialog onClose={() => setNewBot(false)} />}
+      {newGroup && <NewGroupDialog onClose={() => setNewGroup(false)} />}
       {settings && <Settings onClose={() => setSettings(false)} />}
     </div>
   )

@@ -6,7 +6,8 @@
 浏览器（React SPA）── WebSocket 事件 + REST ──► FastAPI（osa/server.py）
                                                   │
    ┌──────────────────────────────────────────────┼────────────────────────────────┐
-   │ Router：每个 Bot 一个（router.py）              │ 后台                             │
+   │ Groups：群聊里轮到谁说（groups.py）              │ 后台                             │
+   │ Router：每个 Bot 一个（router.py）              │                                  │
    │  · 和用户对话、派发任务、看屏幕、做简单电脑操作      │  Worker：ReAct 循环（worker.py）   │
    │  · 工具：dispatch / cancel_task / recall /      │  Watchdog：巡检（watchdog.py）     │
    │    remember / forget / save_page /              │  Routines：定时与 webhook          │
@@ -34,7 +35,8 @@
 ```
 osa/
   server.py        HTTP / WebSocket 入口、REST 接口、VNC 桥、前端静态文件
-  router.py        Bot 的常驻会话：提示词、流式输出、Router 工具
+  router.py        Bot 的常驻会话：提示词、流式输出、Router 工具；每一轮都明确在哪个对话（私聊或群聊）里
+  groups.py        群聊：解析 @、协调者、handoff 队列、任务做完自动交接、每轮发言上限
   worker.py        后台任务：Task、ReAct 循环、Heavy 模式
   memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
@@ -58,7 +60,7 @@ osa/
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
   components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、
-                   Memories（记忆面板）、Library（资料库和分享页）、Markdown
+                   Memories（记忆面板）、Library（资料库和分享页）、Groups（新建群聊和群聊面板）、Markdown
 ```
 
 ## 数据
@@ -67,7 +69,7 @@ web/src/
 
 | 表 | 用途 |
 |---|---|
-| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊对话（`kind=direct`），以后的群聊 `bot_ids` 会有多个 |
+| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等 |
 | `llm_usage` | 每次模型调用的 token 数和费用 |
 | `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
@@ -98,6 +100,20 @@ web/src/
 - `cdp_helper.py` 第一次用时由服务端写进电脑的 `/tmp`（文件名带内容哈希，改了会自动更新），每个动作执行一次，
   所以两个后端都不需要额外开端口。DevTools 端口只监听电脑内部的 127.0.0.1；旧浏览器没开端口时脚本会重启它（登录状态在配置目录里，不会丢）。
 - Worker 的上下文里只保留最近 2 张截图（`prune_images`），用来控制 token 成本。
+
+### 群聊
+- **一个 Bot 一个 Router**，私聊和群聊共用；`Router.lock` 让同一个 Bot 一次只说一轮。每轮开始时设置 `self.chat`，
+  工具（dispatch、handoff、recall）都用它；任务记下自己的 `chat_id`，结果回到派任务的那个对话。
+- **谁来说由 `groups.py` 决定**，Router 不自己抢话：@ 到的按顺序 → 没 @ 就是协调者 → 发言中 handoff 出去的排到最前面。
+  同一个群一次只跑一轮（`Group.lock`）；用户的新消息会先显示出来，等上一轮说完再处理。
+- 群聊上下文按“谁在看”组装（`memory.context(chat_id, viewer)`）：自己的回复保持 assistant（带 reasoning），
+  别的 Bot 的发言变成“【名字】……”，交接记录写明谁交给谁。
+- **任务交接**：`dispatch(handoff_to=…)` 时先 `groups.expect`，这一轮里点名给对方的发言跳过（免得它空等着表态）；
+  任务做完 `after_task` 写一条交接记录，再让对方说一轮。失败或取消就不交接。
+- 每一轮最多 `MAX_TURNS`（8）次发言，用完就停下来等用户。
+- **确认卡片只进私聊**：任务带 `approval_chat_id`（Bot 的私聊），确认请求的 `chat_id` 是私聊，`origin_chat_id` 是任务所在的群；
+  前端在群里只显示“去处理”的提示。
+- 群聊里不解析 `/技能`；技能、定时任务、记忆都属于单个 Bot，在它的私聊和右栏里管理。
 
 ### 记忆与资料库
 - **两种“记忆”别混**：`memory.py` 是对话记录（Inline & Spill，只在本对话里有效）；`memories.py` 是长期记忆，

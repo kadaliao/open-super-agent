@@ -20,6 +20,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 ## Features
 
 - 🤖 **Multiple bots**: each with its own name, avatar, persona and conversation. Replies stream in, and the model's reasoning can be expanded or collapsed.
+- 👥 **Group chats**: 2–6 Bots in one chat. `@` a Bot to have it answer, or `@everyone`; unaddressed messages go to the group's coordinator, who hands work to the right Bot. Bots hand off to each other (one researches, the next summarizes when the research is done). Approval requests stay in each Bot's private chat.
 - ⚡ **Background tasks**: workers run long jobs while you keep chatting. **Heavy mode** runs several workers on the same problem and has a reviewer merge their answers.
 - 🖥️ **A computer**: one shared Linux desktop with Chromium and a terminal. Web pages are driven directly over CDP (by element, reading page text), which is fast and precise. Watch it live and take over or hand back at any time; for captchas and logins, the bot asks you to step in.
 - 🔌 **Apps via MCP**: connect the filesystem, GitHub, Notion and more from Settings; mention one in chat with `@app`.
@@ -64,7 +65,7 @@ The detailed docs are currently in Chinese:
 - [x] P3 Approval rules, app management, a vault and `@app` mentions; browser control over CDP
 - [x] P4 Skills & routines
 - [x] P5 Memory & library
-- [ ] P6 Group chat
+- [x] P6 Group chat
 - [ ] P7 Teach-a-task & mobile
 
 ## License

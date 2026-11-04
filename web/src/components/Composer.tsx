@@ -2,30 +2,37 @@ import { useEffect, useRef, useState } from 'react'
 import { loadSkills, send, useStore } from '../store'
 import type { Bot } from '../types'
 
-export default function Composer({ chatId, bot, busy }: { chatId: number; bot: Bot; busy: boolean }) {
+// bot：私聊的 Bot；群聊时为空，members 是群成员。busy：正在回复的 Bot 名字
+export default function Composer({ chatId, bot, members, busy }: { chatId: number; bot?: Bot; members: Bot[]; busy: string }) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
   const apps = useStore(s => s.apps)
-  const skills = useStore(s => s.skills[bot.id])
+  const skills = useStore(s => (bot ? s.skills[bot.id] : undefined))
+  const group = !bot
   const [pick, setPick] = useState(0)
   const [uploading, setUploading] = useState('')
   const [upErr, setUpErr] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
-  useEffect(() => { if (!skills) loadSkills(bot.id) }, [bot.id, skills])
-  // 光标前面是 @xxx 时弹出应用列表；开头是 /xxx 时弹出技能列表
-  const at = text.match(/(?:^|\s)@([\w-]*)$/)
-  const slash = text.match(/^\/([\w\u4e00-\u9fff-]*)$/)
+  useEffect(() => { if (bot && !skills) loadSkills(bot.id) }, [bot?.id, skills])
+  // 光标前面是 @xxx 时弹出成员（群聊）和应用；私聊开头是 /xxx 时弹出技能列表
+  const at = text.match(/(?:^|\s)@([^\s@]*)$/)
+  const slash = group ? null : text.match(/^\/([\w\u4e00-\u9fff-]*)$/)
   type Item = { key: string; label: string; hint: string }
+  const q = at ? at[1].toLowerCase() : ''
   const matches: Item[] = at
-    ? apps.filter(a => a.name.startsWith(at[1].toLowerCase()))
-        .map(a => ({ key: a.name, label: '@' + a.name, hint: a.connected ? `${a.tools.length} 个工具` : '未连接' }))
+    ? [...(group ? [
+        ...members.filter(b => b.name.toLowerCase().startsWith(q)).map(b => ({ key: b.name, label: '@' + b.name, hint: 'Bot' })),
+        ...('所有人'.startsWith(q) || 'everyone'.startsWith(q) ? [{ key: '所有人', label: '@所有人', hint: '每个 Bot 都回答' }] : []),
+      ] : []),
+      ...apps.filter(a => a.name.startsWith(q))
+        .map(a => ({ key: a.name, label: '@' + a.name, hint: a.connected ? `应用 · ${a.tools.length} 个工具` : '应用 · 未连接' }))]
     : slash
       ? (skills || []).filter(k => k.name.toLowerCase().startsWith(slash[1].toLowerCase()))
           .map(k => ({ key: k.name, label: '/' + k.name, hint: k.description || k.body.slice(0, 30) }))
       : []
   const choose = (name: string) => {
-    setText(at ? text.replace(/@([\w-]*)$/, `@${name} `) : `/${name} `); setPick(0); ref.current?.focus()
+    setText(at ? text.replace(/@([^\s@]*)$/, `@${name} `) : `/${name} `); setPick(0); ref.current?.focus()
   }
 
   useEffect(() => { ref.current?.focus() }, [chatId])
@@ -74,7 +81,7 @@ export default function Composer({ chatId, bot, busy }: { chatId: number; bot: B
       <div className="composer">
         <button className="attach" title="上传附件（存到电脑的 uploads 目录）" disabled={!!uploading} onClick={() => fileInput.current?.click()}>＋</button>
         <input ref={fileInput} type="file" multiple hidden onChange={e => { attach(e.target.files); e.target.value = '' }} />
-        <textarea ref={ref} rows={1} value={text} placeholder={`给 ${bot.name} 发消息`}
+        <textarea ref={ref} rows={1} value={text} placeholder={group ? '发到群里，@ 指定 Bot' : `给 ${bot!.name} 发消息`}
           onChange={e => setText(e.target.value)}
           onCompositionStart={() => (composing.current = true)}
           onCompositionEnd={() => (composing.current = false)}
@@ -90,7 +97,8 @@ export default function Composer({ chatId, bot, busy }: { chatId: number; bot: B
         <button className={'send' + (text.trim() ? ' on' : '')} onClick={submit} title="发送（Enter）" aria-label="发送">↑</button>
       </div>
       {(uploading || upErr) && <div className={'composer-hint' + (upErr ? ' bad' : '')}>{upErr || uploading}</div>}
-      <div className="composer-hint">{busy ? `${bot.name} 正在回复…你可以继续发消息` : 'Enter 发送 · Shift+Enter 换行 · @ 指定应用 · / 调用技能'}</div>
+      <div className="composer-hint">{busy ? `${busy} 正在回复…你可以继续发消息`
+        : group ? 'Enter 发送 · Shift+Enter 换行 · @ 指定 Bot 或应用 · @所有人' : 'Enter 发送 · Shift+Enter 换行 · @ 指定应用 · / 调用技能'}</div>
     </div>
   )
 }

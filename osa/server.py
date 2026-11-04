@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from . import approvals, bots, computer, library, mcp_hub, memories, memory, router as rt, routines, settings, skills, vault
+from . import approvals, bots, computer, groups, library, mcp_hub, memories, memory, router as rt, routines, settings, skills, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -29,6 +29,7 @@ rt.notify = broadcast
 approvals.notify = broadcast
 mcp_hub.notify = broadcast
 routines.notify = broadcast
+groups.notify = broadcast
 
 
 async def _pages_changed():
@@ -119,13 +120,48 @@ async def messages(chat_id: int, before: int | None = None, limit: int = 60):
     return memory.page(chat_id, before, min(limit, 200))
 
 
+# ---------- 群聊 ----------
+@app.post("/api/groups")
+async def create_group(data: dict = Body(...)):
+    try:
+        g = bots.create_group(data.get("bot_ids") or [], data.get("title", ""), data.get("lead"))
+    except (ValueError, TypeError) as e:
+        _err(e)
+    await broadcast({"type": "bots_changed"})
+    return g
+
+
+@app.patch("/api/chats/{chat_id}")
+async def update_group(chat_id: int, data: dict = Body(...)):
+    try:
+        g = bots.update_group(chat_id, data.get("title"), data.get("bot_ids"), data.get("lead"))
+    except (ValueError, TypeError) as e:
+        _err(e)
+    await broadcast({"type": "bots_changed"})
+    return g
+
+
+@app.delete("/api/chats/{chat_id}")
+async def delete_group(chat_id: int):
+    chat = bots.chat(chat_id)
+    if not chat or chat["kind"] != "group":
+        raise HTTPException(400, "只能删除群聊；Bot 的私聊随 Bot 一起删除")
+    for t in list(rt.TASKS.values()):
+        if t.chat_id == chat_id and t.status == "running":
+            rt.cancel(t.id, "群聊已删除")
+    bots.delete_group(chat_id)
+    groups.forget(chat_id)
+    await broadcast({"type": "bots_changed"})
+    return {"ok": True}
+
+
 @app.post("/api/chats/{chat_id}/reset")
 async def new_topic(chat_id: int):
     """新话题：之前的消息不再带进 Bot 的上下文，长期记忆还在。"""
     chat = bots.chat(chat_id)
     if not chat:
         raise HTTPException(404, "没有这个对话")
-    bot_id = chat["bot_ids"][0]
+    bot_id = chat["bot_ids"][0] if chat["kind"] == "direct" else None
     mid = memory.add("task", "[新话题]", chat_id, bot_id, kind="reset")
     await broadcast({"type": "message", "chat_id": chat_id, "bot_id": bot_id, "message": {
         "id": mid, "ts": time.time(), "role": "task", "content": "[新话题]", "meta": {"kind": "reset"}, "bot_id": bot_id}})
@@ -764,9 +800,11 @@ async def ws(sock: WebSocket):
 
 
 async def safe_handle(chat: dict, text: str):
-    bot_id = chat["bot_ids"][0]   # 私聊；群聊在 P6 实现
     try:
-        await rt.runtime(bot_id).handle_user(text)
+        if chat["kind"] == "group":
+            await groups.on_user(chat, text)
+        else:
+            await rt.runtime(chat["bot_ids"][0]).handle_user(text)
     except Exception as e:
         await broadcast({"type": "error", "chat_id": chat["id"], "message": f"出错了：{e}"})
 

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, botForChat, loadOlder, openLibrary, useStore } from '../store'
+import { api, approve, chatById, loadOlder, openChat, openLibrary, useStore } from '../store'
 import type { Approval, Bot, Message, Task } from '../types'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
@@ -38,11 +38,15 @@ function CopyBtn({ text }: { text: string }) {
   return <button className="ghost-btn" onClick={() => { navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200) }}>{ok ? '已复制' : '复制'}</button>
 }
 
-function BotMessage({ bot, m, children }: { bot?: Bot; m: Message; children?: React.ReactNode }) {
+// 群聊里每条消息上面标出是哪个 Bot 说的
+const Speaker = ({ bot, show }: { bot?: Bot; show?: boolean }) => show ? <div className="speaker">{bot?.name || '已删除的 Bot'}</div> : null
+
+function BotMessage({ bot, m, children, showName }: { bot?: Bot; m: Message; children?: React.ReactNode; showName?: boolean }) {
   return (
     <div className="msg bot">
       {bot && <BotAvatar avatar={bot.avatar} size={28} />}
       <div className="msg-body">
+        <Speaker bot={bot} show={showName} />
         <Thinking text={m.meta.thinking} seconds={m.meta.thought_s} />
         <Markdown text={m.content} />
         {children}
@@ -52,7 +56,7 @@ function BotMessage({ bot, m, children }: { bot?: Bot; m: Message; children?: Re
   )
 }
 
-function TaskCard({ m, task }: { m: Message; task?: Task }) {
+function TaskCard({ m, task, owner, handoffTo }: { m: Message; task?: Task; owner?: Bot; handoffTo?: Bot }) {
   const status = task?.status || m.meta.status || 'done'
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -66,11 +70,12 @@ function TaskCard({ m, task }: { m: Message; task?: Task }) {
     <div className={`task-card ${status}${task?.waiting_approval ? ' waiting' : ''}`}>
       <div className="task-top">
         <span className="dot" />
-        <b>{m.meta.mode === 'heavy' ? 'Heavy 任务' : '后台任务'} #{m.id}</b>
+        <b>{owner ? `${owner.name} 的` : ''}{m.meta.mode === 'heavy' ? 'Heavy 任务' : '后台任务'} #{m.id}</b>
         <span className="muted">{label[status] || status}{status === 'running' && task ? ` · ${secs((now / 1000) - task.started)}` : ''}{task?.steps ? ` · ${task.steps} 步` : ''}</span>
         {status === 'running' && <button className="ghost-btn" onClick={() => api(`/api/tasks/${m.id}/cancel`, { method: 'POST' })}>停止</button>}
       </div>
       <div className="task-goal">{goal}</div>
+      {handoffTo && <div className="task-action">做完交给 {handoffTo.name}</div>}
       {status === 'running' && task?.last_action && <div className="task-action">→ {task.last_action}</div>}
     </div>
   )
@@ -93,7 +98,7 @@ function SavePageBtn({ bot, text, goal, taskId }: { bot?: Bot; text: string; goa
   return <button className="ghost-btn" disabled={busy} onClick={save}>存为页面</button>
 }
 
-function ResultMessage({ bot, m, goal }: { bot?: Bot; m: Message; goal: string }) {
+function ResultMessage({ bot, m, goal, showName }: { bot?: Bot; m: Message; goal: string; showName?: boolean }) {
   const text = m.content.replace(/^\[任务 #\d+ 结果\]\n?/, '')
   const [open, setOpen] = useState(text.length < 1800)
   const status = m.meta.status || 'done'
@@ -101,6 +106,7 @@ function ResultMessage({ bot, m, goal }: { bot?: Bot; m: Message; goal: string }
     <div className="msg bot">
       {bot && <BotAvatar avatar={bot.avatar} size={28} />}
       <div className="msg-body">
+        <Speaker bot={bot} show={showName} />
         <div className={`result-head ${status}`}>
           {status === 'failed' ? '任务失败' : '任务完成'} · #{taskKind(m).taskId}{m.meta.elapsed ? ` · 用时 ${secs(m.meta.elapsed)}` : ''}
         </div>
@@ -113,6 +119,12 @@ function ResultMessage({ bot, m, goal }: { bot?: Bot; m: Message; goal: string }
   )
 }
 
+// 群里派的任务：卡片在私聊里，注明来自哪个群
+function Origin({ a }: { a: Approval }) {
+  const g = useStore(s => (a.origin_chat_id && a.origin_chat_id !== a.chat_id ? chatById(s, a.origin_chat_id) : undefined))
+  return g ? <> · 在群聊「<button className="link-btn" onClick={() => openChat(g.id)}>{g.title}</button>」里派的</> : null
+}
+
 function HelpCard({ a }: { a: Approval }) {
   const done = a.status && a.status !== 'pending'
   let reason = ''
@@ -122,7 +134,7 @@ function HelpCard({ a }: { a: Approval }) {
     <div className="approval-card help">
       <div className="approval-title">🙋 需要你帮忙</div>
       <div className="help-reason">{reason}</div>
-      <div className="muted small">任务 #{a.task_id} 已暂停。接手电脑处理完后点“交还”，Bot 会接着做。</div>
+      <div className="muted small">任务 #{a.task_id} 已暂停<Origin a={a} />。接手电脑处理完后点“交还”，Bot 会接着做。</div>
       <div className="approval-actions">
         <button className="btn" onClick={() => approve(a.id, false, '用户表示处理不了')}>我处理不了</button>
         <span className="grow" />
@@ -143,7 +155,7 @@ function ApprovalCard({ a }: { a: Approval }) {
   return (
     <div className="approval-card">
       <div className="approval-title">需要你确认{app && <> · 应用 <b>@{app}</b></>} <code>{tool}</code></div>
-      <div className="muted small">来自任务 #{a.task_id}：{a.goal}
+      <div className="muted small">来自任务 #{a.task_id}<Origin a={a} />：{a.goal}
         {a.expires ? ` · 后台任务，${new Date(a.expires * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 前没确认按拒绝处理` : ''}</div>
       <pre className="approval-args">{a.args}</pre>
       <div className="approval-actions">
@@ -156,15 +168,35 @@ function ApprovalCard({ a }: { a: Approval }) {
   )
 }
 
+function HandoffLine({ from, to, text }: { from?: Bot; to?: Bot; text: string }) {
+  return (
+    <div className="handoff">
+      {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || '已删除的 Bot'}</b>
+      <span className="muted">交给</span>
+      {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || '已删除的 Bot'}</b>
+      <span className="handoff-text">{text}</span>
+    </div>
+  )
+}
+
 const STARTERS = [
   '每天早上 9 点给我整理 AI 领域的重要新闻',
   '帮我调研一下自部署 SearxNG 的最佳实践',
   '你能做哪些事？先介绍一下你的能力',
 ]
 
+export function GroupAvatars({ bots, size = 26 }: { bots: Bot[]; size?: number }) {
+  return (
+    <span className="group-avatars" style={{ width: size + (Math.min(bots.length, 3) - 1) * size * 0.45 }}>
+      {bots.slice(0, 3).map((b, i) => <span key={b.id} style={{ left: i * size * 0.45, zIndex: 3 - i }}><BotAvatar avatar={b.avatar} size={size} /></span>)}
+    </span>
+  )
+}
+
 export default function Chat({ onToggleDetails }: { onToggleDetails: () => void }) {
   const active = useStore(s => s.active)
-  const bot = useStore(s => botForChat(s, s.active))
+  const chat = useStore(s => chatById(s, s.active))
+  const allBots = useStore(s => s.bots)
   const messages = useStore(s => (s.active ? s.messages[s.active] : undefined))
   const stream = useStore(s => (s.active ? s.streams[s.active] : undefined))
   const tasks = useStore(s => s.tasks)
@@ -191,66 +223,104 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
     if (el.scrollTop < 40 && hasMore && active) { prevHeight.current = el.scrollHeight; loadOlder(active) }
   }
 
-  if (!active || !bot) return <main className="chat empty-main" />
+  if (!active || !chat) return <main className="chat empty-main" />
+  const group = chat.kind === 'group'
+  const botOf = (id: number | null | undefined) => allBots.find(b => b.id === id)
+  const members = chat.bot_ids.map(botOf).filter((b): b is Bot => !!b)
+  const bot = group ? undefined : members[0]
+  if (!group && !bot) return <main className="chat empty-main" />
+  const speaker = (m: Message) => (group ? botOf(m.bot_id) : bot)
+  const lead = botOf(chat.lead)
   // 回复里记录了本轮派发的任务：任务卡片挂到回复下面，不再单独显示
   const byId = new Map((messages || []).map(m => [m.id, m]))
   const attached = new Set((messages || []).flatMap(m => (m.role === 'assistant' ? m.meta.tasks || [] : [])))
   const pending = Object.values(approvals).filter(a => a.chat_id === active && (a.status === 'pending' || Date.now() / 1000 - a.ts < 600))
+  // 群里派的任务要确认时，卡片在 Bot 的私聊里；这里只放一条提示
+  const elsewhere = Object.values(approvals).filter(a => a.origin_chat_id === active && a.chat_id !== active && a.status === 'pending')
   const empty = messages && messages.length === 0 && !stream
+  const title = group ? chat.title : bot!.name
+  const task = (tid: number) => byId.get(tid) && <TaskCard key={tid} m={byId.get(tid)!} task={tasks[tid]}
+    owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)} />
+  const starters = group && members.length >= 2
+    ? ['@所有人 先各自介绍一下你们能做什么', `@${members[0].name} 查一下今天的 AI 新闻，查完交给 @${members[1].name} 写一段 100 字的总结`]
+    : STARTERS
 
   return (
     <main className="chat">
       <header className="chat-head">
-        <button className="head-bot" onClick={onToggleDetails} title="Bot 详情">
-          <BotAvatar avatar={bot.avatar} size={26} />
-          <span className="head-name">{bot.name}</span>
-          {bot.is_primary && <span className="star" title="主 Bot">★</span>}
+        <button className="head-bot" onClick={onToggleDetails} title={group ? '群聊设置' : 'Bot 详情'}>
+          {group ? <GroupAvatars bots={members} /> : <BotAvatar avatar={bot!.avatar} size={26} />}
+          <span className="head-name">{title}</span>
+          {group ? <span className="muted small">{members.length} 个 Bot</span> : bot!.is_primary && <span className="star" title="主 Bot">★</span>}
         </button>
         <div className="head-actions">
           <button className="ghost-btn" title="之前的对话不再带进上下文，省 token；长期记忆还在" onClick={() => {
-            if (confirm(`开始新话题？${bot.name} 不再参考之前的对话（记录还在，长期记忆也还在）。`)) api(`/api/chats/${active}/reset`, { method: 'POST' })
+            if (confirm(`开始新话题？${group ? '群里的 Bot' : bot!.name} 不再参考之前的对话（记录还在，长期记忆也还在）。`)) api(`/api/chats/${active}/reset`, { method: 'POST' })
           }}>新话题</button>
           <button className="icon-btn" onClick={onToggleDetails} title="详情">☰</button>
         </div>
       </header>
       <div className="scroller" ref={scroller} onScroll={onScroll}>
         <div className="thread">
-          {empty && (
+          {empty && (group ? (
             <div className="welcome">
-              <BotAvatar avatar={bot.avatar} size={72} />
-              <h2>{bot.name}</h2>
-              <p className="muted">给 {bot.name} 布置第一份工作。它会记住你交代的职责，在后台替你完成任务。</p>
-              <div className="starters">{STARTERS.map(s => <button key={s} onClick={() => window.dispatchEvent(new CustomEvent('osa-fill', { detail: s }))}>{s}</button>)}</div>
+              <GroupAvatars bots={members} size={56} />
+              <h2>{chat.title}</h2>
+              <p className="muted">@ 某个 Bot 让它来做，@所有人 让大家都说说；不 @ 的消息由协调者{lead ? ` ${lead.name} ` : ''}接，它会分给合适的 Bot。
+                Bot 之间可以交接工作；要你确认的操作会出现在各自的私聊里。</p>
+              <div className="starters">{starters.map(s => <button key={s} onClick={() => window.dispatchEvent(new CustomEvent('osa-fill', { detail: s }))}>{s}</button>)}</div>
             </div>
-          )}
+          ) : (
+            <div className="welcome">
+              <BotAvatar avatar={bot!.avatar} size={72} />
+              <h2>{bot!.name}</h2>
+              <p className="muted">给 {bot!.name} 布置第一份工作。它会记住你交代的职责，在后台替你完成任务。</p>
+              <div className="starters">{starters.map(s => <button key={s} onClick={() => window.dispatchEvent(new CustomEvent('osa-fill', { detail: s }))}>{s}</button>)}</div>
+            </div>
+          ))}
           {messages?.map(m => {
             if (m.role === 'user') return <div key={m.id} className="msg user"><div className="bubble">{m.content}</div></div>
             if (m.role === 'assistant') return m.content || m.meta.tasks?.length ? (
-              <BotMessage key={m.id} bot={bot} m={m}>
-                {(m.meta.tasks || []).map((tid: number) => byId.get(tid) && <TaskCard key={tid} m={byId.get(tid)!} task={tasks[tid]} />)}
+              <BotMessage key={m.id} bot={speaker(m)} m={m} showName={group}>
+                {(m.meta.tasks || []).map(task)}
               </BotMessage>) : null
             const k = taskKind(m)
-            if (k.kind === 'dispatch') return attached.has(m.id) ? null : <TaskCard key={m.id} m={m} task={tasks[m.id]} />
-            if (k.kind === 'result') return <ResultMessage key={m.id} bot={bot} m={m}
+            if (k.kind === 'dispatch') return attached.has(m.id) ? null : task(m.id)
+            if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group}
               goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />
+            if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
             if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>新话题 · 之前的对话不再带进上下文，长期记忆还在</span></div>
             if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, '触发器 $1：').slice(0, 160)}</div>
             return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>
           })}
-          {stream && (
-            <div className="msg bot">
-              <BotAvatar avatar={bot.avatar} size={28} busy />
-              <div className="msg-body">
-                <Thinking text={stream.thinking} live={!stream.text} seconds={(Date.now() - stream.started) / 1000} />
-                {stream.text ? <Markdown text={stream.text + ' ▍'} /> : !stream.thinking && <div className="typing"><i /><i /><i /></div>}
+          {stream && (() => {
+            const who = group ? botOf(stream.bot_id) : bot
+            return (
+              <div className="msg bot">
+                {who && <BotAvatar avatar={who.avatar} size={28} busy />}
+                <div className="msg-body">
+                  <Speaker bot={who} show={group} />
+                  <Thinking text={stream.thinking} live={!stream.text} seconds={(Date.now() - stream.started) / 1000} />
+                  {stream.text ? <Markdown text={stream.text + ' ▍'} /> : !stream.thinking && <div className="typing"><i /><i /><i /></div>}
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
           {pending.map(a => <ApprovalCard key={a.id} a={a} />)}
+          {elsewhere.map(a => {
+            const b = botOf(a.bot_id)
+            return (
+              <div key={a.id} className="elsewhere">
+                <span>⚠ {b?.name} 的任务 #{a.task_id} {a.kind === 'help' ? '需要你帮忙' : '需要你确认'}，卡片在它的私聊里</span>
+                {b && <button className="btn" onClick={() => openChat(b.chat_id)}>去处理</button>}
+              </div>
+            )
+          })}
           {error && <div className="error-line">{error}</div>}
         </div>
       </div>
-      <Composer chatId={active} bot={bot} busy={!!stream} />
+      <Composer chatId={active} bot={bot} members={group ? members : []}
+        busy={stream ? (group ? botOf(stream.bot_id)?.name || '有人' : bot!.name) : ''} />
     </main>
   )
 }

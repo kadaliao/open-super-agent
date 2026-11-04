@@ -1,4 +1,6 @@
-"""Router：常驻会话，负责和用户对话、派发任务。自己不执行工具（对应 DeepSeek 设计里 Router 无 shell）。"""
+"""Router：常驻会话，负责和用户对话、派发任务。自己不执行工具（对应 DeepSeek 设计里 Router 无 shell）。
+
+一个 Bot 一个 Router，既在私聊里说话，也在它所在的群聊里说话；每一轮都明确是在哪个对话里。"""
 import asyncio
 import json
 import time
@@ -52,7 +54,27 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 {tasks}
 
 等待用户确认的写操作（用户在聊天里同意或拒绝时，调用 resolve_approval；意思不明确就先问清楚，不要替用户做决定）：
-{approvals}"""
+{approvals}{group}"""
+
+GROUP_PROMPT = """
+
+现在你在群聊「{title}」里，不是私聊。成员：
+{members}
+{lead}
+群聊规则：
+- 用户的消息没有标记；“【名字】”开头的是别的 Bot 的发言。你只代表你自己说话，不要替别的 Bot 回答，也不要模仿“【名字】”的格式。
+- 轮到你时只做和你有关的部分；别人负责的、或者用户点名给别人的，不要抢着做。
+- 要别的 Bot 接着做（比如你查完资料让擅长写作的 Bot 总结），用 handoff 交给它，说清楚要它做什么；
+  如果要等后台任务做完才能交接，在 dispatch 里填 handoff_to 和 handoff_note，任务结果会自动转给它，不用你再回来。
+- 你那部分要等别的 Bot 先做完时，简短说一句会接着做就行，不要重复别人的工作。
+- 交接给你的工作，直接做完并给出结果；需要查证就派任务。
+- 确认卡片和“接手电脑”的请求会出现在你和用户的私聊里，不在群里。"""
+
+HANDOFF = {"type": "function", "function": {"name": "handoff", "description": "在群聊里把工作交给另一个 Bot，它会马上接着做",
+    "parameters": {"type": "object", "properties": {
+        "to": {"type": "string", "description": "成员的名字"},
+        "request": {"type": "string", "description": "要它做什么，写完整（它能看到群里之前的消息）"}},
+        "required": ["to", "request"]}}}
 
 DIRECT_PC = {"computer_screenshot", "computer_click", "computer_type",
              "computer_key", "computer_scroll", "browser_open", "browser_snapshot", "browser_click",
@@ -62,7 +84,9 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
     {"type": "function", "function": {"name": "dispatch", "description": "派发后台任务",
         "parameters": {"type": "object", "properties": {
             "goal": {"type": "string", "description": "完整、自包含的任务描述"},
-            "mode": {"type": "string", "enum": ["single", "heavy"]}}, "required": ["goal"]}}},
+            "mode": {"type": "string", "enum": ["single", "heavy"]},
+            "handoff_to": {"type": "string", "description": "只在群聊里用：任务完成后把结果交给哪个成员接着做"},
+            "handoff_note": {"type": "string", "description": "交接时要对方做什么"}}, "required": ["goal"]}}},
     {"type": "function", "function": {"name": "save_skill", "description": "保存或覆盖一个技能（可复用的做事方法）",
         "parameters": {"type": "object", "properties": {
             "name": {"type": "string", "description": "简短的名字，用于 /名字 调用，不含空格"},
@@ -135,6 +159,7 @@ class Router:
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
         self.lock = asyncio.Lock()
+        self.chat: dict = {}              # 本轮在哪个对话里说话（_think 开始时设置）
 
     @property
     def bot(self) -> dict:
@@ -142,20 +167,22 @@ class Router:
 
     @property
     def chat_id(self) -> int:
+        """这个 Bot 的私聊。群聊里说话时用 self.chat（本轮所在的对话）。"""
         return self.bot["chat_id"]
 
     @property
     def tasks(self) -> dict[int, Task]:
         return {i: t for i, t in TASKS.items() if t.bot_id == self.bot_id}
 
-    async def emit(self, event: dict):
+    async def emit(self, event: dict, chat_id: int | None = None):
         if notify:
-            await notify({"chat_id": self.chat_id, "bot_id": self.bot_id} | event)
+            await notify({"chat_id": chat_id or self.chat_id, "bot_id": self.bot_id} | event)
 
-    async def add(self, role: str, content: str, **meta) -> int:
-        mid = memory.add(role, content, self.chat_id, self.bot_id, **meta)
+    async def add(self, role: str, content: str, chat_id: int | None = None, **meta) -> int:
+        cid = chat_id or self.chat_id
+        mid = memory.add(role, content, cid, self.bot_id, **meta)
         await self.emit({"type": "message", "message": {"id": mid, "ts": time.time(), "role": role,
-                         "content": content, "meta": meta, "bot_id": self.bot_id}})
+                         "content": content, "meta": meta, "bot_id": self.bot_id}}, cid)
         return mid
 
     def _over_budget(self) -> bool:
@@ -166,13 +193,19 @@ class Router:
         if hit := skills.parse(self.bot_id, text):
             meta = {"skill": hit[0]["name"], "skill_prompt": skills.expand(*hit)}
         await self.add("user", text, **meta)
+        await self.respond(self.chat_id)
+
+    async def respond(self, chat_id: int):
+        """在某个对话里说一轮话。群聊由 groups 决定轮到谁。"""
         async with self.lock:
-            await self._think()
+            await self._think(bots.chat(chat_id))
 
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
+        tools = ROUTER_TOOLS + ([HANDOFF] if self.chat["kind"] == "group" else [])
+        cid = self.chat["id"]
         stream = await client.chat.completions.create(
-            model=model, messages=msgs, stream=True, **({"tools": ROUTER_TOOLS} if use_tools else {}),
+            model=model, messages=msgs, stream=True, **({"tools": tools} if use_tools else {}),
             stream_options={"include_usage": True}, **call_kwargs("router"))
         content, reasoning, calls, usage = "", "", {}, None
         async for chunk in stream:
@@ -183,10 +216,10 @@ class Router:
             d = chunk.choices[0].delta
             if rc := getattr(d, "reasoning_content", None):
                 reasoning += rc
-                await self.emit({"type": "stream", "sid": sid, "thinking": rc})
+                await self.emit({"type": "stream", "sid": sid, "thinking": rc}, cid)
             if d.content:
                 content += d.content
-                await self.emit({"type": "stream", "sid": sid, "delta": d.content})
+                await self.emit({"type": "stream", "sid": sid, "delta": d.content}, cid)
             for tc in d.tool_calls or []:
                 c = calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
                 c["id"] = tc.id or c["id"]
@@ -196,18 +229,35 @@ class Router:
         memory.record_usage("router", model, usage)
         return content, reasoning, [calls[k] for k in sorted(calls)]
 
-    async def _think(self):
+    def _group_block(self, chat: dict) -> str:
+        if chat["kind"] != "group":
+            return ""
+        lines = []
+        for i in chat["bot_ids"]:
+            m = bots.get(i)
+            if m:
+                role = (m["instructions"] or "职责没写明，看群里的对话").replace("\n", " ")[:120]
+                lines.append(f"- {m['name']}{'（你）' if i == self.bot_id else ''}{'（协调者）' if i == chat['lead'] else ''}：{role}")
+        lead = ("你是这个群的协调者：用户没有 @ 任何人的消息由你接。能自己答就答；适合别人做的，用 handoff 分给对应的 Bot"
+                "（可以分给几个），再简短告诉用户谁在做什么。") if chat["lead"] == self.bot_id else \
+            "用户 @ 你、或者别的 Bot 把工作交给你时才轮到你。"
+        return GROUP_PROMPT.format(title=chat["title"], members="\n".join(lines), lead=lead)
+
+    async def _think(self, chat: dict):
         client, model = client_for("router")
         b = self.bot
+        self.chat = chat
+        cid = chat["id"]
         msgs = [{"role": "system", "content": ROUTER_PROMPT.format(
             name=b["name"], instructions=b["instructions"] or "你的具体职责以用户在对话里交代的为准。",
             date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), skills=skills.summary(self.bot_id),
             routines=self._routine_list(), capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id),
-            approvals=approvals.summary(self.bot_id))}] + memory.context(self.chat_id)
+            approvals=approvals.summary(self.bot_id), group=self._group_block(chat))}] \
+            + memory.context(cid, self.bot_id if chat["kind"] == "group" else None)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
         shown, thinking, shots = "", "", []
-        await self.emit({"type": "stream_start", "sid": sid})
+        await self.emit({"type": "stream_start", "sid": sid}, cid)
         try:
             for _ in range(10):
                 content, reasoning, calls = await self._stream(client, model, msgs, sid, started)
@@ -234,21 +284,50 @@ class Router:
                     shots = []
                 if shown and not shown.endswith("\n"):
                     shown += "\n\n"
-                    await self.emit({"type": "stream", "sid": sid, "delta": "\n\n"})
+                    await self.emit({"type": "stream", "sid": sid, "delta": "\n\n"}, cid)
             if not shown.strip():   # 工具轮数用完还没开口：关掉工具，逼它给一句回复
                 content, reasoning, _ = await self._stream(client, model, msgs, sid, started, use_tools=False)
                 shown, thinking = content, thinking + reasoning
         finally:
-            await self.emit({"type": "stream_end", "sid": sid})
-        await self.add("assistant", shown.strip(), reasoning=reasoning, thinking=thinking,
+            await self.emit({"type": "stream_end", "sid": sid}, cid)
+        await self.add("assistant", shown.strip(), cid, reasoning=reasoning, thinking=thinking,
                        thought_s=round(time.time() - started, 1), sid=sid, tasks=self._turn_tasks)
+
+    def _member(self, name: str) -> dict | None:
+        """群里按名字找成员（不区分大小写，去掉开头的 @）。"""
+        key = (name or "").strip().lstrip("@").lower()
+        for i in self.chat["bot_ids"]:
+            m = bots.get(i)
+            if m and m["name"].lower() == key:
+                return m
+        return None
+
     async def _tool(self, name: str, args: dict) -> str:
         if name == "dispatch":
             if self._over_budget():
                 return "今日 token 预算已用完，没有派发。请告诉用户。"
-            task = await self.dispatch(args["goal"], args.get("mode", "single"))
+            handoff = None
+            if args.get("handoff_to") and self.chat["kind"] == "group":
+                to = self._member(args["handoff_to"])
+                if not to or to["id"] == self.bot_id:
+                    return f"没派发：群里没有叫 {args['handoff_to']} 的其他成员"
+                handoff = {"to": to["id"], "note": args.get("handoff_note") or ""}
+                from . import groups
+                groups.expect(self.chat["id"], to["id"])
+            task = await self.dispatch(args["goal"], args.get("mode", "single"), chat_id=self.chat["id"], handoff=handoff)
             self._turn_tasks.append(task.id)
+            if handoff:
+                return f"已派发任务 #{task.id}，做完后结果会自动交给 {to['name']}"
             return f"已派发任务 #{task.id}"
+        if name == "handoff":
+            if self.chat["kind"] != "group":
+                return "handoff 只能在群聊里用"
+            to = self._member(args.get("to", ""))
+            if not to or to["id"] == self.bot_id:
+                return f"群里没有叫 {args.get('to')} 的其他成员"
+            from . import groups
+            await groups.handoff(self.chat["id"], self.bot_id, to["id"], args.get("request", ""))
+            return f"已交给 {to['name']}，你这轮说完它就接着做"
         if name == "save_skill":
             try:
                 s = skills.save(self.bot_id, args.get("name", ""), args.get("body", ""), args.get("description", ""), "chat")
@@ -292,7 +371,7 @@ class Router:
         if name == "resolve_approval":
             return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")))
         if name == "recall":
-            return memory.recall(args["id"], self.chat_id)
+            return memory.recall(args["id"], self.chat["id"])
         if name == "look_at_screen":
             return await self._look()
         if name in DIRECT_PC:
@@ -372,15 +451,17 @@ class Router:
         return "\n".join(lines)
 
     async def dispatch(self, goal: str, mode: str = "single", background: bool = False,
-                       on_done=None, label: str = "") -> Task:
-        """派一个后台任务。定时任务也走这里（background=True，确认卡片会过期）。"""
-        tid = await self.add("task", f"[任务已派发] {label + ' ' if label else ''}{goal}", kind="dispatch",
-                             mode=mode, status="running")
-        task = Task(id=tid, goal=goal, mode=mode, bot_id=self.bot_id, chat_id=self.chat_id,
-                    background=background, on_done=on_done)
+                       on_done=None, label: str = "", chat_id: int | None = None, handoff: dict | None = None) -> Task:
+        """派一个后台任务。定时任务也走这里（background=True，确认卡片会过期）。
+        chat_id 是任务卡片和结果出现的对话（默认私聊）；确认卡片总是发到私聊。"""
+        cid = chat_id or self.chat_id
+        tid = await self.add("task", f"[任务已派发] {label + ' ' if label else ''}{goal}", cid, kind="dispatch",
+                             mode=mode, status="running", **({"handoff_to": handoff["to"]} if handoff else {}))
+        task = Task(id=tid, goal=goal, mode=mode, bot_id=self.bot_id, chat_id=cid, approval_chat_id=self.chat_id,
+                    background=background, on_done=on_done, handoff=handoff)
         task.handle = asyncio.create_task(self._run(task))
         TASKS[tid] = task
-        await self.emit({"type": "task", "task": task.public()})
+        await self.emit({"type": "task", "task": task.public()}, cid)
         return task
 
     def _routine_list(self) -> str:
@@ -399,14 +480,20 @@ class Router:
                 memories.log_work(self.bot_id, task.id, task.goal)
         except asyncio.CancelledError:
             task.status = "cancelled"
+            if task.handoff:
+                from . import groups
+                groups.unexpect(task.chat_id, task.handoff["to"])
             await self._done(task)
             return
         except Exception as e:
             task.status, task.result = "failed", f"任务失败：{e}"
         memory.update_meta(task.id, status=task.status)
-        await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", kind="result", task_id=task.id,
+        await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", task.chat_id, kind="result", task_id=task.id,
                        status=task.status, elapsed=round(time.time() - task.started))
-        await self.emit({"type": "task", "task": task.public()})
+        await self.emit({"type": "task", "task": task.public()}, task.chat_id)
+        if task.handoff:
+            from . import groups
+            asyncio.create_task(groups.after_task(task))
         await self._done(task)
 
     async def _done(self, task: Task):
@@ -424,6 +511,6 @@ class Router:
         t.handle.cancel()
         t.status = "cancelled"
         memory.update_meta(tid, status="cancelled")
-        asyncio.create_task(self.add("task", f"[任务 #{tid} 已取消：{reason}]", kind="cancel", task_id=tid))
-        asyncio.create_task(self.emit({"type": "task", "task": t.public()}))
+        asyncio.create_task(self.add("task", f"[任务 #{tid} 已取消：{reason}]", t.chat_id, kind="cancel", task_id=tid))
+        asyncio.create_task(self.emit({"type": "task", "task": t.public()}, t.chat_id))
         return f"已取消 #{tid}"

@@ -31,6 +31,9 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 - **应用**：`PUT /api/apps/filesystem` 连接文件系统应用，再在对话里让 Bot 写文件，验证确认卡片和“总是允许”。
 - **记忆**：对 A 说“记住……”，`POST /api/chats/<id>/reset` 开新话题后再问 A；再问 B，B 只应该知道共享的事实。
   `GET /api/bots/<id>/memories` 看记下了什么。
+- **群聊**：`POST /api/groups {"bot_ids":[1,2]}` 建群，然后通过 WebSocket 往群的 chat_id 发
+  “@A 查……，查完交给 @B 写总结”，应该看到 A 派任务（带 handoff_to）、B 不抢话、任务结果出来后出现交接记录、B 写出总结。
+  再让 A 派一个要 `ask_approval` 的任务，确认卡片应该出现在 A 的私聊里（`chat_id` 是私聊，`origin_chat_id` 是群）。
 - **资料库**：让 Bot 把结果做成页面，`GET /api/pages` 看列表；HTML 页面在沙箱 iframe 里，
   可以写一个会 `fetch('/api/bootstrap')` 的探针页，确认请求被 CSP 拦下。
 

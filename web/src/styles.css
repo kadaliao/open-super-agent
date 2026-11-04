@@ -340,3 +340,30 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .file-actions { opacity: 1; }
   .lib-body { padding: 12px 12px 30px; }
 }
+
+/* ---------- 群聊 ---------- */
+.group-avatars { position: relative; display: inline-block; height: 26px; flex: none; }
+.group-avatars > span { position: absolute; top: 0; border-radius: 50%; }
+.group-avatars .bot-avatar { filter: drop-shadow(0 0 1.5px var(--bg)); }
+.ci-group { width: 34px; display: flex; align-items: center; justify-content: center; flex: none; }
+.ci-group .group-avatars { height: 24px; }
+.ci-count { font-size: 11px; color: var(--fg3); font-weight: 500; }
+.welcome .group-avatars { height: 56px; margin: 0 auto; display: block; }
+.speaker { font-size: 12.5px; font-weight: 600; color: var(--fg2); margin-bottom: 2px; }
+.handoff { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 14px 0 14px 40px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; font-size: 13px; }
+.handoff b { font-weight: 600; }
+.handoff-text { flex-basis: 100%; color: var(--fg2); }
+.elsewhere { display: flex; align-items: center; gap: 10px; margin: 12px 0 12px 40px; padding: 9px 12px; border: 1px solid var(--warn); border-radius: 12px; font-size: 13.5px; }
+.elsewhere span { flex: 1; }
+.bot-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.bot-picker button { display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 6px; border: 1px solid var(--line); border-radius: 20px; font-size: 13.5px; }
+.bot-picker button:hover:not(:disabled) { background: var(--bg2); }
+.bot-picker button.on { border-color: var(--fg2); background: var(--bg2); }
+.bot-picker.compact button { font-size: 13px; }
+.check-mark { color: var(--good); font-weight: 700; }
+.member { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.member-main { flex: 1; min-width: 0; }
+.member-main .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-actions { display: flex; flex-direction: column; align-items: flex-end; }
+@media (max-width: 760px) { .handoff, .elsewhere { margin-left: 0; } }
+.link-btn { color: var(--link); } .link-btn:hover { text-decoration: underline; }

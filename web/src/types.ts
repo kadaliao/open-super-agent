@@ -5,7 +5,7 @@ export type Bot = {
 }
 export type Chat = {
   id: number; kind: 'direct' | 'group'; title: string; bot_ids: number[]
-  pinned: boolean; updated: number; preview: string
+  pinned: boolean; updated: number; preview: string; lead: number | null   // lead：群聊的协调者
 }
 export type Message = {
   id: number; ts: number; role: 'user' | 'assistant' | 'task'; content: string
@@ -19,10 +19,10 @@ export type ComputerState = {
   bot_id: number; backend: string; controller: 'bot' | 'human'; state: string; detail: string; width: number; height: number
 }
 export type Approval = {
-  id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; tool: string; goal: string
+  id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
   args: string; ts: number; expires?: number | null; status?: string; always?: boolean
 }
-export type Stream = { sid: string; text: string; thinking: string; started: number }
+export type Stream = { sid: string; text: string; thinking: string; started: number; bot_id: number }
 export type Settings = {
   providers: { name: string; base_url: string; key_env: string; key_set: boolean }[]
   roles: Record<string, { provider: string; model: string; thinking?: boolean; reasoning_effort?: string }>

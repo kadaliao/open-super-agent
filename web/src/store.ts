@@ -154,7 +154,7 @@ function handle(d: any) {
       break
     }
     case 'stream_start':
-      set(s => ({ streams: { ...s.streams, [cid]: { sid: d.sid, text: '', thinking: '', started: Date.now() } } }))
+      set(s => ({ streams: { ...s.streams, [cid]: { sid: d.sid, text: '', thinking: '', started: Date.now(), bot_id: d.bot_id } } }))
       break
     case 'stream':
       set(s => {
@@ -207,5 +207,10 @@ function notifyOS(chatId: number, m: Message | null, text?: string) {
 export const botById = (id: number | null | undefined) => state.bots.find(b => b.id === id)
 export const botForChat = (s: State, chatId: number | null) => {
   const c = s.chats.find(x => x.id === chatId)
-  return c ? s.bots.find(b => b.id === c.bot_ids[0]) : undefined
+  return c && c.kind === 'direct' ? s.bots.find(b => b.id === c.bot_ids[0]) : undefined
+}
+export const chatById = (s: State, chatId: number | null) => s.chats.find(x => x.id === chatId)
+export const membersOf = (s: State, chatId: number | null) => {
+  const c = chatById(s, chatId)
+  return c ? c.bot_ids.map(i => s.bots.find(b => b.id === i)).filter((b): b is Bot => !!b) : []
 }

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { openChat, openLibrary, useStore } from '../store'
 import BotAvatar from './BotAvatar'
+import { GroupAvatars } from './Chat'
 
 // 侧栏预览：去掉任务标记和 Markdown 符号
 const plain = (t: string) => t === '[新话题]' ? '— 新话题 —' : t.replace(/^\[[^\]]+\]\s*/, '').replace(/[#*`>_~|]+/g, '').replace(/\s+/g, ' ').trim()
 
-export default function Sidebar({ onNewBot, onSettings, onClose }: { onNewBot: () => void; onSettings: () => void; onClose: () => void }) {
+export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: { onNewBot: () => void; onNewGroup: () => void; onSettings: () => void; onClose: () => void }) {
   const chats = useStore(s => s.chats)
   const bots = useStore(s => s.bots)
   const active = useStore(s => s.active)
@@ -25,7 +26,7 @@ export default function Sidebar({ onNewBot, onSettings, onClose }: { onNewBot: (
           {menu && (
             <div className="menu" onMouseLeave={() => setMenu(false)}>
               <button onClick={() => { setMenu(false); onNewBot() }}>新建 Bot</button>
-              <button disabled title="后续版本">新建群聊<span className="soon">即将推出</span></button>
+              <button onClick={() => { setMenu(false); onNewGroup() }}>新建群聊</button>
             </div>
           )}
         </div>
@@ -35,16 +36,19 @@ export default function Sidebar({ onNewBot, onSettings, onClose }: { onNewBot: (
       </button>
       <nav className="chat-list">
         {chats.map(c => {
-          const bot = bots.find(b => b.id === c.bot_ids[0])
-          if (!bot) return null
+          const group = c.kind === 'group'
+          const members = c.bot_ids.map(i => bots.find(b => b.id === i)).filter((b): b is NonNullable<typeof b> => !!b)
+          const bot = group ? undefined : members[0]
+          if (!group && !bot) return null
           const busy = Object.values(tasks).some(t => t.chat_id === c.id && t.status === 'running')
           const needs = Object.values(approvals).some(a => a.chat_id === c.id && a.status === 'pending')
+          const away = group && Object.values(approvals).some(a => a.origin_chat_id === c.id && a.status === 'pending')
           return (
             <button key={c.id} className={'chat-item' + (c.id === active && view === 'chat' ? ' active' : '')} onClick={() => { openChat(c.id); onClose() }}>
-              <BotAvatar avatar={bot.avatar} size={34} busy={busy} />
+              {group ? <span className="ci-group"><GroupAvatars bots={members} size={24} /></span> : <BotAvatar avatar={bot!.avatar} size={34} busy={busy} />}
               <div className="ci-text">
-                <div className="ci-name">{bot.name}{bot.is_primary && <span className="star">★</span>}</div>
-                <div className="ci-preview">{needs ? '⚠ 等你确认' : plain(c.preview) || '新的 Bot'}</div>
+                <div className="ci-name">{group ? c.title : bot!.name}{bot?.is_primary && <span className="star">★</span>}{group && <span className="ci-count">{members.length}</span>}</div>
+                <div className="ci-preview">{needs ? '⚠ 等你确认' : away ? '⚠ 有 Bot 等你确认（在私聊里）' : plain(c.preview) || (group ? '新的群聊' : '新的 Bot')}</div>
               </div>
               {needs ? <span className="badge warn">!</span> : unread[c.id] ? <span className="badge">{unread[c.id]}</span> : null}
             </button>
