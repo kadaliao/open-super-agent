@@ -58,7 +58,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
     setBusy('')
   }
   useEffect(() => {
-    const h = (e: Event) => { if ((e as CustomEvent).detail === botId) act('takeover') }
+    const h = (e: Event) => { if ((e as CustomEvent).detail === botId) { act('takeover'); setBig(true) } }
     window.addEventListener('osa-takeover', h)
     return () => window.removeEventListener('osa-takeover', h)
   }, [botId])
@@ -89,7 +89,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
           </> : <>
             <span className="muted small">{task?.last_action ? `Bot：${task.last_action}` : 'Bot 控制中（你只能看）'}</span>
             <span className="grow" />
-            <button className="btn" onClick={() => act('takeover')}>接手</button>
+            <button className="btn" onClick={() => { act('takeover'); setBig(true) }}>接手</button>
             <button className="btn" disabled={!!busy} onClick={() => act('pause')}>暂停</button>
           </>}
         </div>
