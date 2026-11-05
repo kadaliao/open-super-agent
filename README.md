@@ -57,7 +57,7 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 ```
 
 > [!WARNING]
-> 页面目前**没有登录鉴权**，只能在本机或内网（例如 Tailscale）使用，不要暴露到公网。详见 [SECURITY.md](SECURITY.md)。
+> 默认**不用登录**，只能在本机或内网（例如 Tailscale）使用。要部署到公网，先设置 `OSA_PASSWORD` 打开登录，再用 HTTPS 访问，见 [配置 → 部署到公网服务器](docs/configuration.md#部署到公网服务器) 和 [SECURITY.md](SECURITY.md)。
 
 ## 文档
 

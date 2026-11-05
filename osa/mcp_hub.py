@@ -150,7 +150,8 @@ async def _changed():
 async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event):
     """一个应用的整个生命周期：连上、登记工具、等停用信号、清理。"""
     try:
-        env = {**os.environ, **_env(name, a)}
+        # 登录密码不交给第三方应用
+        env = {**{k: v for k, v in os.environ.items() if k != "OSA_PASSWORD"}, **_env(name, a)}
         if name == "filesystem" or "server-filesystem" in " ".join(a.get("args", [])):
             WORKSPACE.mkdir(parents=True, exist_ok=True)
         params = StdioServerParameters(command=a["command"], args=a.get("args", []), env=env)

@@ -24,12 +24,13 @@ type State = {
   libraryPage: number | null         // 资料库里打开的页面
   teach: Teach | null                // 正在“演示一遍”的录制
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
+  auth: boolean                      // 服务端开了登录（设置了 OSA_PASSWORD）
 }
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
   active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], skills: {},
-  view: 'chat', libraryPage: null, teach: null, teachDraft: null,
+  view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false,
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -47,12 +48,18 @@ export function useStore<T>(sel: (s: State) => T): T {
 }
 
 // ---------- REST ----------
+// 登录过期：回登录页，登录后回到现在的位置
+export function toLogin() {
+  location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search)
+}
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: any } = {}): Promise<T> {
   const r = await fetch(path, {
     method: opts.method || 'GET',
     headers: opts.body ? { 'content-type': 'application/json' } : undefined,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   })
+  if (r.status === 401 && !path.startsWith('/api/shared/')) toLogin()
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(data.detail || `请求失败（${r.status}）`)
   return data
@@ -70,7 +77,7 @@ export async function bootstrap() {
   const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
-        tasks, approvals, apps: b.apps || [], teach: b.teach || null, ready: true })
+        tasks, approvals, apps: b.apps || [], teach: b.teach || null, auth: !!b.auth, ready: true })
   if (active) openChat(active)
 }
 
@@ -130,7 +137,12 @@ document.addEventListener('visibilitychange', reportVisibility)
 export function connect() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws')
   ws.onopen = () => { set({ connected: true }); reportVisibility(); if (state.ready) resync() }
-  ws.onclose = () => { set({ connected: false }); setTimeout(connect, 1500) }
+  ws.onclose = () => {
+    set({ connected: false })
+    // WebSocket 被拒时拿不到状态码：问一下接口，没登录的话 api() 会跳去登录页
+    if (state.auth) api('/api/me').catch(() => {})
+    setTimeout(connect, 1500)
+  }
   ws.onmessage = e => handle(JSON.parse(e.data))
 }
 

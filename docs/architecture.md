@@ -35,6 +35,7 @@
 ```
 osa/
   server.py        HTTP / WebSocket 入口、REST 接口、VNC 桥、前端静态文件
+  auth.py          登录（OSA_PASSWORD）：登录页、签名 cookie、拦截未登录的请求和 WebSocket、跨站请求检查
   router.py        Bot 的常驻会话：提示词、流式输出、Router 工具；每一轮都明确在哪个对话（私聊或群聊）里
   groups.py        群聊：解析 @、协调者、handoff 队列、任务做完自动交接、每轮发言上限
   teach.py         演示一遍：开始 / 结束录制、把录到的事件排成步骤、让模型写技能草稿

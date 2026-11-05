@@ -8,6 +8,7 @@
 | 变量 | 必需 | 用途 |
 |---|---|---|
 | `DEEPSEEK_API_KEY` | 默认配置下必需 | 模型提供方的 key；换用别的提供方时，改 `providers.*.api_key_env` |
+| `OSA_PASSWORD` | 部署到公网时必需 | 登录密码，设置后要先登录才能用；不设置则不用登录，只适合本机或内网 |
 | `INSTABOX_API_KEY` | 否 | 设置后，电脑改用 Instabox 云主机 |
 | `NOTION_TOKEN` | 否 | Notion MCP 应用 |
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
@@ -126,6 +127,16 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 “从其他助手导入”用 `filter` 角色的模型把粘贴的内容拆成条目，费用记在这个角色下。
 `memory.inline_messages` 仍然控制对话里留在上下文的消息条数；点“新话题”之后从零算起。
 
+## 登录
+
+设置环境变量 `OSA_PASSWORD` 后，打开页面会先要求输入密码。登录保持 30 天，期间用着会自动续期；设置 → 右上角“退出登录”。
+
+- 不用登录就能访问的只有：登录页、分享链接（`/s/<token>`）、webhook（`/hooks/*`，用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
+- 同一个 IP 10 分钟内输错 5 次，之后 10 分钟内不能再登录。
+- 会话签名用的密钥在 `data/session.key`（权限 600）。改密码或删掉这个文件，所有设备都要重新登录。
+- 放在反向代理（Caddy、nginx）后面时，启动 uvicorn 要加 `--proxy-headers --forwarded-allow-ips 127.0.0.1`，
+  这样限速按真实 IP 计算，cookie 也会带上 `Secure`。
+
 ## 远程访问（Tailscale）
 
 服务只监听本机，由 Tailscale 提供 HTTPS：
@@ -136,3 +147,29 @@ tailscale serve --bg --https=8443 8765     # 访问 https://<机器名>.<tailnet
 ```
 
 如果改用 `--host 0.0.0.0` 直接访问，地址必须写 `http://`。浏览器自动升级成 https 时，服务端会报 `Invalid HTTP request`。
+
+## 部署到公网服务器
+
+先设置 `OSA_PASSWORD`。服务仍然只监听本机，由 Caddy 之类的反向代理提供 HTTPS：
+
+```bash
+OSA_PASSWORD=... uv run uvicorn osa.server:app --host 127.0.0.1 --port 8765 --proxy-headers --forwarded-allow-ips 127.0.0.1
+```
+
+```caddyfile
+osa.example.com {
+	reverse_proxy 127.0.0.1:8765 {
+		flush_interval -1   # 回复是流式输出的，不要缓冲
+	}
+}
+```
+
+服务器内存小或者不想装 Docker 时，电脑用 Instabox：设置 `INSTABOX_API_KEY`，并把 `computer.backend` 写成 `instabox`。
+
+应用（MCP）里用 `npx` 的（文件系统、GitHub、Notion）要装 Node ≥ 20，用 `uvx` 的（网页抓取）要装 uv。
+Ubuntu 18.04 这类 glibc 低于 2.28 的系统跑不了官方的 Node，可以用 [unofficial-builds](https://unofficial-builds.nodejs.org/download/release/) 里的 `linux-x64-glibc-217` 版本。
+用 systemd 运行时，服务的 PATH 里默认没有这些命令所在的目录，要在 unit 里写上，例如：
+
+```ini
+Environment=HOME=/root PATH=/opt/node/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+```

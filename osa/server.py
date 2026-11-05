@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from . import approvals, bots, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import approvals, auth, bots, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
 from . import settings, skills, teach, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
@@ -47,6 +47,8 @@ worker_mod.PAGES_CHANGED = _pages_changed
 
 @asynccontextmanager
 async def lifespan(app):
+    if not auth.enabled():
+        print("未设置 OSA_PASSWORD：网页不用登录就能访问，只能在本机或内网使用", flush=True)
     bots.ensure_default()
     settings.apply()
     routines.import_legacy(bots.primary()["id"])
@@ -59,6 +61,8 @@ async def lifespan(app):
     await mcp_hub.stop()
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(auth.AuthMiddleware)
+app.include_router(auth.router)
 
 
 def _err(e: Exception):
@@ -72,7 +76,7 @@ async def bootstrap():
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
-            "apps": mcp_hub.public(), "teach": teach.public()}
+            "apps": mcp_hub.public(), "teach": teach.public(), "auth": auth.enabled()}
 
 
 @app.post("/api/bots")
@@ -892,8 +896,8 @@ if (DIST / "assets").exists():
 
 @app.get("/{path:path}")
 async def spa(path: str):
-    f = DIST / path
-    if path and f.is_file():
+    f = (DIST / path).resolve()
+    if path and f.is_relative_to(DIST.resolve()) and f.is_file():   # 不让 ../ 读到 dist 外面的文件
         return FileResponse(f)
     index = DIST / "index.html"
     if not index.exists():

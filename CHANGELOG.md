@@ -3,6 +3,14 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+### 新增
+- **登录**：设置环境变量 `OSA_PASSWORD` 后，页面、接口和 WebSocket 都要先登录（分享链接、webhook 除外）。登录保持 30 天并自动续期，
+  设置里可以退出登录；同一个 IP 输错 5 次暂停 10 分钟；开启后拒绝跨站的写请求和 WebSocket。不设置时和以前一样不用登录
+- 文档：部署到公网服务器（反向代理 + 登录 + Instabox + 应用需要的 Node 和 uv）
+
+### 修复
+- 前端兜底路由可以用 `../` 读到项目目录里的任意文件（包括 `data/osa.db` 和 `data/vault.key`），现在只返回前端构建目录里的文件
+- 启动应用（MCP）时不再把 `OSA_PASSWORD` 传给应用进程
 
 ## [0.3.0] - 2026-11-04
 ### 新增

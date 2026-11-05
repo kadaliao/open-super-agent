@@ -15,13 +15,16 @@ const LIMIT_NAMES: Record<string, [string, string]> = {
 
 export default function Settings({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState('models')
+  const auth = useStore(s => s.auth)
   return (
     <div className="modal-bg" onMouseDown={onClose}>
       <div className="modal wide" onMouseDown={e => e.stopPropagation()}>
         <div className="modal-tabs">
           {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['apps', '应用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务'], ['notify', '通知']].map(([k, v]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{v}</button>)}
-          <span className="grow" /><button className="icon-btn" onClick={onClose}>✕</button>
+          <span className="grow" />
+          {auth && <form method="post" action="/logout"><button className="btn small" type="submit">退出登录</button></form>}
+          <button className="icon-btn" onClick={onClose}>✕</button>
         </div>
         <div className="modal-content">
           {tab === 'models' && <Models />}

@@ -49,7 +49,7 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 ```
 
 > [!WARNING]
-> There is no authentication yet. Run it on localhost or a private network such as Tailscale only. See [SECURITY.md](SECURITY.md).
+> Login is off by default, so run it on localhost or a private network such as Tailscale. To put it on the public internet, set `OSA_PASSWORD` to turn on login and serve it over HTTPS. See [SECURITY.md](SECURITY.md).
 
 ## Documentation
 

@@ -178,6 +178,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .modal-tabs { display: flex; gap: 4px; align-items: center; padding: 12px 12px 0 16px; border-bottom: 1px solid var(--line); }
 .modal-tabs > button:not(.icon-btn) { padding: 8px 12px; color: var(--fg2); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .modal-tabs > button.on { color: var(--fg); border-color: var(--fg); }
+.modal-tabs > form { flex: none; } .modal-tabs > form .btn { padding: 4px 10px; white-space: nowrap; }
 .modal-content { flex: 1; overflow-y: auto; padding: 18px 22px; }
 .modal-content h4 { margin: 18px 0 8px; font-size: 13px; color: var(--fg2); }
 .providers { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; }
