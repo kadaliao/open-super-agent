@@ -1,0 +1,17 @@
+title: 钉钉日志
+category: tasks
+order: 70
+by: 钉钉官方
+icon: {glyph: notebook, color: '#0089FF'}
+desc: 帮你写日报、周报，查看日志
+about: 钉钉官方的连接。用钉钉扫码登录授权后，Bot 能读取日志模板和你提交过的日志，按模板帮你写日报、周报。
+can:
+- 读取日志模板
+- 查看提交过的日志
+- 按模板写日报、周报
+example: '@dingtalk-report 按今天做的事帮我写一篇日报，先给我看看再提交'
+note: 要用加入了企业或组织的钉钉账号登录。
+connect:
+  type: http
+  url: https://mcp-gw.dingtalk.com/oauth/server/report
+  oauth: true

@@ -1,0 +1,17 @@
+title: 钉钉文档
+category: notes
+order: 45
+by: 钉钉官方
+icon: {glyph: doc, color: '#0089FF'}
+desc: 查找和新建钉钉文档
+about: 钉钉官方的连接。用钉钉扫码登录授权后，Bot 能找到你有权限看的钉钉文档，也能新建文档、把整理好的内容写进去。
+can:
+- 按标题和关键词找文档
+- 新建文档，写入整理好的内容
+example: '@dingtalk-doc 把这周的会议纪要整理成一篇钉钉文档'
+deny: [delete, permission, transfer_owner, revert]
+note: 要用加入了企业或组织的钉钉账号登录。
+connect:
+  type: http
+  url: https://mcp-gw.dingtalk.com/oauth/server/doc
+  oauth: true

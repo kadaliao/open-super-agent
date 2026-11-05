@@ -1,0 +1,27 @@
+title: 快递100
+category: life
+order: 30
+by: 快递100官方
+icon: {glyph: package, color: '#FF6A00'}
+desc: 查快递到哪了，估运费和送达时间
+about: 快递100官方的连接。Bot 能按单号查快递的物流轨迹（不知道是哪家快递也能自动识别），估算寄件运费和预计送达时间。只能查，不能下单寄件。
+can:
+- 按单号查物流轨迹，自动识别快递公司
+- 估算寄件运费
+- 估算预计送达时间
+example: '@kuaidi100 帮我查一下这个单号到哪了：SF1234567890123'
+steps:
+- 在快递100 API 开放平台注册账号（表单要填企业名称和手机号）
+- 登录后点右上角「管理后台」
+- 在「授权参数」里找到「授权key」，点旁边的眼睛图标显示出来，复制粘贴到下面（不是 customer）
+link: https://api.kuaidi100.com/register
+link_label: 打开快递100 API 开放平台
+note: 注册后有免费试用额度，用完要充值。
+fields:
+- key: key
+  label: 授权key
+  secret: true
+  nospace: true
+connect:
+  type: http
+  url: https://api.kuaidi100.com/mcp/streamable?key={key}

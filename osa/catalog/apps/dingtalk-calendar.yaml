@@ -1,0 +1,17 @@
+title: 钉钉日历
+category: mail
+order: 40
+by: 钉钉官方
+icon: {glyph: calendar, color: '#0089FF'}
+desc: 查日程、建日程、约空闲会议室
+about: 钉钉官方的连接。用钉钉扫码登录授权后，Bot 能查看你的日程，帮你创建日程，还能找空闲的会议室预约下来。
+can:
+- 查看今天、本周的日程
+- 创建日程
+- 找空闲的会议室并预约
+example: '@dingtalk-calendar 明天下午找个空闲会议室，约产品组开半小时周会'
+note: 要用加入了企业或组织的钉钉账号登录。
+connect:
+  type: http
+  url: https://mcp-gw.dingtalk.com/oauth/server/calendar
+  oauth: true

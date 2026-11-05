@@ -1,0 +1,55 @@
+title: Slack
+category: tasks
+order: 80
+by: Slack 官方
+icon: {glyph: hash, color: '#4A154B'}
+how: 建一个 Slack 应用后登录
+desc: 搜消息、读频道和讨论串，替你发消息
+about: Slack 官方的连接。Slack 不支持自动注册，要先在 Slack 后台建一个只给自己工作区用的应用（约 3 分钟），之后用自己的 Slack 账号登录授权。Bot 能搜索消息和文件、读频道和讨论串、看画布，替你发消息、建画布；发送前会先问你。
+can:
+- 搜索消息、文件和成员
+- 读频道、讨论串和私信
+- 发消息、建画布（先问你）
+example: '@slack 看看 #产品 频道今天讨论了什么，整理成三条要点'
+steps:
+- 打开 Slack 应用后台，点「Create New App」→「From a manifest」，选你的工作区
+- 把下面这段配置整段复制进去，替换掉原来的内容，点「Next」→「Create」
+- 在应用左侧「Agents」里找到「Slack Model Context Protocol (MCP) Server」，打开开关
+- 左侧「Basic Information」→「App Credentials」，把 Client ID 和 Client Secret 复制到下面
+link: https://api.slack.com/apps
+link_label: 打开 Slack 应用后台
+copy:
+  label: 应用配置（App Manifest）
+  text: |-
+    {
+      "display_information": {"name": "Super Agent"},
+      "oauth_config": {
+        "redirect_urls": ["{callback}"],
+        "scopes": {"user": [
+          "search:read.public", "search:read.private", "search:read.im", "search:read.mpim",
+          "search:read.files", "search:read.users", "channels:history", "groups:history",
+          "im:history", "mpim:history", "channels:read", "groups:read", "im:read", "mpim:read",
+          "users:read", "users:read.email", "files:read", "canvases:read", "canvases:write", "chat:write"
+        ]}
+      },
+      "settings": {"org_deploy_enabled": false, "socket_mode_enabled": false, "token_rotation_enabled": false}
+    }
+note: 不要开启公开分发（Manage Distribution），只给自己的工作区用。工作区限制了第三方应用的话，要管理员批准。
+fields:
+- key: client_id
+  label: Client ID
+  nospace: true
+  pattern: ^\d+\.\d+$
+  invalid: Client ID 是两串数字中间一个点，在「App Credentials」里
+- key: client_secret
+  label: Client Secret
+  secret: true
+  nospace: true
+confirm: [send, schedule_message, create, add_, update, upload]
+connect:
+  type: http
+  url: https://mcp.slack.com/mcp
+  oauth:
+    client_id: '{client_id}'
+    client_secret: '{client_secret}'
+    scope: search:read.public search:read.private search:read.im search:read.mpim search:read.files search:read.users channels:history groups:history im:history mpim:history channels:read groups:read im:read mpim:read users:read users:read.email files:read canvases:read canvases:write chat:write

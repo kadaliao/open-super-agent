@@ -1,9 +1,11 @@
 """应用（MCP server）：在应用市场里添加、启用和停用，工具交给 Worker 使用。
 
-两种连接方式：
+三种连接方式：
 - stdio：在本机启动一个进程（npx / uvx / 可执行文件）。
 - http：连远程地址（Streamable HTTP）。可以在请求头里带 token，也可以走 OAuth：
   用户在弹窗里登录授权，客户端用动态注册（DCR）自己拿 client_id，令牌加密存进保险库，过期自动刷新。
+  不支持动态注册的（比如 Slack），oauth 里写用户自己建的 client_id / client_secret。
+- sse：旧版的远程协议（HTTP + SSE），只提供这种地址的服务（百度网盘）用。请求头和 OAuth 和 http 一样。
 
 应用配置存在数据库里；第一次启动时从 config.yaml 的 mcp_servers 导入。
 工具名格式为 <应用名>__<工具>。deny 列表里的词出现在工具名中时，这个工具不开放。
@@ -18,11 +20,12 @@ import logging
 import os
 import re
 import time
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse
 import httpx2
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.auth import OAuthClientProvider
 from mcp.client.auth import oauth2 as _oauth2, utils as _auth_utils
+from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
@@ -143,9 +146,11 @@ def save(name: str, data: dict) -> dict:
         raise ValueError("应用名只能用小写字母、数字、- 和 _，以字母开头，最多 24 个字符")
     old = get(name) or {}
     cfg = {k: old[k] for k in KEYS if k in old} | {k: data[k] for k in KEYS if k in data}
+    if data.get("oauth") is True and isinstance(old.get("oauth"), dict):
+        cfg["oauth"] = old["oauth"]     # 自定义编辑器只知道开或关，保留清单里写的客户端和 scope
     cfg.setdefault("deny", [])
     cfg.setdefault("confirm", "auto")
-    if cfg.get("type", "stdio") == "http":
+    if cfg.get("type", "stdio") in ("http", "sse"):
         cfg["url"] = (cfg.get("url") or "").strip()
         if not cfg["url"]:
             raise ValueError("缺少应用地址")
@@ -210,10 +215,11 @@ def _env(a: dict) -> dict:
 
 # ---------- OAuth ----------
 class _Storage:
-    """令牌和动态注册得到的 client 信息，整个存成保险库里的一条（加密）。"""
+    """令牌和动态注册得到的 client 信息，整个存成保险库里的一条（加密）。
+    client：用户自己建的 OAuth 客户端，不用注册，也不用存。"""
 
-    def __init__(self, name: str, redirect: str):
-        self.key, self.redirect = oauth_key(name), redirect
+    def __init__(self, name: str, redirect: str, client: OAuthClientInformationFull | None = None):
+        self.key, self.redirect, self.client = oauth_key(name), redirect, client
 
     def load(self) -> dict:
         raw = vault.get(self.key)
@@ -234,6 +240,8 @@ class _Storage:
         self._put(tokens=tokens.model_dump(mode="json", exclude_none=True), expires_at=exp)
 
     async def get_client_info(self):
+        if self.client:
+            return self.client
         c = self.load().get("client")
         if not c:
             return None
@@ -244,12 +252,33 @@ class _Storage:
         return info
 
     async def set_client_info(self, info):
-        self._put(client=info.model_dump(mode="json", exclude_none=True))
+        if not self.client:
+            self._put(client=info.model_dump(mode="json", exclude_none=True))
+
+
+async def _tidy_token(r: httpx2.Response) -> httpx2.Response:
+    """Slack 的令牌接口出错也回 200（{"ok": false, "error": …}），令牌类型写的是 user，
+    其实就是放进 Bearer 请求头的令牌。SDK 只认 Bearer，这里先整理一下。"""
+    if r.status_code != 200:
+        return r
+    body = await r.aread()
+    try:
+        d = json.loads(body)
+    except ValueError:
+        return r
+    if not isinstance(d, dict):
+        return r
+    if d.get("ok") is False:
+        return httpx2.Response(400, content=body, request=r.request)
+    if isinstance(d.get("token_type"), str) and d["token_type"].lower() != "bearer":
+        return httpx2.Response(200, json=d | {"token_type": "Bearer"}, request=r.request)
+    return r
 
 
 class _Provider(OAuthClientProvider):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, scope: str | None = None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.scope = scope
         prepare = self.context.prepare_token_auth
 
         def prepare_token_auth(data, headers=None):
@@ -261,6 +290,18 @@ class _Provider(OAuthClientProvider):
             return data, headers
 
         self.context.prepare_token_auth = prepare_token_auth
+
+    async def _perform_authorization(self):
+        # SDK 会把 scope 换成对方公布的全部权限（Slack 有 30 个，连发消息都在里面），清单里写了就只要这些
+        if self.scope:
+            self.context.client_metadata.scope = self.scope
+        return await super()._perform_authorization()
+
+    async def _handle_token_response(self, response):
+        return await super()._handle_token_response(await _tidy_token(response))
+
+    async def _handle_refresh_response(self, response):
+        return await super()._handle_refresh_response(await _tidy_token(response))
 
     async def _initialize(self):
         await super()._initialize()
@@ -328,6 +369,19 @@ def has_tokens(name: str) -> bool:
 
 def _oauth(name: str, a: dict, url: str) -> _Provider:
     redirect = a.get("oauth_redirect") or ""
+    redirect_uris = [redirect or "http://127.0.0.1/oauth/callback"]
+    o = a["oauth"] if isinstance(a.get("oauth"), dict) else {}
+    client = None
+    if o.get("client_id"):
+        missing: list = []
+        client_id = _resolve(o["client_id"], missing)
+        secret = _resolve(o["client_secret"], missing) if o.get("client_secret") else None
+        if missing:
+            raise ValueError(f"缺少密钥：{', '.join(missing)}")
+        client = OAuthClientInformationFull(
+            client_id=client_id, client_secret=secret, redirect_uris=redirect_uris,
+            grant_types=["authorization_code", "refresh_token"], response_types=["code"],
+            token_endpoint_auth_method="client_secret_post" if secret else "none")
 
     async def on_redirect(auth_url: str):
         w = _login.get(name)
@@ -335,7 +389,10 @@ def _oauth(name: str, a: dict, url: str) -> _Provider:
             _needs_login.add(name)
             raise NeedsLogin("需要重新登录授权")
         head, sep, query = auth_url.partition("?")
-        auth_url = head + sep + query.replace("?", "&")   # 授权地址本身带参数时（腾讯文档），SDK 会拼出两个 ?
+        query = query.replace("?", "&")                    # 授权地址本身带参数时（腾讯文档），SDK 会拼出两个 ?
+        if o.get("params"):                                # 比如 Google 要 access_type=offline 才给刷新令牌
+            query = urlencode(dict(parse_qsl(query, keep_blank_values=True)) | o["params"])
+        auth_url = head + sep + query
         state_ = parse_qs(urlparse(auth_url).query).get("state", [""])[0]
         _states[state_] = name
         w["state"] = state_
@@ -353,9 +410,9 @@ def _oauth(name: str, a: dict, url: str) -> _Provider:
         finally:
             _states.pop(w.get("state", ""), None)
 
-    meta = OAuthClientMetadata(client_name="Open Super Agent", redirect_uris=[redirect or "http://127.0.0.1/oauth/callback"],
+    meta = OAuthClientMetadata(client_name="Open Super Agent", redirect_uris=redirect_uris,
                                grant_types=["authorization_code", "refresh_token"], response_types=["code"])
-    return _Provider(url, meta, _Storage(name, redirect), on_redirect, on_callback)
+    return _Provider(url, meta, _Storage(name, redirect, client), on_redirect, on_callback, scope=o.get("scope"))
 
 
 async def login(name: str, redirect: str) -> tuple[str, str]:
@@ -439,13 +496,17 @@ def _first(e: BaseException) -> BaseException:
 
 def _transport(name: str, a: dict):
     """返回 (transport 上下文, 要一起关的 http client 或 None)。"""
-    if a.get("type") == "http":
+    if a.get("type") in ("http", "sse"):
         missing: list = []
         url = _resolve(a["url"], missing)
         headers = {k: _resolve(v, missing) for k, v in (a.get("headers") or {}).items()}
         if missing:
             raise ValueError(f"缺少密钥：{', '.join(missing)}")
-        client = create_mcp_http_client(headers=headers or None, auth=_oauth(name, a, url) if a.get("oauth") else None)
+        auth = _oauth(name, a, url) if a.get("oauth") else None
+        if a["type"] == "sse":
+            # 事件流闲着时不断开（默认 5 分钟没消息就断）；真断了，下次调用工具时会重连
+            return sse_client(url, headers=headers or None, auth=auth, sse_read_timeout=24 * 3600), None
+        client = create_mcp_http_client(headers=headers or None, auth=auth)
         return streamable_http_client(url, http_client=client), client
     # 登录密码不交给第三方应用
     env = {**{k: v for k, v in os.environ.items() if k != "OSA_PASSWORD"}, **_env(a)}
@@ -515,6 +576,8 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event,
             msg = str(e)
         elif isinstance(e, asyncio.TimeoutError):
             msg = "连接超时"
+        elif "Token exchange failed" in str(e):      # 自己建的客户端最常见：密钥或回调地址填错
+            msg = "登录后没换到令牌，检查一下客户端 ID、密钥和回调地址：" + str(e).split(": ", 1)[-1][:200]
         else:
             msg = "连接失败：" + (str(e) or type(e).__name__)[:300]
         status[name] = msg

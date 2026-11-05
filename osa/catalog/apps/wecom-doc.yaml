@@ -1,0 +1,31 @@
+title: 企业微信文档
+category: notes
+order: 50
+by: 企业微信官方
+icon: {glyph: doc, color: '#0082EF'}
+how: 粘贴一个链接
+desc: 读写企业微信文档、表格和智能表格
+about: 企业微信官方的连接，通过企业微信里的「智能机器人」授权。Bot 能搜索和阅读文档，新建文档、追加或改写内容，读写表格和智能表格；改动前会先问你。
+can:
+- 搜索和阅读文档
+- 新建文档，追加或改写内容
+- 读写表格和智能表格
+example: '@wecom-doc 新建一篇文档，把今天的会议纪要整理进去'
+steps:
+- 在企业微信里打开「工作台」→「智能机器人」→「创建机器人」→「手动创建」，选「API模式创建」，连接方式选「使用长连接」，设好可见范围后保存（建过就跳过）
+- 回到「智能机器人」→「管理」，找到这个机器人点「编辑」
+- 在「可使用权限」里点「去授权」，把「文档」相关的几项都点「授权」
+- 点「文档」右上角的「>」，在「StreamableHttp URL」旁边点「复制」，粘贴到下面
+note: 授权 7 天后过期，过期后在企业微信里重新授权，再点「换个密钥」粘贴新复制的链接。超过 10 人的企业里，Bot 以机器人的身份操作，只能改它自己建的文档。
+confirm: [create, update, delete, overwrite, append, upload, import_submit, _add]
+fields:
+- key: url
+  label: StreamableHttp URL
+  secret: true
+  nospace: true
+  placeholder: https://qyapi.weixin.qq.com/mcp/…?apikey=…
+  pattern: ^https://qyapi\.weixin\.qq\.com/mcp/.*apikey=
+  invalid: 要复制的是「StreamableHttp URL」，以 https://qyapi.weixin.qq.com/mcp/ 开头
+connect:
+  type: http
+  url: '{url}'

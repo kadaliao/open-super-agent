@@ -23,7 +23,7 @@ notify = None          # 由 server 设置：async (event) -> None
 
 DEFAULT_WORDS = ["create", "update", "delete", "remove", "archive", "append", "patch", "post", "write",
                  "edit", "move", "send", "insert", "upload", "publish", "comment", "set_", "add_",
-                 "forward", "reply", "trash", "share"]
+                 "forward", "reply", "trash", "share", "cancel", "rename", "transfer"]
 
 
 def default_confirm(rule, tool) -> bool:

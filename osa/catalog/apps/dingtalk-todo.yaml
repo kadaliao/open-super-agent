@@ -1,0 +1,17 @@
+title: 钉钉待办
+category: tasks
+order: 65
+by: 钉钉官方
+icon: {glyph: check, color: '#0089FF'}
+desc: 查看、添加和完成钉钉待办
+about: 钉钉官方的连接。用钉钉扫码登录授权后，Bot 能按条件查你的钉钉待办，帮你新建待办、标记完成或改回未完成。
+can:
+- 按条件查待办列表
+- 新建待办
+- 标记完成或未完成
+example: '@dingtalk-todo 把刚才会上分给我的两件事加到钉钉待办'
+note: 要用加入了企业或组织的钉钉账号登录。
+connect:
+  type: http
+  url: https://mcp-gw.dingtalk.com/oauth/server/todo
+  oauth: true

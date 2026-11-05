@@ -4,6 +4,9 @@ import type { App, CatalogItem } from '../types'
 import { GLYPHS } from '../appIcons'
 
 const HOW: Record<string, string> = { oauth: '登录即用', token: '填一个密钥', none: '免配置' }
+// 登录授权的应用也可能要先填几项（比如自己建的 OAuth 客户端），填好再登录
+const needsFields = (c: CatalogItem) => c.fields.some(f => !f.optional)
+const howOf = (c: CatalogItem) => c.how || (c.kind === 'oauth' && needsFields(c) ? '填好后登录' : HOW[c.kind])
 const STATE: Record<string, [string, string]> = {
   connected: ['已连接', 'ok'], connecting: ['连接中…', 'busy'], login: ['等你授权…', 'busy'],
   needs_login: ['需要重新登录', 'warn'], off: ['已停用', ''], error: ['没连上', 'bad'],
@@ -84,7 +87,7 @@ export default function Market() {
 
   const quick = (c: CatalogItem) => {
     setQuickErr('')
-    if (c.kind === 'oauth') oauthConnect(c.id, true, err => { if (err) { setQuickErr(err); setOpen(c.id) } })
+    if (c.kind === 'oauth' && !needsFields(c)) oauthConnect(c.id, true, err => { if (err) { setQuickErr(err); setOpen(c.id) } })
     else setOpen(c.id)
   }
 
@@ -133,7 +136,7 @@ export default function Market() {
                 </div>
                 <p className="m-card-desc">{c.desc}</p>
                 <div className="m-card-foot">
-                  <span className="m-how">{c.how || HOW[c.kind]}</span>
+                  <span className="m-how">{howOf(c)}</span>
                   {a ? <StateTag app={a} />
                     : <button className="btn small m-get" onClick={e => { e.stopPropagation(); quick(c) }}>连接</button>}
                 </div>
@@ -159,6 +162,8 @@ function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; ap
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState(initErr)
   const [rekey, setRekey] = useState(false)
+  // 填的内容放在这里：登录失败时应用会被撤掉、表单重新出现，不用再粘贴一遍
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries((item?.fields || []).map(f => [f.key, f.default || ''])))
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     addEventListener('keydown', h)
@@ -168,7 +173,15 @@ function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; ap
     setBusy(key); setErr('')
     try { await f(); await refreshApps() } catch (e: any) { setErr(e.message) } finally { setBusy('') }
   }
-  const login = (fresh: boolean) => { setBusy('login'); setErr(''); oauthConnect(name, fresh, e => { setBusy(''); setErr(e || '') }) }
+  // values：先把填的内容存好（换内容时先删掉旧的），再打开授权弹窗；没登录成功就撤掉
+  const login = (fresh: boolean, values?: Record<string, string>) => {
+    setBusy('login'); setErr('')
+    const hint = (e: string) => item?.client && e === '没有完成授权' ? '。如果对方页面说回调地址（redirect_uri）不对，把上面的回调地址原样填到对方那里再试' : ''
+    oauthConnect(name, fresh, e => { setBusy(''); setErr(e ? e + hint(e) : ''); if (!e) setRekey(false) }, values && (async () => {
+      if (app) await api(`/api/apps/${name}`, { method: 'DELETE' })
+      await api(`/api/market/${item!.id}`, { method: 'POST', body: { values } })
+    }))
+  }
   const remove = () => confirm(`断开 ${item?.title || name}？保存的密钥和授权会一起删掉。`) &&
     run('remove', () => api(`/api/apps/${name}`, { method: 'DELETE' }))
   const showForm = !app || rekey
@@ -197,8 +210,8 @@ function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; ap
             }}>{busy === 'login' ? '等你在弹窗里授权…' : `改用 ${item.title} 账号登录`}</button>
           </div>}
 
-          {item && showForm && <ConnectForm item={item} busy={busy} rekey={rekey}
-            onLogin={() => login(!app)}
+          {item && showForm && <ConnectForm item={item} busy={busy} rekey={rekey} values={values} setValues={setValues}
+            onLogin={values => values ? login(true, values) : login(!app)}
             onSubmit={values => run('install', async () => {
               if (app) await api(`/api/apps/${name}`, { method: 'DELETE' })
               await api(`/api/market/${item.id}`, { method: 'POST', body: { values } })
@@ -217,6 +230,7 @@ function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; ap
               {busy === 'toggle' ? '…' : app.enabled ? '启用中' : '已停用'}</label>
             <span className="grow" />
             {item?.kind === 'token' && !rekey && <button className="ghost-btn" onClick={() => setRekey(true)}>换个密钥</button>}
+            {item?.kind === 'oauth' && needsFields(item) && !rekey && <button className="ghost-btn" onClick={() => setRekey(true)}>重新填写</button>}
             <button className="ghost-btn danger-text" disabled={!!busy} onClick={remove}>断开</button>
           </div>}
 
@@ -233,24 +247,27 @@ function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; ap
   )
 }
 
-function ConnectForm({ item, busy, rekey, onLogin, onSubmit }: {
-  item: CatalogItem; busy: string; rekey: boolean; onLogin: () => void; onSubmit: (v: Record<string, string>) => void
+function ConnectForm({ item, busy, rekey, values, setValues, onLogin, onSubmit }: {
+  item: CatalogItem; busy: string; rekey: boolean; values: Record<string, string>; setValues: (v: Record<string, string>) => void
+  onLogin: (v?: Record<string, string>) => void; onSubmit: (v: Record<string, string>) => void
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(item.fields.map(f => [f.key, f.default || ''])))
   const first = useRef<HTMLInputElement>(null)
   useEffect(() => { first.current?.focus() }, [])
-  if (item.kind === 'oauth') return (
+  const oauth = item.kind === 'oauth'
+  if (oauth && !needsFields(item)) return (
     <div className="m-connect">
-      <button className="btn primary m-big" disabled={!!busy} onClick={onLogin}>{busy === 'login' ? '等你在弹窗里授权…' : `用 ${item.title} 账号登录`}</button>
+      <button className="btn primary m-big" disabled={!!busy} onClick={() => onLogin()}>{busy === 'login' ? '等你在弹窗里授权…' : `用 ${item.title} 账号登录`}</button>
       <p className="muted small">会打开 {item.title} 的授权页面，选好允许访问的内容就连上了，不用复制任何密钥。</p>
       {item.note && <p className="m-note">{item.note}</p>}
     </div>
   )
   const ready = item.fields.every(f => f.optional || values[f.key]?.trim())
   return (
-    <form className="m-connect" onSubmit={e => { e.preventDefault(); ready && onSubmit(values) }}>
+    <form className="m-connect" onSubmit={e => { e.preventDefault(); ready && (oauth ? onLogin(values) : onSubmit(values)) }}>
       {item.steps.length > 0 && <ol className="m-steps">{item.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>}
       {item.link && <a className="btn m-link" href={item.link} target="_blank" rel="noreferrer">{item.link_label || `打开 ${item.title} 设置`} ↗</a>}
+      {item.copy && <CopyBox label={item.copy.label} text={item.copy.text} rows={8} />}
+      {item.client && <Callback />}
       {item.fields.map((f, i) => (
         <label className="field" key={f.key}>{f.label}
           <input ref={i === 0 ? first : undefined} type={f.secret ? 'password' : 'text'} autoComplete="off" spellCheck={false}
@@ -258,11 +275,41 @@ function ConnectForm({ item, busy, rekey, onLogin, onSubmit }: {
         </label>))}
       {item.note && <p className="m-note">{item.note}</p>}
       <button className="btn primary m-big" type="submit" disabled={!ready || !!busy}>
-        {busy === 'install' ? (item.remote ? '连接中…' : '连接中…第一次要下载，可能要一两分钟') : rekey ? '换好了，重新连接' : item.kind === 'none' ? '添加' : '连接'}
+        {oauth ? (busy === 'login' ? '等你在弹窗里授权…' : `填好了，去 ${item.title} 登录`)
+          : busy === 'install' ? (item.remote ? '连接中…' : '连接中…第一次要下载，可能要一两分钟') : rekey ? '换好了，重新连接' : item.kind === 'none' ? '添加' : '连接'}
       </button>
       {item.fields.some(f => f.secret) && <p className="muted small">密钥加密存在你自己的服务器上，不会出现在聊天记录里。</p>}
     </form>
   )
+}
+
+// 只读的一段文字加“复制”按钮。text 里的 {callback} 换成回调地址
+function CopyBox({ label, text, rows }: { label: string; text: string; rows?: number }) {
+  const callback = useStore(s => s.oauthCallback)
+  const value = text.split('{callback}').join(callback)
+  const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null)
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    ref.current?.select()
+    const ok = navigator.clipboard ? navigator.clipboard.writeText(value) : Promise.resolve(document.execCommand('copy'))
+    ok.then(() => setCopied(true), () => {})
+  }
+  const btn = <button type="button" className="btn" onClick={copy}>{copied ? '已复制' : '复制'}</button>
+  return (
+    <div className="field">{label}
+      {rows ? <><textarea ref={ref} readOnly rows={rows} value={value} className="m-copy" onFocus={e => e.target.select()} />{btn}</>
+        : <span className="env-row"><input ref={ref} readOnly value={value} onFocus={e => e.target.select()} />{btn}</span>}
+    </div>
+  )
+}
+
+// 自己建 OAuth 客户端时，要把这个地址填到对方的“回调地址 / Redirect URL”里
+function Callback() {
+  const url = useStore(s => s.oauthCallback)
+  return <>
+    <CopyBox label="回调地址（Redirect URL）" text="{callback}" />
+    {/^http:/.test(url) && <span className="m-note">这是 http 地址，不少服务（比如 Slack）只接受 https 的回调地址。先给服务配好 https（见部署文档），再从 https 地址打开这一页。</span>}
+  </>
 }
 
 function Advanced({ app, onEdit }: { app: App; onEdit: () => void }) {
@@ -299,7 +346,8 @@ function Advanced({ app, onEdit }: { app: App; onEdit: () => void }) {
 function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
   const isNew = !app
   const [name, setName] = useState(app?.name || '')
-  const [type, setType] = useState<'stdio' | 'http'>(app?.type || 'http')
+  const [type, setType] = useState<'stdio' | 'http' | 'sse'>(app?.type || 'http')
+  const remote = type !== 'stdio'
   const [url, setUrl] = useState(app?.url || '')
   const [authKind, setAuthKind] = useState(app?.oauth ? 'oauth' : app?.headers.includes('Authorization') ? 'token' : 'none')
   const [token, setToken] = useState('')
@@ -311,12 +359,12 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
   const save = async () => {
     setBusy(true); setErr('')
     const n = name.trim()
-    const body: any = type === 'http'
+    const body: any = remote
       ? { type, url: url.trim(), oauth: authKind === 'oauth', ...(authKind === 'token' && token ? { token } : {}),
           ...(authKind !== 'token' ? { headers: {} } : {}), enabled: true }
       : { type, command, args: args.split('\n').map(x => x.trim()).filter(Boolean), env: Object.fromEntries(env.filter(([k]) => k.trim())), enabled: true }
     const put = () => api(`/api/apps/${n}`, { method: 'PUT', body })
-    if (type === 'http' && authKind === 'oauth') {   // 保存后在弹窗里登录授权
+    if (remote && authKind === 'oauth') {   // 保存后在弹窗里登录授权
       return oauthConnect(n, false, async e => { setBusy(false); await refreshApps(); e ? setErr(e) : onDone() }, put)
     }
     try {
@@ -338,11 +386,16 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
       <label className="field">名字（聊天里用 @{name || '名字'} 指定）
         <input value={name} disabled={!isNew} onChange={e => setName(e.target.value.toLowerCase())} placeholder="例如 mytools" /></label>
       <div className="field">连接方式
-        <div className="seg"><button className={type === 'http' ? 'on' : ''} onClick={() => setType('http')}>远程地址</button>
+        <div className="seg"><button className={remote ? 'on' : ''} onClick={() => setType('http')}>远程地址</button>
           <button className={type === 'stdio' ? 'on' : ''} onClick={() => setType('stdio')}>本机命令</button></div>
       </div>
-      {type === 'http' ? <>
-        <label className="field">地址（Streamable HTTP）<input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com/mcp" /></label>
+      {remote ? <>
+        <label className="field">地址<input value={url} onChange={e => setUrl(e.target.value)} placeholder={type === 'sse' ? 'https://example.com/sse' : 'https://example.com/mcp'} /></label>
+        <div className="field">协议
+          <div className="seg"><button className={type === 'http' ? 'on' : ''} onClick={() => setType('http')}>Streamable HTTP</button>
+            <button className={type === 'sse' ? 'on' : ''} onClick={() => setType('sse')}>SSE（旧版）</button></div>
+          <span className="muted small">对方文档里的地址以 /sse 结尾的，一般选 SSE。</span>
+        </div>
         <div className="field">登录方式
           <div className="seg">{[['none', '不用'], ['oauth', '登录授权（OAuth）'], ['token', 'Token']].map(([k, v]) =>
             <button key={k} className={authKind === k ? 'on' : ''} onClick={() => setAuthKind(k)}>{v}</button>)}</div>
@@ -367,7 +420,7 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
       <div className="row-actions">
         {!isNew && <button className="btn danger" onClick={remove}>删除</button>}
         <span className="grow" />
-        <button className="btn primary" disabled={busy || !name || (type === 'http' ? !url : !command)} onClick={save}>
+        <button className="btn primary" disabled={busy || !name || (remote ? !url : !command)} onClick={save}>
           {busy ? '连接中…' : '保存并连接'}</button>
       </div>
     </div>

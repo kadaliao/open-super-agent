@@ -450,6 +450,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .m-link { align-self: flex-start; }
 .m-steps { margin: 0; padding-left: 20px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 .m-note { font-size: 13px; color: var(--warn); }
+.m-copy { font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.45; white-space: pre; }
+.field .m-copy + .btn { align-self: flex-start; }
 .m-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .m-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--fg2); cursor: pointer; }
 .danger-text { color: var(--bad); } .danger-text:hover { color: var(--bad); }

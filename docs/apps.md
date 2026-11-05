@@ -5,13 +5,13 @@
 
 ## 先确认三件事
 
-1. **它有 MCP server**。优先用官方的远程地址（Streamable HTTP），其次是 npm / PyPI 上维护得比较好的社区包。
+1. **它有 MCP server**。优先用官方的远程地址（Streamable HTTP，只有旧版 SSE 地址的也行），其次是 npm / PyPI 上维护得比较好的社区包。
 2. **你自己连上过、用过**。清单写得再对，对方服务连不上也没用。
 3. **用户不用绕过验证码或人机校验**。这类应用不收（见 [CONTRIBUTING.md](../CONTRIBUTING.md)）。
 
 ## 三种连接方式
 
-连接方式由清单自动判断：`connect` 里写了 `oauth: true` 是**登录授权**；有 `secret: true` 的字段是**填一个密钥**；都没有就是**免配置**。
+连接方式由清单自动判断：`connect` 里写了 `oauth` 是**登录授权**；有 `secret: true` 的字段是**填一个密钥**；都没有就是**免配置**。
 
 ### 登录授权（最省事，首选）
 
@@ -39,7 +39,35 @@ connect:
 ```
 
 怎么知道支不支持：用“添加自定义应用”填远程地址、勾选登录授权，能弹出对方的授权页就行。
-不支持 DCR 的（比如 Google）暂时不能用这种方式。
+
+### 自己建 OAuth 客户端再登录
+
+不支持 DCR 的（Slack、Google），要用户先在对方的开发者后台建一个 OAuth 应用，把客户端 ID 和密钥填进来，再点登录。
+`oauth` 写成一组键：
+
+```yaml
+fields:
+- key: client_id
+  label: Client ID
+- key: client_secret
+  label: Client Secret
+  secret: true
+connect:
+  type: http
+  url: https://mcp.slack.com/mcp
+  oauth:
+    client_id: '{client_id}'
+    client_secret: '{client_secret}'
+    scope: search:read.public channels:history chat:write   # 只申请这些；不写就按对方公布的全要
+    params: {access_type: offline}                          # 授权页要额外带的参数，可以不写
+```
+
+写了 `client_id` 时，连接页会显示**回调地址**和复制按钮，`steps` 里告诉用户把它填到对方的“Redirect URL”里。
+对方支持“粘贴一段配置建应用”的（Slack 的 App Manifest），用 `copy` 给出整段配置，里面的 `{callback}` 会换成回调地址，
+用户点一下复制、粘贴过去，scope 和回调地址就都配好了，见 [`slack.yaml`](../osa/catalog/apps/slack.yaml)。
+回调地址是 `https://你的域名/oauth/callback`，大多数服务只接受 https，所以要先按 [部署到公网服务器](configuration.md#部署到公网服务器) 配好 https。
+
+`scope`、`params` 也可以单独用在动态注册的应用上，比如对方公布的权限太多、只想要只读的。
 
 ### 填一个密钥
 
@@ -74,7 +102,8 @@ connect:
 ```
 
 `connect` 里的 `{key}` 会换成用户填的值。本机运行的应用一般把密钥放进 `env`，远程的放进 `url` 或 `headers`
-（比如 `Authorization: Bearer {token}`）。
+（比如 `Authorization: Bearer {token}`）。每个用户的地址都不一样时（地址里带着授权），`url` 可以整个写成 `'{url}'`，
+字段用 `pattern` 检查一下是不是对方的地址。
 
 ### 免配置
 
@@ -95,12 +124,14 @@ connect:
 
 本机运行的应用（`type: stdio`）由服务端启动，用 `npx`（Node）或 `uvx`（uv）都可以，部署时两样都要装（见 [部署到公网服务器](configuration.md#部署到公网服务器)）。
 
+只提供旧版 SSE 地址（一般以 `/sse` 结尾）的远程应用，把 `type` 写成 `sse`，其余和 `http` 一样。
+
 ## 字段一览
 
 | 键 | 必填 | 说明 |
 |---|---|---|
 | `title` | ✓ | 显示的名字 |
-| `category` | ✓ | 分类：`notes` 笔记与文档、`mail` 邮件与日历、`files` 文件、`tasks` 任务与协作、`dev` 开发、`web` 搜索与网页、`life` 生活。要加新分类，改 `osa/catalog/__init__.py` 里的 `CATEGORIES` |
+| `category` | ✓ | 分类：`notes` 笔记与文档、`mail` 邮件与日历、`files` 文件、`tasks` 任务与协作、`design` 设计、`dev` 开发、`web` 搜索与网页、`life` 生活。要加新分类，改 `osa/catalog/__init__.py` 里的 `CATEGORIES` |
 | `by` | ✓ | 谁做的这个 MCP：“××官方”或“社区” |
 | `desc` | ✓ | 卡片上的一句话 |
 | `connect` | ✓ | 连接模板，见下面 |
@@ -109,9 +140,10 @@ connect:
 | `example` | | “试试这样说”，用 `@应用名` 开头，写一句用户真会说的话 |
 | `icon` | | 图标，见下面。不写就用名字的第一个字 |
 | `order` | | 同一分类里从小到大排，不写算 100 |
-| `how` | | 卡片左下角的说明，不写按连接方式显示“登录即用 / 填一个密钥 / 免配置” |
+| `how` | | 卡片左下角的说明，不写按连接方式显示“登录即用 / 填好后登录 / 填一个密钥 / 免配置” |
 | `steps` | | 拿密钥的步骤，一步一句 |
 | `link`、`link_label` | | 步骤下面的按钮：打开对方的设置页 |
+| `copy` | | 让用户整段复制到对方那里的配置：`label`（标题）和 `text`（内容，`{callback}` 换成回调地址） |
 | `note` | | 要提醒用户的事，比如需要哪种会员 |
 | `fields` | | 要用户填的东西 |
 | `check` | | 添加前先试一下填的对不对 |
@@ -135,8 +167,8 @@ connect:
 
 | 键 | 说明 |
 |---|---|
-| `type` | `http`（远程地址）或 `stdio`（在服务器上启动一个进程） |
-| `url`、`headers`、`oauth` | 远程应用用。`headers` 的值都要是文字 |
+| `type` | `http`（远程地址）、`sse`（只有旧版 SSE 地址的远程应用）或 `stdio`（在服务器上启动一个进程） |
+| `url`、`headers`、`oauth` | 远程应用用。`headers` 的值都要是文字。`oauth` 写 `true`，或者写 `client_id`、`client_secret`、`scope`、`params`（见上面） |
 | `command`、`args`、`env` | 本机运行的应用用。数字要加引号，比如 `'993'` |
 
 `check` 目前有 `imap`（邮箱先试登录一次），用法见 [`checks.py`](../osa/catalog/checks.py)。需要别的检查时，在那里加一个函数。
@@ -152,7 +184,8 @@ icon:
 ```
 
 没有的话，用线条图标加品牌色：`icon: {glyph: book, color: '#00B96B'}`。
-可选的 `glyph`：`globe`、`folder`、`mail`、`search`、`train`、`pin`、`book`、`doc`、`feather`、`plug`。黑色品牌会自动换成白底。
+可选的 `glyph`：`globe`、`folder`、`mail`、`search`、`train`、`pin`、`book`、`doc`、`feather`、`plug`、`chat`、`hash`、`package`、`cloud`、
+`palette`、`table`、`calendar`、`check`、`notebook`（图形见 [`web/src/appIcons.ts`](../web/src/appIcons.ts)）。黑色品牌会自动换成白底。
 商标归各自所有者，图标只用来让用户认出是哪个应用。
 
 ## 在本机试

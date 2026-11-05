@@ -1,0 +1,29 @@
+title: 秘塔AI搜索
+category: web
+order: 15
+by: 秘塔官方
+icon: {glyph: search, color: '#3B5BDB'}
+desc: 中文网页搜索，读网页全文
+about: 秘塔AI搜索官方的连接。Bot 能用秘塔搜中文网页、学术和资讯，读取网页全文，或者直接让秘塔给出带来源的回答。只读，不会改动任何东西。
+can:
+- 搜索中文网页、学术、资讯
+- 读取网页全文
+- 让秘塔直接回答，附带来源
+example: '@metaso 查一下最近一周关于新能源车补贴的政策新闻，列出来源'
+steps:
+- 登录秘塔AI搜索，打开 API Key 页面
+- 点「创建新的Key」，填个名称，点「创建」
+- 在「API Key」那一列点复制，粘贴到下面
+link: https://metaso.cn/search-api/api-keys
+link_label: 打开秘塔 API Key 页面
+note: 按次扣积分，新账号送一些免费积分，余额在「信息统计」里看。
+fields:
+- key: key
+  label: API Key
+  secret: true
+  nospace: true
+connect:
+  type: http
+  url: https://metaso.cn/api/mcp
+  headers:
+    Authorization: Bearer {key}

@@ -1,0 +1,30 @@
+title: 企业微信待办
+category: tasks
+order: 75
+by: 企业微信官方
+icon: {glyph: check, color: '#0082EF'}
+how: 粘贴一个链接
+desc: 查看、添加和完成企业微信待办
+about: 企业微信官方的连接，通过企业微信里的「智能机器人」授权。Bot 能查看你的待办，帮你新建、修改、完成待办；删除前会先问你。
+can:
+- 查看待办列表
+- 新建、修改待办
+- 标记完成
+example: '@wecom-todo 把刚才会上分给我的三件事加到企业微信待办'
+steps:
+- 在企业微信里打开「工作台」→「智能机器人」→「创建机器人」→「手动创建」，选「API模式创建」，连接方式选「使用长连接」，设好可见范围后保存（建过就跳过）
+- 回到「智能机器人」→「管理」，找到这个机器人点「编辑」
+- 在「可使用权限」里点「去授权」，把「待办」相关的几项都点「授权」
+- 点「待办」右上角的「>」，在「StreamableHttp URL」旁边点「复制」，粘贴到下面
+note: 授权 7 天后过期，过期后在企业微信里重新授权，再点「换个密钥」粘贴新复制的链接。超过 10 人的企业里，Bot 以机器人的身份操作，能做的事会少一些。
+fields:
+- key: url
+  label: StreamableHttp URL
+  secret: true
+  nospace: true
+  placeholder: https://qyapi.weixin.qq.com/mcp/…?apikey=…
+  pattern: ^https://qyapi\.weixin\.qq\.com/mcp/.*apikey=
+  invalid: 要复制的是「StreamableHttp URL」，以 https://qyapi.weixin.qq.com/mcp/ 开头
+connect:
+  type: http
+  url: '{url}'

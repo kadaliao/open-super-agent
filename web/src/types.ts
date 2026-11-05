@@ -32,12 +32,13 @@ export type Settings = {
 }
 export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'
 export type App = {
-  name: string; catalog: string; type: 'stdio' | 'http'
+  name: string; catalog: string; type: 'stdio' | 'http' | 'sse'
   command: string; args: string[]; env: Record<string, string>; url: string; headers: string[]; oauth: boolean
   deny: string[]; confirm: string | string[]
   enabled: boolean; status: string; state: AppState; tools: string[]; connected: boolean; confirm_tools: string[]
 }
-// 应用市场里的一项。kind：oauth 登录授权 / token 填密钥 / none 免配置
+// 应用市场里的一项。kind：oauth 登录授权 / token 填密钥 / none 免配置。
+// 登录授权的也可以先填字段（比如自己建的 OAuth 客户端）；client：用户自己建的客户端，要告诉他回调地址
 export type CatalogField = { key: string; label: string; placeholder?: string; secret?: boolean; default?: string; optional?: boolean }
 // 清单里的图标：品牌色 + 品牌图形（svg 是 24×24 的 path）或线条图标的名字（glyph）
 export type AppIconSpec = { color: string; svg?: string; glyph?: string }
@@ -45,7 +46,8 @@ export type CatalogItem = {
   id: string; title: string; category: string; desc: string; about: string; can: string[]; example: string
   icon?: AppIconSpec; by: string; kind: 'oauth' | 'token' | 'none'
   fields: CatalogField[]; steps: string[]; link?: string; link_label?: string; note?: string; how?: string
-  remote: boolean
+  remote: boolean; client: boolean
+  copy?: { label: string; text: string }   // 让用户整段复制到对方那里的配置，{callback} 换成回调地址
 }
 export type Rule = { id: number; pattern: string; action: 'allow' | 'ask'; note: string; created: number }
 export type Skill = {

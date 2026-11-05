@@ -1,0 +1,18 @@
+title: Canva
+category: design
+order: 10
+by: Canva 官方
+icon: {glyph: palette, color: '#00C4CC'}
+desc: 找设计、按你的要求生成和修改海报、PPT
+about: Canva 官方的连接。用 Canva 账号登录授权后，Bot 能搜索你的设计，按你说的生成海报、社交媒体图、演示文稿，在已有设计上改文字和图片，导出成图片或 PDF。
+can:
+- 搜索和查看你的设计、文件夹
+- 按描述生成新设计，套用品牌模板
+- 修改已有设计里的文字、图片，导出成 PNG 或 PDF
+example: '@canva 做一张周六读书会的海报，竖版，温暖一点的配色'
+note: 用 canva.com 的账号登录。国内版「可画」（canva.cn）是另一套账号，登不上。
+deny: [merge]
+connect:
+  type: http
+  url: https://mcp.canva.com/mcp
+  oauth: true

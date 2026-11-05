@@ -27,15 +27,17 @@ WORKSPACE = ROOT / "data" / "workspace"
 
 # 分类按这个顺序显示。要加新分类，改这里
 CATEGORIES = {"notes": "笔记与文档", "mail": "邮件与日历", "files": "文件", "tasks": "任务与协作",
-              "dev": "开发", "web": "搜索与网页", "life": "生活"}
+              "design": "设计", "dev": "开发", "web": "搜索与网页", "life": "生活"}
 # 没有品牌图标时可以用的线条图标，图形在 web/src/appIcons.ts
-GLYPHS = {"globe", "folder", "mail", "search", "train", "pin", "book", "doc", "feather", "plug"}
+GLYPHS = {"globe", "folder", "mail", "search", "train", "pin", "book", "doc", "feather", "plug",
+          "chat", "hash", "package", "cloud", "palette", "table", "calendar", "check", "notebook"}
 
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")       # 文件名也是应用名，规则和 mcp_hub.NAME 一样
 KEYS = {"title", "category", "order", "by", "icon", "desc", "about", "can", "example", "note", "how",
-        "steps", "link", "link_label", "fields", "check", "deny", "confirm", "connect"}
+        "steps", "link", "link_label", "copy", "fields", "check", "deny", "confirm", "connect"}
 FIELD_KEYS = {"key", "label", "placeholder", "default", "secret", "optional", "nospace", "pattern", "invalid"}
 CONNECT_KEYS = {"type", "command", "args", "env", "url", "headers", "oauth"}
+OAUTH_KEYS = {"client_id", "client_secret", "scope", "params"}
 SLOT = re.compile(r"\{(\w+)\}")
 COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 SVG_PATH = re.compile(r"^[MmZzLlHhVvCcSsQqTtAa0-9eE.,+\-\s]+$")
@@ -121,15 +123,18 @@ def parse(name: str, m) -> dict:
     if cf not in ("auto", "all", "none") and not (isinstance(cf, list) and cf and all(isinstance(x, str) for x in cf)):
         bad.append("confirm 应该是 auto、all、none，或者一组词（工具名里含这些词就先问）")
     _check_icon(m.get("icon"), bad)
+    cp = m.get("copy")
+    if cp is not None and not (isinstance(cp, dict) and set(cp) == {"label", "text"}
+                               and all(isinstance(v, str) and v.strip() for v in cp.values())):
+        bad.append("copy 要写 label 和 text 两项文字")
     fields = _check_fields(m.get("fields"), bad)
     keys = {f["key"] for f in fields}
     used = _check_connect(m.get("connect"), keys, bad)
     used |= _check_checks(m.get("check"), keys, bad)
     bad += [f"字段 {k} 没有用在 connect 或 check 里" for k in sorted(keys - used)]
 
-    oauth = isinstance(m.get("connect"), dict) and m["connect"].get("oauth") is True
-    if oauth and any(not f.get("optional") for f in fields):
-        bad.append("用登录授权（oauth）的应用不能再要求填字段")
+    o = m["connect"].get("oauth") if isinstance(m.get("connect"), dict) else None
+    oauth = o is True or isinstance(o, dict)
     if bad:
         raise ValueError("；".join(bad))
 
@@ -137,6 +142,7 @@ def parse(name: str, m) -> dict:
     return m | {
         "id": name, "order": m.get("order", 100), "confirm": m.get("confirm", "auto"),
         "kind": "oauth" if oauth else "token" if any(f.get("secret") for f in fields) else "none",
+        "client": isinstance(o, dict) and "client_id" in o,     # 用户自己建的 OAuth 客户端：要告诉他回调地址
         "can": m.get("can") or [], "steps": m.get("steps") or [], "deny": m.get("deny") or [],
         "check": m.get("check") or {},
         "fields": [f | {"default": _fill(f["default"], builtin)} if "default" in f else f for f in fields],
@@ -220,18 +226,37 @@ def _check_connect(c, keys: set, bad: list) -> set[str]:
             bad.append("connect.args 应该是一组文字（数字请加引号）")
         strmap("env")
         bad += [f"本机运行的应用不能写 {k}" for k in ("url", "headers", "oauth") if k in c]
-    elif t == "http":
-        if not isinstance(c.get("url"), str) or not re.match(r"^https?://", c["url"]):
-            bad.append("远程应用（type: http）要写 url，以 https:// 开头")
+    elif t in ("http", "sse"):
+        # 整个地址也可以让用户填（飞书、企业微信的地址里带着授权）：写成 '{字段}'，字段里用 pattern 检查
+        if not isinstance(c.get("url"), str) or not re.match(r"^(https?://|\{\w+\}$)", c["url"]):
+            bad.append(f"远程应用（type: {t}）要写 url，以 https:// 开头")
         strmap("headers")
-        if "oauth" in c and not isinstance(c["oauth"], bool):
-            bad.append("connect.oauth 应该是 true 或 false")
+        _check_oauth(c.get("oauth"), bad)
         bad += [f"远程应用不能写 {k}" for k in ("command", "args", "env") if k in c]
     else:
-        bad.append("connect.type 应该是 stdio（在本机运行）或 http（远程地址）")
+        bad.append("connect.type 应该是 stdio（在本机运行）、http（远程地址）或 sse（只有旧版 SSE 地址的远程应用）")
     used = _slots(c)
     bad += [f"connect 里的 {{{s}}} 不是 fields 里的字段" for s in sorted(used - keys)]
     return used
+
+
+def _check_oauth(o, bad: list):
+    """oauth: true 用动态注册；写成一组键时可以带自己建的客户端（client_id、client_secret）、
+    要申请的权限（scope，不写就按对方公布的全要）和授权页的额外参数（params）。"""
+    if o is None or isinstance(o, bool):
+        return
+    if not isinstance(o, dict):
+        bad.append("connect.oauth 应该是 true，或者写成 client_id、scope 这样的一组键")
+        return
+    bad += [f"connect.oauth 里不认识的键 {k}" for k in o if k not in OAUTH_KEYS]
+    for k in ("client_id", "client_secret", "scope"):
+        if k in o and (not isinstance(o[k], str) or not o[k].strip()):
+            bad.append(f"connect.oauth.{k} 应该是一段文字")
+    if "client_secret" in o and "client_id" not in o:
+        bad.append("connect.oauth 写了 client_secret 就要写 client_id")
+    p = o.get("params")
+    if p is not None and (not isinstance(p, dict) or not all(isinstance(x, str) for x in p.values())):
+        bad.append("connect.oauth.params 的值都要是文字")
 
 
 def _check_checks(ck, keys: set, bad: list) -> set[str]:
@@ -265,7 +290,7 @@ def public() -> list[dict]:
         o["fields"] = [{k: v for k, v in f.items() if k not in ("pattern", "nospace")} for f in it["fields"]]
         o.setdefault("example", "")
         o.setdefault("about", "")
-        o["remote"] = it["connect"]["type"] == "http"
+        o["remote"] = it["connect"]["type"] != "stdio"
         out.append(o)
     return out
 

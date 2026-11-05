@@ -1,0 +1,34 @@
+title: 百度网盘
+category: files
+order: 30
+by: 百度网盘官方
+icon: {glyph: cloud, color: '#06A7FF'}
+how: 授权后粘贴一段 token
+desc: 找文件、整理网盘、生成分享链接
+about: 百度网盘官方的连接。Bot 能按名字或意思搜索网盘里的文件，列目录、查看容量，帮你新建文件夹、移动、复制、重命名，从网址保存文件，生成分享链接；改动前会先问你。不能删除文件。
+can:
+- 按关键词或意思搜索文件，按文档、图片、视频分类列出
+- 新建文件夹，移动、复制、重命名文件（先问你）
+- 从网址保存文件到网盘，生成分享链接（先问你）
+example: '@baidu-netdisk 找一下去年的体检报告 PDF，放到「我的资料」文件夹里'
+steps:
+- 点下面的按钮打开百度的授权页，扫码或用账号登录
+- 两项权限保持勾选，点「授权」
+- 页面会跳到一个空白页，地址栏里有「access_token=…」。复制 access_token= 后面、下一个 & 之前的那一段，粘贴到下面
+link: https://openapi.baidu.com/oauth/2.0/authorize?response_type=token&client_id=QHOuRXiepJBMjtk0esLhrPoNlQyYd0mF&redirect_uri=oob&scope=basic,netdisk&qrcode=1
+link_label: 打开百度授权页
+note: 授权 30 天后过期，到期后再点一次上面的按钮授权，然后点「换个密钥」粘贴新的。不想用了可以在百度账号的「授权管理」里解除。
+fields:
+- key: token
+  label: access_token
+  secret: true
+  nospace: true
+  pattern: ^[^:/?&=#]+$
+  invalid: 只复制 access_token= 后面那一段，不要整个网址
+deny: [file_del]
+confirm: [copy, move, rename, upload, share, make_dir]
+connect:
+  type: sse
+  url: https://mcp-pan.baidu.com/sse
+  headers:
+    Authorization: Bearer {token}

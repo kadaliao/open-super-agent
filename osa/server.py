@@ -75,12 +75,12 @@ def _err(e: Exception):
 
 # ---------- Bot 与对话 ----------
 @app.get("/api/bootstrap")
-async def bootstrap():
+async def bootstrap(request: Request):
     return {"bots": bots.list_bots(), "chats": bots.list_chats(), "settings": settings.public(),
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
-            "apps": mcp_hub.public(), "catalog": catalog.public(), "categories": catalog.categories(), "teach": teach.public(), "auth": auth.enabled()}
+            **_apps_out(request), "teach": teach.public(), "auth": auth.enabled()}
 
 
 @app.post("/api/bots")
@@ -723,9 +723,15 @@ async def pc_vnc(sock: WebSocket, bot_id: int):
 
 
 # ---------- 应用、确认规则、保险库 ----------
+def _apps_out(request: Request) -> dict:
+    # oauth_callback：自己建 OAuth 客户端（比如 Slack）时要填到对方那里的回调地址，和授权时实际用的一样
+    return {"apps": mcp_hub.public(), "catalog": catalog.public(), "categories": catalog.categories(),
+            "oauth_callback": str(request.url_for("oauth_callback"))}
+
+
 @app.get("/api/apps")
-async def list_apps():
-    return {"apps": mcp_hub.public(), "catalog": catalog.public(), "categories": catalog.categories()}
+async def list_apps(request: Request):
+    return _apps_out(request)
 
 
 async def _app_out(name: str) -> dict:
@@ -744,13 +750,15 @@ async def install_app(item_id: str, data: dict = Body(default={})):
         mcp_hub.save(item_id, catalog.build(item_id, values) | {"enabled": True})
     except ValueError as e:
         _err(e)
+    if catalog.items()[item_id]["kind"] == "oauth":     # 先填字段再登录的（Slack）：前端接着打开授权弹窗
+        return await _app_out(item_id)
     await mcp_hub.connect(item_id)
     if item_id not in mcp_hub._connected:   # 没连上就撤掉，用户改一下再点连接就行
         msg = mcp_hub.status.get(item_id) or "没连上"
         await mcp_hub.disconnect(item_id)
         mcp_hub.remove(item_id)
         await broadcast({"type": "apps_changed"})
-        if any(w in msg for w in ("401", "403", "Unauthorized", "parse JSON")):
+        if any(w in msg for w in ("401", "403", "400 Bad Request", "Unauthorized", "parse JSON", "密钥无效", "鉴权失败", "invalid or expired")):
             msg = "对方没有接受这个密钥，检查一下有没有复制完整。（" + msg[:120] + "）"
         _err(ValueError(msg))
     return await _app_out(item_id)

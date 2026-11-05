@@ -1,0 +1,32 @@
+title: 飞书云文档
+category: notes
+order: 46
+by: 飞书官方
+icon: {glyph: doc, color: '#3370FF'}
+how: 粘贴一个链接
+desc: 搜索、阅读和新建飞书文档，看评论
+about: 飞书官方的个人 MCP 链接。链接里带着你的授权，Bot 能以你的身份搜索和阅读飞书云文档、看评论，新建和修改文档、加评论；改动前会先问你。
+can:
+- 搜索和阅读你有权限看的云文档
+- 新建文档，修改已有文档
+- 查看和添加评论
+example: '@feishu 找到上周的周会纪要，列出还没完成的事项'
+steps:
+- 打开飞书 MCP 页面并登录，点左侧「创建 MCP 服务」
+- 在「MCP 工具配置」里确认是你自己的账号
+- 在「添加工具」卡片上点「添加」，选「云文档」，再点「添加」；弹出「获取用户授权」时点「授权」
+- 在「如何使用 MCP 服务」里复制「服务器 URL」，粘贴到下面
+link: https://open.feishu.cn/page/mcp
+link_label: 打开飞书 MCP 页面
+note: 链接 7 天后失效，到期前在飞书 MCP 页面点「重新授权」延长。飞书说这种个人链接以后会逐步下线。
+fields:
+- key: url
+  label: 服务器 URL
+  secret: true
+  nospace: true
+  placeholder: https://mcp.feishu.cn/mcp/mcp_…
+  pattern: ^https://mcp\.(feishu\.cn|larksuite\.com)/mcp/mcp_\w+
+  invalid: 要复制的是「服务器 URL」，以 https://mcp.feishu.cn/mcp/mcp_ 开头
+connect:
+  type: http
+  url: '{url}'

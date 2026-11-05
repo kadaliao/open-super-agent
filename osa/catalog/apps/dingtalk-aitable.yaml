@@ -1,0 +1,17 @@
+title: 钉钉 AI 表格
+category: tasks
+order: 60
+by: 钉钉官方
+icon: {glyph: table, color: '#0089FF'}
+desc: 查表、加记录、改字段
+about: 钉钉官方的连接。用钉钉扫码登录授权后，Bot 能读写你的钉钉 AI 表格：按条件查数据、新增和更新记录、调整字段，适合做台账、客户名单、项目进度这类表。
+can:
+- 按条件查记录、做汇总
+- 新增、更新记录
+- 查看和调整字段
+example: '@dingtalk-aitable 把今天收到的三张报销单加到「报销登记」表'
+note: 要用加入了企业或组织的钉钉账号登录。
+connect:
+  type: http
+  url: https://mcp-gw.dingtalk.com/oauth/server/aitable
+  oauth: true
