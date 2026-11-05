@@ -47,7 +47,8 @@ osa/
   bots.py          Bot 和对话的增删改查、旧数据迁移
   settings.py      界面里改的设置（覆盖 config.yaml）
   approvals.py     确认卡片：写操作确认（approval）、请你帮忙（help）
-  mcp_hub.py       MCP 连接、工具命名（<server>__<tool>）、deny / confirm 规则
+  mcp_hub.py       MCP 连接（本机命令 / 远程地址）、OAuth 登录授权与令牌刷新、工具命名（<server>__<tool>）、deny / confirm 规则
+  catalog.py       应用市场的目录：每个应用的介绍、连接方式、要填的东西，以及按模板生成连接配置
   tools.py         内置工具：web_search、fetch_url
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明
   routines.py      定时任务：触发方式、调度、webhook 过滤、运行记录、旧 triggers 导入

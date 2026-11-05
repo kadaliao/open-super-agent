@@ -10,7 +10,6 @@
 | `DEEPSEEK_API_KEY` | 默认配置下必需 | 模型提供方的 key；换用别的提供方时，改 `providers.*.api_key_env` |
 | `OSA_PASSWORD` | 部署到公网时必需 | 登录密码，设置后要先登录才能用；不设置则不用登录，只适合本机或内网 |
 | `INSTABOX_API_KEY` | 否 | 设置后，电脑改用 Instabox 云主机 |
-| `NOTION_TOKEN` | 否 | Notion MCP 应用 |
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
 | `OSA_CONFIG` | 否 | 配置文件路径，默认 `config.yaml` |
 
@@ -55,22 +54,50 @@ computer:
 
 ## 应用（MCP）
 
-推荐在界面里管理：**设置 → 应用**，选预设（文件系统、GitHub、Notion、网页抓取）或自定义命令，填好密钥后点“保存并连接”。
+在侧栏的 **应用** 页里管理。市场里的应用分三种连接方式：
+
+| 方式 | 应用 | 用户要做的 |
+|---|---|---|
+| 登录授权 | Notion、flomo、腾讯文档、Evernote、Dropbox、滴答清单、TickTick、Todoist、Linear、Sentry | 点“连接”，在弹窗里登录、同意，弹窗自己关掉 |
+| 填一个密钥 | Gmail、QQ 邮箱、163 邮箱、flomo 快速记录、语雀、GitHub、高德地图 | 按卡片上的步骤拿到密码 / token，粘贴后点“连接” |
+| 免配置 | 文件夹、网页抓取、Exa 搜索、DeepWiki、Context7、12306 火车票 | 点“连接” |
+
+目录在 `osa/catalog.py`。每一项写明介绍、能做什么、示例说法和连接模板；模板里的 `{字段}` 换成用户填的值，
+标了 `secret` 的字段存进保险库，配置里只留 `{vault:名字}`，删除应用时一起删掉。
+
+**登录授权**用远程 MCP 地址（Streamable HTTP）加 OAuth：先按 MCP 规范发现对方的授权服务器，用动态客户端注册（DCR）
+自动拿一个 client_id，所以不用去对方平台建开发者应用。回调地址是 `<你访问的地址>/oauth/callback`，令牌加密存在保险库
+（`OAUTH_<应用名>`），过期前自动刷新。对方吊销授权或注册失效时，应用显示“需要重新登录”，点一下会从头注册和授权。
+
+几个注意点：
+
+- 回调地址跟着你访问的地址走。换了访问地址（比如从 `localhost` 换到域名）后第一次登录会重新注册客户端，不影响已有的令牌。
+- 有些服务只接受 https 或 `localhost` 的回调地址。用 `http://内网 IP` 访问时，登录授权可能被对方拒绝，换成 https 或本机访问即可。
+- flomo 的登录授权需要 MAX 会员；只有 PRO 的话用“flomo 快速记录”（只能新建笔记）。
+- 邮箱走 IMAP/SMTP（`uvx mcp-email-server`），添加前会先试登录一次。Gmail 要用应用专用密码（需要开两步验证），QQ 和 163 用授权码。
+- Google 云端硬盘、日历这类必须用 Google OAuth 的应用还没有收录：Google 不支持动态注册，需要你自己在 Google Cloud 建 OAuth 客户端。
+
+市场里没有的，点页面底部的“添加自定义应用”：远程的填地址（可选 Token 或登录授权），本机的填启动命令、参数和环境变量。
+
 应用配置存在数据库里。`config.yaml` 的 `mcp_servers` 只在第一次启动时导入一次，之后改界面即可：
 
 ```yaml
 mcp_servers:
-  notion:
-    enabled: false
+  mytools:
+    enabled: true
     command: npx
-    args: ["-y", "@notionhq/notion-mcp-server"]
-    env_from: [NOTION_TOKEN]   # 导入后变成 env:NOTION_TOKEN，值从服务的环境变量读取
+    args: ["-y", "some-mcp-server"]
+    env_from: [SOME_TOKEN]     # 导入后变成 env:SOME_TOKEN，值从服务的环境变量读取
     deny: [delete, archive]    # 名字里含这些词的工具不会提供给模型
     confirm: auto              # auto：写操作需要确认 | all：全部需要确认 | none：都不需要 | 关键词列表
+  linear:
+    enabled: true
+    url: https://mcp.linear.app/mcp
+    oauth: true                # 导入后在“应用”页点“重新登录”完成授权；也可以写 headers 带 token
 ```
 
-环境变量的值有三种写法：明文、`env:名字`（服务的环境变量）、`vault:名字`（保险库）。
-在界面里填的密钥会自动存进保险库。
+配置里的值有几种写法：明文、`env:名字`（服务的环境变量）、`vault:名字`（保险库），或在字符串中间嵌 `{vault:名字}`
+（比如 `Authorization: Bearer {vault:GITHUB_TOKEN}`）。在界面里填的密钥都会自动存进保险库。
 
 ## 确认规则与保险库
 

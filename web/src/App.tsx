@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { bootstrap, chatById, connect, getState, openChat, openLibrary, useStore } from './store'
+import { bootstrap, chatById, connect, getState, openApps, openChat, openLibrary, useStore } from './store'
 import Chat from './components/Chat'
 import Library from './components/Library'
+import Market from './components/Market'
 import Sidebar from './components/Sidebar'
 import Settings from './components/Settings'
 import { BotPanel, NewBotDialog } from './components/BotEditor'
@@ -61,8 +62,10 @@ export default function App() {
 
   useEffect(() => {
     const deep = location.pathname.match(/^\/library(?:\/pages\/(\d+))?\/?$/)
+    const apps = /^\/apps\/?$/.test(location.pathname)   // 登录授权在本窗口完成后回到这里
     bootstrap().then(() => {
       if (deep) { openLibrary(deep[1] ? Number(deep[1]) : null); history.replaceState(null, '', '/') }
+      if (apps) { openApps(); history.replaceState(null, '', '/') }
       connect()
     })
     if ('Notification' in window && Notification.permission === 'default') {
@@ -78,7 +81,7 @@ export default function App() {
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
       <div className="side-mask" onClick={() => setSide(false)} />
       <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings(true)} onClose={() => setSide(false)} />
-      {view === 'library' ? <Library /> : <Chat onToggleDetails={() => setDetails(!details)} />}
+      {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : <Chat onToggleDetails={() => setDetails(!details)} />}
       {details && view === 'chat' && (chat?.kind === 'group'
         ? <GroupPanel chat={chat} onClose={() => setDetails(false)} tab={tab} setTab={setTab} />
         : <BotPanel onClose={() => setDetails(false)} tab={tab} setTab={setTab} />)}

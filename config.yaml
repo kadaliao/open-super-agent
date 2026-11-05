@@ -56,15 +56,20 @@ triggers:
     llm_filter: "只有报告 bug、故障或需要回复的问题才处理；机器人消息、纯通知忽略。"
     prompt: "收到一个 GitHub 事件，请判断要不要处理，需要的话派任务：\n{event}"
 
-# 外部能力：MCP server（stdio），工具会以 <名字>__<工具> 的形式交给 Worker
-mcp_servers:
-  notion:
-    enabled: false                # 设好 NOTION_TOKEN 后改成 true
-    command: npx
-    args: ["-y", "@notionhq/notion-mcp-server"]
-    env_from: [NOTION_TOKEN]      # 只写变量名，值从环境变量读取
-    deny: ["delete", "archive"]   # 工具名包含这些词的不开放
-    confirm: auto                 # 写操作前要你确认：auto（只读放行，写入词要确认）/ all / none / 词列表
+# 外部能力：MCP server，工具会以 <名字>__<工具> 的形式交给 Worker。只在第一次启动时导入，之后在界面的“应用”里管理
+# 本机命令写 command / args；远程地址写 url（可加 headers，或 oauth: true 在界面里登录授权）
+mcp_servers: {}
+  # mytools:
+  #   enabled: true
+  #   command: npx
+  #   args: ["-y", "some-mcp-server"]
+  #   env_from: [SOME_TOKEN]        # 只写变量名，值从环境变量读取
+  #   deny: ["delete", "archive"]   # 工具名包含这些词的不开放
+  #   confirm: auto                 # 写操作前要你确认：auto（只读放行，写入词要确认）/ all / none / 词列表
+  # linear:
+  #   enabled: true
+  #   url: https://mcp.linear.app/mcp
+  #   oauth: true                   # 导入后在“应用”页点“重新登录”完成授权
 
 # 手机推送（Web Push）：联系地址，推送服务出问题时可能用它联系你；不写就用项目地址
 # push:

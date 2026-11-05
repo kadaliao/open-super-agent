@@ -16,6 +16,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
   const ref = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
   const apps = useStore(s => s.apps)
+  const catalog = useStore(s => s.catalog)
   const skills = useStore(s => (bot ? s.skills[bot.id] : undefined))
   const group = !bot
   const [pick, setPick] = useState(0)
@@ -33,8 +34,9 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
         ...members.filter(b => b.name.toLowerCase().startsWith(q)).map(b => ({ key: b.name, label: '@' + b.name, hint: 'Bot' })),
         ...('所有人'.startsWith(q) || 'everyone'.startsWith(q) ? [{ key: '所有人', label: '@所有人', hint: '每个 Bot 都回答' }] : []),
       ] : []),
-      ...apps.filter(a => a.name.startsWith(q))
-        .map(a => ({ key: a.name, label: '@' + a.name, hint: a.connected ? `应用 · ${a.tools.length} 个工具` : '应用 · 未连接' }))]
+      ...apps.map(a => ({ a, title: catalog.find(c => c.id === (a.catalog || a.name))?.title || '应用' }))
+        .filter(({ a, title }) => a.name.startsWith(q) || (q && title.toLowerCase().includes(q)))
+        .map(({ a, title }) => ({ key: a.name, label: '@' + a.name, hint: a.connected ? `${title} · ${a.tools.length} 个工具` : `${title} · 未连接` }))]
     : slash
       ? (skills || []).filter(k => k.name.toLowerCase().startsWith(slash[1].toLowerCase()))
           .map(k => ({ key: k.name, label: '/' + k.name, hint: k.description || k.body.slice(0, 30) }))

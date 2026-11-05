@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api, refreshApps, refreshLists, useStore } from '../store'
-import type { App, Preset, Rule, Settings as S } from '../types'
+import { api, refreshLists, useStore } from '../store'
+import type { Rule, Settings as S } from '../types'
 
 const ROLE_NAMES: Record<string, string> = {
   router: '对话（Bot 本身）', worker: '后台任务', reviewer: 'Heavy 汇总审稿', filter: '定时任务的事件过滤',
@@ -20,7 +20,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     <div className="modal-bg" onMouseDown={onClose}>
       <div className="modal wide" onMouseDown={e => e.stopPropagation()}>
         <div className="modal-tabs">
-          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['apps', '应用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务'], ['notify', '通知']].map(([k, v]) =>
+          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务'], ['notify', '通知']].map(([k, v]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{v}</button>)}
           <span className="grow" />
           {auth && <form method="post" action="/logout"><button className="btn small" type="submit">退出登录</button></form>}
@@ -30,7 +30,6 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           {tab === 'models' && <Models />}
           {tab === 'limits' && <Limits />}
           {tab === 'usage' && <Usage />}
-          {tab === 'apps' && <Apps />}
           {tab === 'rules' && <Rules />}
           {tab === 'vault' && <Vault />}
           {tab === 'triggers' && <Triggers />}
@@ -193,118 +192,6 @@ function Notifications() {
       {msg && <p className="muted small">{msg}</p>}
       <h4>添加到主屏幕</h4>
       <p className="muted small">手机上可以把它当应用用：Safari 点“分享 → 添加到主屏幕”，Chrome 点菜单里的“添加到主屏幕”或“安装应用”。</p>
-    </div>
-  )
-}
-
-const CONFIRM_NAMES: Record<string, string> = { auto: '自动（写操作先问）', all: '全部先问', none: '全部不问' }
-
-function Apps() {
-  const apps = useStore(x => x.apps)
-  const [presets, setPresets] = useState<Record<string, Preset>>({})
-  const [edit, setEdit] = useState<{ name: string; preset?: string } | null>(null)
-  const [busy, setBusy] = useState('')
-  const [err, setErr] = useState('')
-  useEffect(() => { refreshApps().then(r => setPresets(r.presets)) }, [])
-  const act = async (name: string, action: string) => {
-    setBusy(name); setErr('')
-    try {
-      if (action === 'delete') { if (!confirm(`删除应用 ${name}？`)) return; await api(`/api/apps/${name}`, { method: 'DELETE' }) }
-      else await api(`/api/apps/${name}/${action}`, { method: 'POST' })
-      await refreshApps()
-    } catch (e: any) { setErr(e.message) } finally { setBusy('') }
-  }
-  if (edit) return <AppEditor app={apps.find(a => a.name === edit.name)} name={edit.name} preset={edit.preset ? presets[edit.preset] : undefined}
-    onDone={() => { setEdit(null); refreshApps() }} />
-  const have = new Set(apps.map(a => a.name))
-  return (
-    <div>
-      <p className="muted">应用就是 MCP server。连接后，Bot 派的后台任务就能用它的工具；聊天里输入 <code>@应用名</code> 指定用哪个。</p>
-      <h4>已添加</h4>
-      {apps.length === 0 && <div className="muted small">还没有应用，从下面挑一个。</div>}
-      {apps.map(a => (
-        <div className="app-row" key={a.name}>
-          <div className="app-main">
-            <div><b>@{a.name}</b> <span className={'pill' + (a.connected ? ' ok' : a.status.includes('失败') || a.status.includes('缺少') ? ' bad' : '')}>{a.connected ? '已连接' : a.enabled ? '未连接' : '已停用'}</span></div>
-            <div className="muted small">{a.status || '—'}</div>
-            {a.connected && <div className="muted small app-tools" title={a.tools.join(', ')}>工具：{a.tools.map(t => a.confirm_tools.includes(t) ? `${t}*` : t).join('、')}（* 默认先问）</div>}
-          </div>
-          <div className="app-actions">
-            {a.enabled
-              ? <><button className="btn" disabled={busy === a.name} onClick={() => act(a.name, 'reconnect')}>{busy === a.name ? '连接中…' : '重连'}</button>
-                  <button className="btn" disabled={busy === a.name} onClick={() => act(a.name, 'disable')}>停用</button></>
-              : <button className="btn primary" disabled={busy === a.name} onClick={() => act(a.name, 'enable')}>{busy === a.name ? '连接中…' : '启用'}</button>}
-            <button className="btn" onClick={() => setEdit({ name: a.name })}>配置</button>
-            <button className="btn danger" onClick={() => act(a.name, 'delete')}>删除</button>
-          </div>
-        </div>
-      ))}
-      {err && <div className="error-line">{err}</div>}
-      <h4>添加应用</h4>
-      <div className="preset-grid">
-        {Object.entries(presets).map(([k, p]) => (
-          <button key={k} className="preset" disabled={have.has(k)} onClick={() => setEdit({ name: k, preset: k })}>
-            <b>{p.title}</b><span className="muted small">{have.has(k) ? '已添加' : p.desc}</span>
-          </button>))}
-        <button className="preset" onClick={() => setEdit({ name: '' })}><b>自定义</b><span className="muted small">任意 stdio MCP server</span></button>
-      </div>
-    </div>
-  )
-}
-
-function AppEditor({ app, name: initName, preset, onDone }: { app?: App; name: string; preset?: Preset; onDone: () => void }) {
-  const isNew = !app
-  const [name, setName] = useState(initName)
-  const [command, setCommand] = useState(app?.command || preset?.command || '')
-  const presetArgs = [...(preset?.args || []), ...(preset?.fields.filter(f => f.kind === 'arg').map(f => f.default || '') || [])]
-  const [args, setArgs] = useState((app?.args || presetArgs).join('\n'))
-  const [env, setEnv] = useState<[string, string][]>(Object.entries(app?.env || {}))
-  const [secrets, setSecrets] = useState<Record<string, string>>({})
-  const [deny, setDeny] = useState((app?.deny || preset?.deny || []).join(', '))
-  const [confirmRule, setConfirmRule] = useState(typeof app?.confirm === 'string' ? app.confirm : 'auto')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const secretFields = preset?.fields.filter(f => f.kind === 'env') || []
-  const save = async () => {
-    setBusy(true); setErr('')
-    try {
-      const r: App = await api(`/api/apps/${name.trim()}`, { method: 'PUT', body: {
-        command, args: args.split('\n').map(x => x.trim()).filter(Boolean),
-        env: Object.fromEntries(env.filter(([k]) => k.trim())), secrets, enabled: true,
-        deny: deny.split(/[,，\s]+/).filter(Boolean), confirm: confirmRule } })
-      if (!r.connected) { setErr(r.status || '没连上'); return }
-      onDone()
-    } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
-  }
-  return (
-    <div className="app-editor">
-      <h4>{isNew ? `添加${preset ? ' ' + preset.title : '应用'}` : `配置 @${name}`}</h4>
-      <label className="field">应用名（聊天里用 @{name || '名字'} 指定）<input value={name} disabled={!isNew} onChange={e => setName(e.target.value.toLowerCase())} placeholder="例如 files" /></label>
-      {secretFields.map(f => (
-        <label className="field" key={f.key}>{f.label}
-          <input type="password" autoComplete="off" value={secrets[f.key] || ''} onChange={e => setSecrets({ ...secrets, [f.key]: e.target.value })}
-            placeholder={app?.env[f.key] ? '已保存在保险库，留空则不修改' : '加密保存到保险库，不会进入聊天记录'} />
-        </label>))}
-      <label className="field">启动命令<input value={command} onChange={e => setCommand(e.target.value)} placeholder="npx / uvx / 可执行文件路径" /></label>
-      <label className="field">参数（每行一个）<textarea rows={3} value={args} onChange={e => setArgs(e.target.value)} /></label>
-      <div className="field">环境变量 <span className="muted small">值可以写 <code>vault:名字</code>（取保险库）或 <code>env:名字</code>（取服务的环境变量）</span>
-        {env.map(([k, v], i) => (
-          <div className="env-row" key={i}>
-            <input value={k} placeholder="变量名" onChange={e => setEnv(env.map((x, j) => j === i ? [e.target.value, x[1]] : x))} />
-            <input value={v} placeholder="值" onChange={e => setEnv(env.map((x, j) => j === i ? [x[0], e.target.value] : x))} />
-            <button className="icon-btn" onClick={() => setEnv(env.filter((_, j) => j !== i))}>✕</button>
-          </div>))}
-        <button className="btn small-btn" onClick={() => setEnv([...env, ['', '']])}>+ 添加变量</button>
-      </div>
-      <label className="field">屏蔽的工具（工具名包含这些词就不开放，逗号分隔）<input value={deny} onChange={e => setDeny(e.target.value)} placeholder="delete, archive" /></label>
-      <label className="field">默认确认策略
-        <select value={confirmRule} onChange={e => setConfirmRule(e.target.value)}>{Object.entries(CONFIRM_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-      </label>
-      {err && <div className="error-line">{err}</div>}
-      <div className="row-actions">
-        <button className="btn" onClick={onDone}>返回</button>
-        <button className="btn primary" disabled={busy || !name || !command} onClick={save}>{busy ? '连接中…（第一次可能要下载）' : '保存并连接'}</button>
-      </div>
     </div>
   )
 }

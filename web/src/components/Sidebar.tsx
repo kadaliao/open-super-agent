@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { openChat, openLibrary, useStore } from '../store'
+import { openApps, openChat, openLibrary, useStore } from '../store'
 import BotAvatar from './BotAvatar'
 import { GroupAvatars } from './Chat'
 
@@ -33,6 +33,9 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
       </div>
       <button className={'side-nav' + (view === 'library' ? ' active' : '')} onClick={() => { openLibrary(); onClose() }}>
         <span className="side-nav-icon">▤</span>资料库
+      </button>
+      <button className={'side-nav' + (view === 'apps' ? ' active' : '')} onClick={() => { openApps(); onClose() }}>
+        <span className="side-nav-icon">⊞</span>应用
       </button>
       <nav className="chat-list">
         {chats.map(c => {

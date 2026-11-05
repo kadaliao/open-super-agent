@@ -8,9 +8,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from . import approvals, auth, bots, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import approvals, auth, bots, catalog, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
 from . import settings, skills, teach, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
@@ -76,7 +76,7 @@ async def bootstrap():
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
-            "apps": mcp_hub.public(), "teach": teach.public(), "auth": auth.enabled()}
+            "apps": mcp_hub.public(), "catalog": catalog.public(), "teach": teach.public(), "auth": auth.enabled()}
 
 
 @app.post("/api/bots")
@@ -715,20 +715,56 @@ async def pc_vnc(sock: WebSocket, bot_id: int):
 # ---------- 应用、确认规则、保险库 ----------
 @app.get("/api/apps")
 async def list_apps():
-    return {"apps": mcp_hub.public(), "presets": mcp_hub.PRESETS}
+    return {"apps": mcp_hub.public(), "catalog": catalog.public()}
+
+
+async def _app_out(name: str) -> dict:
+    await broadcast({"type": "apps_changed"})
+    return next(x for x in mcp_hub.public() if x["name"] == name)
+
+
+@app.post("/api/market/{item_id}")
+async def install_app(item_id: str, data: dict = Body(default={})):
+    """从应用市场添加：values 是用户填的内容（token 之类），密钥存进保险库，配置里只留引用。"""
+    if mcp_hub.get(item_id):
+        _err(ValueError("已经添加过了"))
+    values = data.get("values") or {}
+    try:
+        await catalog.check(item_id, values)
+        mcp_hub.save(item_id, catalog.build(item_id, values) | {"enabled": True})
+    except ValueError as e:
+        _err(e)
+    await mcp_hub.connect(item_id)
+    if item_id not in mcp_hub._connected:   # 没连上就撤掉，用户改一下再点连接就行
+        msg = mcp_hub.status.get(item_id) or "没连上"
+        await mcp_hub.disconnect(item_id)
+        mcp_hub.remove(item_id)
+        await broadcast({"type": "apps_changed"})
+        if any(w in msg for w in ("401", "403", "Unauthorized", "parse JSON")):
+            msg = "对方没有接受这个密钥，检查一下有没有复制完整。（" + msg[:120] + "）"
+        _err(ValueError(msg))
+    return await _app_out(item_id)
 
 
 @app.put("/api/apps/{name}")
 async def save_app(name: str, data: dict = Body(...)):
-    """新建或修改应用。secrets 里的明文先存进保险库，配置里只留 vault:名字。"""
+    """自定义或高级设置。secrets 里的明文先存进保险库，配置里只留 vault:名字；token 放进 Authorization 请求头。"""
     try:
-        env = dict(data.get("env") or (mcp_hub.get(name) or {}).get("env") or {})
+        old = mcp_hub.get(name) or {}
+        owned = list(old.get("owned") or [])
+        env = dict(data.get("env") or old.get("env") or {})
         for k, v in (data.pop("secrets", None) or {}).items():
             if v:
                 ref = f"{name}_{k}".upper().replace("-", "_")
                 vault.put(ref, v)
                 env[k] = f"vault:{ref}"
-        a = mcp_hub.save(name, data | {"env": env})
+                owned.append(ref)
+        if token := (data.pop("token", None) or "").strip():
+            ref = f"{name}_TOKEN".upper().replace("-", "_")
+            vault.put(ref, token)
+            data["headers"] = {**(data.get("headers") or old.get("headers") or {}), "Authorization": f"Bearer {{vault:{ref}}}"}
+            owned.append(ref)
+        a = mcp_hub.save(name, data | {"env": env, "owned": sorted(set(owned))})
     except ValueError as e:
         _err(e)
     if a["enabled"]:
@@ -736,8 +772,7 @@ async def save_app(name: str, data: dict = Body(...)):
     else:
         await mcp_hub.disconnect(name)
         mcp_hub.status[name] = "未启用"
-    await broadcast({"type": "apps_changed"})
-    return next(x for x in mcp_hub.public() if x["name"] == name)
+    return await _app_out(name)
 
 
 @app.post("/api/apps/{name}/{action}")
@@ -751,10 +786,25 @@ async def app_action(name: str, action: str):
         mcp_hub.save(name, {"enabled": False})
         await mcp_hub.disconnect(name)
         mcp_hub.status[name] = "未启用"
+    elif action == "cancel":
+        await mcp_hub.cancel_login(name)
     else:
         raise HTTPException(404, "未知操作")
-    await broadcast({"type": "apps_changed"})
-    return next(x for x in mcp_hub.public() if x["name"] == name)
+    return await _app_out(name)
+
+
+@app.patch("/api/apps/{name}")
+async def patch_app(name: str, data: dict = Body(...)):
+    """只改确认策略、屏蔽词这类设置，改完重连让它生效。"""
+    if not mcp_hub.get(name):
+        raise HTTPException(404, "没有这个应用")
+    try:
+        a = mcp_hub.save(name, {k: v for k, v in data.items() if k in ("deny", "confirm")})
+    except ValueError as e:
+        _err(e)
+    if a["enabled"] and name in mcp_hub._connected:
+        await mcp_hub.connect(name)
+    return await _app_out(name)
 
 
 @app.delete("/api/apps/{name}")
@@ -763,6 +813,52 @@ async def delete_app(name: str):
     mcp_hub.remove(name)
     await broadcast({"type": "apps_changed"})
     return {"ok": True}
+
+
+def _oauth_page(ok: bool, title: str, detail: str = "") -> HTMLResponse:
+    """授权弹窗的最后一页：告诉用户结果，通知原页面，然后自己关掉。"""
+    from html import escape
+    mark = "✓" if ok else "!"
+    js = json.dumps({"type": "osa-app", "ok": ok})
+    return HTMLResponse(f"""<!doctype html><html lang="zh"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)}</title>
+<style>body{{margin:0;height:100vh;display:grid;place-items:center;font-family:-apple-system,"PingFang SC",sans-serif;
+background:#0d0d0e;color:#ececec;text-align:center}}@media(prefers-color-scheme:light){{body{{background:#fbfbfa;color:#18181a}}}}
+.m{{font-size:44px;color:{'#5fcf98' if ok else '#ef6b6b'}}}p{{margin:6px 24px}}.d{{opacity:.6;font-size:14px}}</style>
+<div><div class="m">{mark}</div><p>{escape(title)}</p><p class="d">{escape(detail)}</p></div>
+<script>try{{opener&&opener.postMessage({js},location.origin)}}catch(e){{}}
+setTimeout(function(){{if(opener)close();else location.replace('/apps')}},{1200 if ok else 4000})</script></html>""")
+
+
+@app.get("/oauth/start/{name}")
+async def oauth_start(name: str, request: Request):
+    """点“连接”时在弹窗里打开：需要的话先从市场添加，然后跳到对方的登录授权页。"""
+    if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        raise HTTPException(403, "请从应用市场里点连接")
+    a = mcp_hub.get(name)
+    if not a:
+        try:
+            mcp_hub.save(name, catalog.build(name, {}) | {"enabled": True})
+        except ValueError as e:
+            return _oauth_page(False, "没法连接", str(e))
+        a = mcp_hub.get(name)
+    if not a.get("oauth"):
+        return _oauth_page(False, "这个应用不用登录授权", "回到应用市场里直接连接就行")
+    kind, val = await mcp_hub.login(name, str(request.url_for("oauth_callback")))
+    if kind == "url":
+        return RedirectResponse(val, 302)
+    ok = name in mcp_hub._connected
+    return _oauth_page(ok, f"已连接 {catalog.title(name)}" if ok else "没有连上", "" if ok else val)
+
+
+@app.get("/oauth/callback", name="oauth_callback")
+async def oauth_callback(state: str = "", code: str = "", iss: str = "", error: str = "", error_description: str = ""):
+    name = await mcp_hub.finish_login(state, code, iss, error_description or error)
+    if not name:
+        return _oauth_page(False, "这次授权已经失效", "回到应用市场重新点一次连接")
+    if name in mcp_hub._connected:
+        return _oauth_page(True, f"已连接 {catalog.title(name)}", "可以关掉这个窗口了")
+    return _oauth_page(False, "没有连上", mcp_hub.status.get(name, ""))
 
 
 @app.get("/api/rules")

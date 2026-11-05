@@ -430,7 +430,7 @@ class Router:
         return (f"截图见下一条消息。当前窗口：{title or '无'}；电脑{who}。", png)
 
     def _capabilities(self) -> str:
-        from . import mcp_hub, tools
+        from . import catalog, mcp_hub, tools
         lines = [f"- {n}：{d}" for n, (_, d, _) in tools.TOOLS.items()]
         if (CFG.get("computer") or {}).get("enabled", True):
             lines.append("- 电脑：每个后台任务都能用所有 Bot 共用的一台电脑（Linux 桌面 + Chromium 浏览器 + 终端），"
@@ -446,10 +446,13 @@ class Router:
         for full in mcp_hub.TOOLS:
             server, _, tool = full.partition("__")
             groups.setdefault(server, []).append(tool)
-        lines += [f"- 应用 @{srv}：{', '.join(ts)}" for srv, ts in groups.items()]
+        def label(n: str) -> str:
+            t = catalog.title(n)
+            return f"@{n}" if t == "@" + n else f"@{n}（{t}）"
+        lines += [f"- 应用 {label(srv)}：{', '.join(ts)}" for srv, ts in groups.items()]
         off = [n for n in mcp_hub.all_apps() if n not in groups]
         if off:
-            lines.append(f"- 未连接的应用（现在用不了）：{', '.join('@' + n for n in off)}")
+            lines.append(f"- 未连接的应用（现在用不了，请用户到「应用」页面重新连接）：{', '.join(label(n) for n in off)}")
         return "\n".join(lines)
 
     async def dispatch(self, goal: str, mode: str = "single", background: bool = False,

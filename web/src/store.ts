@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { App, Approval, Bot, Chat, ComputerState, Message, Settings, Skill, Stream, Task, Teach, TeachDraft } from './types'
+import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, Settings, Skill, Stream, Task, Teach, TeachDraft } from './types'
 
 type State = {
   ready: boolean
@@ -19,8 +19,9 @@ type State = {
   errors: Record<number, string | undefined>
   computers: Record<number, ComputerState>
   apps: App[]
+  catalog: CatalogItem[]             // 应用市场
   skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
-  view: 'chat' | 'library'           // 主区显示对话还是资料库
+  view: 'chat' | 'library' | 'apps'  // 主区显示对话、资料库还是应用市场
   libraryPage: number | null         // 资料库里打开的页面
   teach: Teach | null                // 正在“演示一遍”的录制
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
@@ -29,7 +30,7 @@ type State = {
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], skills: {},
+  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], skills: {},
   view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false,
 }
 const subs = new Set<() => void>()
@@ -77,7 +78,7 @@ export async function bootstrap() {
   const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
-        tasks, approvals, apps: b.apps || [], teach: b.teach || null, auth: !!b.auth, ready: true })
+        tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], teach: b.teach || null, auth: !!b.auth, ready: true })
   if (active) openChat(active)
 }
 
@@ -90,7 +91,7 @@ export async function refreshLists() {
 
 export async function refreshApps() {
   const r = await api('/api/apps')
-  set({ apps: r.apps })
+  set({ apps: r.apps, catalog: r.catalog })
   return r
 }
 
@@ -116,6 +117,11 @@ async function loadChat(chatId: number) {
 
 export function openLibrary(pageId: number | null = null) {
   set({ view: 'library', libraryPage: pageId })
+}
+
+export function openApps() {
+  set({ view: 'apps' })
+  refreshApps()
 }
 
 export async function loadOlder(chatId: number) {

@@ -400,3 +400,81 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .approval-actions input { flex-basis: 100%; }
   .approval-actions .btn { flex: 1; }
 }
+
+/* ---------- 应用市场 ---------- */
+.market .chat-head { gap: 14px; }
+.m-search { width: min(280px, 50vw); padding: 6px 12px; border-radius: 20px; font-size: 14px; }
+.m-body { max-width: 1040px; margin: 0 auto; padding: 22px 24px 48px; }
+.m-hero h2 { margin: 4px 0 4px; font-size: 22px; letter-spacing: -.3px; }
+.m-hero p { margin: 0 0 6px; }
+.m-h { margin: 22px 0 10px; font-size: 13px; color: var(--fg2); font-weight: 600; }
+.m-mine { display: flex; gap: 8px; flex-wrap: wrap; }
+.m-mine-item { display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg2); text-align: left; }
+.m-mine-item:hover { border-color: var(--fg3); }
+.m-mine-text { display: flex; flex-direction: column; line-height: 1.3; font-size: 13.5px; }
+.m-cats { display: flex; gap: 6px; margin: 26px 0 14px; overflow-x: auto; scrollbar-width: none; }
+.m-cats button { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--line); color: var(--fg2); font-size: 13.5px; white-space: nowrap; flex: none; }
+.m-cats button:hover { color: var(--fg); } .m-cats button.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.m-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 12px; }
+.m-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg2);
+  cursor: pointer; transition: border-color .15s, transform .15s; min-height: 150px; }
+.m-card:hover { border-color: var(--fg3); transform: translateY(-1px); }
+.m-card:focus-visible { outline: 2px solid var(--fg3); outline-offset: 2px; }
+.m-card-top { display: flex; align-items: center; gap: 12px; }
+.m-card-name { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.m-card-name b { font-size: 15px; } .m-card-name span { font-size: 12px; color: var(--fg3); }
+.m-card-desc { margin: 0; flex: 1; font-size: 13.5px; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.m-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.m-how { font-size: 12px; color: var(--fg3); }
+.btn.small { padding: 4px 14px; font-size: 13px; border-radius: 20px; }
+.m-get { background: var(--bg); } .m-card:hover .m-get { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.m-none { grid-column: 1 / -1; padding: 30px 0; text-align: center; }
+.m-foot { margin-top: 26px; text-align: center; }
+.app-icon { display: inline-grid; place-items: center; flex: none; font-weight: 700; box-shadow: inset 0 0 0 1px rgb(127 127 127 / .18); line-height: 1; }
+.m-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg3); white-space: nowrap; }
+.m-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--fg3); }
+.m-state.ok { color: var(--good); } .m-state.ok i { background: var(--good); }
+.m-state.busy i { background: var(--warn); animation: pulse 1s infinite; }
+.m-state.warn { color: var(--warn); } .m-state.warn i { background: var(--warn); }
+.m-state.bad { color: var(--bad); } .m-state.bad i { background: var(--bad); }
+
+.m-sheet { width: min(520px, 94vw); max-height: 88vh; }
+.m-sheet-head { display: flex; align-items: center; gap: 14px; padding: 20px 18px 14px 22px; }
+.m-sheet-title { flex: 1; min-width: 0; } .m-sheet-title h3 { margin: 0; font-size: 19px; }
+.m-sheet-body { overflow-y: auto; padding: 2px 22px 22px; display: flex; flex-direction: column; gap: 12px; }
+.m-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--bg2); }
+.m-status .m-state { font-size: 13px; }
+.m-connect { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
+.m-connect p { margin: 0; }
+.m-big { padding: 10px 16px; font-size: 15px; font-weight: 600; border-radius: 12px; }
+.m-link { align-self: flex-start; }
+.m-steps { margin: 0; padding-left: 20px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.m-note { font-size: 13px; color: var(--warn); }
+.m-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.m-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--fg2); cursor: pointer; }
+.danger-text { color: var(--bad); } .danger-text:hover { color: var(--bad); }
+.m-actions .ghost-btn { font-size: 13px; padding: 5px 9px; }
+.m-about { margin: 4px 0 0; }
+.m-can { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
+.m-example { padding: 10px 12px; border-radius: 12px; background: var(--bg2); font-size: 14px; border-left: 3px solid var(--line); }
+.m-sheet .m-h { margin: 6px 0 -4px; }
+.m-adv { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 12px; }
+.m-adv summary { cursor: pointer; color: var(--fg2); font-size: 13.5px; }
+.m-adv[open] summary { margin-bottom: 10px; }
+.m-adv > .field { margin-bottom: 12px; }
+.m-tools { display: flex; flex-wrap: wrap; gap: 4px; max-height: 120px; overflow-y: auto; }
+.m-tools code { font-size: 11.5px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; padding: 2px; gap: 2px; align-self: flex-start; flex-wrap: wrap; }
+.seg button { padding: 5px 12px; border-radius: 8px; color: var(--fg2); font-size: 13px; }
+.seg button.on { background: var(--bg3); color: var(--fg); font-weight: 600; }
+.app-editor .back { align-self: flex-start; font-size: 13px; }
+.app-editor h3 { margin: 4px 0 0; }
+.app-editor .muted.small { margin: 0; }
+@media (max-width: 760px) {
+  .market .chat-head { padding-left: 46px; }
+  .m-body { padding: 14px 14px 36px; }
+  .m-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .m-card { padding: 12px; min-height: 0; }
+  .m-sheet { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}
+@media (max-width: 420px) { .m-grid { grid-template-columns: 1fr; } }

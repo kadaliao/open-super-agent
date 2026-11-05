@@ -30,13 +30,20 @@ export type Settings = {
   heavy_workers: number
   known_models: string[]
 }
+export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'
 export type App = {
-  name: string; command: string; args: string[]; env: Record<string, string>; deny: string[]; confirm: string | string[]
-  enabled: boolean; status: string; tools: string[]; connected: boolean; confirm_tools: string[]
+  name: string; catalog: string; type: 'stdio' | 'http'
+  command: string; args: string[]; env: Record<string, string>; url: string; headers: string[]; oauth: boolean
+  deny: string[]; confirm: string | string[]
+  enabled: boolean; status: string; state: AppState; tools: string[]; connected: boolean; confirm_tools: string[]
 }
-export type Preset = {
-  title: string; desc: string; command: string; args: string[]; deny?: string[]
-  fields: { key: string; kind: 'arg' | 'env'; label: string; default?: string; secret?: boolean }[]
+// 应用市场里的一项。kind：oauth 登录授权 / token 填密钥 / none 免配置
+export type CatalogField = { key: string; label: string; placeholder?: string; secret?: boolean; default?: string; optional?: boolean }
+export type CatalogItem = {
+  id: string; title: string; category: string; desc: string; about: string; can: string[]; example: string
+  icon?: string; color?: string; glyph?: string; by: string; kind: 'oauth' | 'token' | 'none'
+  fields: CatalogField[]; steps: string[]; link?: string; link_label?: string; note?: string; how?: string
+  remote: boolean
 }
 export type Rule = { id: number; pattern: string; action: 'allow' | 'ask'; note: string; created: number }
 export type Skill = {

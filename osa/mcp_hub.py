@@ -1,18 +1,33 @@
-"""应用（MCP server）：在界面里添加、配置、启用和停用，工具交给 Worker 使用。
+"""应用（MCP server）：在应用市场里添加、启用和停用，工具交给 Worker 使用。
+
+两种连接方式：
+- stdio：在本机启动一个进程（npx / uvx / 可执行文件）。
+- http：连远程地址（Streamable HTTP）。可以在请求头里带 token，也可以走 OAuth：
+  用户在弹窗里登录授权，客户端用动态注册（DCR）自己拿 client_id，令牌加密存进保险库，过期自动刷新。
 
 应用配置存在数据库里；第一次启动时从 config.yaml 的 mcp_servers 导入。
 工具名格式为 <应用名>__<工具>。deny 列表里的词出现在工具名中时，这个工具不开放。
-环境变量的值可以写 vault:名字，启动时从保险库取明文注入，不落到配置和日志里。
+配置里的值可以写 vault:名字 / env:名字（整个值），或在字符串里嵌 {vault:名字}，连接时才取明文。
 
-每个应用跑在自己的后台协程里（MCP 的 stdio 连接不能跨协程关闭），停用时通知它退出。
+每个应用跑在自己的后台协程里（MCP 的连接不能跨协程关闭），停用时通知它退出。
 """
 import asyncio
+import contextlib
 import json
+import logging
 import os
 import re
 import time
+from urllib.parse import parse_qs, urlparse
 from mcp import ClientSession, StdioServerParameters
+from mcp.client.auth import OAuthClientProvider
+from mcp.client.auth import oauth2 as _oauth2, utils as _auth_utils
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import create_mcp_http_client
+from mcp.shared.auth import AuthorizationCodeResult, OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
+from mcp.shared.exceptions import MCPError
+from mcp_types import CONNECTION_CLOSED
 from .config import CFG, ROOT
 from .memory import conn
 from . import vault
@@ -24,27 +39,39 @@ TOOLS: dict[str, tuple] = {}     # 名字 -> (异步调用函数, OpenAI 工具 
 status: dict[str, str] = {}      # 应用 -> 状态说明，给前端看
 CONFIRM: set[str] = set()        # 默认需要用户确认的工具（规则可以覆盖）
 _running: dict[str, tuple[asyncio.Task, asyncio.Event]] = {}
+_connected: set[str] = set()
+_needs_login: set[str] = set()   # OAuth 应用：还没授权，或者授权过期了
+_reconnected: dict[str, float] = {}
 notify = None                    # 由 server 设置：async (event) -> None
 
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
 WORKSPACE = ROOT / "data" / "workspace"
+KEYS = ("catalog", "type", "command", "args", "env", "url", "headers", "oauth", "oauth_redirect",
+        "deny", "confirm", "owned")
+LOGIN_WAIT_S = 600               # 等用户在弹窗里登录授权的时限
 
-# 应用浏览器里的预设。fields 是要用户填的东西：arg 追加到命令参数，env 写进环境变量（secret 存进保险库）
-PRESETS = {
-    "filesystem": {"title": "文件系统", "desc": "读写指定目录里的文件",
-                   "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem"],
-                   "fields": [{"key": "path", "kind": "arg", "label": "允许访问的目录", "default": str(WORKSPACE)}]},
-    "github": {"title": "GitHub", "desc": "仓库、issue、PR",
-               "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
-               "fields": [{"key": "GITHUB_PERSONAL_ACCESS_TOKEN", "kind": "env", "label": "Personal access token", "secret": True}],
-               "deny": ["delete"]},
-    "notion": {"title": "Notion", "desc": "页面和数据库",
-               "command": "npx", "args": ["-y", "@notionhq/notion-mcp-server"],
-               "fields": [{"key": "NOTION_TOKEN", "kind": "env", "label": "Integration token", "secret": True}],
-               "deny": ["delete", "archive"]},
-    "fetch": {"title": "网页抓取", "desc": "把网页转成 Markdown",
-              "command": "uvx", "args": ["mcp-server-fetch"], "fields": []},
-}
+
+class NeedsLogin(Exception):
+    """OAuth 应用需要用户在浏览器里登录授权。"""
+
+
+class _QuietLogin(logging.Filter):
+    """要用户登录是正常情况，SDK 不用为它打一整段报错栈。"""
+    def filter(self, record):
+        return not (record.exc_info and isinstance(record.exc_info[1], NeedsLogin))
+
+
+logging.getLogger("mcp.client.auth.oauth2").addFilter(_QuietLogin())
+
+
+def _issuer_ok(meta, expected: str):
+    """滴答清单的发现文档写 https://dida365.com/，元数据里写 https://dida365.com。
+    SDK 自己的 issuers_match 也认为两者是同一个服务器，只是这一处比较用了严格相等。"""
+    if not _auth_utils.issuers_match(str(meta.issuer), expected):
+        _auth_utils.validate_metadata_issuer(meta, expected)
+
+
+_oauth2.validate_metadata_issuer = _issuer_ok
 
 
 # ---------- 存储 ----------
@@ -55,8 +82,11 @@ def _seed():
         if name in have:
             continue
         env = {k: f"env:{k}" for k in s.get("env_from", [])}
-        cfg = {"command": s["command"], "args": s.get("args", []), "env": env,
+        cfg = {"command": s.get("command", ""), "args": s.get("args", []), "env": env,
                "deny": s.get("deny", []), "confirm": s.get("confirm", "auto")}
+        if s.get("url"):
+            cfg = {"type": "http", "url": s["url"], "headers": s.get("headers", {}), "oauth": bool(s.get("oauth")),
+                   "deny": cfg["deny"], "confirm": cfg["confirm"]}
         conn.execute("insert into apps values(?,?,?,?)", (name, json.dumps(cfg), int(bool(s.get("enabled"))), time.time()))
     conn.commit()
 
@@ -70,32 +100,63 @@ def get(name: str) -> dict | None:
     return all_apps().get(name)
 
 
+def _secret_free(v):
+    """给前端看的配置：嵌在网址里的密钥只显示引用名。"""
+    return v if not isinstance(v, str) or not v.startswith("vault:") else f"（保险库：{v[6:]}）"
+
+
+def state(name: str, a: dict) -> str:
+    """connected 已连接 | connecting 连接中 | login 等用户授权 | needs_login 要重新授权 | off 停用 | error 出错"""
+    if name in _connected:
+        return "connected"
+    if not a["enabled"]:
+        return "off"
+    w = _login.get(name)
+    if w and w["url"].done() and not w["code"].done():
+        return "login"
+    if name in _needs_login:
+        return "needs_login"
+    if name in _running:
+        return "connecting"
+    return "error"
+
+
 def public() -> list[dict]:
     out = []
     for n, a in all_apps().items():
         tools = sorted(t.split("__", 1)[1] for t in TOOLS if t.startswith(n + "__"))
-        out.append({"name": n, "command": a["command"], "args": a.get("args", []),
-                    "env": a.get("env", {}), "deny": a.get("deny", []), "confirm": a.get("confirm", "auto"),
-                    "enabled": a["enabled"], "status": status.get(n, ""), "tools": tools,
-                    "connected": n in _running and any(t.startswith(n + "__") for t in TOOLS),
+        out.append({"name": n, "catalog": a.get("catalog") or "", "type": a.get("type") or "stdio",
+                    "command": a.get("command", ""), "args": a.get("args", []), "env": a.get("env", {}),
+                    "url": _secret_free(a.get("url", "")), "headers": list((a.get("headers") or {}).keys()),
+                    "oauth": bool(a.get("oauth")), "deny": a.get("deny", []), "confirm": a.get("confirm", "auto"),
+                    "enabled": a["enabled"], "status": status.get(n, ""), "state": state(n, a), "tools": tools,
+                    "connected": n in _connected,
                     "confirm_tools": sorted(t.split("__", 1)[1] for t in CONFIRM if t.startswith(n + "__"))})
     return out
 
 
 def save(name: str, data: dict) -> dict:
-    """新建或修改应用配置。保存后如果是启用状态就重连。"""
+    """新建或修改应用配置。只改 data 里给了的字段，其余沿用旧值。"""
     if not NAME.match(name):
         raise ValueError("应用名只能用小写字母、数字、- 和 _，以字母开头，最多 24 个字符")
     old = get(name) or {}
-    cfg = {"command": (data.get("command") or old.get("command") or "").strip(),
-           "args": data.get("args", old.get("args", [])),
-           "env": data.get("env", old.get("env", {})),
-           "deny": data.get("deny", old.get("deny", [])),
-           "confirm": data.get("confirm", old.get("confirm", "auto"))}
-    if not cfg["command"]:
-        raise ValueError("缺少启动命令")
-    if not isinstance(cfg["args"], list) or not isinstance(cfg["env"], dict):
-        raise ValueError("args 要是列表，env 要是对象")
+    cfg = {k: old[k] for k in KEYS if k in old} | {k: data[k] for k in KEYS if k in data}
+    cfg.setdefault("deny", [])
+    cfg.setdefault("confirm", "auto")
+    if cfg.get("type", "stdio") == "http":
+        cfg["url"] = (cfg.get("url") or "").strip()
+        if not cfg["url"]:
+            raise ValueError("缺少应用地址")
+        if not isinstance(cfg.get("headers", {}), dict):
+            raise ValueError("headers 要是对象")
+    else:
+        cfg["command"] = (cfg.get("command") or "").strip()
+        cfg.setdefault("args", [])
+        cfg.setdefault("env", {})
+        if not cfg["command"]:
+            raise ValueError("缺少启动命令")
+        if not isinstance(cfg["args"], list) or not isinstance(cfg["env"], dict):
+            raise ValueError("args 要是列表，env 要是对象")
     enabled = bool(data.get("enabled", old.get("enabled", True)))
     conn.execute("insert or replace into apps values(?,?,?,coalesce((select created from apps where name=?),?))",
                  (name, json.dumps(cfg), int(enabled), name, time.time()))
@@ -103,10 +164,190 @@ def save(name: str, data: dict) -> dict:
     return cfg | {"enabled": enabled}
 
 
+def oauth_key(name: str) -> str:
+    return "OAUTH_" + name.upper().replace("-", "_")
+
+
 def remove(name: str):
+    """删除应用，连同市场替它存进保险库的密钥和授权令牌。"""
+    a = get(name) or {}
+    for ref in [*(a.get("owned") or []), oauth_key(name)]:
+        vault.delete(ref)
     conn.execute("delete from apps where name=?", (name,))
     conn.commit()
     status.pop(name, None)
+    _needs_login.discard(name)
+
+
+# ---------- 密钥 ----------
+_REF = re.compile(r"\{(vault|env):([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _resolve(v, missing: list) -> str:
+    """vault:X / env:X（整个值）或字符串里的 {vault:X} / {env:X} 换成明文；取不到的记进 missing。"""
+    v = str(v)
+    if v.startswith(("vault:", "env:")):
+        v = "{" + v + "}"
+
+    def sub(m):
+        val = vault.get(m[2]) if m[1] == "vault" else os.environ.get(m[2])
+        if not val:
+            missing.append(m[0][1:-1])
+            return ""
+        return val
+    return _REF.sub(sub, v)
+
+
+def _env(a: dict) -> dict:
+    missing: list = []
+    env = {k: _resolve(v, missing) for k, v in (a.get("env") or {}).items()}
+    if missing:
+        raise ValueError(f"缺少密钥：{', '.join(missing)}")
+    return env
+
+
+# ---------- OAuth ----------
+class _Storage:
+    """令牌和动态注册得到的 client 信息，整个存成保险库里的一条（加密）。"""
+
+    def __init__(self, name: str, redirect: str):
+        self.key, self.redirect = oauth_key(name), redirect
+
+    def load(self) -> dict:
+        raw = vault.get(self.key)
+        try:
+            return json.loads(raw) if raw else {}
+        except ValueError:
+            return {}
+
+    def _put(self, **kv):
+        vault.put(self.key, json.dumps(self.load() | kv))
+
+    async def get_tokens(self):
+        t = self.load().get("tokens")
+        return OAuthToken.model_validate(t) if t else None
+
+    async def set_tokens(self, tokens):
+        exp = time.time() + tokens.expires_in if tokens.expires_in else None
+        self._put(tokens=tokens.model_dump(mode="json", exclude_none=True), expires_at=exp)
+
+    async def get_client_info(self):
+        c = self.load().get("client")
+        if not c:
+            return None
+        info = OAuthClientInformationFull.model_validate(c)
+        # 换了访问地址（回调地址跟着变）就重新注册
+        if self.redirect and [str(u) for u in info.redirect_uris or []] != [self.redirect]:
+            return None
+        return info
+
+    async def set_client_info(self, info):
+        self._put(client=info.model_dump(mode="json", exclude_none=True))
+
+
+class _Provider(OAuthClientProvider):
+    async def _initialize(self):
+        await super()._initialize()
+        # SDK 不记令牌什么时候过期；从保险库恢复，这样重启后会先刷新令牌，而不是要用户重新登录
+        exp = self.context.storage.load().get("expires_at")
+        if self.context.current_tokens and exp:
+            self.context.token_expiry_time = exp - 30
+
+
+# 正在进行的授权：应用名 -> {"url": 授权页地址, "code": 回调带回来的授权码, "task": 连接任务}
+_login: dict[str, dict] = {}
+_states: dict[str, str] = {}     # OAuth state -> 应用名
+
+
+def _fail(fut: asyncio.Future, e: Exception):
+    """让等着授权码的一方收到异常。没人等时也不在日志里报“异常没人取”。"""
+    if not fut.done():
+        fut.set_exception(e)
+        fut.exception()
+
+
+def has_tokens(name: str) -> bool:
+    return bool(_Storage(name, "").load().get("tokens"))
+
+
+def _oauth(name: str, a: dict, url: str) -> _Provider:
+    redirect = a.get("oauth_redirect") or ""
+
+    async def on_redirect(auth_url: str):
+        w = _login.get(name)
+        if not w or w["url"].done():
+            _needs_login.add(name)
+            raise NeedsLogin("需要重新登录授权")
+        head, sep, query = auth_url.partition("?")
+        auth_url = head + sep + query.replace("?", "&")   # 授权地址本身带参数时（腾讯文档），SDK 会拼出两个 ?
+        state_ = parse_qs(urlparse(auth_url).query).get("state", [""])[0]
+        _states[state_] = name
+        w["state"] = state_
+        status[name] = "等你在弹出的窗口里登录授权…"
+        w["url"].set_result(auth_url)
+        await _changed()
+
+    async def on_callback() -> AuthorizationCodeResult:
+        w = _login[name]
+        try:
+            return await asyncio.wait_for(asyncio.shield(w["code"]), LOGIN_WAIT_S)
+        except asyncio.TimeoutError:
+            _needs_login.add(name)
+            raise NeedsLogin("没有完成授权")
+        finally:
+            _states.pop(w.get("state", ""), None)
+
+    meta = OAuthClientMetadata(client_name="Open Super Agent", redirect_uris=[redirect or "http://127.0.0.1/oauth/callback"],
+                               grant_types=["authorization_code", "refresh_token"], response_types=["code"])
+    return _Provider(url, meta, _Storage(name, redirect), on_redirect, on_callback)
+
+
+async def login(name: str, redirect: str) -> tuple[str, str]:
+    """开始授权。返回 ("url", 授权页地址)；不需要登录就连上了返回 ("done", 状态)。"""
+    if not get(name):
+        raise ValueError(f"没有应用 {name}")
+    save(name, {"oauth_redirect": redirect, "enabled": True})
+    # 从头授权：旧令牌已经不能用了，动态注册的 client 也可能被对方清掉了，一起重新来
+    await disconnect(name)
+    vault.delete(oauth_key(name))
+    loop = asyncio.get_running_loop()
+    w = {"url": loop.create_future(), "code": loop.create_future()}
+    _login[name] = w
+    _needs_login.discard(name)
+    w["task"] = asyncio.create_task(connect(name, timeout=LOGIN_WAIT_S + 60))
+    await asyncio.wait([w["url"], w["task"]], timeout=60, return_when=asyncio.FIRST_COMPLETED)
+    if w["url"].done():
+        return "url", w["url"].result()
+    if w["task"].done():
+        return "done", status.get(name, "")
+    await disconnect(name)
+    status[name] = "打不开授权页：应用没有响应"
+    return "done", status[name]
+
+
+async def finish_login(state_: str, code: str, iss: str | None, error: str) -> str | None:
+    """OAuth 回调：把授权码交给等着的连接，等它连上。返回应用名。"""
+    name = _states.get(state_)
+    w = _login.get(name or "")
+    if not name or not w or w["code"].done():
+        return None
+    if error:
+        _fail(w["code"], NeedsLogin(f"授权没有完成：{error}"))
+    else:
+        w["code"].set_result(AuthorizationCodeResult(code=code, state=state_, iss=iss or None))
+    status[name] = "已授权，正在连接…"
+    await _changed()
+    try:
+        await asyncio.wait_for(asyncio.shield(w["task"]), 60)
+    except asyncio.TimeoutError:
+        pass
+    return name
+
+
+async def cancel_login(name: str):
+    w = _login.get(name)
+    if w:
+        _fail(w["code"], NeedsLogin("取消了授权"))
 
 
 # ---------- 连接 ----------
@@ -115,26 +356,6 @@ def _text(result) -> str:
     out = "\n".join(parts)
     is_error = getattr(result, "is_error", None) or getattr(result, "isError", False)  # 兼容新旧 SDK 字段名
     return ("工具报错：" + out) if is_error else out
-
-
-def _env(name: str, a: dict) -> dict:
-    """解析环境变量：vault:X 取保险库，env:X 取服务进程的环境变量，其余原样。缺了就报错。"""
-    env, missing = {}, []
-    for k, v in (a.get("env") or {}).items():
-        v = str(v)
-        if v.startswith("vault:"):
-            val = vault.get(v[6:])
-        elif v.startswith("env:"):
-            val = os.environ.get(v[4:])
-        else:
-            val = v
-        if val is None or val == "":
-            missing.append(f"{k}（{v}）")
-        else:
-            env[k] = val
-    if missing:
-        raise ValueError(f"缺少密钥：{', '.join(missing)}")
-    return env
 
 
 def _needs_confirm(name: str, a: dict, tool) -> bool:
@@ -147,16 +368,50 @@ async def _changed():
         await notify({"type": "apps_changed"})
 
 
-async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event):
+def _lost(e: Exception) -> bool:
+    """是不是连接本身断了（而不是工具报错）。"""
+    if isinstance(e, MCPError):
+        return e.error.code == CONNECTION_CLOSED or "Session terminated" in str(e)
+    return True
+
+
+def _first(e: BaseException) -> BaseException:
+    while isinstance(e, BaseExceptionGroup) and e.exceptions:
+        e = e.exceptions[0]
+    return e
+
+
+def _transport(name: str, a: dict):
+    """返回 (transport 上下文, 要一起关的 http client 或 None)。"""
+    if a.get("type") == "http":
+        missing: list = []
+        url = _resolve(a["url"], missing)
+        headers = {k: _resolve(v, missing) for k, v in (a.get("headers") or {}).items()}
+        if missing:
+            raise ValueError(f"缺少密钥：{', '.join(missing)}")
+        client = create_mcp_http_client(headers=headers or None, auth=_oauth(name, a, url) if a.get("oauth") else None)
+        return streamable_http_client(url, http_client=client), client
+    # 登录密码不交给第三方应用
+    env = {**{k: v for k, v in os.environ.items() if k != "OSA_PASSWORD"}, **_env(a)}
+    missing = []
+    args = [_resolve(x, missing) if "vault:" in str(x) or "env:" in str(x) else str(x) for x in a.get("args", [])]
+    if missing:
+        raise ValueError(f"缺少密钥：{', '.join(missing)}")
+    if name == "filesystem" or "server-filesystem" in " ".join(args):
+        WORKSPACE.mkdir(parents=True, exist_ok=True)
+    return stdio_client(StdioServerParameters(command=a["command"], args=args, env=env)), None
+
+
+async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event, wait_s: float):
     """一个应用的整个生命周期：连上、登记工具、等停用信号、清理。"""
     try:
-        # 登录密码不交给第三方应用
-        env = {**{k: v for k, v in os.environ.items() if k != "OSA_PASSWORD"}, **_env(name, a)}
-        if name == "filesystem" or "server-filesystem" in " ".join(a.get("args", [])):
-            WORKSPACE.mkdir(parents=True, exist_ok=True)
-        params = StdioServerParameters(command=a["command"], args=a.get("args", []), env=env)
-        async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
-            await asyncio.wait_for(session.initialize(), 120)
+        transport, client = _transport(name, a)
+        async with contextlib.AsyncExitStack() as stack:
+            if client:
+                await stack.enter_async_context(client)
+            read, write = await stack.enter_async_context(transport)
+            session = await stack.enter_async_context(ClientSession(read, write))
+            await asyncio.wait_for(session.initialize(), wait_s)
             tools = (await session.list_tools()).tools
             deny = [w.lower() for w in a.get("deny", [])]
             n = c = 0
@@ -165,8 +420,20 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event)
                     continue
                 full = f"{name}__{t.name}"[:64]
 
-                async def call(_tool=t.name, **args):
-                    return _text(await session.call_tool(_tool, args))
+                async def call(_tool=t.name, _full=full, **args):
+                    try:
+                        return _text(await session.call_tool(_tool, args))
+                    except Exception as e:
+                        # 连接断了（远程会话过期、进程退出）：重连一次再试
+                        if not _lost(e) or stop.is_set() or time.time() - _reconnected.get(name, 0) < 60:
+                            raise
+                        _reconnected[name] = time.time()
+                        await connect(name)
+                        fn = TOOLS.get(_full)
+                        if not fn:
+                            hint = "，请用户到应用市场重新登录" if name in _needs_login else ""
+                            raise RuntimeError(f"应用 @{name} 连接断开：{status.get(name, '')}{hint}") from e
+                        return await fn[0](**args)
 
                 TOOLS[full] = (call, {"type": "function", "function": {
                     "name": full, "description": (t.description or "")[:1000],
@@ -177,20 +444,33 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event)
                     c += 1
                 n += 1
             status[name] = f"已连接，{n} 个工具（{c} 个写操作默认要确认）"
+            _connected.add(name)
+            _needs_login.discard(name)
             if not ready.done():
                 ready.set_result(None)
             await _changed()
             await stop.wait()
-    except Exception as e:
-        msg = str(e) or type(e).__name__
-        if isinstance(e, ExceptionGroup):
-            msg = "; ".join(str(x) for x in e.exceptions)
-        status[name] = f"连接失败：{msg[:300]}"
+    except BaseException as e:
+        if isinstance(e, asyncio.CancelledError) and stop.is_set():
+            raise
+        e = _first(e)
+        if isinstance(e, NeedsLogin):
+            _needs_login.add(name)
+            msg = str(e)
+        elif isinstance(e, asyncio.TimeoutError):
+            msg = "连接超时"
+        else:
+            msg = "连接失败：" + (str(e) or type(e).__name__)[:300]
+        status[name] = msg
         if not ready.done():
-            ready.set_exception(e)
+            ready.set_exception(e if isinstance(e, Exception) else RuntimeError(msg))
+        if not isinstance(e, Exception):
+            raise
     finally:
         _drop_tools(name)
-        _running.pop(name, None)
+        _connected.discard(name)
+        if _running.get(name, (None,))[0] is asyncio.current_task():
+            _running.pop(name, None)
         if status.get(name, "").startswith("已连接"):
             status[name] = "已停用"
         await _changed()
@@ -206,11 +486,18 @@ async def connect(name: str, timeout: float = 150) -> str:
     a = get(name)
     if not a:
         raise ValueError(f"没有应用 {name}")
-    await disconnect(name)
+    await disconnect(name, keep_login=True)
+    interactive = name in _login and not _login[name]["url"].done()
+    if a.get("oauth") and not interactive and not has_tokens(name):
+        _needs_login.add(name)
+        status[name] = "还没有登录授权"
+        await _changed()
+        return status[name]
     status[name] = "正在连接…"
     await _changed()
     ready, stop = asyncio.get_running_loop().create_future(), asyncio.Event()
-    _running[name] = (asyncio.create_task(_serve(name, a, ready, stop)), stop)
+    task = asyncio.create_task(_serve(name, a, ready, stop, timeout - 10 if interactive else 120))
+    _running[name] = (task, stop)
     try:
         await asyncio.wait_for(asyncio.shield(ready), timeout)
     except asyncio.TimeoutError:
@@ -221,7 +508,9 @@ async def connect(name: str, timeout: float = 150) -> str:
     return status[name]
 
 
-async def disconnect(name: str):
+async def disconnect(name: str, keep_login: bool = False):
+    if not keep_login:
+        await cancel_login(name)
     item = _running.pop(name, None)
     if not item:
         return
@@ -232,6 +521,7 @@ async def disconnect(name: str):
     except (asyncio.TimeoutError, Exception):
         task.cancel()
     _drop_tools(name)
+    _connected.discard(name)
 
 
 async def start():
