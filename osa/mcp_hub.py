@@ -19,6 +19,7 @@ import os
 import re
 import time
 from urllib.parse import parse_qs, urlparse
+import httpx2
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.auth import OAuthClientProvider
 from mcp.client.auth import oauth2 as _oauth2, utils as _auth_utils
@@ -62,6 +63,7 @@ class _QuietLogin(logging.Filter):
 
 
 logging.getLogger("mcp.client.auth.oauth2").addFilter(_QuietLogin())
+log = logging.getLogger(__name__)
 
 
 def _issuer_ok(meta, expected: str):
@@ -266,6 +268,46 @@ class _Provider(OAuthClientProvider):
         exp = self.context.storage.load().get("expires_at")
         if self.context.current_tokens and exp:
             self.context.token_expiry_time = exp - 30
+
+    async def _refresh_token(self):
+        # SDK 只在完整授权时查令牌地址。重启以后不知道，就去猜 <域名>/token，
+        # flomo 那里是 405，令牌一过期就得重新登录。刷新前先按授权时的办法查一遍。
+        if not self.context.oauth_metadata:
+            try:
+                await self._discover()
+            except Exception as e:
+                log.warning("查找 %s 的令牌地址失败：%s", self.context.server_url, e)
+        return await super()._refresh_token()
+
+    async def _discover(self):
+        """和 SDK 授权流程里一样：先查受保护资源的元数据，找到授权服务器，再查它的元数据。"""
+        ctx = self.context
+        async with httpx2.AsyncClient(timeout=15) as c:
+            for url in _auth_utils.build_protected_resource_metadata_discovery_urls(None, ctx.server_url):
+                r = await c.send(_auth_utils.create_oauth_metadata_request(url))
+                prm = await _auth_utils.handle_protected_resource_response(r)
+                if prm:
+                    await self._validate_resource_match(prm)
+                    ctx.protected_resource_metadata = prm
+                    ctx.auth_server_url = self._select_authorization_server([str(u) for u in prm.authorization_servers])
+                    break
+            expected = self._expected_issuer()
+            # 授权服务器换了：令牌是原来那家发的，不能拿去新地址刷新，交给 SDK 走完整授权
+            if ctx.client_info and not _auth_utils.credentials_match_issuer(
+                    ctx.client_info, expected, ctx.client_metadata_url):
+                return
+            for url in _auth_utils.build_oauth_authorization_server_metadata_discovery_urls(
+                    ctx.auth_server_url, ctx.server_url):
+                r = await c.send(_auth_utils.create_oauth_metadata_request(url))
+                ok, asm = await _auth_utils.handle_auth_metadata_response(r)
+                if not ok:
+                    return
+                if asm:
+                    if ctx.auth_server_url is None and _auth_utils.issuers_match(str(asm.issuer), expected):
+                        expected = str(asm.issuer)
+                    _oauth2.validate_metadata_issuer(asm, expected)
+                    ctx.oauth_metadata = asm
+                    return
 
 
 # 正在进行的授权：应用名 -> {"url": 授权页地址, "code": 回调带回来的授权码, "task": 连接任务}
