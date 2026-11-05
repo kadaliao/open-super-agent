@@ -1,0 +1,15 @@
+title: 网页抓取
+category: web
+order: 20
+by: MCP 官方
+icon: {glyph: globe, color: '#3B6FD8'}
+desc: 把任意网页转成干净的文字给 Bot 读
+about: Bot 本来就能搜索和读网页；加上它，长网页、文档站会转成更干净的 Markdown，读得更准。
+can:
+- 读取网页正文，去掉广告和导航
+- 分段读很长的页面
+example: '@fetch 读一下这篇文章，列出作者的三个主要观点：https://…'
+connect:
+  type: stdio
+  command: uvx
+  args: [mcp-server-fetch]

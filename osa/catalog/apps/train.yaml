@@ -1,0 +1,15 @@
+title: 12306 火车票
+category: life
+order: 20
+by: 社区
+icon: {glyph: train, color: '#1A63C4'}
+desc: 查火车票余票、车次和中转方案
+about: 查询 12306 的车次、余票和票价，也能找中转方案。只能查，不能买票。
+can:
+- 按日期、出发和到达城市查车次和余票
+- 查经停站、中转方案
+example: '@train 下周五下午北京到上海还有二等座吗？'
+connect:
+  type: stdio
+  command: npx
+  args: [-y, 12306-mcp]

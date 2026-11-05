@@ -8,11 +8,15 @@
 - 读一遍 [docs/architecture.md](docs/architecture.md) 里的“设计约定”。那些规则都是踩过坑之后定下来的（共用电脑排队、验证码一律交给人、DeepSeek 的 reasoning 回传等）。
 - 本地怎么开发和测试，见 [docs/development.md](docs/development.md)。
 
+## 给应用市场加应用
+
+不用改代码：写一份清单放进 `osa/catalog/apps/`，在本机试通后提 PR。格式、图标和本机测试方法见 [给应用市场加一个应用](docs/apps.md)。
+
 ## 提交 PR
 
 1. 从 `main` 新建分支，一个 PR 只做一件事。
 2. 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)：`feat:`、`fix:`、`docs:`、`refactor:`、`chore:` 等。
-3. 确保 CI 通过（Python 能编译和导入，前端能构建）。
+3. 确保 CI 通过（Python 能编译和导入、应用清单没有错，前端能构建）。
 4. 用户能感知到的改动请写进 `CHANGELOG.md` 的 `[未发布]`。
 5. 改了界面就附截图，改了 Bot 的行为就附一段实际对话。
 

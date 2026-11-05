@@ -1,0 +1,18 @@
+title: Dropbox
+category: files
+order: 20
+by: Dropbox 官方
+icon:
+  color: '#0061FF'
+  svg: M6 1.807L0 5.629l6 3.822 6.001-3.822L6 1.807zM18 1.807l-6 3.822 6 3.822 6-3.822-6-3.822zM0 13.274l6 3.822 6.001-3.822L6 9.452l-6 3.822zM18 9.452l-6 3.822 6 3.822 6-3.822-6-3.822zM6 18.371l6.001 3.822 6-3.822-6-3.822L6 18.371z
+desc: 查找、阅读和整理 Dropbox 里的文件
+about: Dropbox 官方的连接。登录授权后，Bot 能搜索和阅读你的文件，帮你整理文件夹。
+can:
+- 搜索文件、读取内容
+- 移动、重命名、整理文件夹
+example: '@dropbox 找一下去年的报税材料都在哪'
+deny: [delete]
+connect:
+  type: http
+  url: https://mcp.dropbox.com/mcp
+  oauth: true

@@ -1,0 +1,30 @@
+title: 语雀
+category: notes
+order: 50
+by: 语雀官方
+icon: {glyph: book, color: '#00B96B'}
+desc: 搜索和阅读知识库，新建和更新文档
+about: 语雀官方的 MCP。填一个个人 Token，Bot 就能在你的知识库里查找、阅读和写文档。
+can:
+- 列出知识库和文档，阅读正文
+- 搜索文档
+- 新建、更新文档和小记
+example: '@yuque 在「产品」知识库里找一下上次的需求文档，总结要点'
+note: 语雀的个人 Token 可能需要超级会员。
+steps:
+- 打开语雀的「Token」设置页，点「新建」
+- 权限按需勾选（只读就只勾读取），确定
+- 复制生成的 Token，粘贴到下面
+link: https://www.yuque.com/settings/tokens
+link_label: 打开语雀 Token 设置
+fields:
+- key: token
+  label: 个人 Token
+  secret: true
+deny: [delete]
+connect:
+  type: stdio
+  command: npx
+  args: [-y, yuque-mcp]
+  env:
+    YUQUE_PERSONAL_TOKEN: '{token}'

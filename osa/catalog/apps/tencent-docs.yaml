@@ -1,0 +1,17 @@
+title: 腾讯文档
+category: notes
+order: 40
+by: 腾讯文档官方
+icon: {glyph: doc, color: '#1E6FFF'}
+desc: 查找、阅读、新建和编辑你的腾讯文档
+about: 腾讯文档官方的连接。用 QQ 或微信登录授权后，Bot 能读写你的文档和表格。
+can:
+- 搜索和阅读文档、表格
+- 新建文档，把整理好的内容写进去
+- 修改已有文档
+example: '@tencent-docs 新建一个文档，把这周的待办整理成表格'
+deny: [delete]
+connect:
+  type: http
+  url: https://docs.qq.com/openapi/mcp
+  oauth: true

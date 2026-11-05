@@ -76,7 +76,7 @@ async def bootstrap():
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
-            "apps": mcp_hub.public(), "catalog": catalog.public(), "teach": teach.public(), "auth": auth.enabled()}
+            "apps": mcp_hub.public(), "catalog": catalog.public(), "categories": catalog.categories(), "teach": teach.public(), "auth": auth.enabled()}
 
 
 @app.post("/api/bots")
@@ -715,7 +715,7 @@ async def pc_vnc(sock: WebSocket, bot_id: int):
 # ---------- 应用、确认规则、保险库 ----------
 @app.get("/api/apps")
 async def list_apps():
-    return {"apps": mcp_hub.public(), "catalog": catalog.public()}
+    return {"apps": mcp_hub.public(), "catalog": catalog.public(), "categories": catalog.categories()}
 
 
 async def _app_out(name: str) -> dict:

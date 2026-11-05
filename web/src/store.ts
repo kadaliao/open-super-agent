@@ -20,6 +20,7 @@ type State = {
   computers: Record<number, ComputerState>
   apps: App[]
   catalog: CatalogItem[]             // 应用市场
+  categories: [string, string][]     // 应用市场的分类：[键, 名字]，按显示顺序
   skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
   view: 'chat' | 'library' | 'apps'  // 主区显示对话、资料库还是应用市场
   libraryPage: number | null         // 资料库里打开的页面
@@ -30,7 +31,7 @@ type State = {
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], skills: {},
+  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], skills: {},
   view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false,
 }
 const subs = new Set<() => void>()
@@ -78,7 +79,7 @@ export async function bootstrap() {
   const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
-        tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], teach: b.teach || null, auth: !!b.auth, ready: true })
+        tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], categories: b.categories || [], teach: b.teach || null, auth: !!b.auth, ready: true })
   if (active) openChat(active)
 }
 
@@ -91,7 +92,7 @@ export async function refreshLists() {
 
 export async function refreshApps() {
   const r = await api('/api/apps')
-  set({ apps: r.apps, catalog: r.catalog })
+  set({ apps: r.apps, catalog: r.catalog, categories: r.categories || [] })
   return r
 }
 

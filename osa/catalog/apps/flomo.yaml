@@ -1,0 +1,17 @@
+title: flomo 浮墨
+category: notes
+order: 20
+by: flomo 官方
+icon: {glyph: feather, color: '#30CF79'}
+desc: 记灵感、搜笔记，让 Bot 了解你记过什么
+about: flomo 官方的连接。Bot 能把想法记进 flomo，也能在你的笔记里搜索、回顾。
+can:
+- 把对话里的想法、摘录记成 memo
+- 按关键词、标签搜索旧笔记
+- 回顾某个主题下你写过的东西
+example: '@flomo 把这段话记下来，打上 #读书 标签'
+note: 需要 flomo MAX 会员。只有 PRO 的话，用下面的「flomo 快速记录」。
+connect:
+  type: http
+  url: https://flomoapp.com/mcp
+  oauth: true

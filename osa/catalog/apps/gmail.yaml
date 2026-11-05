@@ -1,0 +1,51 @@
+title: Gmail
+category: mail
+order: 10
+by: IMAP · 社区
+icon:
+  color: '#EA4335'
+  svg: M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z
+how: 邮箱 + 一个密码
+desc: 读邮件、搜邮件、整理收件箱，替你起草和发送
+about: 用 IMAP 连上你的 Gmail。Bot 能查找、阅读、归档邮件，帮你起草回复；发送和删除前会先问你。不用在 Google Cloud 建应用，一个应用专用密码就够。
+can:
+- 按发件人、主题、时间查邮件，读正文和附件
+- 归档、移动、标记已读
+- 起草、回复、转发、发送（先问你）
+example: '@gmail 看看今天有哪些需要我回复的邮件，帮我起草回复'
+steps:
+- 先给 Google 账号开启两步验证（开过就跳过）
+- 打开「应用专用密码」页面，名字随便填（比如 Super Agent），点「创建」
+- 把弹出的 16 位密码复制到下面
+link: https://myaccount.google.com/apppasswords
+link_label: 打开 Google 应用专用密码
+fields:
+- key: email
+  label: 邮箱地址
+  placeholder: you@example.com
+  pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+  invalid: 邮箱地址的格式不对
+- key: password
+  label: 应用专用密码
+  secret: true
+  nospace: true
+check:
+  imap:
+    host: imap.gmail.com
+    user: '{email}'
+    password: '{password}'
+    hint: 注意填的是应用专用密码，不是平时的登录密码
+deny: [email_command]
+connect:
+  type: stdio
+  command: uvx
+  args: [mcp-email-server@latest, stdio]
+  env:
+    MCP_EMAIL_SERVER_EMAIL_ADDRESS: '{email}'
+    MCP_EMAIL_SERVER_PASSWORD: '{password}'
+    MCP_EMAIL_SERVER_IMAP_HOST: imap.gmail.com
+    MCP_EMAIL_SERVER_IMAP_PORT: '993'
+    MCP_EMAIL_SERVER_SMTP_HOST: smtp.gmail.com
+    MCP_EMAIL_SERVER_SMTP_PORT: '465'
+    # 收件人不限制：发送前 OSA 自己会弹确认卡片
+    MCP_EMAIL_SERVER_ALLOWED_RECIPIENTS: '*'

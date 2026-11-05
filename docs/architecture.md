@@ -48,7 +48,9 @@ osa/
   settings.py      界面里改的设置（覆盖 config.yaml）
   approvals.py     确认卡片：写操作确认（approval）、请你帮忙（help）
   mcp_hub.py       MCP 连接（本机命令 / 远程地址）、OAuth 登录授权与令牌刷新、工具命名（<server>__<tool>）、deny / confirm 规则
-  catalog.py       应用市场的目录：每个应用的介绍、连接方式、要填的东西，以及按模板生成连接配置
+  catalog/         应用市场的目录：读取和检查清单，按模板生成连接配置（python -m osa.catalog 检查所有清单）
+    apps/          每个应用一份清单（<名字>.yaml），格式见 docs/apps.md；本机还会读 data/apps/
+    checks.py      添加应用前的检查（邮箱先试登录一次）
   tools.py         内置工具：web_search、fetch_url
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明
   routines.py      定时任务：触发方式、调度、webhook 过滤、运行记录、旧 triggers 导入

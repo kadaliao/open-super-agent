@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, refreshApps, useStore } from '../store'
 import type { App, CatalogItem } from '../types'
-import { GLYPHS, ICONS } from '../appIcons'
+import { GLYPHS } from '../appIcons'
 
-const CATS: [string, string][] = [
-  ['all', '全部'], ['notes', '笔记与文档'], ['mail', '邮件与日历'], ['files', '文件'], ['tasks', '任务与协作'],
-  ['dev', '开发'], ['web', '搜索与网页'], ['life', '生活'],
-]
-const CAT_NAME = Object.fromEntries(CATS)
 const HOW: Record<string, string> = { oauth: '登录即用', token: '填一个密钥', none: '免配置' }
 const STATE: Record<string, [string, string]> = {
   connected: ['已连接', 'ok'], connecting: ['连接中…', 'busy'], login: ['等你授权…', 'busy'],
@@ -22,19 +17,20 @@ const lum = (hex: string) => {
   return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]
 }
 
+// 图标写在应用清单里（osa/catalog/apps/*.yaml）：品牌图形 svg，或线条图标 glyph；自定义应用用插头
 export function AppIcon({ item, name, size = 44 }: { item?: CatalogItem; name?: string; size?: number }) {
-  const icon = ICONS[item?.icon || item?.id || name || '']
-  const glyph = GLYPHS[item?.glyph || (item ? '' : 'plug')]
-  const hex = item?.color || (icon ? '#' + icon.hex : '#5b5b63')
+  const spec = item?.icon
+  const glyph = GLYPHS[spec?.glyph || (item ? '' : 'plug')]
+  const hex = spec?.color || '#5b5b63'
   const dark = lum(hex) < .02           // 黑色品牌（Notion、GitHub）用白底黑图
   const bg = dark ? '#fff' : hex
   const fg = dark ? hex : lum(hex) > .55 ? '#141414' : '#fff'
   return (
     <span className="app-icon" style={{ width: size, height: size, background: bg, color: fg, borderRadius: size * .26, fontSize: size * .44 }}>
-      {icon ? <svg viewBox="0 0 24 24" width={size * .56} height={size * .56}><path d={icon.path} fill="currentColor" /></svg>
+      {spec?.svg ? <svg viewBox="0 0 24 24" width={size * .56} height={size * .56}><path d={spec.svg} fill="currentColor" /></svg>
         : glyph ? <svg viewBox="0 0 24 24" width={size * .56} height={size * .56} fill="none" stroke="currentColor" strokeWidth={2}
             strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: glyph }} />
-        : item?.glyph || (item?.title || name || '?').slice(0, 1).toUpperCase()}
+        : (item?.title || name || '?').slice(0, 1).toUpperCase()}
     </span>
   )
 }
@@ -73,6 +69,8 @@ async function oauthConnect(name: string, fresh: boolean, done: (err?: string) =
 export default function Market() {
   const apps = useStore(s => s.apps)
   const catalog = useStore(s => s.catalog)
+  const categories = useStore(s => s.categories)
+  const catName = useMemo(() => Object.fromEntries(categories), [categories])
   const [cat, setCat] = useState('all')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState<string | null>(null)        // 打开详情的应用（市场 id 或应用名）
@@ -82,7 +80,7 @@ export default function Market() {
   const byName = useMemo(() => Object.fromEntries(apps.map(a => [a.name, a])), [apps])
   const itemOf = (a: App) => catalog.find(c => c.id === (a.catalog || a.name))
   const list = catalog.filter(c => (cat === 'all' || c.category === cat) &&
-    (!q || (c.title + c.desc + c.id + (CAT_NAME[c.category] || '')).toLowerCase().includes(q.toLowerCase())))
+    (!q || (c.title + c.desc + c.id + (catName[c.category] || '')).toLowerCase().includes(q.toLowerCase())))
 
   const quick = (c: CatalogItem) => {
     setQuickErr('')
@@ -121,7 +119,7 @@ export default function Market() {
         </section>}
 
         <div className="m-cats">
-          {CATS.map(([k, v]) => <button key={k} className={cat === k ? 'on' : ''} onClick={() => setCat(k)}>{v}</button>)}
+          {[['all', '全部'], ...categories].map(([k, v]) => <button key={k} className={cat === k ? 'on' : ''} onClick={() => setCat(k)}>{v}</button>)}
         </div>
         <div className="m-grid">
           {list.map(c => {
@@ -156,6 +154,8 @@ export default function Market() {
 // ---------- 详情 ----------
 function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; app?: App; initErr: string; onClose: () => void; onEdit: () => void }) {
   const name = app?.name || item!.id
+  const categories = useStore(s => s.categories)
+  const catName = useMemo(() => Object.fromEntries(categories), [categories])
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState(initErr)
   const [rekey, setRekey] = useState(false)
@@ -179,7 +179,7 @@ function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; ap
           <AppIcon item={item} name={name} size={56} />
           <div className="m-sheet-title">
             <h3>{item?.title || '@' + name}</h3>
-            <span className="muted small">{item ? `${CAT_NAME[item.category] || ''} · ${item.by}` : '自定义应用'}</span>
+            <span className="muted small">{item ? `${catName[item.category] || ''} · ${item.by}` : '自定义应用'}</span>
           </div>
           <button className="icon-btn" onClick={onClose}>✕</button>
         </div>

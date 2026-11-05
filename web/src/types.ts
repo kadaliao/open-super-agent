@@ -39,9 +39,11 @@ export type App = {
 }
 // 应用市场里的一项。kind：oauth 登录授权 / token 填密钥 / none 免配置
 export type CatalogField = { key: string; label: string; placeholder?: string; secret?: boolean; default?: string; optional?: boolean }
+// 清单里的图标：品牌色 + 品牌图形（svg 是 24×24 的 path）或线条图标的名字（glyph）
+export type AppIconSpec = { color: string; svg?: string; glyph?: string }
 export type CatalogItem = {
   id: string; title: string; category: string; desc: string; about: string; can: string[]; example: string
-  icon?: string; color?: string; glyph?: string; by: string; kind: 'oauth' | 'token' | 'none'
+  icon?: AppIconSpec; by: string; kind: 'oauth' | 'token' | 'none'
   fields: CatalogField[]; steps: string[]; link?: string; link_label?: string; note?: string; how?: string
   remote: boolean
 }

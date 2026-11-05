@@ -1,0 +1,338 @@
+"""应用市场的目录。
+
+每个应用一份 YAML 清单，文件名就是应用名：
+- osa/catalog/apps/<名字>.yaml：随项目发布。想让应用上架，加一份清单提 PR 就行
+- data/apps/<名字>.yaml：只在这台机器上用，和内置的同名时覆盖内置的。适合先在本机试
+
+格式见 docs/apps.md。清单改了不用重启，下次打开应用页就会重新读。`python -m osa.catalog` 检查所有清单。
+
+connect 是连接配置的模板：字符串里的 {字段名} 换成用户填的值。secret 字段先存进保险库，
+配置里只留 {vault:名字}，记在 owned 里，删除应用时一起删掉。
+"""
+import inspect
+import json
+import logging
+import re
+from pathlib import Path
+import yaml
+from ..config import ROOT
+from . import checks
+
+log = logging.getLogger(__name__)
+
+BUILTIN = Path(__file__).parent / "apps"
+LOCAL = ROOT / "data" / "apps"
+# 和 mcp_hub.WORKSPACE 是同一个目录。不从那边导入：导入 mcp_hub 会打开数据库，检查清单用不着
+WORKSPACE = ROOT / "data" / "workspace"
+
+# 分类按这个顺序显示。要加新分类，改这里
+CATEGORIES = {"notes": "笔记与文档", "mail": "邮件与日历", "files": "文件", "tasks": "任务与协作",
+              "dev": "开发", "web": "搜索与网页", "life": "生活"}
+# 没有品牌图标时可以用的线条图标，图形在 web/src/appIcons.ts
+GLYPHS = {"globe", "folder", "mail", "search", "train", "pin", "book", "doc", "feather", "plug"}
+
+ID = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")       # 文件名也是应用名，规则和 mcp_hub.NAME 一样
+KEYS = {"title", "category", "order", "by", "icon", "desc", "about", "can", "example", "note", "how",
+        "steps", "link", "link_label", "fields", "check", "deny", "confirm", "connect"}
+FIELD_KEYS = {"key", "label", "placeholder", "default", "secret", "optional", "nospace", "pattern", "invalid"}
+CONNECT_KEYS = {"type", "command", "args", "env", "url", "headers", "oauth"}
+SLOT = re.compile(r"\{(\w+)\}")
+COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+SVG_PATH = re.compile(r"^[MmZzLlHhVvCcSsQqTtAa0-9eE.,+\-\s]+$")
+
+_cache: dict = {"sig": None, "items": {}, "errors": []}
+
+
+# ---------- 读清单 ----------
+def _files() -> dict[str, Path]:
+    files = {}
+    for d in (BUILTIN, LOCAL):
+        if d.is_dir():
+            for p in sorted(d.glob("*.yaml")):
+                files[p.stem] = p       # 本机的同名清单覆盖内置的
+    return files
+
+
+def _show(p: Path) -> str:
+    return str(p.relative_to(ROOT)) if p.is_relative_to(ROOT) else str(p)
+
+
+def load() -> tuple[dict[str, dict], list[str]]:
+    """读所有清单，返回（应用名 -> 清单，有错的清单和原因）。文件都没变就用上次读的。"""
+    files = _files()
+    try:
+        sig = tuple((str(p), p.stat().st_mtime_ns) for p in files.values())
+    except OSError:                     # 读的时候正好有文件被删掉，下次再读
+        sig = None
+    if sig is None or sig != _cache["sig"]:
+        items, errors = {}, []
+        for name, p in files.items():
+            try:
+                items[name] = parse(name, yaml.safe_load(p.read_text("utf-8")))
+            except yaml.MarkedYAMLError as e:
+                mark = e.problem_mark or e.context_mark
+                where = f"第 {mark.line + 1} 行" if mark else ""
+                errors.append(f"{_show(p)}：{where} YAML 格式不对（{e.problem or e.context}）")
+            except (OSError, yaml.YAMLError, ValueError) as e:
+                errors.append(f"{_show(p)}：{e}")
+        rank = list(CATEGORIES)
+        items = dict(sorted(items.items(), key=lambda kv: (rank.index(kv[1]["category"]), kv[1]["order"], kv[0])))
+        for e in errors:
+            log.warning("应用清单有错，已跳过：%s", e)
+        _cache.update(sig=sig, items=items, errors=errors)
+    return _cache["items"], _cache["errors"]
+
+
+def items() -> dict[str, dict]:
+    return load()[0]
+
+
+def parse(name: str, m) -> dict:
+    """检查一份清单并补上默认值。有问题时 raise ValueError，一次列出所有问题。"""
+    if not isinstance(m, dict):
+        raise ValueError("内容应该是一组「键: 值」")
+    bad: list[str] = []
+    if not ID.match(name):
+        bad.append("文件名就是应用名：小写字母开头，只能有小写字母、数字、- 和 _，最长 24 个字符")
+    bad += [f"不认识的键 {k}" for k in m if k not in KEYS]
+
+    def text(v, where: str, need=False):
+        if v is None:
+            if need:
+                bad.append(f"缺少 {where}")
+        elif not isinstance(v, str) or not v.strip():
+            bad.append(f"{where} 应该是一段文字")
+
+    def texts(v, where: str):
+        if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v)):
+            bad.append(f"{where} 应该是一组文字")
+
+    for k in ("title", "by", "desc"):
+        text(m.get(k), k, need=True)
+    for k in ("about", "example", "note", "how", "link", "link_label"):
+        text(m.get(k), k)
+    for k in ("can", "steps", "deny"):
+        texts(m.get(k), k)
+    if m.get("category") not in CATEGORIES:
+        bad.append(f"category 应该是 {'、'.join(CATEGORIES)} 之一")
+    if "order" in m and (type(m["order"]) is not int):
+        bad.append("order 应该是一个整数")
+    cf = m.get("confirm", "auto")
+    if cf not in ("auto", "all", "none") and not (isinstance(cf, list) and cf and all(isinstance(x, str) for x in cf)):
+        bad.append("confirm 应该是 auto、all、none，或者一组词（工具名里含这些词就先问）")
+    _check_icon(m.get("icon"), bad)
+    fields = _check_fields(m.get("fields"), bad)
+    keys = {f["key"] for f in fields}
+    used = _check_connect(m.get("connect"), keys, bad)
+    used |= _check_checks(m.get("check"), keys, bad)
+    bad += [f"字段 {k} 没有用在 connect 或 check 里" for k in sorted(keys - used)]
+
+    oauth = isinstance(m.get("connect"), dict) and m["connect"].get("oauth") is True
+    if oauth and any(not f.get("optional") for f in fields):
+        bad.append("用登录授权（oauth）的应用不能再要求填字段")
+    if bad:
+        raise ValueError("；".join(bad))
+
+    builtin = {"workspace": str(WORKSPACE)}
+    return m | {
+        "id": name, "order": m.get("order", 100), "confirm": m.get("confirm", "auto"),
+        "kind": "oauth" if oauth else "token" if any(f.get("secret") for f in fields) else "none",
+        "can": m.get("can") or [], "steps": m.get("steps") or [], "deny": m.get("deny") or [],
+        "check": m.get("check") or {},
+        "fields": [f | {"default": _fill(f["default"], builtin)} if "default" in f else f for f in fields],
+    }
+
+
+def _check_icon(ic, bad: list):
+    if ic is None:
+        return
+    if not isinstance(ic, dict):
+        bad.append("icon 应该写 color 和 svg（或 glyph）")
+        return
+    bad += [f"icon 里不认识的键 {k}" for k in ic if k not in ("color", "svg", "glyph")]
+    if not COLOR.match(str(ic.get("color") or "")):
+        bad.append("icon.color 应该是 #RRGGBB 格式的颜色")
+    if "svg" in ic and "glyph" in ic:
+        bad.append("icon 里 svg 和 glyph 只写一个")
+    if "svg" in ic and not (isinstance(ic["svg"], str) and SVG_PATH.match(ic["svg"])):
+        bad.append("icon.svg 应该是 24×24 的 SVG path（<path d=\"…\"> 里 d 的值）")
+    if "glyph" in ic and ic["glyph"] not in GLYPHS:
+        bad.append(f"icon.glyph 应该是 {'、'.join(sorted(GLYPHS))} 之一")
+
+
+def _check_fields(fields, bad: list) -> list[dict]:
+    if fields is None:
+        return []
+    if not isinstance(fields, list):
+        bad.append("fields 应该是一组字段")
+        return []
+    out, seen = [], set()
+    for i, f in enumerate(fields, 1):
+        where = f"fields 第 {i} 项"
+        if not isinstance(f, dict):
+            bad.append(f"{where} 应该是一组「键: 值」")
+            continue
+        bad += [f"{where}：不认识的键 {k}" for k in f if k not in FIELD_KEYS]
+        k = f.get("key")
+        if not isinstance(k, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", k):
+            bad.append(f"{where}：key 只能用小写字母、数字和 _，字母开头")
+            continue
+        if k in seen:
+            bad.append(f"{where}：key {k} 重复了")
+        seen.add(k)
+        if not isinstance(f.get("label"), str) or not f["label"].strip():
+            bad.append(f"{where}：缺少 label（给用户看的名字）")
+        for b in ("secret", "optional", "nospace"):
+            if b in f and not isinstance(f[b], bool):
+                bad.append(f"{where}：{b} 应该是 true 或 false")
+        for s in ("placeholder", "default", "pattern", "invalid"):
+            if s in f and not isinstance(f[s], str):
+                bad.append(f"{where}：{s} 应该是文字（数字请加引号）")
+        if isinstance(f.get("pattern"), str):
+            try:
+                re.compile(f["pattern"])
+            except re.error as e:
+                bad.append(f"{where}：pattern 不是有效的正则（{e}）")
+        out.append(f)
+    return out
+
+
+def _slots(v) -> set[str]:
+    return set(SLOT.findall(json.dumps(v, ensure_ascii=False)))
+
+
+def _check_connect(c, keys: set, bad: list) -> set[str]:
+    if not isinstance(c, dict):
+        bad.append("缺少 connect（怎么连这个应用）")
+        return set()
+    bad += [f"connect 里不认识的键 {k}" for k in c if k not in CONNECT_KEYS]
+
+    def strmap(k):
+        v = c.get(k)
+        if v is not None and (not isinstance(v, dict) or not all(isinstance(x, str) for x in v.values())):
+            bad.append(f"connect.{k} 的值都要是文字（数字请加引号，比如 '993'）")
+
+    t = c.get("type")
+    if t == "stdio":
+        if not isinstance(c.get("command"), str) or not c["command"].strip():
+            bad.append("本机运行的应用（type: stdio）要写 command")
+        if "args" in c and (not isinstance(c["args"], list) or not all(isinstance(x, str) for x in c["args"])):
+            bad.append("connect.args 应该是一组文字（数字请加引号）")
+        strmap("env")
+        bad += [f"本机运行的应用不能写 {k}" for k in ("url", "headers", "oauth") if k in c]
+    elif t == "http":
+        if not isinstance(c.get("url"), str) or not re.match(r"^https?://", c["url"]):
+            bad.append("远程应用（type: http）要写 url，以 https:// 开头")
+        strmap("headers")
+        if "oauth" in c and not isinstance(c["oauth"], bool):
+            bad.append("connect.oauth 应该是 true 或 false")
+        bad += [f"远程应用不能写 {k}" for k in ("command", "args", "env") if k in c]
+    else:
+        bad.append("connect.type 应该是 stdio（在本机运行）或 http（远程地址）")
+    used = _slots(c)
+    bad += [f"connect 里的 {{{s}}} 不是 fields 里的字段" for s in sorted(used - keys)]
+    return used
+
+
+def _check_checks(ck, keys: set, bad: list) -> set[str]:
+    if ck is None:
+        return set()
+    if not isinstance(ck, dict):
+        bad.append("check 应该写成「检查名: 参数」")
+        return set()
+    used = set()
+    for name, params in ck.items():
+        fn = checks.CHECKS.get(name)
+        if not fn:
+            bad.append(f"没有叫 {name} 的检查，现有的：{'、'.join(checks.CHECKS)}")
+            continue
+        if not isinstance(params, dict):
+            bad.append(f"check.{name} 应该写成一组参数")
+            continue
+        ps = inspect.signature(fn).parameters
+        bad += [f"check.{name} 缺少 {p}" for p, v in ps.items() if v.default is v.empty and p not in params]
+        bad += [f"check.{name} 没有参数 {p}" for p in params if p not in ps]
+        used |= _slots(params)
+    bad += [f"check 里的 {{{s}}} 不是 fields 里的字段" for s in sorted(used - keys)]
+    return used
+
+
+# ---------- 给前端和其他模块用 ----------
+def public() -> list[dict]:
+    out = []
+    for it in items().values():
+        o = {k: v for k, v in it.items() if k not in ("connect", "check", "order")}
+        o["fields"] = [{k: v for k, v in f.items() if k not in ("pattern", "nospace")} for f in it["fields"]]
+        o.setdefault("example", "")
+        o.setdefault("about", "")
+        o["remote"] = it["connect"]["type"] == "http"
+        out.append(o)
+    return out
+
+
+def categories() -> list[list[str]]:
+    """有应用的分类，按显示顺序：[[键, 名字], …]。"""
+    used = {i["category"] for i in items().values()}
+    return [[k, v] for k, v in CATEGORIES.items() if k in used]
+
+
+def title(name: str) -> str:
+    from .. import mcp_hub
+    a = mcp_hub.get(name) or {}
+    i = items().get(a.get("catalog") or name)
+    return i["title"] if i else "@" + name
+
+
+def _fill(v, subst: dict):
+    if isinstance(v, str):
+        return SLOT.sub(lambda m: subst.get(m[1], m[0]), v)
+    if isinstance(v, list):
+        return [_fill(x, subst) for x in v]
+    if isinstance(v, dict):
+        return {k: _fill(x, subst) for k, x in v.items()}
+    return v
+
+
+def _values(it: dict, values: dict) -> dict:
+    """检查用户填的内容，返回整理好的值（去掉首尾空格；nospace 的字段去掉所有空格）。"""
+    vals = {}
+    for f in it.get("fields", []):
+        v = str(values.get(f["key"]) or f.get("default") or "").strip()
+        if f.get("nospace"):
+            v = re.sub(r"\s+", "", v)
+        if not v and not f.get("optional"):
+            raise ValueError(f"请填写{f['label']}")
+        if v and f.get("pattern") and not re.search(f["pattern"], v):
+            raise ValueError(f.get("invalid") or f"{f['label']}的格式不对")
+        vals[f["key"]] = v
+    return vals
+
+
+async def check(item_id: str, values: dict):
+    """添加前先按清单里的 check 试一下填的东西对不对，错了直接告诉用户，不用等应用连接失败。"""
+    it = items().get(item_id) or {}
+    if not it.get("check"):
+        return
+    vals = _values(it, values)
+    for name, params in it["check"].items():
+        await checks.CHECKS[name](**_fill(params, vals))
+
+
+def build(item_id: str, values: dict) -> dict:
+    """按清单里的模板生成应用配置。用户填的密钥存进保险库。"""
+    from .. import vault
+    it = items().get(item_id)
+    if not it:
+        raise ValueError("应用市场里没有这个应用")
+    vals = _values(it, values)
+    subst, owned = {}, []
+    for f in it["fields"]:
+        v = vals[f["key"]]
+        if f.get("secret") and v:
+            ref = f"{item_id}_{f['key']}".upper().replace("-", "_")
+            vault.put(ref, v)
+            owned.append(ref)
+            v = "{vault:" + ref + "}"
+        subst[f["key"]] = v
+    cfg = _fill(it["connect"], subst)
+    return cfg | {"catalog": item_id, "deny": it["deny"], "confirm": it["confirm"], "owned": owned}

@@ -1,0 +1,17 @@
+title: TickTick
+category: tasks
+order: 20
+by: TickTick 官方
+icon:
+  color: '#4772FA'
+  svg: M12 0C5.383 0 0 5.383 0 12s5.383 12 12 12 12-5.383 12-12h-2.7c0 5.128-4.172 9.3-9.3 9.3-5.128 0-9.3-4.172-9.3-9.3 0-5.128 4.172-9.3 9.3-9.3V0Zm7.4 2.583-7.505 9.371L8.388 9.08l-2.002 2.436 4.741 3.888a1.573 1.573 0 0 0 2.231-.233l8.504-10.617L19.4 2.583Z
+desc: 滴答清单国际版：查看和添加待办
+about: TickTick（滴答清单国际版）官方的连接。登录授权后，Bot 能查看和管理你的任务。
+can:
+- 查看任务和清单
+- 添加、修改、完成任务
+example: '@ticktick 明天上午有什么要做的？'
+connect:
+  type: http
+  url: https://mcp.ticktick.com/
+  oauth: true

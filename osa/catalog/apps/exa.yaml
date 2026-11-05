@@ -1,0 +1,14 @@
+title: Exa 搜索
+category: web
+order: 10
+by: Exa 官方
+icon: {glyph: search, color: '#1F40ED'}
+desc: 为 AI 设计的英文网页搜索，免配置
+about: Exa 的免费远程搜索，适合查英文资料、找相似网页。免费额度有频率限制。
+can:
+- 按意思搜索网页
+- 读取网页正文
+example: '@exa 找几篇 2026 年讲 MCP 授权的英文文章'
+connect:
+  type: http
+  url: https://mcp.exa.ai/mcp

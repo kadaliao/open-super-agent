@@ -1,0 +1,30 @@
+title: flomo 快速记录
+category: notes
+order: 30
+by: 社区
+icon: {glyph: feather, color: '#1EA35F'}
+how: 粘贴 API 链接
+desc: 用 flomo 的 API 链接往 flomo 里记笔记（只能写）
+about: 适合 flomo PRO 会员：用 flomo 提供的 API 链接，让 Bot 把内容记进 flomo。这种方式只能新建笔记，不能搜索。
+can:
+- '把内容记成一条 memo，可以带 #标签'
+example: '@flomo-api 把今天的三点收获记到 flomo，标签 #日记'
+steps:
+- 打开 flomo 的「API」设置页（需要 PRO 会员）
+- 复制页面上那条以 https://flomoapp.com/iwh/ 开头的链接
+- 粘贴到下面
+link: https://v.flomoapp.com/mine?source=incoming_webhook
+link_label: 打开 flomo API 设置
+fields:
+- key: url
+  label: API 链接
+  placeholder: https://flomoapp.com/iwh/……
+  secret: true
+  pattern: ^https://flomoapp\.com/iwh/
+  invalid: 链接应该以 https://flomoapp.com/iwh/ 开头
+connect:
+  type: stdio
+  command: npx
+  args: [-y, mcp-server-flomo]
+  env:
+    FLOMO_API_URL: '{url}'

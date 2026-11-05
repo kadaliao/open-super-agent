@@ -14,6 +14,8 @@ jobs:
         run: |
           uv run python -m compileall -q osa
           uv run python -c "import osa.server"
+      - name: Check app manifests
+        run: uv run python -m osa.catalog
 
   frontend:
     runs-on: ubuntu-latest

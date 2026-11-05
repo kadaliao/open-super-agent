@@ -1,0 +1,19 @@
+title: 文件夹
+category: files
+order: 10
+by: MCP 官方
+icon: {glyph: folder, color: '#C98A2B'}
+desc: 读写服务器上一个指定文件夹里的文件
+about: 让 Bot 直接读写服务器上的一个文件夹，比如存放报告、整理资料。只能访问你指定的这个目录。
+can:
+- 列出、读取、搜索文件
+- 新建和修改文件、建文件夹
+example: '@filesystem 把这份周报存成 weekly/本周.md'
+fields:
+- key: path
+  label: 允许访问的目录
+  default: '{workspace}'
+connect:
+  type: stdio
+  command: npx
+  args: [-y, '@modelcontextprotocol/server-filesystem', '{path}']

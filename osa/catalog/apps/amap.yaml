@@ -1,0 +1,26 @@
+title: 高德地图
+category: life
+order: 10
+by: 高德官方
+icon: {glyph: pin, color: '#0091FF'}
+how: 填一个 Key
+desc: 查地点、规划路线、看天气
+about: 高德地图官方的远程 MCP。填一个高德 Web 服务 Key，Bot 就能查地点、算路线和时间、看天气。
+can:
+- 搜索地点、查地址和坐标
+- 规划驾车、公交、步行、骑行路线
+- 查城市天气
+example: '@amap 周六从望京到颐和园，地铁和开车各要多久？'
+steps:
+- 登录高德开放平台控制台，进入「应用管理 → 我的应用」，新建一个应用
+- 给应用「添加 Key」，服务平台选「Web 服务」
+- 把生成的 Key 复制到下面
+link: https://console.amap.com/dev/key/app
+link_label: 打开高德控制台
+fields:
+- key: key
+  label: Web 服务 Key
+  secret: true
+connect:
+  type: http
+  url: https://mcp.amap.com/mcp?key={key}

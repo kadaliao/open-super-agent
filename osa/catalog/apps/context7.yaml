@@ -1,0 +1,14 @@
+title: Context7
+category: dev
+order: 30
+by: Upstash 官方
+icon: {glyph: doc, color: '#16A34A'}
+desc: 查各种编程库的最新文档和示例
+about: 写代码时让 Bot 查最新版本的库文档，不用靠模型记忆里的旧 API。
+can:
+- 按库名查找文档
+- 取出某个主题的最新用法和示例代码
+example: '@context7 查一下 FastAPI 最新版本里依赖注入怎么写'
+connect:
+  type: http
+  url: https://mcp.context7.com/mcp

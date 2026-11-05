@@ -1,0 +1,49 @@
+title: 网易 163 邮箱
+category: mail
+order: 30
+by: IMAP · 社区
+icon: {glyph: mail, color: '#D43C33'}
+how: 邮箱 + 一个密码
+desc: 读邮件、搜邮件、整理收件箱，替你起草和发送
+about: 用 IMAP 连上你的网易 163 邮箱。Bot 能查找、阅读、归档邮件，帮你起草回复；发送和删除前会先问你。
+can:
+- 按发件人、主题、时间查邮件，读正文和附件
+- 归档、移动、标记已读
+- 起草、回复、转发、发送（先问你）
+example: '@mail163 看看今天有哪些需要我回复的邮件，帮我起草回复'
+steps:
+- 网页版 163 邮箱：设置 → POP3/SMTP/IMAP
+- 开启「IMAP/SMTP 服务」，按提示新增一个授权码
+- 把授权码复制到下面（不是登录密码）
+link: https://mail.163.com/
+link_label: 打开 163 邮箱
+fields:
+- key: email
+  label: 邮箱地址
+  placeholder: you@example.com
+  pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+  invalid: 邮箱地址的格式不对
+- key: password
+  label: 授权码
+  secret: true
+  nospace: true
+check:
+  imap:
+    host: imap.163.com
+    user: '{email}'
+    password: '{password}'
+    hint: 注意填的是授权码，不是平时的登录密码
+deny: [email_command]
+connect:
+  type: stdio
+  command: uvx
+  args: [mcp-email-server@latest, stdio]
+  env:
+    MCP_EMAIL_SERVER_EMAIL_ADDRESS: '{email}'
+    MCP_EMAIL_SERVER_PASSWORD: '{password}'
+    MCP_EMAIL_SERVER_IMAP_HOST: imap.163.com
+    MCP_EMAIL_SERVER_IMAP_PORT: '993'
+    MCP_EMAIL_SERVER_SMTP_HOST: smtp.163.com
+    MCP_EMAIL_SERVER_SMTP_PORT: '465'
+    # 收件人不限制：发送前 OSA 自己会弹确认卡片
+    MCP_EMAIL_SERVER_ALLOWED_RECIPIENTS: '*'

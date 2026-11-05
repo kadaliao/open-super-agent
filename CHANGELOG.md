@@ -18,6 +18,9 @@
 - 之前用 token 接的 Notion，在应用页里可以一键改用账号登录
 - 删除应用时一起删掉市场替它存进保险库的密钥和授权令牌
 - 默认要确认的写操作多了 forward、reply、trash、share（转发、回复邮件这类）
+- **应用清单**：应用市场里的每个应用改成一份 YAML 清单（`osa/catalog/apps/<名字>.yaml`），介绍、图标、要填的字段、连接模板都写在里面，
+  加应用不用再改代码，写一份清单提 PR 就行（见 [docs/apps.md](docs/apps.md)）。放进 `data/apps/` 的清单只在本机生效，刷新页面就能看到，不用重启；
+  `uv run python -m osa.catalog` 检查所有清单，CI 里也会跑
 
 ### 变更
 - 路线图改成按方向写（应用生态、更多客户端、电脑、Bot 能力、部署），列出近期先做的事；原来对齐 Grok Bot 的分阶段计划存档到 `docs/grok-bot-parity.md`

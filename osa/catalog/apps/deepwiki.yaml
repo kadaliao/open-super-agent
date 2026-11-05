@@ -1,0 +1,14 @@
+title: DeepWiki
+category: dev
+order: 20
+by: Cognition 官方
+icon: {glyph: book, color: '#0F766E'}
+desc: 读懂任意公开 GitHub 仓库：架构、模块、用法
+about: DeepWiki 为公开的 GitHub 仓库生成了文档。Bot 可以直接问某个仓库是怎么设计的、某个功能在哪实现。
+can:
+- 查看仓库的文档目录和内容
+- 就某个仓库提问，得到带出处的回答
+example: '@deepwiki vercel/next.js 的路由缓存是怎么实现的？'
+connect:
+  type: http
+  url: https://mcp.deepwiki.com/mcp

@@ -25,7 +25,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 👥 **Group chats**: 2–6 Bots in one chat. `@` a Bot to have it answer, or `@everyone`; unaddressed messages go to the group's coordinator, who hands work to the right Bot. Bots hand off to each other (one researches, the next summarizes when the research is done). Approval requests stay in each Bot's private chat.
 - ⚡ **Background tasks**: workers run long jobs while you keep chatting. **Heavy mode** runs several workers on the same problem and has a reviewer merge their answers.
 - 🖥️ **A computer**: one shared Linux desktop with Chromium and a terminal. Web pages are driven directly over CDP (by element, reading page text), which is fast and precise. Watch it live and take over or hand back at any time; for captchas and logins, the bot asks you to step in.
-- 🔌 **App market**: pick apps from the sidebar's Apps page. Notion, flomo, Tencent Docs, TickTick, Todoist and others connect with one click and an account login; Gmail, QQ Mail and GitHub take a single password or token; any MCP server works too. Mention one in chat with `@app`.
+- 🔌 **App market**: pick apps from the sidebar's Apps page. Notion, flomo, Tencent Docs, TickTick, Todoist and others connect with one click and an account login; Gmail, QQ Mail and GitHub take a single password or token; any MCP server works too. Mention one in chat with `@app`. Each app is a single manifest file, so [listing a new one](docs/apps.md) takes a PR, no code.
 - ✅ **Approvals & vault**: write operations ask first (allow once / deny / always allow), with rules you manage in Settings; secrets are stored encrypted and never enter the chat.
 - 🧩 **Skills**: reusable procedures invoked with `/name`. Ask a Bot to save what it just did as a skill, or edit skills in the side panel. With **Teach a task**, do it once yourself on the computer and the Bot turns the recording into a draft skill for you to review.
 - 🧠 **Memory**: each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots. Just say "remember ...", or view, edit, delete and import (e.g. from ChatGPT) in the side panel. Start a **new topic** to drop old messages from the context while keeping memories.
@@ -58,6 +58,7 @@ The detailed docs are currently in Chinese:
 - [Configuration](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
+- [Adding an app to the market](docs/apps.md)
 - [Roadmap](docs/roadmap.md): what comes next ([the Grok Bot parity plan](docs/grok-bot-parity.md) is archived)
 - [Changelog](CHANGELOG.md)
 
@@ -65,7 +66,7 @@ The detailed docs are currently in Chinese:
 
 Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANGELOG.md)). Where it goes next:
 
-- **App ecosystem**: more apps (Feishu/Lark, DingTalk, Google Drive and Calendar, ...); the app catalog moves to manifest files so anyone can list an app with a PR; skills and Bot templates you can export, share and install in one click.
+- **App ecosystem**: more apps (Feishu/Lark, DingTalk, Google Drive and Calendar, ...); skills and Bot templates you can export, share and install in one click.
 - **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; chat with your Bots from Feishu/Lark, WeCom and Telegram.
 - **Computers**: several computers running tasks in parallel; Teach a task across the whole desktop, not just the browser; snapshots and rollback.
 - **Bot abilities**: semantic search over memory and the library; voice conversations.
