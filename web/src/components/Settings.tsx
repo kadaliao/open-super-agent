@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, refreshLists, useStore } from '../store'
 import type { Rule, Settings as S } from '../types'
+import Channels from './Channels'
 
 const ROLE_NAMES: Record<string, string> = {
   router: '对话（Bot 本身）', worker: '后台任务', reviewer: 'Heavy 汇总审稿', filter: '定时任务的事件过滤',
@@ -20,7 +21,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     <div className="modal-bg" onMouseDown={onClose}>
       <div className="modal wide" onMouseDown={e => e.stopPropagation()}>
         <div className="modal-tabs">
-          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务'], ['notify', '通知']].map(([k, v]) =>
+          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务'], ['channels', '聊天软件'], ['notify', '通知']].map(([k, v]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{v}</button>)}
           <span className="grow" />
           {auth && <form method="post" action="/logout"><button className="btn small" type="submit">退出登录</button></form>}
@@ -33,6 +34,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           {tab === 'rules' && <Rules />}
           {tab === 'vault' && <Vault />}
           {tab === 'triggers' && <Triggers />}
+          {tab === 'channels' && <Channels />}
           {tab === 'notify' && <Notifications />}
         </div>
       </div>

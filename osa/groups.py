@@ -96,9 +96,9 @@ async def note(chat_id: int, text: str):
     await _message(chat_id, "task", f"[{text}]", None, kind="note")
 
 
-async def on_user(chat: dict, text: str):
-    """用户在群里发了一条消息。"""
-    await _message(chat["id"], "user", text)
+async def on_user(chat: dict, text: str, via: str = ""):
+    """用户在群里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。"""
+    await _message(chat["id"], "user", text, **({"via": via} if via else {}))
     g = get(chat["id"])
     async with g.lock:
         chat = bots.chat(chat["id"]) or chat

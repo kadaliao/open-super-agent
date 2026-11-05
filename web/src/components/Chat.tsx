@@ -6,6 +6,7 @@ import Composer from './Composer'
 import Markdown from './Markdown'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+const VIA: Record<string, string> = { telegram: '来自 Telegram', feishu: '来自飞书' }
 const secs = (s: number) => (s < 60 ? `${Math.round(s)} 秒` : `${Math.floor(s / 60)} 分 ${Math.round(s % 60)} 秒`)
 
 // 旧版本的任务记录没有 kind，从文字里推断
@@ -279,7 +280,8 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
             </div>
           ))}
           {messages?.map(m => {
-            if (m.role === 'user') return <div key={m.id} className="msg user"><div className="bubble">{m.content}</div></div>
+            if (m.role === 'user') return <div key={m.id} className="msg user">
+              {m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble">{m.content}</div></div>
             if (m.role === 'assistant') return m.content || m.meta.tasks?.length ? (
               <BotMessage key={m.id} bot={speaker(m)} m={m} showName={group}>
                 {(m.meta.tasks || []).map(task)}

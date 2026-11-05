@@ -40,6 +40,10 @@ osa/
   groups.py        群聊：解析 @、协调者、handoff 队列、任务做完自动交接、每轮发言上限
   teach.py         演示一遍：开始 / 结束录制、把录到的事件排成步骤、让模型写技能草稿
   push.py          手机推送：VAPID 密钥、RFC 8291 加密、订阅、哪些事件要推
+  channels/        聊天软件：连接和配对、界面事件转成聊天软件里的消息和卡片、收消息走和网页一样的入口
+    telegram.py    Telegram Bot API：长轮询、内联按钮
+    feishu.py      飞书 / Lark：长连接（手写的 protobuf 帧编解码）、富文本和消息卡片
+    fmt.py         Markdown 转 Telegram HTML、按长度切消息
   worker.py        后台任务：Task、ReAct 循环、Heavy 模式
   memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
@@ -82,6 +86,7 @@ web/src/
 | `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |
+| `channels` | 聊天软件连接：平台、绑定的对话（`chat_id`）、配对的私聊（`peer`）、配对码；token / App Secret 在保险库的 `channel_<id>` |
 | `settings` | 界面里改过的设置 |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
 
@@ -129,6 +134,16 @@ web/src/
 - 只记浏览器里的操作：点击（按元素文字描述）、输入（失去焦点或回车时记一次）、选择、勾选、Escape、网址变化。密码和名字像验证码、卡号的输入框只记 `******`。
 - 开始前先占住电脑（`Computer.claim`），后台任务排队；然后交给用户（`takeover`）。开始和结束录制的命令用 `as_human=True`，不等控制权。
 - 结束后先交还电脑，再调模型写草稿，所以画面上马上能看到交还。草稿不自动保存，在技能面板里审核。
+
+### 聊天软件
+- **只是另一个客户端。** 收到的文字走和网页一样的入口（`server.safe_handle`，带上 `via`），所以 Router、群聊、技能都不用改；
+  发出去的东西来自 `broadcast`：每个界面事件都交给 `channels.on_event`，按连接绑定的对话挑出要发的（`render`、`card_for`）。
+  新加的事件类型想在聊天软件里出现，就在这两处加上。
+- `on_event` 只排队不等网络；每个连接一个发送队列（`outbox`），保证顺序，也保证卡片发出去之后才会被更新。
+- **只认配对的私聊**：消息和按钮都先比对 `peer`，不是就不理。确认卡片的按钮只能处理这个连接发出去的请求（`carding`）。
+- 确认请求本来就发到 Bot 的私聊；绑定群聊的连接也会收到在这个群里派的任务的卡片（看 `origin_chat_id`）。
+- 飞书 3 秒内没收到回包会重推事件：收到事件马上回包，真正的处理放到后台任务里，再按 `event_id` 去重。
+- 平台都实现 `check / run / send_text / send_card / edit_card`，再在 `PLATFORMS` 里注册，就能加新的聊天软件。
 
 ### 推送与 PWA
 - 推送按 RFC 8291（aes128gcm）加密、RFC 8292（VAPID）签名，只用 `cryptography` 和 `httpx`。推送服务只看得到密文。

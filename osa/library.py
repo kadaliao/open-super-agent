@@ -170,6 +170,25 @@ async def list_dir(c, path: str) -> list[dict]:
     return out
 
 
+async def put_file(c, directory: str, name: str, data: bytes) -> dict:
+    """把文件写进电脑里的目录。同名时自动加序号，不覆盖。"""
+    d, name = norm(directory), check_name(name)
+    if len(data) > MAX_UPLOAD:
+        raise ValueError(f"文件太大（最多 {MAX_UPLOAD >> 20} MB）")
+    try:
+        existing = {e["name"] for e in await list_dir(c, d)}
+    except ValueError:
+        existing = set()   # 目录还不存在，写文件时会自动建
+    stem, ext = posixpath.splitext(name)
+    final, n = name, 1
+    while final in existing:
+        n += 1
+        final = f"{stem} ({n}){ext}"
+    path = posixpath.join(d, final)
+    await c.write_bytes(path, data)
+    return {"path": path, "name": final, "size": len(data)}
+
+
 async def stat_many(c, paths: list[str]) -> dict[str, dict]:
     """置顶文件的现状（可能已经被删了）。"""
     if not paths:

@@ -43,6 +43,11 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 - **推送**：Playwright 默认的浏览器上下文算无痕模式，Chrome 在无痕里不支持推送；要用 `launch_persistent_context`，
   并 `grant_permissions(["notifications"])`。开启后 `POST /api/push/test`，用 `registration.getNotifications()` 确认收到。
 - **手机**：Playwright 用 `is_mobile=True, has_touch=True` 的上下文（`pointer: coarse` 才会出现接手时的输入栏）。
+- **聊天软件**：不需要真账号。`OSA_TELEGRAM_API`、`OSA_FEISHU_API` 指向本机的假服务器，就能把整个流程跑一遍：
+  假的 Telegram 实现 `getMe / getUpdates / sendMessage / editMessageText / answerCallbackQuery / getFile` 几个方法；
+  假的飞书实现换 token、`/callback/ws/endpoint` 和一个 WebSocket，帧用 lark-oapi 里的 `pbbp2_pb2.Frame` 编解码（顺便验证手写的编解码）。
+  从假服务器推一条带配对码的消息完成配对，再让 Bot 派一个要 `ask_approval` 的任务，模拟点按钮（Telegram 的 `callback_query`、飞书的 `card.action.trigger`），
+  应该看到卡片更新成“已允许”、任务结果发回来。陌生人的消息和按钮都应该被忽略。
 - **资料库**：让 Bot 把结果做成页面，`GET /api/pages` 看列表；HTML 页面在沙箱 iframe 里，
   可以写一个会 `fetch('/api/bootstrap')` 的探针页，确认请求被 CSP 拦下。
 

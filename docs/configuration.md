@@ -12,6 +12,7 @@
 | `INSTABOX_API_KEY` | 否 | 设置后，电脑改用 Instabox 云主机 |
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
 | `OSA_CONFIG` | 否 | 配置文件路径，默认 `config.yaml` |
+| `HTTPS_PROXY` | 否 | 服务器在国内、要用 Telegram 时设置，见 [聊天软件](channels.md) |
 
 密钥只放在环境变量里，`config.yaml` 只写变量名。
 
@@ -134,6 +135,10 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
   ```
 - **语音输入**用浏览器自带的识别：Safari（含 iPhone）直接可用；Chrome 要能连上 Google 的语音服务，连不上时会提示。不支持的浏览器不显示麦克风。
 - **演示一遍**最长 10 分钟（`osa/teach.py` 的 `MAX_S`），到时自动结束并生成草稿。
+
+## 聊天软件
+
+在 设置 → 聊天软件 里添加，不需要改配置文件。步骤、权限和常见问题见 [聊天软件](channels.md)。
 
 ## 群聊
 

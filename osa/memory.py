@@ -66,6 +66,9 @@ def topic_start(chat_id: int) -> int:
     return r[0] or 0
 
 
+VIA = {"telegram": " Telegram", "feishu": "飞书"}
+
+
 def context(chat_id: int, viewer: int | None = None) -> list[dict]:
     """组装给 Router 的历史消息。viewer 是群聊里正在发言的 Bot：
     它自己的回复保持 assistant；别的 Bot 的发言、任务和交接都换成带名字的通知。私聊时 viewer 为空。"""
@@ -109,9 +112,11 @@ def context(chat_id: int, viewer: int | None = None) -> list[dict]:
         elif r == "assistant":
             # 旧记录没存思考内容，原样传回会被拒，改成通知形式
             msgs.append({"role": "user", "content": f"（系统通知：这是你之前给用户的回复）{c}"})
-        elif meta.get("skill_prompt"):   # /技能：把技能做法附在用户原话后面
-            msgs.append({"role": "user", "content": f"{c}\n\n{meta['skill_prompt']}"})
         else:
+            if meta.get("via"):   # 在聊天软件里发的：Router 据此不提网页上的按钮和面板
+                c = f"（来自{VIA.get(meta['via'], meta['via'])}）{c}"
+            if meta.get("skill_prompt"):   # /技能：把技能做法附在用户原话后面
+                c = f"{c}\n\n{meta['skill_prompt']}"
             msgs.append({"role": "user", "content": c})
     return msgs
 

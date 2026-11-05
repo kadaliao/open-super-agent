@@ -31,6 +31,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 🧠 **Memory**: each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots. Just say "remember ...", or view, edit, delete and import (e.g. from ChatGPT) in the side panel. Start a **new topic** to drop old messages from the context while keeping memories.
 - 📚 **Library**: finished reports and web pages are saved as Pages you can pin and share by link; browse, upload and download files on the shared computer, and attach files in chat.
 - ⏰ **Routines**: per-Bot schedules (daily / weekdays, every N minutes, webhook) with pause, resume, test and the last 20 runs. Create one by saying "every day at 9, ...". Webhook events go through keyword filters, then a cheap model decides whether to act.
+- 💬 **Chat apps**: talk to your Bots from Telegram or Feishu/Lark, in the same conversation as the web UI. Approval requests arrive as buttons, and you can send files. No public address needed ([setup guide](docs/channels.md), Chinese).
 - 📱 **Mobile**: install it to your home screen as an app, dictate messages by voice, and get push notifications for approvals and finished tasks when no page is open. Watch the screen, take over and type, and handle approvals from your phone.
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
 - 🔄 **Any model**: any OpenAI-compatible API (DeepSeek, OpenRouter, Ollama, vLLM), configurable per role.
@@ -58,6 +59,7 @@ The detailed docs are currently in Chinese:
 - [Configuration](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
+- [Chat apps](docs/channels.md): connecting Telegram and Feishu/Lark
 - [Adding an app to the market](docs/apps.md)
 - [Roadmap](docs/roadmap.md): what comes next ([the Grok Bot parity plan](docs/grok-bot-parity.md) is archived)
 - [Changelog](CHANGELOG.md)
@@ -67,7 +69,7 @@ The detailed docs are currently in Chinese:
 Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANGELOG.md)). Where it goes next:
 
 - **App ecosystem**: more apps (Feishu/Lark, DingTalk, Google Drive and Calendar, ...); skills and Bot templates you can export, share and install in one click.
-- **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; chat with your Bots from Feishu/Lark, WeCom and Telegram.
+- **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; more chat apps beyond Telegram and Feishu/Lark (WeCom, DingTalk, Discord).
 - **Computers**: several computers running tasks in parallel; Teach a task across the whole desktop, not just the browser; snapshots and rollback.
 - **Bot abilities**: semantic search over memory and the library; voice conversations.
 - **Easier to deploy and use**: one-command Docker Compose deploy; an English UI; data backup and migration.

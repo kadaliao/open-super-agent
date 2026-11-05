@@ -10,7 +10,7 @@ from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from . import approvals, auth, bots, catalog, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import approvals, auth, bots, catalog, channels, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
 from . import settings, skills, teach, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
@@ -21,6 +21,7 @@ watching: dict[WebSocket, bool] = {}   # 每个页面现在是不是正被看着
 
 
 async def broadcast(event: dict):
+    channels.on_event(event)   # 聊天软件（Telegram、飞书）里也发一份
     for ws in list(clients):
         try:
             await ws.send_json(event)
@@ -37,6 +38,7 @@ mcp_hub.notify = broadcast
 routines.notify = broadcast
 groups.notify = broadcast
 teach.notify = broadcast
+channels.notify = broadcast
 
 
 async def _pages_changed():
@@ -53,11 +55,13 @@ async def lifespan(app):
     settings.apply()
     routines.import_legacy(bots.primary()["id"])
     await mcp_hub.start()
+    await channels.start()
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
           asyncio.create_task(computer.idle_pauser())]
     yield
     for t in bg:
         t.cancel()
+    await channels.stop()
     await mcp_hub.stop()
 
 app = FastAPI(lifespan=lifespan)
@@ -113,6 +117,7 @@ async def delete_bot(bot_id: int):
     for t in list(rt.TASKS.values()):
         if t.bot_id == bot_id and t.status == "running":
             rt.cancel(t.id, "Bot 已删除")
+    chat_id = (bots.get(bot_id) or {}).get("chat_id")
     try:
         bots.delete(bot_id)
     except ValueError as e:
@@ -122,6 +127,7 @@ async def delete_bot(bot_id: int):
     memory.conn.execute("delete from skills where bot_id=?", (bot_id,))
     memory.conn.commit()
     rt.RUNTIMES.pop(bot_id, None)
+    channels.chat_removed(chat_id)
     await broadcast({"type": "bots_changed"})
     return {"ok": True}
 
@@ -162,6 +168,7 @@ async def delete_group(chat_id: int):
             rt.cancel(t.id, "群聊已删除")
     bots.delete_group(chat_id)
     groups.forget(chat_id)
+    channels.chat_removed(chat_id)
     await broadcast({"type": "bots_changed"})
     return {"ok": True}
 
@@ -172,11 +179,17 @@ async def new_topic(chat_id: int):
     chat = bots.chat(chat_id)
     if not chat:
         raise HTTPException(404, "没有这个对话")
+    return {"id": await reset_chat(chat)}
+
+
+async def reset_chat(chat: dict | int) -> int:
+    chat = bots.chat(chat) if isinstance(chat, int) else chat
+    chat_id = chat["id"]
     bot_id = chat["bot_ids"][0] if chat["kind"] == "direct" else None
     mid = memory.add("task", "[新话题]", chat_id, bot_id, kind="reset")
     await broadcast({"type": "message", "chat_id": chat_id, "bot_id": bot_id, "message": {
         "id": mid, "ts": time.time(), "role": "task", "content": "[新话题]", "meta": {"kind": "reset"}, "bot_id": bot_id}})
-    return {"id": mid}
+    return mid
 
 
 @app.post("/api/tasks/{task_id}/cancel")
@@ -474,8 +487,9 @@ async def download_file(path: str):
 @app.put("/api/files/content")
 async def upload_file(request: Request, dir: str = "", name: str = ""):
     """上传一个文件到电脑里的目录（请求体就是文件内容）。同名时自动加序号，不覆盖。"""
-    try:
-        d, name = library.norm(dir), library.check_name(name)
+    try:   # 先检查路径和文件名，不对就不用读请求体
+        library.norm(dir)
+        library.check_name(name)
     except ValueError as e:
         _err(e)
     data = await request.body()
@@ -483,20 +497,9 @@ async def upload_file(request: Request, dir: str = "", name: str = ""):
         raise HTTPException(413, f"文件太大（最多 {library.MAX_UPLOAD >> 20} MB）")
     c = await _files_pc(True)
     try:
-        try:
-            existing = {e["name"] for e in await library.list_dir(c, d)}
-        except ValueError:
-            existing = set()   # 目录还不存在，写文件时会自动建
-        stem, ext = posixpath.splitext(name)
-        final, n = name, 1
-        while final in existing:
-            n += 1
-            final = f"{stem} ({n}){ext}"
-        path = posixpath.join(d, final)
-        await c.write_bytes(path, data)
+        return await library.put_file(c, dir, name, data)
     except (ValueError, computer.ComputerError) as e:
         _err(e)
-    return {"path": path, "name": final, "size": len(data)}
 
 
 @app.delete("/api/files")
@@ -629,15 +632,22 @@ async def pc_action(bot_id: int, action: str):
             await c.start()
             c.takeover()
         elif action == "handback":
-            c.handback()
-            # 如果 Bot 正在等你帮忙，交还就表示处理完了
-            for a in list(approvals.pending.values()):
-                if a["bot_id"] == bot_id and a.get("kind") == "help":
-                    approvals.resolve(a["id"], True, "")
+            return await handback(bot_id)
         else:
             raise HTTPException(404, "未知操作")
     except computer.ComputerError as e:
         _err(e)
+    state = await _pc_state(bot_id)
+    await broadcast({"type": "computer", "computer": state})
+    return state
+
+
+async def handback(bot_id: int) -> dict:
+    """交还电脑。如果 Bot 正在等你帮忙，交还就表示处理完了。"""
+    _pc(bot_id).handback()
+    for a in list(approvals.pending.values()):
+        if a["bot_id"] == bot_id and a.get("kind") == "help":
+            approvals.resolve(a["id"], True, "")
     state = await _pc_state(bot_id)
     await broadcast({"type": "computer", "computer": state})
     return state
@@ -900,6 +910,54 @@ async def delete_vault(name: str):
     return {"ok": True}
 
 
+# ---------- 聊天软件 ----------
+@app.get("/api/channels")
+async def list_channels():
+    return {"channels": channels.list_public(), "public_url": channels.public_url()}
+
+
+@app.post("/api/channels")
+async def add_channel(data: dict = Body(...)):
+    try:
+        if data.get("public_url") and not channels.public_url():
+            channels.set_public_url(data["public_url"])   # 第一次添加时记下网页地址，消息里的链接要用
+        return await channels.create(data.get("kind", ""), data.get("fields") or {}, int(data.get("chat_id") or 0))
+    except (ValueError, TypeError) as e:
+        _err(e)
+
+
+@app.put("/api/channels/settings")
+async def channel_settings(data: dict = Body(...)):
+    try:
+        channels.set_public_url(data.get("public_url", ""))
+    except ValueError as e:
+        _err(e)
+    return {"public_url": channels.public_url()}
+
+
+@app.patch("/api/channels/{cid}")
+async def update_channel(cid: int, data: dict = Body(...)):
+    try:
+        return await channels.update(cid, data)
+    except (ValueError, TypeError) as e:
+        _err(e)
+
+
+@app.post("/api/channels/{cid}/pair")
+async def repair_channel(cid: int):
+    if not channels.row(cid):
+        raise HTTPException(404, "没有这个连接")
+    channels.new_pair_code(cid)
+    channels.changed()
+    return channels.public(channels.row(cid))
+
+
+@app.delete("/api/channels/{cid}")
+async def delete_channel(cid: int):
+    channels.delete(cid)
+    return {"ok": True}
+
+
 # ---------- 设置、费用、状态 ----------
 @app.get("/api/settings")
 async def get_settings():
@@ -975,14 +1033,20 @@ async def ws(sock: WebSocket):
         watching.pop(sock, None)
 
 
-async def safe_handle(chat: dict, text: str):
+async def safe_handle(chat: dict, text: str, via: str = ""):
+    """用户发来一条消息（网页，或者 via 指明的聊天软件）。"""
     try:
         if chat["kind"] == "group":
-            await groups.on_user(chat, text)
+            await groups.on_user(chat, text, via)
         else:
-            await rt.runtime(chat["bot_ids"][0]).handle_user(text)
+            await rt.runtime(chat["bot_ids"][0]).handle_user(text, via)
     except Exception as e:
         await broadcast({"type": "error", "chat_id": chat["id"], "message": f"出错了：{e}"})
+
+
+channels.handle = safe_handle
+channels.reset = reset_chat
+channels.handback = handback
 
 
 # ---------- 前端 ----------

@@ -229,6 +229,9 @@ function handle(d: any) {
     case 'pages_changed':
       window.dispatchEvent(new CustomEvent('osa-pages'))
       break
+    case 'channels_changed':
+      window.dispatchEvent(new CustomEvent('osa-channels'))
+      break
     case 'teach':   // 录制开始 / 结束；到时自动结束时会带上草稿
       set({ teach: d.teach || null, ...(d.draft ? { teachDraft: { bot_id: d.bot_id, draft: d.draft, steps: d.steps || [] } } : {}) })
       if (d.error) alert(d.error)
