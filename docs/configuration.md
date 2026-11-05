@@ -199,6 +199,45 @@ osa.example.com {
 }
 ```
 
+用 nginx 的话，证书自己申请（比如 `certbot certonly --nginx -d osa.example.com`），放在 `/etc/nginx/conf.d/osa.conf`：
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name osa.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name osa.example.com;
+    ssl_certificate     /etc/letsencrypt/live/osa.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/osa.example.com/privkey.pem;
+
+    client_max_body_size 25m;          # 上传文件最大 20 MB，nginx 默认只收 1 MB
+
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;            # 对话和电脑画面走 WebSocket
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $http_host;                  # 要带端口：服务拿它和 Origin 比，判断是不是跨站请求
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;        # 服务据此给 cookie 加 Secure、生成 https 的授权回调地址
+        proxy_buffering off;                               # 回复是流式输出的，不要缓冲
+        proxy_read_timeout 1h;                             # 默认 60 秒，生成技能草稿这类慢请求会被掐断
+        proxy_send_timeout 1h;
+    }
+}
+```
+
+改完 `nginx -t && systemctl reload nginx`。
+
 服务器内存小或者不想装 Docker 时，电脑用 Instabox：设置 `INSTABOX_API_KEY`，并把 `computer.backend` 写成 `instabox`。
 
 应用（MCP）里用 `npx` 的（文件系统、GitHub、Notion）要装 Node ≥ 20，用 `uvx` 的（网页抓取）要装 uv。

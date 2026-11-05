@@ -17,6 +17,7 @@
   - 本地电脑照常可用：服务通过宿主机的 Docker 创建电脑容器，电脑镜像在 `up` 时一起构建好，第一次用电脑不用再等
   - 部署到公网：`.env` 里设好 `OSA_DOMAIN` 和 `OSA_PASSWORD`，`docker compose --profile https up -d` 带上自动申请证书的 Caddy
   - 国内网络可以设 `APT_MIRROR`、`NPM_REGISTRY`、`PYPI_INDEX` 用镜像源构建
+- 文档：部署到公网服务器补上 nginx 的配置例子（WebSocket、带端口的 Host、上传大小、超时）
 
 ### 变更
 - 本地电脑的实时画面改成经 `docker exec` 在电脑里转发，不再把没有密码的 VNC 端口映射到宿主机（之前只监听 127.0.0.1，但本机的任何程序都能连上）；
