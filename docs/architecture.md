@@ -63,10 +63,12 @@ osa/
   computer/
     base.py        电脑接口、桌面动作（xdotool / scrot）、浏览器动作（CDP）、控制权、任务排队
     cdp_helper.py  在电脑里运行的浏览器控制脚本（只用标准库），通过 DevTools 端口操作 Chromium；也负责演示录制
-    local.py       本地 Docker 后端
+    local.py       本地 Docker 后端（VNC 经 docker exec 转发）
     instabox.py    Instabox 后端
     tools.py       browser_* / computer_* 工具定义、截图消息、给 Worker 的操作说明
     image/         本地电脑镜像
+Dockerfile          服务镜像：后端、构建好的前端、应用要用的 Node 和 uv
+compose.yaml        Docker Compose 部署（deploy/Caddyfile 是 --profile https 的反向代理），见 docs/docker.md
 web/public/         PWA：manifest.json、sw.js（推送和离线提示页）、图标
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理

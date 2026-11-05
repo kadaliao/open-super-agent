@@ -1,0 +1,13 @@
+# 不进镜像：数据和密钥（data/、.env）、本机的依赖和构建产物
+.env
+data/
+.git/
+.github/
+.venv/
+.ruff_cache/
+web/node_modules/
+osa/static/dist/
+**/__pycache__/
+*.db
+.DS_Store
+docs/

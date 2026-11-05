@@ -40,10 +40,19 @@ The architecture follows DeepSeek's Super-agent design: a Router that converses,
 
 ## Quick start
 
-Requirements: Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/), Node ≥ 20, and Docker (for the local computer backend).
+With Docker Compose you only need Docker:
 
 ```bash
 git clone https://github.com/kadaliao/open-super-agent.git && cd open-super-agent
+cp .env.example .env     # fill in DEEPSEEK_API_KEY
+docker compose up -d     # the first build takes 5–10 minutes; then open http://127.0.0.1:8765
+```
+
+See [Deploy with Docker Compose](docs/docker.md) (in Chinese) for automatic HTTPS, using Instabox as the computer, and backups.
+
+Without Docker you need Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/) and Node ≥ 20 (plus Docker for the local computer backend):
+
+```bash
 export DEEPSEEK_API_KEY=sk-...              # see .env.example for all variables
 (cd web && npm ci && npm run build)
 uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
@@ -56,6 +65,7 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 
 The detailed docs are currently in Chinese:
 
+- [Deploy with Docker Compose](docs/docker.md)
 - [Configuration](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
@@ -72,7 +82,7 @@ Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANG
 - **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; more chat apps beyond Telegram and Feishu/Lark (WeCom, DingTalk, Discord).
 - **Computers**: several computers running tasks in parallel; Teach a task across the whole desktop, not just the browser; snapshots and rollback.
 - **Bot abilities**: semantic search over memory and the library; voice conversations.
-- **Easier to deploy and use**: one-command Docker Compose deploy; an English UI; data backup and migration.
+- **Easier to deploy and use**: an English UI; data backup and migration.
 
 The reasoning and priorities are in [docs/roadmap.md](docs/roadmap.md) (Chinese). Feature requests are welcome as issues.
 

@@ -12,6 +12,17 @@
   - 发文件、图片存到电脑的 uploads 目录；`/new` 新话题、`/stop` 停下任务、`/help`
   - 只认配对过的人：添加后用 6 位配对码配对（Telegram 点链接自动带上），别人的消息和按钮一律不理；token 和 App Secret 存在保险库
   - 绑定的 Bot 或群聊被删除时，改成和主 Bot 对话
+- **Docker Compose 一键部署**：`cp .env.example .env` 填上模型的 key，`docker compose up -d` 就能跑起来，不用自己装 Python、Node、构建前端（见 [docs/docker.md](docs/docker.md)）
+  - 镜像里带着应用要用的 Node（npx）和 uv（uvx），下载过的应用放在缓存卷里，重启后不用重新下载
+  - 本地电脑照常可用：服务通过宿主机的 Docker 创建电脑容器，电脑镜像在 `up` 时一起构建好，第一次用电脑不用再等
+  - 部署到公网：`.env` 里设好 `OSA_DOMAIN` 和 `OSA_PASSWORD`，`docker compose --profile https up -d` 带上自动申请证书的 Caddy
+  - 国内网络可以设 `APT_MIRROR`、`NPM_REGISTRY`、`PYPI_INDEX` 用镜像源构建
+
+### 变更
+- 本地电脑的实时画面改成经 `docker exec` 在电脑里转发，不再把没有密码的 VNC 端口映射到宿主机（之前只监听 127.0.0.1，但本机的任何程序都能连上）；
+  电脑镜像里的 x11vnc 也改成只监听容器内部，别的容器连不上。已有的电脑要重建镜像后才生效（`docker rm -f osa-computer` 后重新构建 `osa-computer:1`）。
+  刚创建电脑时 VNC 还没启动也会等一会儿再连
+- `.env.example` 的注释改成单独占一行：Docker Compose 会把 `KEY=   # 注释` 里的注释当成值，直接复制使用时登录密码会变成那句注释
 
 ### 修复
 - 用账号登录的应用（flomo 等），服务重启后令牌一过期就要重新登录：刷新令牌发到了猜的地址（`<域名>/token`），

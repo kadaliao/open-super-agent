@@ -17,5 +17,4 @@ RUN printf '#!/bin/sh\nexec /usr/bin/chromium --no-sandbox --test-type --no-firs
 COPY start-desktop.sh /usr/local/bin/start-desktop.sh
 RUN chmod +x /usr/local/bin/start-desktop.sh && mkdir -p /data/workspace
 WORKDIR /data/workspace
-EXPOSE 5900
 CMD ["/usr/local/bin/start-desktop.sh"]

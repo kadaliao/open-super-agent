@@ -51,7 +51,7 @@ computer:
 | 后端 | 说明 |
 |---|---|
 | Instabox | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
-| 本地 Docker | 容器 `osa-computer`，数据在 `data/computers/shared`。VNC 只监听 127.0.0.1，由服务端转发给浏览器。 |
+| 本地 Docker | 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
 
 ## 应用（MCP）
 
@@ -182,6 +182,8 @@ tailscale serve --bg --https=8443 8765     # 访问 https://<机器名>.<tailnet
 如果改用 `--host 0.0.0.0` 直接访问，地址必须写 `http://`。浏览器自动升级成 https 时，服务端会报 `Invalid HTTP request`。
 
 ## 部署到公网服务器
+
+用 Docker Compose 的话，自带一个自动申请证书的 Caddy，见 [用 Docker Compose 部署](docker.md#部署到公网自动-https)。下面是不用 Docker 的做法。
 
 先设置 `OSA_PASSWORD`。服务仍然只监听本机，由 Caddy 之类的反向代理提供 HTTPS：
 

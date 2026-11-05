@@ -26,3 +26,18 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check compose file
+        run: docker compose config --quiet
+      - name: Build app image
+        run: docker build -t open-super-agent:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name osa -p 8765:8765 open-super-agent:ci
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8765/manifest.json >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8765/api/bootstrap | grep -q '"bots"'
+          docker exec osa sh -c 'node --version && npx --version && uvx --version && docker --version'

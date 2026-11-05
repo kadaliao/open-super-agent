@@ -42,10 +42,22 @@ Grok Bot 的体验很好，但价格高，模型也换不了。open-super-agent 
 
 ## 快速开始
 
-需要 Python ≥ 3.11 和 [uv](https://docs.astral.sh/uv/)、Node ≥ 20、Docker（本地电脑用；用 Instabox 时不需要）。
+用 Docker Compose，只需要装 Docker：
 
 ```bash
 git clone https://github.com/kadaliao/open-super-agent.git && cd open-super-agent
+cp .env.example .env     # 填上 DEEPSEEK_API_KEY
+docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟；打开 http://127.0.0.1:8765
+```
+
+自动 HTTPS、电脑改用 Instabox、国内镜像源、备份，见 [用 Docker Compose 部署](docs/docker.md)。
+
+<details>
+<summary>不用 Docker 运行</summary>
+
+需要 Python ≥ 3.11 和 [uv](https://docs.astral.sh/uv/)、Node ≥ 20；本地电脑仍要 Docker（用 Instabox 时不需要）。
+
+```bash
 export DEEPSEEK_API_KEY=sk-...              # 环境变量一览见 .env.example
 (cd web && npm ci && npm run build)         # 构建前端
 uv run uvicorn osa.server:app --port 8765   # 打开 http://127.0.0.1:8765
@@ -57,6 +69,8 @@ uv run uvicorn osa.server:app --port 8765   # 打开 http://127.0.0.1:8765
 docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/computer/image
 ```
 
+</details>
+
 > [!WARNING]
 > 默认**不用登录**，只能在本机或内网（例如 Tailscale）使用。要部署到公网，先设置 `OSA_PASSWORD` 打开登录，再用 HTTPS 访问，见 [配置 → 部署到公网服务器](docs/configuration.md#部署到公网服务器) 和 [SECURITY.md](SECURITY.md)。
 
@@ -64,6 +78,7 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 
 | 文档 | 内容 |
 |---|---|
+| [用 Docker Compose 部署](docs/docker.md) | 一条命令跑起来、自动 HTTPS、数据和备份、国内网络 |
 | [配置](docs/configuration.md) | 模型和角色、限额与价格、电脑后端、应用、确认规则与保险库、定时任务、远程访问 |
 | [架构](docs/architecture.md) | 各组件如何协作、代码目录、设计约定 |
 | [开发](docs/development.md) | 本地开发、测试方法、调试技巧 |
@@ -80,7 +95,7 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 - **更多客户端**：macOS / Windows 桌面端（菜单栏、快捷键、系统通知，还能把你自己的电脑借给 Bot 用）；iOS / Android 原生 App；Telegram、飞书之外，再接企业微信、钉钉、Discord。
 - **电脑**：多台电脑并行；“演示一遍”从浏览器扩展到整个桌面；快照与回滚。
 - **Bot 能力**：记忆和资料库按语义检索；语音对话。
-- **好部署、好上手**：Docker Compose 一键部署；界面英文版；数据备份与迁移。
+- **好部署、好上手**：界面英文版；数据备份与迁移。
 
 每个方向的考虑和先后顺序见 [docs/roadmap.md](docs/roadmap.md)。想要的功能欢迎提 issue。
 

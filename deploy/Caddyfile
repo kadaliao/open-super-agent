@@ -1,0 +1,6 @@
+# docker compose --profile https 用的反向代理：自动申请 HTTPS 证书，转发给 osa 服务
+{$OSA_DOMAIN} {
+	reverse_proxy osa:8765 {
+		flush_interval -1   # 回复是流式输出的，不要缓冲
+	}
+}

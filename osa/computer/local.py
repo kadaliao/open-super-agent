@@ -1,12 +1,47 @@
-"""本地 Docker 后端：每个 Bot 一个容器，数据目录挂在 data/computers/bot-<id>（容器里的 /data）。"""
+"""本地 Docker 后端：所有 Bot 共用一个容器 osa-computer，容器里的 /data 默认挂 data/computers/shared。
+
+用 Docker Compose 部署时服务自己也在容器里，它看到的路径和宿主机对不上，这时用环境变量 OSA_COMPUTER_DATA
+指定一个命名卷（也可以是宿主机上的绝对路径）。
+VNC 没有密码，只监听电脑容器里的 127.0.0.1，由服务经 docker exec 在电脑里转发：服务在不在容器里都能连上。
+"""
 import asyncio
 import json
+import os
 from pathlib import Path
 from ..config import CFG, ROOT
 from .base import Computer, ComputerError, ExecResult
 
 IMAGE = "osa-computer:1"
 IMAGE_DIR = Path(__file__).parent / "image"
+
+# 在电脑里把 stdin / stdout 接到 x11vnc。网页关掉画面时 stdin 读到结尾，半关连接，x11vnc 随即断开，进程退出。
+# 电脑刚创建时桌面先就绪、x11vnc 稍后才监听，所以连不上时等一会儿再试
+_VNC_RELAY = """
+import os, socket, sys, threading, time
+for _ in range(50):
+    try:
+        s = socket.create_connection(("127.0.0.1", 5900))
+        break
+    except OSError:
+        time.sleep(0.2)
+else:
+    sys.exit("VNC 没有启动")
+def up():
+    while True:
+        d = os.read(0, 65536)
+        if not d:
+            break
+        s.sendall(d)
+    s.shutdown(socket.SHUT_WR)
+threading.Thread(target=up, daemon=True).start()
+out = sys.stdout.buffer
+while True:
+    d = s.recv(65536)
+    if not d:
+        break
+    out.write(d)
+    out.flush()
+"""
 
 
 async def _run(*args, stdin: str | None = None, timeout: float = 120) -> tuple[int, str, str]:
@@ -44,7 +79,7 @@ class LocalComputer(Computer):
     def __init__(self, bot_id: int):
         super().__init__(bot_id)
         self.name = "osa-computer"
-        self.data_dir = ROOT / "data" / "computers" / "shared"
+        self.data = os.environ.get("OSA_COMPUTER_DATA") or str(ROOT / "data" / "computers" / "shared")
         self._starting = asyncio.Lock()
 
     async def status(self) -> dict:
@@ -75,10 +110,11 @@ class LocalComputer(Computer):
                 await _run("docker", "start", self.name)
             else:
                 await self._ensure_image()
-                self.data_dir.mkdir(parents=True, exist_ok=True)
+                if os.path.isabs(self.data):   # 不是绝对路径就是命名卷，docker run 时自动创建
+                    Path(self.data).mkdir(parents=True, exist_ok=True)
                 code, out, err = await _run(
                     "docker", "run", "-d", "--platform", await platform(), "--name", self.name, "--hostname", "osa",
-                    "--shm-size=1g", "-p", "127.0.0.1::5900", "-v", f"{self.data_dir}:/data",
+                    "--shm-size=1g", "-v", f"{self.data}:/data",
                     "-e", f"SCREEN_W={self.width}", "-e", f"SCREEN_H={self.height}",
                     "--label", "osa=computer", IMAGE, timeout=120)
                 if code:
@@ -99,26 +135,28 @@ class LocalComputer(Computer):
         code, out, err = await _run(*args, stdin=stdin if stdin is not None else "", timeout=timeout + 5)
         return ExecResult(code, out, err, timed_out=code == 124)
 
-    async def _vnc_port(self) -> int:
-        code, out, _ = await _run("docker", "port", self.name, "5900/tcp", timeout=10)
-        if code or not out.strip():
-            raise ComputerError("拿不到电脑的 VNC 端口")
-        return int(out.strip().splitlines()[0].rsplit(":", 1)[1])
-
     async def open_vnc(self):
-        reader, writer = await asyncio.open_connection("127.0.0.1", await self._vnc_port())
+        p = await asyncio.create_subprocess_exec(
+            "docker", "exec", "-i", self.name, "python3", "-c", _VNC_RELAY,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
 
         async def recv() -> bytes:
-            data = await reader.read(65536)
+            data = await p.stdout.read(65536)
             if not data:
                 raise ConnectionError("VNC 连接已关闭")
             return data
 
         async def send(data: bytes):
-            writer.write(data)
-            await writer.drain()
+            p.stdin.write(data)
+            await p.stdin.drain()
 
         async def close():
-            writer.close()
+            if p.returncode is None:
+                p.stdin.close()   # 电脑里的转发进程读到结尾后断开 VNC、自己退出
+                try:
+                    await asyncio.wait_for(p.wait(), 5)
+                except asyncio.TimeoutError:
+                    p.kill()
+                    await p.wait()
 
         return recv, send, close

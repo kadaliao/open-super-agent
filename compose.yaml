@@ -1,0 +1,68 @@
+# 一键部署：cp .env.example .env，填好 DEEPSEEK_API_KEY，然后 docker compose up -d，打开 http://127.0.0.1:8765
+# 可选项（端口、HTTPS、Instabox、国内镜像源）见 docs/docker.md
+name: osa
+
+services:
+  osa:
+    build:
+      context: .
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        PYPI_INDEX: ${PYPI_INDEX:-}
+    image: open-super-agent:local
+    pull_policy: never    # 镜像只在本机构建，不去 Docker Hub 找
+    init: true            # 应用（MCP）是子进程，退出后要有人回收
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}                         # 定时任务按这个时区算
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}   # 默认只有本机能连进来，信任反向代理带的真实 IP
+      OSA_COMPUTER_DATA: osa-computer-data             # 本地电脑的 /data 用这个命名卷
+    ports:
+      # 默认只监听本机。局域网里直接访问可以设 OSA_BIND=0.0.0.0，但要先设 OSA_PASSWORD
+      - "${OSA_BIND:-127.0.0.1}:${OSA_PORT:-8765}:8765"
+    volumes:
+      - ./data:/app/data                     # 数据库、保险库密钥、本机应用清单
+      - ./config.yaml:/app/config.yaml:ro    # 改完 docker compose restart 生效
+      - cache:/cache                         # npx / uvx 下载的应用，重启后不用重新下载
+      # 本地电脑要用：服务通过宿主机的 Docker 创建和操作电脑容器 osa-computer。
+      # 能操作 Docker 就等于有宿主机的 root 权限；只用 Instabox 时删掉这一行
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - host.docker.internal:host-gateway    # 连宿主机上的代理或 Ollama 用这个地址
+
+  # 本地电脑的镜像。这里只负责构建，不启动；容器由服务在第一次用电脑时创建
+  computer:
+    build:
+      context: osa/computer/image
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+    image: osa-computer:1
+    pull_policy: never
+    scale: 0
+
+  # 可选：自动申请 HTTPS 证书的反向代理。先把域名解析到这台服务器，设好 OSA_DOMAIN 和 OSA_PASSWORD，
+  # 再 docker compose --profile https up -d
+  caddy:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    environment:
+      OSA_DOMAIN: ${OSA_DOMAIN:-}
+    command: >-
+      sh -c 'if [ -z "$$OSA_DOMAIN" ]; then echo "请在 .env 里设置 OSA_DOMAIN（你的域名）" >&2; exit 1; fi;
+      exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on: [osa]
+
+volumes:
+  cache:
+  caddy:

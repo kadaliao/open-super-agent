@@ -21,7 +21,16 @@ sed 's|db: data/osa.db|db: /tmp/osa-test/osa.db|' config.yaml > /tmp/osa-test/co
 OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 ```
 
-本地电脑是共用的（容器 `osa-computer`），测试和正式实例会操作同一台电脑，不要同时跑。
+本地电脑是共用的（容器 `osa-computer`），测试和正式实例会操作同一台电脑，不要同时跑。用 Docker Compose 跑的实例也用这个容器。
+
+## Docker 镜像
+
+改了 `Dockerfile`、`compose.yaml` 或依赖后，在一份**不含 `data/` 的副本**里验证（compose 会把当前目录的 `data/` 挂进去）：
+`docker compose -p osatest up -d --build`，`.env` 里设 `OSA_PORT` 换个端口。测完 `docker compose -p osatest down -v`。
+
+- 环境里设了 `DOCKER_DEFAULT_PLATFORM` 的话先 `unset`，否则会构建出要模拟运行的镜像。
+- `--profile https` 可以用 `OSA_DOMAIN=osa.localhost` 在本机测（Caddy 会签一个本地证书）。本机的代理软件可能拦 443 端口，
+  从 compose 网络里的容器访问 `https://caddy`（SNI 填 `osa.localhost`）更可靠。
 
 ## 端到端验证
 
