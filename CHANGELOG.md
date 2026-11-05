@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.4.0] - 2026-11-05
 ### 新增
 - **登录**：设置环境变量 `OSA_PASSWORD` 后，页面、接口和 WebSocket 都要先登录（分享链接、webhook 除外）。登录保持 30 天并自动续期，
   设置里可以退出登录；同一个 IP 输错 5 次暂停 10 分钟；开启后拒绝跨站的写请求和 WebSocket。不设置时和以前一样不用登录
@@ -95,7 +97,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.3.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kadaliao/open-super-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kadaliao/open-super-agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kadaliao/open-super-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kadaliao/open-super-agent/releases/tag/v0.1.0
