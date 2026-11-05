@@ -66,20 +66,20 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 | [配置](docs/configuration.md) | 模型和角色、限额与价格、电脑后端、应用、确认规则与保险库、定时任务、远程访问 |
 | [架构](docs/architecture.md) | 各组件如何协作、代码目录、设计约定 |
 | [开发](docs/development.md) | 本地开发、测试方法、调试技巧 |
-| [路线图](docs/roadmap.md) | 和 Grok Bot 的功能对照、分阶段计划、验收标准 |
+| [路线图](docs/roadmap.md) | 接下来的方向和先后顺序；之前对齐 Grok Bot 的计划见 [这里](docs/grok-bot-parity.md) |
 | [更新日志](CHANGELOG.md) | 各版本的变化 |
 
 ## 路线图
 
-- [x] **P1 Bot 与对话**：多 Bot、流式输出、任务卡片、设置、费用统计
-- [x] **P2 电脑**：Instabox 和本地 Docker 两个后端、实时画面、接手 / 交还、任务排队
-- [x] **P3 确认与应用**：“总是允许”规则、在界面里管理应用、保险库、`@应用`；网页操作改用 CDP
-- [x] **P4 技能与定时任务**：`/技能`、每个 Bot 的定时任务和运行记录
-- [x] **P5 记忆与资料库**：长期记忆、“记住这个”、新话题、页面与分享链接、文件与附件
-- [x] **P6 群聊**：2–6 个 Bot、`@` 和 `@所有人`、协调者分派、Bot 之间交接、确认卡片回到私聊
-- [x] **P7 演示一遍和移动端**：录一遍操作生成技能、语音输入、PWA 与推送通知、手机布局
+和 Grok Bot 对齐的功能已经全部做完（v0.3.0，见 [更新日志](CHANGELOG.md)）。接下来的方向：
 
-每个阶段的范围和验收标准见 [docs/roadmap.md](docs/roadmap.md)。
+- **应用生态**：收录更多应用（飞书、钉钉、Google 云端硬盘和日历……）；应用目录改成清单文件，社区提 PR 就能上架；技能和 Bot 模板可以导出、分享、一键安装。
+- **更多客户端**：macOS / Windows 桌面端（菜单栏、快捷键、系统通知，还能把你自己的电脑借给 Bot 用）；iOS / Android 原生 App；在飞书、企业微信、Telegram 里直接和 Bot 聊。
+- **电脑**：多台电脑并行；“演示一遍”从浏览器扩展到整个桌面；快照与回滚。
+- **Bot 能力**：记忆和资料库按语义检索；语音对话。
+- **好部署、好上手**：Docker Compose 一键部署；界面英文版；数据备份与迁移。
+
+每个方向的考虑和先后顺序见 [docs/roadmap.md](docs/roadmap.md)。想要的功能欢迎提 issue。
 
 ## 参与贡献
 

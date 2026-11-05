@@ -58,18 +58,20 @@ The detailed docs are currently in Chinese:
 - [Configuration](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
-- [Roadmap](docs/roadmap.md)
+- [Roadmap](docs/roadmap.md): what comes next ([the Grok Bot parity plan](docs/grok-bot-parity.md) is archived)
 - [Changelog](CHANGELOG.md)
 
 ## Roadmap
 
-- [x] P1 Bots & chat
-- [x] P2 Computer (Instabox and local Docker backends, live view, takeover, task queueing)
-- [x] P3 Approval rules, app management, a vault and `@app` mentions; browser control over CDP
-- [x] P4 Skills & routines
-- [x] P5 Memory & library
-- [x] P6 Group chat
-- [x] P7 Teach-a-task & mobile
+Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANGELOG.md)). Where it goes next:
+
+- **App ecosystem**: more apps (Feishu/Lark, DingTalk, Google Drive and Calendar, ...); the app catalog moves to manifest files so anyone can list an app with a PR; skills and Bot templates you can export, share and install in one click.
+- **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; chat with your Bots from Feishu/Lark, WeCom and Telegram.
+- **Computers**: several computers running tasks in parallel; Teach a task across the whole desktop, not just the browser; snapshots and rollback.
+- **Bot abilities**: semantic search over memory and the library; voice conversations.
+- **Easier to deploy and use**: one-command Docker Compose deploy; an English UI; data backup and migration.
+
+The reasoning and priorities are in [docs/roadmap.md](docs/roadmap.md) (Chinese). Feature requests are welcome as issues.
 
 ## License
 

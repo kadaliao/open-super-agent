@@ -4,7 +4,7 @@
 
 ## 开始之前
 
-- 想做比较大的改动，请先开 issue 讨论方向，免得做完和路线图冲突。
+- 想做比较大的改动，请先看看 [路线图](docs/roadmap.md)，再开 issue 讨论方向，免得做完和路线图冲突。
 - 读一遍 [docs/architecture.md](docs/architecture.md) 里的“设计约定”。那些规则都是踩过坑之后定下来的（共用电脑排队、验证码一律交给人、DeepSeek 的 reasoning 回传等）。
 - 本地怎么开发和测试，见 [docs/development.md](docs/development.md)。
 
