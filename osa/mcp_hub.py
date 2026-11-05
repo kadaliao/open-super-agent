@@ -246,6 +246,20 @@ class _Storage:
 
 
 class _Provider(OAuthClientProvider):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        prepare = self.context.prepare_token_auth
+
+        def prepare_token_auth(data, headers=None):
+            # SDK 用 Basic 头认证时，请求体里还留着 client_id。Notion 会当成两种认证方式，
+            # 报 “Client must not use multiple authentication methods”。
+            data, headers = prepare(data, headers)
+            if headers.get("Authorization", "").startswith("Basic "):
+                data = {k: v for k, v in data.items() if k != "client_id"}
+            return data, headers
+
+        self.context.prepare_token_auth = prepare_token_auth
+
     async def _initialize(self):
         await super()._initialize()
         # SDK 不记令牌什么时候过期；从保险库恢复，这样重启后会先刷新令牌，而不是要用户重新登录
