@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.5.0] - 2026-11-06
 ### 新增
 - **Bot 之间私信**：不用拉群，Bot 也能直接请另一个 Bot 帮忙。比如跟 Nova 说“让 postman 看看有没有 Anthropic 的邮件”，
   Nova 会私信 postman；postman 在自己的私聊里处理（要查的就派任务），做完结果自动回到 Nova 这边，Nova 再告诉你
@@ -37,10 +39,6 @@
     `config.yaml` 里写了的仍然优先（DeepSeek 的高峰、空闲两档价），本机的模型按 0 计。费用页列出现在用的模型的单价和来源
   - 按意思检索的 embedding 模型也用同一个下拉框选，可以测试
   - 对话或后台任务的模型没填 API Key 时，对话页上方提示，点一下直接打开设置。`DEEPSEEK_API_KEY` 不再是必填的
-### 变更
-- 后台任务改成流式调用模型（和对话一样），这样写结果时能边写边看；模型一直在出字就不算“没有进展”，不会被 Watchdog 误停
-- **设置页改版**：左边按类分组的导航（模型与费用、安全、连接、数据），右边是这一页；按 Esc 关闭，下次打开回到上次看的那页。
-  模型、限制与预算改了马上保存，不用再点“保存”。手机上导航变成顶上一排
 - **聊天软件新接钉钉、企业微信、Discord**，现在一共五个（步骤见 [docs/channels.md](docs/channels.md)）。都走长连接，服务器不需要公网地址
   - 钉钉：企业内部应用的机器人（Stream 模式）。确认请求是一条带链接的消息，点“允许一次”就替你发出“允许一次 #12”；
     刚聊过时用消息自带的回复地址，隔久了才发的结果走 OpenAPI（要开通“企业内机器人发送消息权限”）
@@ -98,6 +96,9 @@
 - 登录授权的应用可以先填几项再登录；登录没成功时填的内容还在，不用重新粘贴
 
 ### 变更
+- **设置页改版**：左边按类分组的导航（模型与费用、安全、连接、数据），右边是这一页；按 Esc 关闭，下次打开回到上次看的那页。
+  模型、限制与预算改了马上保存，不用再点“保存”。手机上导航变成顶上一排
+- 后台任务改成流式调用模型（和对话一样），这样写结果时能边写边看；模型一直在出字就不算“没有进展”，不会被 Watchdog 误停
 - 工具名里有 cancel、rename、transfer 的，默认也先问你（取消日程、重命名文件、转让文档这类）
 - 本地电脑的实时画面改成经 `docker exec` 在电脑里转发，不再把没有密码的 VNC 端口映射到宿主机（之前只监听 127.0.0.1，但本机的任何程序都能连上）；
   电脑镜像里的 x11vnc 也改成只监听容器内部，别的容器连不上。已有的电脑要重建镜像后才生效（`docker rm -f osa-computer` 后重新构建 `osa-computer:1`）。
@@ -202,7 +203,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.4.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/kadaliao/open-super-agent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kadaliao/open-super-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kadaliao/open-super-agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kadaliao/open-super-agent/compare/v0.1.0...v0.2.0
