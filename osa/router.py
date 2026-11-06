@@ -29,6 +29,7 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 用户问进度用 list_tasks；要取消用 cancel_task；需要早先对话原文用 recall。
 - 用户提到以前说过的事、以前做过的报告或页面，而提示词里没有时，用 search_memory 按意思查记忆和资料库；要看页面全文用 read_page。
 - 标有“系统通知”的消息是后台任务的状态，不是用户说的话；不要模仿它的格式。
+- 最新一条消息末尾“（以下是系统附上的当前状态……）”之后是当前的任务、待确认的写操作和相关记忆，不是用户说的话，回复时不用提它。
 - 开头标着“（来自 Telegram）”“（来自钉钉）”这类的消息，是用户在手机上的聊天软件里发的：他看不到网页的右栏和设置页，
   别让他去那里点，回复尽量简短。任务结果和确认卡片会自动发到那边。
 - 永远优先回应用户最新的那条消息；之前的任务结果用户已经看过了。
@@ -57,13 +58,18 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 {routines}
 
 你的长期记忆（每次对话都带着，按这些偏好做事；#后面是编号）：
-{memories}
+{memories}{group}"""
 
+# 每轮都会变的内容（任务、待确认、相关记忆、这一轮的来由）不放进系统提示词，附在最新一条消息后面：
+# 系统提示词和之前的对话逐字不变，才能一直命中模型服务的缓存（命中的部分便宜得多）
+STATE_PROMPT = """
+
+（以下是系统附上的当前状态，每轮更新，不是用户说的话）
 当前任务：
 {tasks}
 
 等待用户确认的写操作（用户在聊天里同意或拒绝时，调用 resolve_approval；意思不明确就先问清楚，不要替用户做决定）：
-{approvals}{group}{turn}"""
+{approvals}{memories}{turn}"""
 
 GROUP_PROMPT = """
 
@@ -173,6 +179,14 @@ async def _progress(task, text: str):
         await notify({"type": "task", "chat_id": task.chat_id, "bot_id": task.bot_id, "task": task.public()})
 
 worker_mod.PROGRESS = _progress
+
+
+def with_state(history: list[dict], state: str) -> list[dict]:
+    """把这一轮的状态（STATE_PROMPT）接在最新一条用户消息后面，不另起一条 system：
+    有的模型（比如 Qwen 的对话模板）不接受出现在对话中间的 system，有的不接受连着两条 user。"""
+    if history and history[-1]["role"] == "user" and isinstance(history[-1].get("content"), str):
+        return history[:-1] + [{**history[-1], "content": history[-1]["content"] + state}]
+    return history + [{"role": "user", "content": state.lstrip()}]
 
 
 def runtime(bot_id: int) -> "Router":
@@ -325,13 +339,16 @@ class Router:
         related = await memories.related(self.bot_id, woke["text"] if woke else (last[0] if last else ""))
         if started := self.turn.get("started"):
             started()   # 下面就读对话了：这之前到的私信、回信都看得到，之后到的另起一轮（见 dm.py）
-        msgs = [{"role": "system", "content": ROUTER_PROMPT.format(
+        system = ROUTER_PROMPT.format(
             name=b["name"], instructions=b["instructions"] or "你的具体职责以用户在对话里交代的为准。",
-            date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), skills=skills.summary(self.bot_id),
-            routines=self._routine_list(), capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id, related),
-            approvals=approvals.summary(self.bot_id), group=self._group_block(chat), others=self._others(),
-            turn=self._turn_block()) + i18n.model_hint()}] \
-            + memory.context(cid, self.bot_id if chat["kind"] == "group" else None, me=self.bot_id)
+            date=time.strftime("%Y-%m-%d"), skills=skills.summary(self.bot_id), routines=self._routine_list(),
+            capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id),
+            group=self._group_block(chat), others=self._others()) + i18n.model_hint()
+        recent = memories.turn_block(self.bot_id, related)
+        state = STATE_PROMPT.format(tasks=self._task_list(), approvals=approvals.summary(self.bot_id),
+                                    memories="\n\n" + recent if recent else "", turn=self._turn_block())
+        msgs = [{"role": "system", "content": system}] + with_state(
+            memory.context(cid, self.bot_id if chat["kind"] == "group" else None, me=self.bot_id), state)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
         self._turn_dms = 0                # 本轮发出的私信

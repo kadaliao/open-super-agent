@@ -85,7 +85,10 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> l
     names = dict(conn.execute("select id, name from bots"))
     me = viewer if viewer is not None else me
     name = lambda b: names.get(b, "已删除的 Bot")
-    old, recent = rows[:-n], rows[-n:]
+    # 移出的分界每满 n 条才整体往后挪一次，留在上下文的有 n 到 2n-1 条。每来一条就挪一格的话，
+    # “更早的对话”的索引和后面的整段历史每轮都变，模型服务的缓存一次都命中不了
+    cut = (len(rows) - n) // n * n if len(rows) > n else 0
+    old, recent = rows[:cut], rows[cut:]
     msgs = []
     if old:
         def who(r, b):

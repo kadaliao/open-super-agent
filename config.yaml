@@ -30,7 +30,7 @@ limits:
 
 memory:
   db: data/osa.db
-  inline_messages: 20        # 最近 N 条留在上下文，更早的移出（Inline & Spill）
+  inline_messages: 20        # 最近 N 到 2N-1 条留在上下文，每满 N 条把更早的一批移出（Inline & Spill；整批挪才能命中缓存）
   task_log_days: 90          # 后台任务的过程（每一步做了什么）留多少天，0 表示一直留着；任务结果在对话里，不受影响
 
 # 可选：按意思检索记忆和资料库。provider 填模型服务的名字，任何兼容 OpenAI /embeddings 接口的都行

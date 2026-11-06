@@ -150,23 +150,36 @@ async def related(bot_id: int, text: str) -> list[int]:
     return [h["ref"] for h in hits]
 
 
-def prompt_block(bot_id: int, related_ids: list[int] = ()) -> str:
-    """写进 Router 系统提示词的记忆。related_ids：和这次对话相关的更早记忆。"""
+def _shown(bot_id: int) -> tuple[bool, list[dict], list[dict]]:
+    """系统提示词里放哪些记忆：(是不是全放下了, 共享的, 自己的)。"""
     full = max(_count(None), _count(bot_id)) <= PROMPT_NOTES
     n = PROMPT_NOTES if full else PROMPT_RECENT
-    shared, own = _list(None, "note", n), _list(bot_id, "note", n)
-    work = _list(bot_id, "work", PROMPT_WORK)
+    return full, _list(None, "note", n), _list(bot_id, "note", n)
+
+
+def prompt_block(bot_id: int) -> str:
+    """写进 Router 系统提示词的记忆。只放记下、改掉、删掉时才变的，系统提示词才能一直命中缓存；
+    每轮都可能变的（相关的更早记忆、做过的事）见 turn_block。"""
+    full, shared, own = _shown(bot_id)
     parts = [f"关于用户（所有 Bot 共享）：\n{_lines(shared) or '（暂无）'}",
              f"你自己记得的：\n{_lines(own) or '（暂无）'}"]
+    if not full:
+        parts.append("（记忆比较多，这里只放了最近的；和这次对话可能相关的更早记忆附在最新一条消息后面，其余的用 search_memory 查。）")
+    return "\n".join(parts)
+
+
+def turn_block(bot_id: int, related_ids: list[int] = ()) -> str:
+    """每轮都可能变的记忆，附在最新一条消息后面（见 router.STATE_PROMPT）。related_ids：和这次对话相关的更早记忆。"""
+    _, shared, own = _shown(bot_id)
     shown = {m["id"] for m in shared + own}
     extra = [m for i in related_ids if i not in shown and (m := get(i)) and m["kind"] == "note"][:PROMPT_RELATED]
+    work = _list(bot_id, "work", PROMPT_WORK)
+    parts = []
     if extra:
-        parts.append(f"和这次对话可能相关的更早记忆：\n{_lines(extra)}")
-    if not full:
-        parts.append("（记忆比较多，这里只放了最近的和可能相关的；其余的用 search_memory 查。）")
+        parts.append(f"和这次对话可能相关的更早记忆（#后面是编号）：\n{_lines(extra)}")
     if work:
         parts.append(f"最近做过的事（自动记录）：\n{_lines(work)}")
-    return "\n".join(parts)
+    return "\n\n".join(parts)
 
 
 def worker_block(bot_id: int) -> str:
