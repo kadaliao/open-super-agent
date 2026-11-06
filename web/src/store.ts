@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
 import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft } from './types'
 import { notice } from './components/Dialog'
+import { desktop } from './desktop'
 
 type State = {
   ready: boolean
@@ -44,6 +45,14 @@ const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
   subs.forEach(f => f())
+  if (desktop) syncBadge()
+}
+
+// 桌面 App：菜单栏上显示有几个操作等你确认
+let badge = -1
+function syncBadge() {
+  const n = Object.values(state.approvals).filter(a => a.status === 'pending').length
+  if (n !== badge) { badge = n; desktop!.setBadge(n) }
 }
 export const getState = () => state
 export const setSettings = (settings: Settings) => set({ settings })
@@ -262,7 +271,7 @@ function handle(d: any) {
     }
     case 'approval':
       set(s => ({ approvals: { ...s.approvals, [d.id]: { ...(s.approvals[d.id] || {}), ...d } } }))
-      if (d.status === 'pending' && document.hidden) notifyOS(cid, null, t('有一个操作需要你确认'))
+      if (d.status === 'pending' && (document.hidden || desktop)) notifyOS(cid, null, t('有一个操作需要你确认'))
       break
     case 'error':
       set(s => ({ errors: { ...s.errors, [cid]: d.message }, streams: { ...s.streams, [cid]: undefined } }))
@@ -299,11 +308,20 @@ function handle(d: any) {
 }
 
 function notifyOS(chatId: number, m: Message | null, text?: string) {
+  if (desktop) return notifyDesktop(chatId, m, text)
   if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return
   if (localStorage.getItem('osa.push') === '1') return   // 这台设备开了推送，由服务端推，免得重复
   const chat = state.chats.find(c => c.id === chatId)
   const n = new Notification(chat?.title || 'Open Super Agent', { body: text || m?.content.slice(0, 120) })
   n.onclick = () => { window.focus(); openChat(chatId) }
+}
+
+// 桌面 App 用系统通知：Bot 的回复、任务结果、等你确认的操作，和服务端推送的规则一样。正看着这个对话时不打扰
+function notifyDesktop(chatId: number, m: Message | null, text?: string) {
+  if (m && m.role !== 'assistant' && m.meta?.kind !== 'result') return
+  if (!document.hidden && document.hasFocus() && chatId === state.active) return
+  const chat = state.chats.find(c => c.id === chatId)
+  desktop!.notify(chat?.title || 'Open Super Agent', text || (m?.content || '').replace(/[#*`>_~\[\]]/g, '').slice(0, 120), chatId)
 }
 
 export const botById = (id: number | null | undefined) => state.bots.find(b => b.id === id)

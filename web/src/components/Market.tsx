@@ -39,9 +39,13 @@ async function oauthConnect(name: string, fresh: boolean, done: (err?: string) =
   }
   if (!w) { location.href = url; return }
   if (before) w.location.href = url
-  const timer = setInterval(async () => {
-    if (!w.closed) return
-    clearInterval(timer)
+  // 授权完成页先发 osa-app 过来，再自己关掉。桌面 App 里弹窗不一定能自己关，所以收到消息也算完成
+  let finished = false
+  const finish = async () => {
+    if (finished) return
+    finished = true
+    clearInterval(timer); window.removeEventListener('message', onMessage)
+    setTimeout(() => { try { if (!w.closed) w.close() } catch { /* 已经关了 */ } }, 1500)
     await new Promise(r => setTimeout(r, 600))
     const a: App | undefined = (await refreshApps()).apps.find((x: App) => x.name === name)
     if (!a || a.connected || a.state === 'connecting') return done()
@@ -49,7 +53,10 @@ async function oauthConnect(name: string, fresh: boolean, done: (err?: string) =
     if (fresh) await api(`/api/apps/${name}`, { method: 'DELETE' }).catch(() => {})
     // 取消了、超时没完成的，统一说“没有完成授权”（服务端的状态文字可能是中文或英文）
     done(a.status && !/取消|没有完成|Authorization canceled|not completed/.test(a.status) ? a.status : t('没有完成授权'))   // i18n-ignore：匹配服务端的状态文字
-  }, 500)
+  }
+  const onMessage = (e: MessageEvent) => { if (e.origin === location.origin && e.data?.type === 'osa-app') finish() }
+  window.addEventListener('message', onMessage)
+  const timer = setInterval(() => { if (w.closed) finish() }, 500)
 }
 
 // ---------- 页面 ----------

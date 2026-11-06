@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { loadSkills, send, useStore } from '../store'
 import type { Bot } from '../types'
 import { locale, t, tc } from '../i18n'
+import { desktop } from '../desktop'
 
-// 浏览器自带的语音识别：Safari（含 iPhone）直接能用；Chrome 要能连上 Google 的语音服务。不支持的浏览器不显示麦克风
-const Speech: any = typeof window !== 'undefined' && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+// 浏览器自带的语音识别：Safari（含 iPhone）直接能用；Chrome 要能连上 Google 的语音服务。不支持的浏览器不显示麦克风。
+// 桌面 App 里外壳说能用才显示
+const Speech: any = typeof window !== 'undefined' && (!desktop || desktop.speech) &&
+  ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
 const SPEECH_ERR: Record<string, string> = {
   'not-allowed': t('没有麦克风权限，请在浏览器设置里允许'), 'service-not-allowed': t('没有麦克风权限，请在浏览器设置里允许'),
   network: t('语音识别连不上服务（Chrome 要能访问 Google 的语音服务，Safari 可以直接用）'), 'no-speech': t('没听到声音'),

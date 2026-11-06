@@ -56,6 +56,15 @@ export default function App() {
   useEffect(() => { if (teach) showBot(teach.bot_id, 'computer') }, [teach?.started])
   useEffect(() => { if (draft) showBot(draft.bot_id, 'skills') }, [draft])
 
+  // 桌面 App：点了系统通知，外壳告诉页面打开哪个对话
+  useEffect(() => {
+    const h = (e: Event) => {
+      const chat = Number((e as CustomEvent).detail)
+      if (chat && getState().chats.some(c => c.id === chat)) openChat(chat)
+    }
+    window.addEventListener('osa-open-chat', h)
+    return () => window.removeEventListener('osa-open-chat', h)
+  }, [])
   // 点了推送通知：Service Worker 把通知里的地址（/?chat=12）发过来
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
