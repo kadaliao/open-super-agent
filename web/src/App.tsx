@@ -14,7 +14,7 @@ export default function App() {
   const chat = useStore(s => chatById(s, s.active))
   const [newBot, setNewBot] = useState(false)
   const [newGroup, setNewGroup] = useState(false)
-  const [settings, setSettings] = useState(false)
+  const [settings, setSettings] = useState<string | false>(false)   // 打开时是哪一页（空字符串：上次看的那页）
   const [details, setDetails] = useState(() => localStorage.getItem('osa.details') === '1')
   const [side, setSide] = useState(false)   // 手机上的侧栏抽屉
   const [tab, setTab] = useState(() => localStorage.getItem('osa.tab') || 'computer')
@@ -53,6 +53,13 @@ export default function App() {
     return () => navigator.serviceWorker.removeEventListener('message', h)
   }, [])
 
+  // 别处要打开设置的某一页（比如对话里“去配置模型”）
+  useEffect(() => {
+    const h = (e: Event) => setSettings((e as CustomEvent).detail || '')
+    window.addEventListener('osa-open-settings', h)
+    return () => window.removeEventListener('osa-open-settings', h)
+  }, [])
+
   // 对话里的页面链接（/library/pages/12）：在资料库里打开，不刷新页面
   useEffect(() => {
     const h = (e: Event) => openLibrary((e as CustomEvent).detail)
@@ -80,14 +87,14 @@ export default function App() {
     <div className={'app' + (details && view === 'chat' ? ' with-panel' : '') + (details && tab === 'computer' ? ' wide-panel' : '') + (side ? ' side-open' : '')}>
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
       <div className="side-mask" onClick={() => setSide(false)} />
-      <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings(true)} onClose={() => setSide(false)} />
+      <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings('')} onClose={() => setSide(false)} />
       {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : <Chat onToggleDetails={() => setDetails(!details)} />}
       {details && view === 'chat' && (chat?.kind === 'group'
         ? <GroupPanel chat={chat} onClose={() => setDetails(false)} tab={tab} setTab={setTab} />
         : <BotPanel onClose={() => setDetails(false)} tab={tab} setTab={setTab} />)}
       {newBot && <NewBotDialog onClose={() => setNewBot(false)} />}
       {newGroup && <NewGroupDialog onClose={() => setNewGroup(false)} />}
-      {settings && <Settings onClose={() => setSettings(false)} />}
+      {settings !== false && <Settings initial={settings || undefined} onClose={() => setSettings(false)} />}
     </div>
   )
 }

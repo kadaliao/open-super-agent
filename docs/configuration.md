@@ -7,7 +7,7 @@
 
 | 变量 | 必需 | 用途 |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | 默认配置下必需 | 模型提供方的 key；换用别的提供方时，改 `providers.*.api_key_env` |
+| `DEEPSEEK_API_KEY` | 否 | 默认配置用的 DeepSeek 的 key。也可以不设，在 设置 → 模型 里填 |
 | `OSA_PASSWORD` | 部署到公网时必需 | 登录密码，设置后要先登录才能用；不设置则不用登录，只适合本机或内网 |
 | `INSTABOX_API_KEY` | 否 | 设置后，电脑改用 Instabox 云主机 |
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
@@ -15,26 +15,64 @@
 | `HTTPS_PROXY` | 否 | 服务器在国内、要用 Telegram 或 Discord 时设置，见 [聊天软件](channels.md) |
 | `OSA_BACKUP_PASSPHRASE` | 否 | 命令行备份、恢复时用的口令，定时备份用，见 [备份与迁移](#备份与迁移) |
 
-密钥只放在环境变量里，`config.yaml` 只写变量名。
+密钥放在环境变量或保险库里（界面上填的进保险库），`config.yaml` 只写变量名。
 
 ## 模型
+
+在 **设置 → 模型** 里配，改了马上生效。分两步：
+
+1. **添加模型服务**：点“添加”，选一个服务商（DeepSeek、OpenAI、OpenRouter、硅基流动、阿里云百炼、智谱、Kimi、Ollama），
+   或者选“其他”填任何兼容 OpenAI 的地址（vLLM、LM Studio、one-api……）。填上 API Key，点“测试连接”，能连上就会列出它有哪些模型。
+   API Key 加密存在保险库（名字是 `LLM_KEY_<服务名>`），保险库页面里也看得到。
+2. **给每项工作选模型**：对话（Bot 本身）、后台任务、Heavy 汇总、整理和过滤，各自从下拉框里选，可以搜索，也可以直接填名字。
+   旁边会显示单价和能不能看图；点“测试”会真的调一次（带一张小图），告诉你能不能用、多快、能不能看图。
+
+电脑功能要求“对话”和“后台任务”用的模型**能看图**。对话或后台任务的模型没填 API Key 时，对话页上方会提示去设置里配。
+
+每项工作还可以调思考模式：默认、少一些、多一些、最多（`reasoning_effort`），或者“不思考”（`thinking: false`，更快更便宜）。
+不是所有模型都认这两个参数，改了以后点一下“测试”确认。
+
+`config.yaml` 里的写法照样能用，作为默认值；界面上改过的存在数据库里，优先于它。
+`config.yaml` 里写的服务在界面上标着“config.yaml”，能改地址、填 API Key，但要删的话得在文件里删。
 
 ```yaml
 providers:
   deepseek: { base_url: https://api.deepseek.com, api_key_env: DEEPSEEK_API_KEY }
 roles:
-  router:   { provider: deepseek, model: deepseek-flash }
-  worker:   { provider: deepseek, model: deepseek-flash }
+  router:   { provider: deepseek, model: deepseek-flash }   # 对话
+  worker:   { provider: deepseek, model: deepseek-flash }   # 后台任务
   reviewer: { provider: deepseek, model: deepseek-flash }   # Heavy 模式里负责汇总
-  filter:   { provider: deepseek, model: deepseek-flash }   # 定时任务 webhook 事件的 LLM 过滤
+  filter:   { provider: deepseek, model: deepseek-flash }   # 定时任务 webhook 事件的过滤、导入记忆
 ```
 
-只要是 OpenAI 兼容的接口都能用。电脑功能要求 `worker` 和 `router` 用的模型**支持图片输入**。
+API Key 先看保险库（界面上填的），没有再看 `api_key_env` 写的环境变量。在界面上删掉填的 key，就回到用环境变量。
+本机和内网地址（`localhost`、`host.docker.internal`、`192.168.*` 这类）不填 API Key 也算能用。
 
-## 限额和价格
+## 单价和限额
 
-- `limits`：`worker_max_steps`、`task_timeout_s`、`watchdog_interval_s`、`approval_timeout_s`、`daily_token_budget`
-- `pricing`：单价，单位是元 / 百万 token，分高峰和空闲两档（`[高峰, 空闲]`）。官方调价时改这里。
+**单价自动获取**，不用自己填：每天从 [models.dev](https://models.dev) 拉一次（两百多家服务商、几千个模型），存在 `data/model-prices.json`。
+
+- 按接口地址对上服务商，再按模型名字找单价；对不上的（比如自己搭的转发）按模型名字到各家找，设置页上会注明“按某某的价格估算”。
+- models.dev 的单价是美元，按 `pricing.usd_rate`（默认 7.1）换成人民币。
+- `config.yaml` 的 `pricing.models` 里写了的以它为准。DeepSeek 分高峰和空闲两档（`[高峰, 空闲]`），models.dev 没有，所以默认配置里写着。
+- 本机和内网的模型按 0 计。找不到单价的也按 0 计，设置页上显示“没有单价”。
+- 连不上 models.dev 时用上一次存下的；一次都没取到过的话，只有 `pricing.models` 里写了的有单价。国内服务器可以设 `HTTPS_PROXY`，
+  或者用 `pricing.source` 换一个地址。费用页的“单价”下面能看到上次更新的时间，也能点“现在更新”。
+
+```yaml
+pricing:
+  currency: "¥"
+  usd_rate: 7.1                                  # 1 美元换多少人民币
+  # source: https://models.dev/api.json          # 单价从哪里取
+  peak_hours: ["09:00-12:00", "14:00-18:00"]     # 只对下面分两档的模型有用；北京时间，周一至周五
+  models:
+    deepseek-flash: {cache_hit: [0.04, 0.02], input: [2, 1], output: [8, 4]}
+```
+
+**限额**在 设置 → 限制与预算 里改：每天最多用多少 token、每个任务最多几步、任务最长跑多久、后台任务等确认多久、Heavy 模式同时跑几个。
+对应 `config.yaml` 的 `limits`（`daily_token_budget`、`worker_max_steps`、`task_timeout_s`、`approval_timeout_s`，另外还有 `watchdog_interval_s`）和 `heavy.workers`。
+
+点“测试”产生的调用记在“测试模型”下面，几分钱以内。
 
 ## 电脑
 
@@ -168,7 +206,8 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 资料库和右栏“记忆”上面也有搜索框。
 
 - 不用配置就能按关键词找：中文按两个字一组建索引（SQLite FTS5），英文、数字按词。
-- 选一个 embedding 服务后，说法不同、意思相近的也能找到（设置 → 模型 最下面，或者 `config.yaml` 的 `embedding`）。
+- 选一个 embedding 模型后，说法不同、意思相近的也能找到（设置 → 模型 最下面，可以点“测试”；或者 `config.yaml` 的 `embedding`）。
+  推荐硅基流动的 `BAAI/bge-m3`（免费）、OpenAI 的 `text-embedding-3-small`、本机 Ollama 的 `nomic-embed-text`。
   向量在后台算，页面按段切成约 600 字一块，每个页面最多算前 200 块。换了模型会全部重算。
   向量服务出错时自动退回只按关键词找，设置页上会显示错误。
 - 索引放在同一个数据库里（`search_docs`、`search_fts`），记忆和页面改了之后下一次检索时自动更新，不用手动重建。
@@ -179,7 +218,7 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 设置 → **备份与迁移**。换机器、从本机搬到服务器、升级前留一份，都用它。
 
 - **导出**：设一个口令（至少 8 个字符），下载一个 `.osabak` 文件。里面有 Bot、对话、记忆、技能、定时任务、资料库页面、应用配置、
-  确认规则、聊天软件连接、费用记录、保险库里的密钥，以及 `data/apps/` 里本机的应用清单。
+  模型服务和各项工作用的模型、确认规则、聊天软件连接、费用记录、保险库里的密钥（含模型的 API Key），以及 `data/apps/` 里本机的应用清单。
   文件用口令加密（scrypt + AES-256-GCM），口令忘了就打不开，请另外记好。
 - **恢复**：在新的那台上传文件、输口令，先解密检查，给你看里面有什么；点“恢复并重启”后服务自动重启，换上备份里的数据。
   - 原来的数据库留在 `data/osa.db.before-restore-<时间>`，恢复错了可以停掉服务换回去。

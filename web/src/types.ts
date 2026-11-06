@@ -23,13 +23,30 @@ export type Approval = {
   args: string; ts: number; expires?: number | null; status?: string; always?: boolean
 }
 export type Stream = { sid: string; text: string; thinking: string; started: number; bot_id: number }
+// 模型服务：一个兼容 OpenAI 的接口地址加一个密钥。source：config.yaml 里写的，还是界面上加的
+export type Provider = {
+  name: string; title: string; preset: string; base_url: string; source: 'config' | 'ui'
+  key_env: string; key_source: 'vault' | 'env' | ''; key_hint: string; needs_key: boolean
+}
+export type Preset = { id: string; title: string; base_url: string; color: string; desc: string; key_url?: string; embedding?: string; no_key?: boolean; note?: string }
+// 单价是元 / 百万 token。source：config（config.yaml 手写）、models.dev（自动获取）、local（本机，免费）
+export type ModelInfo = {
+  source: '' | 'config' | 'models.dev' | 'local'; input?: number; output?: number; cache?: number | null
+  offpeak?: [number, number]; vision?: boolean; kind?: string; name?: string; via?: string
+}
+export type ModelItem = { id: string; kind: string; vision?: boolean; input?: number; output?: number }
+export type ModelList = { name: string; ok: boolean; error: string; note: string; models: string[]; items: ModelItem[]; ts: number }
+export type Role = { provider: string; model: string; thinking?: boolean; reasoning_effort?: string }
 export type Settings = {
-  providers: { name: string; base_url: string; key_env: string; key_set: boolean }[]
-  roles: Record<string, { provider: string; model: string; thinking?: boolean; reasoning_effort?: string }>
+  providers: Provider[]
+  presets: Preset[]
+  roles: Record<string, Role>
   limits: Record<string, number>
   heavy_workers: number
-  known_models: string[]
   embedding: { provider: string; model: string }
+  model_info: Record<string, ModelInfo>   // 键是 服务/模型
+  prices: { source: string; updated: number; error: string; rate: number; currency: string; models: number }
+  problem: string                         // 对话或后台任务的模型没法用的原因；能用是空
 }
 export type SearchHit = { kind: 'memory' | 'page'; ref: number; title: string; snippet: string; bot_id: number | null; sub: string; score: number }
 export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'

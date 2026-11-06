@@ -136,11 +136,9 @@ def embed_config() -> dict | None:
 
 
 async def embed(texts: list[str]) -> list[list[float]]:
-    import os
-    from openai import AsyncOpenAI
+    from . import providers
     e = embed_config()
-    p = CFG["providers"][e["provider"]]
-    client = AsyncOpenAI(base_url=p["base_url"], api_key=os.environ.get(p["api_key_env"], "none"), timeout=60)
+    client = providers.client(e["provider"], timeout=60)
     r = await client.embeddings.create(model=e["model"], input=[t[:8000] or " " for t in texts])
     out = []
     for d in sorted(r.data, key=lambda d: d.index):

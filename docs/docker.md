@@ -8,7 +8,7 @@
 
 ```bash
 git clone https://github.com/kadaliao/open-super-agent.git && cd open-super-agent
-cp .env.example .env     # 填上 DEEPSEEK_API_KEY
+cp .env.example .env     # 可以先填上 DEEPSEEK_API_KEY，也可以打开后在 设置 → 模型 里填
 docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟
 ```
 
@@ -109,7 +109,8 @@ docker compose --profile https up -d
 | 改了电脑镜像没生效 | 旧容器还在：`docker compose build computer && docker rm -f osa-computer`，下次用电脑时按新镜像创建 |
 | 镜像构建成了 amd64，或者电脑启动报平台不匹配 | 环境里设了 `DOCKER_DEFAULT_PLATFORM`，`unset` 之后重新构建 |
 | 文件夹应用要访问宿主机上的目录 | 应用跑在服务的容器里，只看得到容器里的路径。在 `compose.yaml` 的 `volumes` 里把目录挂进去（比如 `- ~/Documents:/mnt/docs`），添加应用时填 `/mnt/docs` |
-| 连宿主机上的 Ollama | `config.yaml` 的 `providers` 里写 `base_url: http://host.docker.internal:11434/v1` |
+| 连宿主机上的 Ollama | 设置 → 模型 → 添加 → Ollama，地址改成 `http://host.docker.internal:11434/v1` |
+| 设置里的单价一直是“没有单价” | 容器连不上 models.dev（国内网络常见）：在 `.env` 里设 `HTTPS_PROXY`，或者把单价写进 `config.yaml` 的 `pricing.models` |
 
 ## 安全
 

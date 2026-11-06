@@ -36,7 +36,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 📱 **Mobile**: install it to your home screen as an app, dictate messages by voice, and get push notifications for approvals and finished tasks when no page is open. Watch the screen, take over and type, and handle approvals from your phone.
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
 - 📦 **Backup and migration**: export all data, secrets included, as one encrypted file and upload it on the new machine to carry on. Servers can also back up on a schedule from the command line.
-- 🔄 **Any model**: any OpenAI-compatible API (DeepSeek, OpenRouter, Ollama, vLLM), configurable per role.
+- 🔄 **Any model**: add model providers in Settings (DeepSeek, OpenAI, OpenRouter, SiliconFlow, Alibaba Bailian, Zhipu, Kimi, Ollama, or any OpenAI-compatible endpoint), paste an API key and test it in one click; pick a model per role. Prices are fetched automatically.
 
 The architecture follows DeepSeek's Super-agent design: a Router that converses, Workers that execute, and a Watchdog that supervises.
 
@@ -46,7 +46,7 @@ With Docker Compose you only need Docker:
 
 ```bash
 git clone https://github.com/kadaliao/open-super-agent.git && cd open-super-agent
-cp .env.example .env     # fill in DEEPSEEK_API_KEY
+cp .env.example .env     # optionally fill in DEEPSEEK_API_KEY, or add a key later in Settings → Models
 docker compose up -d     # the first build takes 5–10 minutes; then open http://127.0.0.1:8765
 ```
 
@@ -55,7 +55,7 @@ See [Deploy with Docker Compose](docs/docker.md) (in Chinese) for automatic HTTP
 Without Docker you need Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/) and Node ≥ 20 (plus Docker for the local computer backend):
 
 ```bash
-export DEEPSEEK_API_KEY=sk-...              # see .env.example for all variables
+export DEEPSEEK_API_KEY=sk-...              # optional, you can also add it in Settings → Models; see .env.example
 (cd web && npm ci && npm run build)
 uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 ```

@@ -323,8 +323,21 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
           {error && <div className="error-line">{error}</div>}
         </div>
       </div>
+      <SetupHint />
       <Composer chatId={active} bot={bot} members={group ? members : []}
         busy={stream ? (group ? botOf(stream.bot_id)?.name || '有人' : bot!.name) : ''} />
     </main>
+  )
+}
+
+// 对话或后台任务的模型还没法用（比如没填 API Key）：提示去设置里配好
+function SetupHint() {
+  const problem = useStore(s => s.settings?.problem)
+  if (!problem) return null
+  return (
+    <div className="setup-hint">
+      <span>⚠ {problem}，Bot 现在没法回复。</span>
+      <button className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-settings', { detail: 'models' }))}>去配置模型</button>
+    </div>
   )
 }

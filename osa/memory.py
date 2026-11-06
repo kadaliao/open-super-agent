@@ -129,8 +129,8 @@ def _is_peak(ts: float) -> bool:
     return any(a <= hm < b for a, b in (r.split("-") for r in CFG["pricing"]["peak_hours"]))
 
 
-def record_usage(role: str, model: str, usage, task_id: int | None = None):
-    """记录一次模型调用的 token 和费用。usage 是 OpenAI 格式的 usage 对象。"""
+def record_usage(role: str, model: str, usage, task_id: int | None = None, provider: str | None = None):
+    """记录一次模型调用的 token 和费用。usage 是 OpenAI 格式的 usage 对象；provider 不给就按角色的配置。"""
     if usage is None:
         return
     prompt = usage.prompt_tokens or 0
@@ -140,11 +140,9 @@ def record_usage(role: str, model: str, usage, task_id: int | None = None):
         hit = getattr(details, "cached_tokens", 0) or 0
     miss, out = prompt - hit, usage.completion_tokens or 0
     now = time.time()
-    price = CFG["pricing"]["models"].get(model)
-    cost = 0.0
-    if price:
-        k = 0 if _is_peak(now) else 1
-        cost = (hit * price["cache_hit"][k] + miss * price["input"][k] + out * price["output"][k]) / 1e6
+    from . import prices
+    provider = provider or (CFG["roles"].get(role) or {}).get("provider")
+    cost = prices.cost(provider, model, hit, miss, out, _is_peak(now))
     conn.execute("insert into llm_usage values(?,?,?,?,?,?,?,?)", (now, role, model, task_id, hit, miss, out, cost))
     conn.commit()
 

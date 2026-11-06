@@ -6,17 +6,12 @@ from openai import AsyncOpenAI
 ROOT = Path(__file__).resolve().parent.parent
 CFG = yaml.safe_load((ROOT / os.environ.get("OSA_CONFIG", "config.yaml")).read_text())
 
-_clients: dict[str, AsyncOpenAI] = {}
-
 
 def client_for(role: str) -> tuple[AsyncOpenAI, str]:
-    """返回某个角色（router/worker/reviewer）对应的客户端和模型名。"""
+    """返回某个角色（router/worker/reviewer/filter）对应的客户端和模型名。"""
+    from . import providers
     r = CFG["roles"][role]
-    name = r["provider"]
-    if name not in _clients:
-        p = CFG["providers"][name]
-        _clients[name] = AsyncOpenAI(base_url=p["base_url"], api_key=os.environ.get(p["api_key_env"], "none"))
-    return _clients[name], r["model"]
+    return providers.client(r["provider"]), r["model"]
 
 
 def call_kwargs(role: str) -> dict:

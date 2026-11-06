@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, bots, catalog, channels, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
-from . import search, settings, skills, teach, templates, vault
+from . import prices, providers, search, settings, skills, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -63,7 +63,8 @@ async def lifespan(app):
     await mcp_hub.start()
     await channels.start()
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
-          asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop())]
+          asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop()),
+          asyncio.create_task(prices.loop())]
     search.sync()   # 补上旧数据的索引；配了 embedding 的话后台开始算向量
     yield
     for t in bg:
@@ -1204,6 +1205,74 @@ async def put_settings(data: dict = Body(...)):
         return settings.save(data)
     except ValueError as e:
         _err(e)
+
+
+# ---------- 模型服务 ----------
+@app.get("/api/providers/{name}/models")
+async def provider_models(name: str, refresh: bool = False):
+    try:
+        return await providers.models(name, refresh)
+    except ValueError as e:
+        _err(e)
+
+
+@app.post("/api/providers/check")
+async def check_provider(data: dict = Body(...)):
+    """保存之前试一下：地址对不对、密钥能不能用。密钥留空就用已经存的。"""
+    try:
+        url = providers._clean_url(data.get("base_url", ""))
+    except ValueError as e:
+        _err(e)
+    key = (data.get("api_key") or "").strip()
+    if not key and providers.exists(data.get("name") or ""):
+        key = providers.api_key(data["name"])
+    return await providers.check(url, key)
+
+
+@app.post("/api/providers")
+async def add_provider(data: dict = Body(...)):
+    try:
+        name = providers.save(None, data)
+    except ValueError as e:
+        _err(e)
+    return {"name": name, "settings": settings.public()}
+
+
+@app.put("/api/providers/{name}")
+async def update_provider(name: str, data: dict = Body(...)):
+    try:
+        providers.save(name, data)
+    except ValueError as e:
+        _err(e)
+    return {"name": name, "settings": settings.public()}
+
+
+@app.delete("/api/providers/{name}")
+async def delete_provider(name: str):
+    try:
+        providers.delete(name, settings.ROLE_NAMES)
+    except ValueError as e:
+        _err(e)
+    return {"settings": settings.public()}
+
+
+@app.post("/api/models/test")
+async def test_model(data: dict = Body(...)):
+    try:
+        return await providers.test(data.get("provider", ""), data.get("model", ""), data.get("kind", "chat"), data.get("role", ""))
+    except ValueError as e:
+        _err(e)
+
+
+@app.get("/api/prices")
+async def price_info():
+    return prices.info()
+
+
+@app.post("/api/prices/refresh")
+async def refresh_prices():
+    r = await prices.refresh()
+    return {**r, "settings": settings.public()}
 
 
 @app.get("/api/usage")

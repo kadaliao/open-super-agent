@@ -41,6 +41,9 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
   登录授权的流程可以用 SDK 自带的授权服务器在本机测：写一个 `MCPServer(auth_server_provider=…)`，`authorize` 里直接带着授权码跳回 `redirect_uri`，
   再用自定义应用连它的地址，依次请求 `/oauth/start/名字` 和返回的跳转地址就能走完整个流程，不需要真实账号。
 - **应用清单**：`uv run python -m osa.catalog` 检查所有清单；新清单先放进 `data/apps/`，刷新应用页就能看到，点连接后在对话里 `@` 它试一下。
+- **模型**：`POST /api/providers/check {"base_url":"…","api_key":"…"}` 不保存，只试地址和 key；
+  `GET /api/providers/<名字>/models` 看模型列表（带单价和能不能看图）；`POST /api/models/test {"provider":"deepseek","model":"deepseek-flash"}`
+  真的调一次。没有 DeepSeek key 的新实例可以 `env -u DEEPSEEK_API_KEY` 启动，看对话页的提示和在界面里填 key 的流程。
 - **记忆**：对 A 说“记住……”，`POST /api/chats/<id>/reset` 开新话题后再问 A；再问 B，B 只应该知道共享的事实。
   `GET /api/bots/<id>/memories` 看记下了什么。
 - **群聊**：`POST /api/groups {"bot_ids":[1,2]}` 建群，然后通过 WebSocket 往群的 chat_id 发

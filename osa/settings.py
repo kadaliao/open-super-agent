@@ -1,10 +1,11 @@
-"""界面上可修改的设置，存在数据库里，覆盖 config.yaml 的同名项。"""
+"""界面上可修改的设置，存在数据库里，覆盖 config.yaml 的同名项。模型服务（地址、密钥）在 providers.py。"""
 import json
-import os
+from . import prices, providers
 from .config import CFG
 from .memory import conn
 
 EDITABLE_LIMITS = ["daily_token_budget", "worker_max_steps", "task_timeout_s", "approval_timeout_s"]
+ROLE_NAMES = {"router": "对话", "worker": "后台任务", "reviewer": "Heavy 汇总", "filter": "整理和过滤", "embedding": "按意思检索"}
 
 
 def _load() -> dict:
@@ -13,6 +14,7 @@ def _load() -> dict:
 
 
 def apply():
+    providers.apply()
     o = _load()
     for role, v in o.get("roles", {}).items():
         if role in CFG["roles"]:
@@ -26,15 +28,32 @@ def apply():
         CFG["embedding"] = o["embedding"]
 
 
+def problem() -> str:
+    """对话或后台任务用的模型服务没法用时，说一句为什么；能用返回空。"""
+    for role in ("router", "worker"):
+        name = CFG["roles"][role]["provider"]
+        if name not in CFG["providers"]:
+            return f"{ROLE_NAMES[role]}用的模型服务 {name} 不存在了"
+        if not providers.usable(name):
+            return f"{providers.describe(name)['title']} 还没填 API Key"
+    return ""
+
+
 def public() -> dict:
+    emb = CFG.get("embedding") or {}
+    used = [(v["provider"], v["model"]) for v in CFG["roles"].values()]
+    if emb.get("provider") and emb.get("model"):
+        used.append((emb["provider"], emb["model"]))
     return {
-        "providers": [{"name": n, "base_url": p["base_url"], "key_env": p["api_key_env"],
-                       "key_set": bool(os.environ.get(p["api_key_env"]))} for n, p in CFG["providers"].items()],
+        "providers": providers.public(),
+        "presets": providers.PRESETS,
         "roles": CFG["roles"],
         "limits": {k: CFG["limits"].get(k) for k in EDITABLE_LIMITS},
         "heavy_workers": CFG["heavy"]["workers"],
-        "known_models": sorted(CFG["pricing"]["models"]),
-        "embedding": {"provider": (CFG.get("embedding") or {}).get("provider") or "", "model": (CFG.get("embedding") or {}).get("model") or ""},
+        "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
+        "model_info": {f"{p}/{m}": prices.lookup(p, m) for p, m in used},
+        "prices": prices.info(),
+        "problem": problem(),
     }
 
 
@@ -45,8 +64,13 @@ def save(data: dict) -> dict:
         for role, v in data["roles"].items():
             if role not in CFG["roles"]:
                 continue
-            if v.get("provider") and v["provider"] not in CFG["providers"]:
-                raise ValueError(f"没有这个模型提供方：{v['provider']}")
+            v = {k: v[k] for k in ("provider", "model", "thinking", "reasoning_effort") if k in v}
+            if "provider" in v and v["provider"] not in CFG["providers"]:
+                raise ValueError(f"没有这个模型服务：{v['provider']}")
+            if "model" in v:
+                v["model"] = (v["model"] or "").strip()[:200]
+                if not v["model"]:
+                    raise ValueError("模型名字不能为空")
             o["roles"].setdefault(role, {}).update(v)
     if "limits" in data:
         o.setdefault("limits", {}).update({k: int(v) for k, v in data["limits"].items() if k in EDITABLE_LIMITS})
@@ -54,11 +78,11 @@ def save(data: dict) -> dict:
         o["heavy_workers"] = max(1, min(8, int(data["heavy_workers"])))
     if "embedding" in data:
         e = data["embedding"] or {}
-        provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:100]
+        provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:200]
         if provider and provider not in CFG["providers"]:
-            raise ValueError(f"没有这个模型提供方：{provider}")
+            raise ValueError(f"没有这个模型服务：{provider}")
         if provider and not model:
-            raise ValueError("选了提供方就要填 embedding 模型的名字")
+            raise ValueError("选了服务就要填 embedding 模型的名字")
         o["embedding"] = {"provider": provider, "model": model}
     conn.execute("insert or replace into settings values('overrides', ?)", (json.dumps(o),))
     conn.commit()

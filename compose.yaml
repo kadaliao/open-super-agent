@@ -1,4 +1,4 @@
-# 一键部署：cp .env.example .env，填好 DEEPSEEK_API_KEY，然后 docker compose up -d，打开 http://127.0.0.1:8765
+# 一键部署：cp .env.example .env（DEEPSEEK_API_KEY 可以先填，也可以之后在 设置 → 模型 里填），然后 docker compose up -d，打开 http://127.0.0.1:8765
 # 可选项（端口、HTTPS、Instabox、国内镜像源）见 docs/docker.md
 name: osa
 

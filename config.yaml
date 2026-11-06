@@ -1,4 +1,5 @@
-# 模型按角色配置；任何 OpenAI 兼容接口都可以（DeepSeek / OpenRouter / Ollama / vLLM）
+# 模型按角色配置；任何 OpenAI 兼容接口都可以（DeepSeek / OpenRouter / Ollama / vLLM）。
+# 这里是默认值：界面上 设置 → 模型 里能添加服务、填 API Key（存进保险库）、换模型，改过的优先
 providers:
   deepseek:
     base_url: https://api.deepseek.com
@@ -31,22 +32,25 @@ memory:
   db: data/osa.db
   inline_messages: 20        # 最近 N 条留在上下文，更早的移出（Inline & Spill）
 
-# 可选：按意思检索记忆和资料库。provider 填上面 providers 里的名字，任何兼容 OpenAI /embeddings 接口的都行
+# 可选：按意思检索记忆和资料库。provider 填模型服务的名字，任何兼容 OpenAI /embeddings 接口的都行
 # （OpenAI 的 text-embedding-3-small、硅基流动的 BAAI/bge-m3、Ollama 的 nomic-embed-text……）。
-# 不填也能用：按关键词找（中文按两个字一组）。界面上 设置 → 模型 里也能改
+# 不填也能用：按关键词找（中文按两个字一组）。界面上 设置 → 模型 里也能选
 embedding:
   provider: ""
   model: ""
 
-# 单价：元 / 百万 tokens（2026-11-04 抄自 DeepSeek 官网，变价时改这里）
-# peak 为高峰价；工作日 peak_hours 内按 peak 计，其余时段按 offpeak 计
+# 单价：元 / 百万 tokens。不用自己填：每天自动从 models.dev 获取（美元按 usd_rate 换算）。
+# 下面 models 里写了的以它为准，用于 models.dev 没有的情况，比如 DeepSeek 的高峰、空闲两档价（2026-11-04 抄自官网）。
+# 两档的：工作日 peak_hours 内按第一个数计，其余时段按第二个
 pricing:
   currency: "¥"
+  usd_rate: 7.1                  # 1 美元换多少人民币
+  # source: https://models.dev/api.json   # 单价从哪里取；连不上时可以换成镜像地址
   peak_hours: ["09:00-12:00", "14:00-18:00"]     # 北京时间，周一至周五
   models:
     deepseek-flash:  {cache_hit: [0.04, 0.02], input: [2, 1],   output: [8, 4]}       # [高峰, 空闲]
     deepseek-v4-pro: {cache_hit: [0.30, 0.15], input: [9, 4.5], output: [27, 13.5]}
-  # 本地模型不写单价，按 0 计
+  # 本机和内网的模型按 0 计
 
 # 旧版触发器：只在首次启动时导入成主 Bot 的定时任务，之后请在界面右栏“定时”里管理
 triggers:

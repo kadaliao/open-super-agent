@@ -1,132 +1,103 @@
 import { useEffect, useState } from 'react'
-import { api, refreshLists, useStore } from '../store'
+import { api, setSettings, useStore } from '../store'
+import { Icon } from '../icons'
 import type { Rule, Settings as S } from '../types'
 import Backup from './Backup'
 import Channels from './Channels'
+import ModelSettings, { ROLE_NAMES } from './ModelSettings'
+import { priceSource, priceText, ToastHost, useToast } from './settingsKit'
 
-const ROLE_NAMES: Record<string, string> = {
-  router: '对话（Bot 本身）', worker: '后台任务', reviewer: 'Heavy 汇总审稿', filter: '定时任务的事件过滤',
+// 设置：左边按类分组的导航，右边是这一页
+const GROUPS: { name: string; items: [string, string, string][] }[] = [
+  { name: '模型与费用', items: [['models', '模型', 'sparkles'], ['usage', '费用', 'coins'], ['limits', '限制与预算', 'gauge']] },
+  { name: '安全', items: [['rules', '确认规则', 'shield'], ['vault', '保险库', 'key']] },
+  { name: '连接', items: [['channels', '聊天软件', 'message'], ['notify', '通知', 'bell']] },
+  { name: '数据', items: [['triggers', '定时任务', 'clock'], ['backup', '备份与迁移', 'archive']] },
+]
+const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k, v])))
+const DESC: Record<string, string> = {
+  models: 'Bot 用哪些大模型。先添加模型服务，再给每项工作选一个模型。',
+  usage: '花了多少钱：按天、按用途、按任务统计。',
+  limits: '防止任务跑太久、花太多。改完离开输入框就保存。',
+  triggers: '所有 Bot 的定时任务一览。',
 }
-const order = (r: string) => { const i = Object.keys(ROLE_NAMES).indexOf(r); return i < 0 ? 99 : i }
 const LIMIT_NAMES: Record<string, [string, string]> = {
-  daily_token_budget: ['每日 token 上限', '超过后不再派发新任务'],
-  worker_max_steps: ['每个任务最多步数', '一步 = 一次模型调用'],
-  task_timeout_s: ['任务超时（秒）', 'Watchdog 超时取消'],
-  approval_timeout_s: ['确认等待时限（秒）', '超时按拒绝处理'],
+  daily_token_budget: ['每天最多用多少 token', '超过以后不再派新的任务，第二天恢复'],
+  worker_max_steps: ['每个任务最多走几步', '一步 = 一次模型调用。电脑操作一步一个动作，要多给一些'],
+  task_timeout_s: ['任务最长跑多久（秒）', '超时后 Watchdog 自动取消'],
+  approval_timeout_s: ['后台任务等确认多久（秒）', '定时任务等你确认的时限，超时按拒绝处理'],
 }
 
-export default function Settings({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState('models')
+export default function Settings({ onClose, initial }: { onClose: () => void; initial?: string }) {
+  const [tab, setTab] = useState(() => initial || localStorage.getItem('osa.settings') || 'models')
   const auth = useStore(s => s.auth)
+  useEffect(() => localStorage.setItem('osa.settings', tab), [tab])
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [onClose])
+  const title = TITLES[tab] ? tab : 'models'
   return (
     <div className="modal-bg" onMouseDown={onClose}>
-      <div className="modal wide" onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-tabs">
-          {[['models', '模型'], ['limits', '限制与预算'], ['usage', '费用'], ['rules', '确认规则'], ['vault', '保险库'], ['triggers', '定时任务'], ['channels', '聊天软件'], ['notify', '通知'], ['backup', '备份与迁移']].map(([k, v]) =>
-            <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{v}</button>)}
-          <span className="grow" />
-          {auth && <form method="post" action="/logout"><button className="btn small" type="submit">退出登录</button></form>}
-          <button className="icon-btn" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-content">
-          {tab === 'models' && <Models />}
-          {tab === 'limits' && <Limits />}
-          {tab === 'usage' && <Usage />}
-          {tab === 'rules' && <Rules />}
-          {tab === 'vault' && <Vault />}
-          {tab === 'triggers' && <Triggers />}
-          {tab === 'channels' && <Channels />}
-          {tab === 'notify' && <Notifications />}
-          {tab === 'backup' && <Backup />}
-        </div>
+      <div className="modal set-modal" onMouseDown={e => e.stopPropagation()}>
+        <ToastHost>
+          <nav className="set-nav">
+            <div className="set-nav-title">设置</div>
+            {GROUPS.map(g => (
+              <div key={g.name} className="set-group">
+                <div className="set-group-name">{g.name}</div>
+                {g.items.map(([k, v, icon]) => (
+                  <button key={k} className={'set-item' + (title === k ? ' on' : '')} onClick={() => setTab(k)}><Icon name={icon} />{v}</button>))}
+              </div>))}
+            <span className="grow" />
+            {auth && <form method="post" action="/logout"><button className="set-item" type="submit"><Icon name="logout" />退出登录</button></form>}
+          </nav>
+          <div className="set-main">
+            <div className="set-head">
+              <div><h2>{TITLES[title]}</h2>{DESC[title] && <p>{DESC[title]}</p>}</div>
+              <button className="icon-btn" title="关闭（Esc）" onClick={onClose}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="set-body">
+              {title === 'models' && <ModelSettings />}
+              {title === 'limits' && <Limits />}
+              {title === 'usage' && <Usage />}
+              {title === 'rules' && <Rules />}
+              {title === 'vault' && <Vault />}
+              {title === 'triggers' && <Triggers />}
+              {title === 'channels' && <Channels />}
+              {title === 'notify' && <Notifications />}
+              {title === 'backup' && <Backup />}
+            </div>
+          </div>
+        </ToastHost>
       </div>
-    </div>
-  )
-}
-
-function useSave() {
-  const [msg, setMsg] = useState('')
-  const save = async (body: any) => {
-    try { await api('/api/settings', { method: 'PUT', body }); await refreshLists(); setMsg('已保存，立即生效') }
-    catch (e: any) { setMsg(e.message) }
-    setTimeout(() => setMsg(''), 2000)
-  }
-  return { msg, save }
-}
-
-function Models() {
-  const s = useStore(x => x.settings) as S
-  const [roles, setRoles] = useState(s.roles)
-  const [heavy, setHeavy] = useState(s.heavy_workers)
-  const [emb, setEmb] = useState(s.embedding || { provider: '', model: '' })
-  const { msg, save } = useSave()
-  const upd = (r: string, k: string, v: any) => setRoles({ ...roles, [r]: { ...roles[r], [k]: v } })
-  return (
-    <div>
-      <p className="muted">每个角色可以用不同的模型。任何 OpenAI 兼容接口都行，提供方在 <code>config.yaml</code> 的 <code>providers</code> 里添加。</p>
-      <div className="providers">
-        {s.providers.map(p => <span key={p.name} className={'pill' + (p.key_set ? ' ok' : ' bad')} title={p.base_url}>
-          {p.name} · {p.key_set ? '密钥已设置' : `缺少 ${p.key_env}`}</span>)}
-      </div>
-      <datalist id="models">{s.known_models.map(m => <option key={m} value={m} />)}</datalist>
-      <table className="grid">
-        <thead><tr><th>角色</th><th>提供方</th><th>模型</th><th>思考模式</th><th>思考强度</th></tr></thead>
-        <tbody>{Object.entries(roles).sort(([a], [b]) => order(a) - order(b)).map(([r, v]) => (
-          <tr key={r}>
-            <td>{ROLE_NAMES[r] || r}</td>
-            <td><select value={v.provider} onChange={e => upd(r, 'provider', e.target.value)}>{s.providers.map(p => <option key={p.name}>{p.name}</option>)}</select></td>
-            <td><input list="models" value={v.model} onChange={e => upd(r, 'model', e.target.value)} /></td>
-            <td><label className="switch"><input type="checkbox" checked={v.thinking !== false} onChange={e => upd(r, 'thinking', e.target.checked)} /><span /></label></td>
-            <td><select value={v.reasoning_effort || ''} disabled={v.thinking === false} onChange={e => upd(r, 'reasoning_effort', e.target.value)}>
-              <option value="">默认</option><option value="low">low</option><option value="high">high</option><option value="max">max</option></select></td>
-          </tr>))}
-        </tbody>
-      </table>
-      <label className="field inline">Heavy 模式并行数<input type="number" min={1} max={8} value={heavy} onChange={e => setHeavy(Number(e.target.value))} /></label>
-      <Embedding emb={emb} setEmb={setEmb} />
-      <div className="row-actions"><button className="btn primary" onClick={() => save({ roles, heavy_workers: heavy, embedding: emb })}>保存</button><span className="muted small">{msg}</span></div>
-    </div>
-  )
-}
-
-// 按意思检索记忆和资料库：选一个 embedding 服务；不选也能按关键词找
-function Embedding({ emb, setEmb }: { emb: S['embedding']; setEmb: (e: S['embedding']) => void }) {
-  const s = useStore(x => x.settings) as S
-  const [info, setInfo] = useState<any>(null)
-  useEffect(() => {
-    const f = () => api('/api/search/info').then(setInfo).catch(() => {})
-    f(); const t = setInterval(f, 4000); return () => clearInterval(t)
-  }, [])
-  return (
-    <div className="emb-box">
-      <h4>按意思检索记忆和资料库</h4>
-      <p className="muted small">Bot 找以前的记忆和页面时用。不选也能用：按关键词找（中文按两个字一组）。选一个 embedding 服务后，说法不同、意思相近的也能找到。
-        任何兼容 OpenAI <code>/embeddings</code> 接口的都行，比如 OpenAI 的 text-embedding-3-small、硅基流动的 BAAI/bge-m3、Ollama 的 nomic-embed-text。</p>
-      <div className="bk-row">
-        <select value={emb.provider} onChange={e => setEmb({ ...emb, provider: e.target.value })}>
-          <option value="">不用（只按关键词）</option>
-          {s.providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-        </select>
-        <input value={emb.model} disabled={!emb.provider} placeholder="embedding 模型的名字" onChange={e => setEmb({ ...emb, model: e.target.value })} />
-      </div>
-      {info && <div className="muted small">
-        已索引 {info.chunks} 段{info.embedding ? `，算好向量 ${info.embedded} 段${info.embedded < info.chunks && !info.error ? '（后台在算）' : ''}` : ''}
-        {info.error && <span className="error-line"> 向量服务出错了，先只按关键词找：{info.error}</span>}
-      </div>}
     </div>
   )
 }
 
 function Limits() {
   const s = useStore(x => x.settings) as S
+  const toast = useToast()
   const [lim, setLim] = useState(s.limits)
-  const { msg, save } = useSave()
+  const [heavy, setHeavy] = useState(s.heavy_workers)
+  const save = async (body: object) => {
+    try { setSettings(await api('/api/settings', { method: 'PUT', body })); toast('已保存，马上生效') }
+    catch (e: any) { toast(e.message, true) }
+  }
   return (
-    <div>
+    <div className="set-rows">
       {Object.entries(LIMIT_NAMES).map(([k, [name, hint]]) => (
-        <label key={k} className="field inline">{name}<input type="number" value={lim[k] ?? ''} onChange={e => setLim({ ...lim, [k]: Number(e.target.value) })} /><span className="muted small">{hint}</span></label>
-      ))}
-      <div className="row-actions"><button className="btn primary" onClick={() => save({ limits: lim })}>保存</button><span className="muted small">{msg}</span></div>
+        <label key={k} className="set-row">
+          <span><b>{name}</b><span>{hint}</span></span>
+          <input type="number" min={1} value={lim[k] ?? ''} onChange={e => setLim({ ...lim, [k]: Number(e.target.value) })}
+            onBlur={() => { if (lim[k] && lim[k] !== s.limits[k]) save({ limits: { [k]: lim[k] } }) }} />
+        </label>))}
+      <label className="set-row">
+        <span><b>Heavy 模式同时跑几个任务</b><span>同一个问题交给几个后台任务分头做，再汇总。越多越全面，也越贵（1–8）</span></span>
+        <input type="number" min={1} max={8} value={heavy} onChange={e => setHeavy(Number(e.target.value))}
+          onBlur={() => { if (heavy && heavy !== s.heavy_workers) save({ heavy_workers: heavy }) }} />
+      </label>
     </div>
   )
 }
@@ -148,10 +119,42 @@ function Usage() {
       <h4>近 30 天每日</h4>
       <div className="bars">{u.by_day.map((d: any) => <div key={d.day} title={`${d.day}  ${f(d.cost)}`} style={{ height: `${Math.max(2, (d.cost / max) * 100)}%` }} />)}</div>
       <div className="two-col">
-        <div><h4>按角色</h4>{u.by_role.map((r: any) => <div className="kv" key={r.role + r.model}><span>{ROLE_NAMES[r.role] || r.role} · {r.model}</span><span>{f(r.cost)}</span></div>)}</div>
+        <div><h4>按用途</h4>{u.by_role.map((r: any) => <div className="kv" key={r.role + r.model}><span>{ROLE_NAMES[r.role] || r.role} · {r.model}</span><span>{f(r.cost)}</span></div>)}</div>
         <div><h4>按任务（最近 20 个）</h4>{u.by_task.map((t: any) => <div className="kv" key={t.id}><span>#{t.id} {t.goal}</span><span>{f(t.cost)}</span></div>)}</div>
       </div>
-      <p className="muted small">按 DeepSeek 官网的高峰和空闲两档价格计算，单价在 config.yaml 的 pricing 里。{bots.length} 个 Bot 共用一个预算。</p>
+      <Prices />
+      <p className="muted small">{bots.length} 个 Bot 共用一个每日预算，在“限制与预算”里改。</p>
+    </div>
+  )
+}
+
+// 现在用的模型的单价，从哪来的；models.dev 每天自动更新
+function Prices() {
+  const s = useStore(x => x.settings) as S
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const p = s.prices
+  const rows = [...Object.entries(s.roles).map(([k, v]) => [k, v.provider, v.model]),
+    ...(s.embedding.provider ? [['embedding', s.embedding.provider, s.embedding.model]] : [])]
+  const refresh = async () => {
+    setBusy(true)
+    try { const r = await api('/api/prices/refresh', { method: 'POST' }); setSettings(r.settings); toast(r.error ? `更新失败：${r.error}` : '单价已更新', !!r.error) }
+    catch (e: any) { toast(e.message, true) }
+    setBusy(false)
+  }
+  const when = p.updated ? new Date(p.updated * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '还没有'
+  return (
+    <div>
+      <h4>现在用的模型单价</h4>
+      {rows.map(([k, prov, model]) => {
+        const info = s.model_info[`${prov}/${model}`]
+        return <div className="kv" key={k} title={priceSource(info)}><span>{ROLE_NAMES[k] || k} · {model}</span>
+          <span className={priceText(info, p.currency) ? '' : 'muted'}>{priceText(info, p.currency) || '没有单价，按 0 计'}</span></div>
+      })}
+      <p className="muted small">单价自动从 <a href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a> 获取，每天更新一次（上次：{when}），
+        美元按 1 : {p.rate} 换成人民币；<code>config.yaml</code> 的 <code>pricing</code> 里写了的以它为准，本机的模型按 0 计。
+        {p.error && <span className="error-line"> 上次更新失败：{p.error}</span>}{' '}
+        <button className="link-btn" disabled={busy} onClick={refresh}>{busy ? '更新中…' : '现在更新'}</button></p>
     </div>
   )
 }

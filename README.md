@@ -40,7 +40,7 @@ Grok Bot 的体验很好，但价格高，模型也换不了。open-super-agent 
 - 📱 **手机**：能添加到主屏幕当应用用；有语音输入；不开着页面时，需要你确认的事、做完的任务会推送到手机。手机上也能看屏幕、接手电脑打字、处理确认。
 - 💰 **费用透明**：按角色、任务和天统计 token 和金额，有每日预算；Watchdog 会自动取消卡住、死循环或超预算的任务。
 - 📦 **备份与迁移**：全部数据（连同密钥）导出成一个加密文件，换机器、从本机搬到服务器时上传就能接着用；服务器上也能用命令行定时备份。
-- 🔄 **模型自选**：支持任何 OpenAI 兼容接口（DeepSeek、OpenRouter、Ollama、vLLM），每个角色可以单独配置模型。
+- 🔄 **模型自选**：在设置里添加模型服务（DeepSeek、OpenAI、OpenRouter、硅基流动、阿里云百炼、智谱、Kimi、Ollama，或任何兼容 OpenAI 的接口），填 API Key、点一下测试就能用；对话、后台任务等各自选模型，单价自动获取。
 
 ## 快速开始
 
@@ -48,7 +48,7 @@ Grok Bot 的体验很好，但价格高，模型也换不了。open-super-agent 
 
 ```bash
 git clone https://github.com/kadaliao/open-super-agent.git && cd open-super-agent
-cp .env.example .env     # 填上 DEEPSEEK_API_KEY
+cp .env.example .env     # 可以先填上 DEEPSEEK_API_KEY，也可以打开后在 设置 → 模型 里填
 docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟；打开 http://127.0.0.1:8765
 ```
 
@@ -60,7 +60,7 @@ docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟；打
 需要 Python ≥ 3.11 和 [uv](https://docs.astral.sh/uv/)、Node ≥ 20；本地电脑仍要 Docker（用 Instabox 时不需要）。
 
 ```bash
-export DEEPSEEK_API_KEY=sk-...              # 环境变量一览见 .env.example
+export DEEPSEEK_API_KEY=sk-...              # 可选，也可以打开后在 设置 → 模型 里填；环境变量一览见 .env.example
 (cd web && npm ci && npm run build)         # 构建前端
 uv run uvicorn osa.server:app --port 8765   # 打开 http://127.0.0.1:8765
 ```
@@ -81,7 +81,7 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 | 文档 | 内容 |
 |---|---|
 | [用 Docker Compose 部署](docs/docker.md) | 一条命令跑起来、自动 HTTPS、数据和备份、国内网络 |
-| [配置](docs/configuration.md) | 模型和角色、限额与价格、电脑后端、应用、确认规则与保险库、定时任务、远程访问 |
+| [配置](docs/configuration.md) | 模型服务和各项工作用的模型、限额与单价、电脑后端、应用、确认规则与保险库、定时任务、远程访问 |
 | [架构](docs/architecture.md) | 各组件如何协作、代码目录、设计约定 |
 | [开发](docs/development.md) | 本地开发、测试方法、调试技巧 |
 | [聊天软件](docs/channels.md) | 连接 Telegram、飞书、钉钉、企业微信、Discord，配对，权限和常见问题 |

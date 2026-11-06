@@ -41,6 +41,7 @@ const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
   subs.forEach(f => f())
 }
 export const getState = () => state
+export const setSettings = (settings: Settings) => set({ settings })
 // 所有 Bot 共用一台电脑：任何一个 Bot 的电脑状态变了，其他 Bot 的面板也跟着变
 export const setComputer = (c: ComputerState) => set(s => ({
   computers: Object.fromEntries([...new Set([...Object.keys(s.computers).map(Number), c.bot_id])].map(k => [k, { ...c, bot_id: k }])),
