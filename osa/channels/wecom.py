@@ -25,6 +25,7 @@ from urllib.parse import unquote
 import httpx
 import websockets
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from .. import i18n
 from . import Channel, fmt, word_command
 
 WS_URL = os.environ.get("OSA_WECOM_WS", "wss://openws.work.weixin.qq.com")   # 测试时换成假的服务器
@@ -49,7 +50,7 @@ def decrypt(data: bytes, aeskey: str) -> bytes:
     out = dec.update(data) + dec.finalize()
     pad = out[-1] if out else 0
     if not 1 <= pad <= 32 or out[-pad:] != bytes([pad]) * pad:
-        raise ValueError("文件解密失败")
+        raise ValueError(i18n.t("文件解密失败"))
     return out[:-pad]
 
 
@@ -76,7 +77,7 @@ async def _subscribe(ws, bot_id: str, secret: str, timeout: float = 10):
 
 
 class WeCom(Channel):
-    kind, title, max_len = "wecom", "企业微信", 6000
+    kind, title, max_len = "wecom", i18n.N_("企业微信"), 6000
 
     def __init__(self, r: dict, secret: str):
         super().__init__(r, secret)
@@ -99,14 +100,14 @@ class WeCom(Channel):
     async def check(cls, fields: dict) -> dict:
         bot_id, secret = (fields.get("bot_id") or "").strip(), (fields.get("secret") or "").strip()
         if not bot_id or not secret:
-            raise ValueError("请填 Bot ID 和 Secret，在智能机器人的配置页里，API 模式选“长连接”后能看到")
+            raise ValueError(i18n.t("请填 Bot ID 和 Secret，在智能机器人的配置页里，API 模式选“长连接”后能看到"))
         try:
             async with websockets.connect(WS_URL, proxy=None, open_timeout=15) as ws:
                 await _subscribe(ws, bot_id, secret)
         except WecomError as e:
-            raise ValueError(f"Bot ID 或 Secret 不对，或者机器人的 API 模式没选“长连接”（{e.msg or e.code}）")
+            raise ValueError(i18n.t("Bot ID 或 Secret 不对，或者机器人的 API 模式没选“长连接”（{error}）", error=e.msg or e.code))
         except (OSError, asyncio.TimeoutError, websockets.WebSocketException) as e:
-            raise ValueError(f"连不上企业微信（{type(e).__name__}）")
+            raise ValueError(i18n.t("连不上企业微信（{error}）", error=type(e).__name__))
         name = (fields.get("name") or "").strip()[:40] or bot_id
         return {"name": name, "config": {"bot_id": bot_id}, "secret": secret}
 
@@ -138,14 +139,15 @@ class WeCom(Channel):
                                 fut.set_exception(ConnectionError("长连接断了"))
                         self._acks.clear()
                 if pause:
-                    self.set_state("error", "这个机器人在别处也连上了（比如另一台服务器上的 open-super-agent），同一个机器人只能一处用，2 分钟后重试")
+                    self.set_state("error", i18n.later("这个机器人在别处也连上了（比如另一台服务器上的 open-super-agent），同一个机器人只能一处用，2 分钟后重试"))
                 else:
-                    self.set_state("error", "长连接断了，正在重连")
+                    self.set_state("error", i18n.later("长连接断了，正在重连"))
             except WecomError as e:
-                self.set_state("error", f"企业微信拒绝了连接（{e.msg or e.code}）。Secret 重置过或者机器人改成了回调模式的话，删掉这个连接重新添加")
+                self.set_state("error", i18n.later("企业微信拒绝了连接（{error}）。Secret 重置过或者机器人改成了回调模式的话，删掉这个连接重新添加",
+                                               error=e.msg or e.code))
                 pause = 300
             except (OSError, asyncio.TimeoutError, websockets.WebSocketException, ValueError) as e:
-                self.set_state("error", f"连接企业微信失败（{type(e).__name__}），稍后自动重试")
+                self.set_state("error", i18n.later("连接企业微信失败（{error}），稍后自动重试", error=type(e).__name__))
             await asyncio.sleep(pause or backoff + random.random() * 5)
             backoff = min(backoff * 2, 120)
 
@@ -199,7 +201,8 @@ class WeCom(Channel):
                 asyncio.create_task(self._safe(self.on_card(rid, body, ev.get("template_card_event") or ev)))
             elif et == "enter_chat" and not self.row["peer"]:
                 asyncio.create_task(self._safe(self.request("aibot_respond_welcome_msg", {
-                    "msgtype": "text", "text": {"content": "你好！把 open-super-agent 网页上 设置 → 聊天软件 里的 6 位配对码发给我，就能开始用了。"}}, rid)))
+                    "msgtype": "text", "text": {"content": i18n.t("你好！把 open-super-agent 网页上 设置 → 聊天软件 里的 6 位配对码发给我，就能开始用了。")}},
+                    rid)))
         return None
 
     # ----- 收 -----
@@ -215,7 +218,7 @@ class WeCom(Channel):
             text = (b.get("voice") or {}).get("content", "")
             if not text:
                 if peer == self.row["peer"]:
-                    self.say("没听清这条语音，请再说一遍或者打字。")
+                    self.say(i18n.t("没听清这条语音，请再说一遍或者打字。"))
                 return
         elif mt == "mixed":
             parts = []
@@ -230,7 +233,7 @@ class WeCom(Channel):
             if item.get("url"):
                 files.append(({"image": f"image_{n}.jpg", "video": f"video_{n}.mp4"}.get(mt, f"file_{n}"), item))
         elif peer == self.row["peer"]:
-            self.say("暂时只能收文字、语音、图片和文件。")
+            self.say(i18n.t("暂时只能收文字、语音、图片和文件。"))
             return
         await self.inbound(peer, "", text, files)
 
@@ -260,13 +263,16 @@ class WeCom(Channel):
         desc = fmt.plain(card["body"])
         desc = re.sub(r"```\w*\n?|`", "", desc)
         desc = re.sub(r"\s*\n\s*", " ｜ ", desc).strip(" ｜")
+        more = i18n.t("…（详情见上条）")
         if len(desc) > CARD_TEXT:
-            desc = desc[:CARD_TEXT - 8] + "…（详情见上条）"
-        title = re.sub(r"^\W+", "", card["title"])[:26]
+            desc = desc[:CARD_TEXT - len(more)] + more
+        zh = i18n.lang() == "zh"   # 长度建议是按中文字算的，英文放宽一些
+        title = re.sub(r"^\W+", "", card["title"])[:26 if zh else 52]
+        btn = 10 if zh else 24
         if card.get("done"):
-            buttons = [{"text": card["done"].lstrip("✓✕ ")[:10], "style": 2, "key": f"ap:{card['id']}:over"}]
+            buttons = [{"text": card["done"].lstrip("✓✕ ")[:btn], "style": 2, "key": f"ap:{card['id']}:over"}]
         else:
-            buttons = [{"text": label[:10], "style": 1 if style == "primary" else 2, "key": f"ap:{card['id']}:{act}"}
+            buttons = [{"text": label[:btn], "style": 1 if style == "primary" else 2, "key": f"ap:{card['id']}:{act}"}
                        for label, act, style in card["buttons"]]
         out = {"card_type": "button_interaction", "main_title": {"title": title, "desc": f"#{card['id']}"},
                "sub_title_text": desc, "button_list": buttons, "task_id": task_id}
@@ -284,9 +290,9 @@ class WeCom(Channel):
             return task_id
         except WecomError as e:   # 卡片发不出去：退回文字，打字回复也能处理
             print(f"[聊天软件 {self.id} 企业微信] 卡片发送失败，改发文字：{e}", flush=True)
-        say = "、".join(f"“{word_command(act, card['id'])}”" for _, act, _ in card["buttons"])
+        say = i18n.t("、").join(i18n.t("“{text}”", text=word_command(act, card["id"])) for _, act, _ in card["buttons"])
         link = f"\n\n[{card['link'][0]}]({card['link'][1]})" if card.get("link") else ""
-        await self.send_text(peer, f"**{card['title']}**\n\n{card['body']}{link}\n\n回复{say}。")
+        await self.send_text(peer, f"**{card['title']}**\n\n{card['body']}{link}\n\n" + i18n.t("回复{say}。", say=say))
         return ""
 
     async def edit_card(self, peer: str, msg_id: str, card: dict):
@@ -298,4 +304,4 @@ class WeCom(Channel):
                 return
             except (WecomError, ConnectionError, asyncio.TimeoutError):
                 pass
-        await self.send_text(peer, f"**{card['done']}**（#{card['id']} {fmt.title_line(card['body'], 40)}）")
+        await self.send_text(peer, f"**{card['done']}**" + i18n.t("（#{id} {what}）", id=card["id"], what=fmt.title_line(card["body"], 40)))

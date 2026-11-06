@@ -12,6 +12,15 @@ can:
 - 新增、更新记录
 - 查看表结构，加字段、建表
 example: '@airtable 把今天联系过的三位客户加到「客户」表，状态填「已联系」'
+en:
+  by: Official (Airtable)
+  desc: Query tables, add records, update fields
+  about: Airtable's official connection. Choose which bases to allow when you sign in, and the bot can query records, add and update records, and leave comments. It can also read table structure, add fields, and create new tables.
+  can:
+  - Find records by condition and summarize them
+  - Add and update records
+  - View table structure, add fields, create tables
+  example: '@airtable add the three customers I contacted today to the "Customers" table with status "Contacted"'
 deny: [delete]
 connect:
   type: http

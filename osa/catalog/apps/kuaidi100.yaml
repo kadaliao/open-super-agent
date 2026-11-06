@@ -22,6 +22,25 @@ fields:
   label: 授权key
   secret: true
   nospace: true
+en:
+  title: Kuaidi100
+  by: Official (Kuaidi100)
+  desc: Track packages, estimate shipping costs and delivery times
+  about: Kuaidi100's official connection. The bot can track a package by its tracking number (it detects the carrier automatically), and estimate shipping costs and delivery times. It can only look things up, not book shipments.
+  can:
+  - Track packages by number, detect the carrier automatically
+  - Estimate shipping costs
+  - Estimate delivery times
+  example: "@kuaidi100 where's this package now: SF1234567890123"
+  steps:
+  - Sign up on the Kuaidi100 API Open Platform (the form asks for a company name and a phone number)
+  - After signing in, click "Admin console" (管理后台) at the top right
+  - Under "Authorization parameters" (授权参数), find "Authorization key" (授权key), click the eye icon next to it to reveal it, and paste it below (not the customer value)
+  link_label: Open Kuaidi100 API platform
+  note: New accounts get a free trial quota. After it runs out, you need to top up.
+  fields:
+    key:
+      label: Authorization key
 connect:
   type: http
   url: https://api.kuaidi100.com/mcp/streamable?key={key}

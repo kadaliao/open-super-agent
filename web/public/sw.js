@@ -1,10 +1,11 @@
 // Service Worker：让网页能“添加到主屏幕”当应用用，接收推送通知，连不上服务器时给一个提示页。
-// 不缓存接口和页面内容，数据总是从服务器拿最新的。
+// 不缓存接口和页面内容，数据总是从服务器拿最新的。提示页连不上服务器、不知道设置的语言，所以中英文都写。
 
 const OFFLINE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Super Agent</title><body style="margin:0;height:100vh;display:grid;place-items:center;background:#0d0d0e;color:#a8a8ad;
 font-family:-apple-system,'PingFang SC',sans-serif;text-align:center"><div><div style="font-size:32px">◆</div>
-<p>连不上服务器</p><p style="font-size:13px">确认电脑上的服务在运行、网络（例如 Tailscale）已连接，然后刷新。</p></div>`
+<p>连不上服务器 · Can't reach the server</p><p style="font-size:13px">确认电脑上的服务在运行、网络（例如 Tailscale）已连接，然后刷新。<br>
+Make sure the server is running and your network (e.g. Tailscale) is connected, then refresh.</p></div>`
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()))

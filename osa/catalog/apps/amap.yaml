@@ -21,6 +21,25 @@ fields:
 - key: key
   label: Web 服务 Key
   secret: true
+en:
+  title: Amap
+  by: Official (Amap)
+  how: Needs a key
+  desc: Find places, plan routes, check the weather
+  about: Amap's official remote MCP. Enter an Amap Web service key, and the bot can look up places, work out routes and travel times, and check the weather.
+  can:
+  - Search places, look up addresses and coordinates
+  - Plan driving, transit, walking, and cycling routes
+  - Check city weather
+  example: '@amap on Saturday, how long does it take from Wangjing to the Summer Palace by subway and by car?'
+  steps:
+  - Sign in to the Amap Open Platform console, go to "App management → My apps" (应用管理 → 我的应用), and create an app
+  - Click "Add Key" (添加 Key) on the app and choose "Web service" (Web 服务) as the platform
+  - Paste the generated key below
+  link_label: Open Amap console
+  fields:
+    key:
+      label: Web service key
 connect:
   type: http
   url: https://mcp.amap.com/mcp?key={key}

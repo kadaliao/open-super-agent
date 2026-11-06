@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { syncLang, t } from './i18n'
 import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft } from './types'
 
 type State = {
@@ -68,12 +69,13 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   })
   if (r.status === 401 && !path.startsWith('/api/shared/')) toLogin()
   const data = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(data.detail || `请求失败（${r.status}）`)
+  if (!r.ok) throw new Error(data.detail || t('请求失败（{status}）', { status: r.status }))
   return data
 }
 
 export async function bootstrap() {
   const b = await api('/api/bootstrap')
+  if (syncLang(b.settings?.language)) return new Promise<void>(() => {})   // 语言和服务端的不一样：重新加载中
   const tasks: Record<number, Task> = {}
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   const approvals: Record<number, Approval> = {}
@@ -205,6 +207,7 @@ async function resync() {
   // 断线重连后：刷新列表，丢掉已缓存的消息，重新加载当前对话
   await refreshLists()
   const b = await api('/api/bootstrap')
+  if (syncLang(b.settings?.language)) return new Promise<void>(() => {})   // 语言和服务端的不一样：重新加载中
   const tasks: Record<number, Task> = {}
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   set({ messages: {}, streams: {}, tasks, teach: b.teach || null })
@@ -258,7 +261,7 @@ function handle(d: any) {
     }
     case 'approval':
       set(s => ({ approvals: { ...s.approvals, [d.id]: { ...(s.approvals[d.id] || {}), ...d } } }))
-      if (d.status === 'pending' && document.hidden) notifyOS(cid, null, '有一个操作需要你确认')
+      if (d.status === 'pending' && document.hidden) notifyOS(cid, null, t('有一个操作需要你确认'))
       break
     case 'error':
       set(s => ({ errors: { ...s.errors, [cid]: d.message }, streams: { ...s.streams, [cid]: undefined } }))

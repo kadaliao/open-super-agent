@@ -9,6 +9,7 @@ import re
 import secrets
 import shlex
 import time
+from . import i18n
 from .memory import conn
 
 conn.execute("""create table if not exists pages(
@@ -59,20 +60,20 @@ def by_token(token: str) -> dict | None:
 def save_page(bot_id: int | None, title: str, content: str, fmt: str = "markdown",
               pid: int | None = None, task_id: int | None = None) -> dict:
     """新建，或者给 pid 时更新内容。"""
-    title = " ".join((title or "").split())[:120] or "未命名页面"
+    title = " ".join((title or "").split())[:120] or i18n.t("未命名页面")
     fmt = fmt if fmt in FORMATS else "markdown"
     if not (content or "").strip():
-        raise ValueError("页面内容不能为空")
+        raise ValueError(i18n.t("页面内容不能为空"))
     if len(content) > MAX_PAGE:
-        raise ValueError(f"页面太大（最多 {MAX_PAGE // 1000}K 字）")
+        raise ValueError(i18n.t("页面太大（最多 {n}K 字）", n=MAX_PAGE // 1000))
     now = time.time()
     if pid is not None:
         if not get_page(pid, False):
-            raise ValueError(f"没有页面 #{pid}")
+            raise ValueError(i18n.t("没有页面 #{id}", id=pid))
         conn.execute("update pages set title=?, format=?, content=?, updated=? where id=?", (title, fmt, content, now, pid))
     else:
         if conn.execute("select count(*) from pages").fetchone()[0] >= MAX_PAGES:
-            raise ValueError(f"资料库最多 {MAX_PAGES} 个页面，先删掉一些")
+            raise ValueError(i18n.t("资料库最多 {n} 个页面，先删掉一些", n=MAX_PAGES))
         pid = conn.execute("insert into pages(bot_id, title, format, content, task_id, created, updated) "
                            "values(?,?,?,?,?,?,?)", (bot_id, title, fmt, content, task_id, now, now)).lastrowid
     conn.commit()
@@ -81,10 +82,10 @@ def save_page(bot_id: int | None, title: str, content: str, fmt: str = "markdown
 
 def update_page(pid: int, title: str | None = None, pinned: bool | None = None) -> dict:
     if not get_page(pid, False):
-        raise ValueError(f"没有页面 #{pid}")
+        raise ValueError(i18n.t("没有页面 #{id}", id=pid))
     if title is not None:
         conn.execute("update pages set title=?, updated=? where id=?",
-                     (" ".join(title.split())[:120] or "未命名页面", time.time(), pid))
+                     (" ".join(title.split())[:120] or i18n.t("未命名页面"), time.time(), pid))
     if pinned is not None:
         conn.execute("update pages set pinned=? where id=?", (int(pinned), pid))
     conn.commit()
@@ -158,14 +159,14 @@ def norm(path: str | None) -> str:
         p = posixpath.join(WORKSPACE, p)
     p = posixpath.normpath(p)
     if p != WORKSPACE and not p.startswith(WORKSPACE + "/"):
-        raise ValueError(f"只能访问 {WORKSPACE} 里的文件")
+        raise ValueError(i18n.t("只能访问 {dir} 里的文件", dir=WORKSPACE))
     return p
 
 
 def check_name(name: str) -> str:
     name = (name or "").strip()
     if not name or name in (".", "..") or "/" in name or "\0" in name or len(name) > 200:
-        raise ValueError("文件名不合法")
+        raise ValueError(i18n.t("文件名不合法"))
     return name
 
 
@@ -174,9 +175,9 @@ async def list_dir(c, path: str) -> list[dict]:
     q = shlex.quote(p)
     r = await c.exec(f"[ -d {q} ] || exit 3; find {q} -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%T@\\t%f\\n' | head -n 1000", 30)
     if r.exit_code == 3:
-        raise ValueError("目录不存在")
+        raise ValueError(i18n.t("目录不存在"))
     if r.exit_code:
-        raise ValueError((r.stderr or "读取目录失败").strip()[:200])
+        raise ValueError((r.stderr or i18n.t("读取目录失败")).strip()[:200])
     out = []
     for line in r.stdout.splitlines():
         parts = line.split("\t", 3)
@@ -193,7 +194,7 @@ async def put_file(c, directory: str, name: str, data: bytes) -> dict:
     """把文件写进电脑里的目录。同名时自动加序号，不覆盖。"""
     d, name = norm(directory), check_name(name)
     if len(data) > MAX_UPLOAD:
-        raise ValueError(f"文件太大（最多 {MAX_UPLOAD >> 20} MB）")
+        raise ValueError(i18n.t("文件太大（最多 {n} MB）", n=MAX_UPLOAD >> 20))
     try:
         existing = {e["name"] for e in await list_dir(c, d)}
     except ValueError:
@@ -227,10 +228,10 @@ async def stat_many(c, paths: list[str]) -> dict[str, dict]:
 async def remove(c, path: str):
     p = norm(path)
     if p == WORKSPACE:
-        raise ValueError("不能删除整个工作目录")
+        raise ValueError(i18n.t("不能删除整个工作目录"))
     r = await c.exec(f"rm -rf -- {shlex.quote(p)}", 60)
     if r.exit_code:
-        raise ValueError((r.stderr or "删除失败").strip()[:200])
+        raise ValueError((r.stderr or i18n.t("删除失败")).strip()[:200])
     unpin(p)
 
 

@@ -24,6 +24,24 @@ fields:
   label: Personal access token
   placeholder: github_pat_……
   secret: true
+en:
+  by: Official (GitHub)
+  how: Paste a token
+  desc: Repos, issues, PRs, code search
+  about: GitHub's official remote MCP. Enter a personal access token, and the bot can read code, look through issues and PRs, and open issues for you.
+  can:
+  - Search code and read files
+  - View and create issues and PRs, leave comments
+  - View Actions run results
+  example: '@github what new issues has kadaliao/open-super-agent had in the past week?'
+  steps:
+  - Open GitHub's new token page
+  - Choose the repos and permissions to grant (for read-only, give Read access only)
+  - Generate it, copy it, and paste it below
+  link_label: Open GitHub token settings
+  fields:
+    token:
+      placeholder: github_pat_…
 deny: [delete]
 connect:
   type: http

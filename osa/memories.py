@@ -11,7 +11,7 @@ import json
 import time
 from .config import call_kwargs, client_for
 from .memory import conn
-from . import memory
+from . import i18n, memory
 
 conn.execute("""create table if not exists memories(
   id integer primary key, bot_id integer, kind text default 'note', text text, source text default 'chat',
@@ -56,7 +56,7 @@ def list_for(bot_id: int) -> dict:
 def _clean(text: str) -> str:
     text = " ".join((text or "").split())
     if not text:
-        raise ValueError("记忆内容不能为空")
+        raise ValueError(i18n.t("记忆内容不能为空"))
     return text[:MAX_LEN]
 
 
@@ -73,7 +73,8 @@ def add(bot_id: int | None, text: str, source: str = "chat") -> dict:
     n = conn.execute("select count(*) from memories where bot_id is ? and kind='note'", (bot_id,)).fetchone()[0]
     cap = MAX_SHARED if bot_id is None else MAX_NOTES
     if n >= cap:
-        raise ValueError(f"{'共享的用户事实' if bot_id is None else '这个 Bot 的记忆'}最多 {cap} 条，先删掉一些旧的")
+        raise ValueError(i18n.t("共享的用户事实最多 {n} 条，先删掉一些旧的", n=cap) if bot_id is None
+                         else i18n.t("这个 Bot 的记忆最多 {n} 条，先删掉一些旧的", n=cap))
     mid = conn.execute("insert into memories(bot_id, kind, text, source, created, updated) values(?,?,?,?,?,?)",
                        (bot_id, "note", text, source, now, now)).lastrowid
     conn.commit()
@@ -87,7 +88,7 @@ def update(mid: int, text: str | None = None, bot_id=_KEEP) -> dict:
     """改内容，或者在“共享 / 只给这个 Bot”之间移动（bot_id=None 表示共享）。"""
     m = get(mid)
     if not m:
-        raise ValueError(f"没有 #{mid} 这条记忆")
+        raise ValueError(i18n.t("没有 #{id} 这条记忆", id=mid))
     fields: list[str] = ["updated=?"]
     args: list[object] = [time.time()]
     if text is not None:
@@ -124,7 +125,8 @@ def log_work(bot_id: int, task_id: int, goal: str):
         return
     now = time.time()
     conn.execute("insert into memories(bot_id, kind, text, source, created, updated) values(?,?,?,?,?,?)",
-                 (bot_id, "work", f"{time.strftime('%m-%d', time.localtime(now))} 任务 #{task_id}：{line}",
+                 (bot_id, "work", i18n.t("{date} 任务 #{id}：{goal}", date=time.strftime("%m-%d", time.localtime(now)),
+                                         id=task_id, goal=line),
                   "task", now, now))
     conn.execute("""delete from memories where bot_id=? and kind='work' and id not in
         (select id from memories where bot_id=? and kind='work' order by id desc limit ?)""", (bot_id, bot_id, KEEP_WORK))
@@ -181,16 +183,21 @@ IMPORT_PROMPT = """用户从别的 AI 助手（ChatGPT、Claude、Gemini 等）�
 只输出 JSON：{"items": [{"text": "...", "shared": false}]}"""
 
 
+def _import_prompt() -> str:
+    """英文界面时记忆用英文写；中文界面和以前一样。"""
+    return IMPORT_PROMPT if i18n.lang() == "zh" else IMPORT_PROMPT.replace("用中文，以“用户”开头", "用英文，以“The user”开头")
+
+
 async def parse_import(text: str, existing: list[str] | None = None) -> list[dict]:
     """把导出的文字拆成记忆条目。模型出错时退回按行拆。"""
     text = (text or "").strip()[:20000]
     if not text:
-        raise ValueError("没有可导入的内容")
+        raise ValueError(i18n.t("没有可导入的内容"))
     have = "\n".join(f"- {t}" for t in existing or []) or "（无）"
     try:
         client, model = client_for("filter")
         resp = await client.chat.completions.create(model=model, messages=[
-            {"role": "system", "content": IMPORT_PROMPT},
+            {"role": "system", "content": _import_prompt()},
             {"role": "user", "content": f"已有的记忆：\n{have}\n\n导出的内容：\n{text}"}],
             response_format={"type": "json_object"}, **call_kwargs("filter"))
         memory.record_usage("filter", model, resp.usage)

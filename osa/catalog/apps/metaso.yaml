@@ -22,6 +22,22 @@ fields:
   label: API Key
   secret: true
   nospace: true
+en:
+  title: Metaso AI Search
+  by: Official (Metaso)
+  desc: Chinese web search, read full pages
+  about: Metaso AI Search's official connection. The bot can use Metaso to search Chinese web pages, academic papers, and news, read full pages, or have Metaso answer directly with sources. Read-only; it doesn't change anything.
+  can:
+  - Search Chinese web pages, academic papers, and news
+  - Read full web pages
+  - Have Metaso answer directly, with sources
+  example: '@metaso find policy news from the past week about EV subsidies, with sources'
+  steps:
+  - Sign in to Metaso AI Search and open the API Key page
+  - Click "Create new key" (创建新的Key), enter a name, and click "Create" (创建)
+  - Click copy in the "API Key" column and paste it below
+  link_label: Open Metaso API Key page
+  note: Each call uses credits. New accounts get some free credits; check your balance under "Statistics" (信息统计).
 connect:
   type: http
   url: https://metaso.cn/api/mcp

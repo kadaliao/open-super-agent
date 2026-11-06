@@ -67,6 +67,7 @@ export type Settings = {
   model_info: Record<string, ModelInfo>   // 键是 服务/模型
   prices: { source: string; updated: number; error: string; rate: number; currency: string; models: number }
   problem: string                         // 对话或后台任务的模型没法用的原因；能用是空
+  language: 'zh' | 'en'                   // 界面语言
 }
 export type SearchHit = { kind: 'memory' | 'page'; ref: number; title: string; snippet: string; bot_id: number | null; sub: string; score: number }
 export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'

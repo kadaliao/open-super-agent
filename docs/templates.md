@@ -42,6 +42,32 @@ routines:
 - 最多 30 个技能、20 个定时任务、20 个应用。
 - 用户可以选“先暂停定时任务”，所以定时任务里别做装上就不能撤回的事（比如直接发邮件），先让 Bot 起草、等人确认。
 
+## 英文版（`en:`）
+
+界面是英文时，模板列表、预览和装出来的 Bot 用 `en:` 里的内容；中文界面不看它。没有 `en:` 的模板（包括导出、分享的）两种界面都原样装。
+
+```yaml
+en:
+  name: News assistant
+  description: Every morning, turns news on the topics you follow into a brief
+  instructions: |
+    You're my news assistant. ...
+    - Write in English. ...
+  apps: [exa, fetch]            # 可选：英文用户习惯用的应用不一样时才写（比如邮件管家换成 gmail）
+  skills:                       # 和上面的 skills 一样多、顺序一样，第几个就是翻译第几个
+    - name: morning-brief       # 技能名不能有空格，用 - 连起来
+      description: Collects news from the past 24 hours into a morning brief page
+      body: |
+        1. ...
+  routines:                     # 和上面的 routines 一样多、顺序一样
+    - name: Daily morning brief   # 只写 name、prompt；skill 不用写，会自动换成同一位置的英文技能名
+```
+
+- 能写的字段：`name`、`description`、`instructions`、`apps`、`skills`（每项 `name`、`description`、`body`）、`routines`（每项 `name`、`prompt`）。头像、触发方式两种语言共用，写在外面。
+- 没写或写空的字段用中文的。`skills`、`routines` 不需要换的那一项写 `{}`。
+- 这些是写给 Bot 的指令，按英文重新写一遍，别逐字翻：“用中文写”写成 “Write in English”。`@应用名` 和工具名（`save_page` 这类）保持原样。
+- 加技能、定时任务时记得在 `en:` 里同一位置也加一项，数目对不上检查会报错。
+
 ## 写好模板的几条建议
 
 - **职责里写清楚要用户改的地方**，比如“（在 Bot 详情里把上面的仓库换成你关心的）”。模板没有填空，装好以后用户在详情里改。
@@ -61,7 +87,8 @@ routines:
    uv run python -m osa.templates
    ```
 
-   会检查格式，`apps` 里的应用应用市场里要有；做法里 `@` 了却没写进 `apps` 的会提示出来。CI 里也跑这个检查。
+   会检查格式，`apps` 里的应用应用市场里要有；做法里 `@` 了却没写进 `apps` 的会提示出来。中文、英文两个版本都检查，
+   英文版里还有中文（没写 `en:` 或漏了字段）也会提示。内置模板请写上 `en:`。CI 里也跑这个检查。
 3. 提 PR，说明这个模板适合谁、你实际用了多久。
 
 不想放进内置的，生成分享链接或者把文件放在 GitHub 上就行：别人在新建 Bot 时粘贴 `…/template/…` 链接或 GitHub 上文件的链接就能装。

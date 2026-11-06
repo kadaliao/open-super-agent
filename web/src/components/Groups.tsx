@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { api, openChat, refreshLists, useStore } from '../store'
 import type { Bot, Chat } from '../types'
+import { lang, t, tc } from '../i18n'
 import BotAvatar from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { TasksPanel } from './Tasks'
 
 const MIN = 2, MAX = 6
+const SEP = lang === 'en' ? ', ' : '、'
 
 function BotPicker({ bots, picked, onChange }: { bots: Bot[]; picked: number[]; onChange: (ids: number[]) => void }) {
   return (
@@ -39,14 +41,14 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-bg" onMouseDown={onClose}>
       <div className="modal small" onMouseDown={e => e.stopPropagation()}>
-        <h3>新建群聊</h3>
-        {bots.length < MIN ? <p className="muted">至少要有 {MIN} 个 Bot 才能建群聊，先去新建一个 Bot。</p> : <>
-          <p className="muted small">选 {MIN}–{MAX} 个 Bot。群里 @ 谁谁回答；不 @ 的消息由协调者接，它会分给合适的 Bot。</p>
+        <h3>{t('新建群聊')}</h3>
+        {bots.length < MIN ? <p className="muted">{t('至少要有 {n} 个 Bot 才能建群聊，先去新建一个 Bot。', { n: MIN })}</p> : <>
+          <p className="muted small">{t('选 {min}–{max} 个 Bot。群里 @ 谁谁回答；不 @ 的消息由协调者接，它会分给合适的 Bot。', { min: MIN, max: MAX })}</p>
           <BotPicker bots={bots} picked={picked} onChange={setPicked} />
-          <label className="field">名字（可以不填）<input value={title} maxLength={60}
-            placeholder={picked.map(i => bots.find(b => b.id === i)?.name).filter(Boolean).slice(0, 3).join('、') || '自动用成员的名字'}
+          <label className="field">{t('名字（可以不填）')}<input value={title} maxLength={60}
+            placeholder={picked.map(i => bots.find(b => b.id === i)?.name).filter(Boolean).slice(0, 3).join(SEP) || t('自动用成员的名字')}
             onChange={e => setTitle(e.target.value)} /></label>
-          {picked.length >= MIN && <label className="field">协调者
+          {picked.length >= MIN && <label className="field">{t('协调者')}
             <select value={leadId} onChange={e => setLead(Number(e.target.value))}>
               {picked.map(i => <option key={i} value={i}>{bots.find(b => b.id === i)?.name}</option>)}
             </select>
@@ -54,28 +56,28 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
         </>}
         {err && <div className="error-line">{err}</div>}
         <div className="modal-actions">
-          <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn primary" disabled={picked.length < MIN} onClick={create}>创建</button>
+          <button className="btn" onClick={onClose}>{t('取消')}</button>
+          <button className="btn primary" disabled={picked.length < MIN} onClick={create}>{t('创建')}</button>
         </div>
       </div>
     </div>
   )
 }
 
-export function GroupPanel({ chat, onClose, tab, setTab }: { chat: Chat; onClose: () => void; tab: string; setTab: (t: string) => void }) {
-  const t = tab === 'computer' || tab === 'tasks' ? tab : 'group'
+export function GroupPanel({ chat, onClose, tab, setTab }: { chat: Chat; onClose: () => void; tab: string; setTab: (tab: string) => void }) {
+  const cur = tab === 'computer' || tab === 'tasks' ? tab : 'group'
   return (
     <aside className="panel">
       <div className="panel-head">
         <div className="panel-tabs">
-          <button className={t === 'group' ? 'on' : ''} onClick={() => setTab('group')}>群聊</button>
-          <button className={t === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>任务</button>
-          <button className={t === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>电脑</button>
+          <button className={cur === 'group' ? 'on' : ''} onClick={() => setTab('group')}>{tc('tab', '群聊')}</button>
+          <button className={cur === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>{tc('tab', '任务')}</button>
+          <button className={cur === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>{t('电脑')}</button>
         </div>
         <button className="icon-btn" onClick={onClose}>✕</button>
       </div>
-      {t === 'tasks' ? <TasksPanel key={chat.id} chatId={chat.id} /> : <div className="panel-body">
-        {t === 'computer' ? <ComputerPanel key={chat.id} botId={chat.lead ?? chat.bot_ids[0]} /> : <GroupSettings key={chat.id} chat={chat} onClose={onClose} />}
+      {cur === 'tasks' ? <TasksPanel key={chat.id} chatId={chat.id} /> : <div className="panel-body">
+        {cur === 'computer' ? <ComputerPanel key={chat.id} botId={chat.lead ?? chat.bot_ids[0]} /> : <GroupSettings key={chat.id} chat={chat} onClose={onClose} />}
       </div>}
     </aside>
   )
@@ -94,17 +96,17 @@ function GroupSettings({ chat, onClose }: { chat: Chat; onClose: () => void }) {
     try { await api(`/api/chats/${chat.id}`, { method: 'PATCH', body }); await refreshLists() } catch (e: any) { setErr(e.message) }
   }
   const del = async () => {
-    if (!confirm(`删除群聊「${chat.title}」？群里的消息会一起删除，Bot 和它们的私聊不受影响。`)) return
+    if (!confirm(t('删除群聊「{name}」？群里的消息会一起删除，Bot 和它们的私聊不受影响。', { name: chat.title }))) return
     await api(`/api/chats/${chat.id}`, { method: 'DELETE' }); await refreshLists(); onClose()
     const first = bots[0]; if (first) openChat(first.chat_id)
   }
   const running = Object.values(tasks).filter(x => x.chat_id === chat.id && x.status === 'running')
   return (
     <>
-      <label className="field">群名<input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}
+      <label className="field">{t('群名')}<input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}
         onBlur={() => title !== chat.title && patch({ title })} onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} /></label>
-      <div className="section-head"><h4>成员（{members.length}/{MAX}）</h4>
-        {members.length < MAX && others.length > 0 && <button className="btn" onClick={() => setAdding(!adding)}>{adding ? '收起' : '＋ 添加'}</button>}
+      <div className="section-head"><h4>{t('成员（{n}/{max}）', { n: members.length, max: MAX })}</h4>
+        {members.length < MAX && others.length > 0 && <button className="btn" onClick={() => setAdding(!adding)}>{adding ? tc('add', '收起') : '＋ ' + t('添加')}</button>}
       </div>
       {adding && <div className="bot-picker compact">
         {others.map(b => <button key={b.id} onClick={() => { patch({ bot_ids: [...chat.bot_ids, b.id] }); setAdding(false) }}>
@@ -114,25 +116,25 @@ function GroupSettings({ chat, onClose }: { chat: Chat; onClose: () => void }) {
         <div key={b.id} className="member">
           <BotAvatar avatar={b.avatar} size={28} />
           <div className="member-main">
-            <b>{b.name}</b>{chat.lead === b.id && <span className="tag">协调者</span>}
-            <div className="muted small">{(b.instructions || '职责没写明').slice(0, 40)}</div>
+            <b>{b.name}</b>{chat.lead === b.id && <span className="tag">{t('协调者')}</span>}
+            <div className="muted small">{(b.instructions || t('职责没写明')).slice(0, 40)}</div>
           </div>
           <div className="member-actions">
-            <button className="ghost-btn" onClick={() => openChat(b.chat_id)}>私聊</button>
-            {chat.lead !== b.id && <button className="ghost-btn" onClick={() => patch({ lead: b.id })}>设为协调者</button>}
-            {members.length > MIN && <button className="ghost-btn" onClick={() => patch({ bot_ids: chat.bot_ids.filter(x => x !== b.id) })}>移出</button>}
+            <button className="ghost-btn" onClick={() => openChat(b.chat_id)}>{t('私聊')}</button>
+            {chat.lead !== b.id && <button className="ghost-btn" onClick={() => patch({ lead: b.id })}>{t('设为协调者')}</button>}
+            {members.length > MIN && <button className="ghost-btn" onClick={() => patch({ bot_ids: chat.bot_ids.filter(x => x !== b.id) })}>{t('移出')}</button>}
           </div>
         </div>
       ))}
-      {members.length < MIN && <div className="error-line">成员少于 {MIN} 个，再添加一个 Bot 吧。</div>}
-      <p className="muted small">没 @ 任何人的消息由协调者接。要确认的操作和“请你帮忙”会出现在对应 Bot 的私聊里。</p>
+      {members.length < MIN && <div className="error-line">{t('成员少于 {n} 个，再添加一个 Bot 吧。', { n: MIN })}</div>}
+      <p className="muted small">{t('没 @ 任何人的消息由协调者接。要确认的操作和“请你帮忙”会出现在对应 Bot 的私聊里。')}</p>
       {err && <div className="error-line">{err}</div>}
-      <h4>正在进行</h4>
+      <h4>{t('正在进行')}</h4>
       {running.length ? running.map(x => (
         <div key={x.id} className="mini-task"><span className="dot" />{bots.find(b => b.id === x.bot_id)?.name} #{x.id} {x.goal.slice(0, 50)}</div>
-      )) : <div className="muted small">没有正在进行的任务</div>}
-      <h4>管理</h4>
-      <button className="btn danger" onClick={del}>删除这个群聊</button>
+      )) : <div className="muted small">{t('没有正在进行的任务')}</div>}
+      <h4>{t('管理')}</h4>
+      <button className="btn danger" onClick={del}>{t('删除这个群聊')}</button>
     </>
   )
 }

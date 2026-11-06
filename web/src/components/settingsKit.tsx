@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import { useStore } from '../store'
 import { Icon } from '../icons'
+import { t } from '../i18n'
 import type { ModelInfo } from '../types'
 
 // 设置页共用的小部件：分区标题、保存后的提示、价格格式
@@ -38,28 +39,28 @@ export function ToastHost({ children }: { children: ReactNode }) {
 // 单价：元 / 百万 token
 export function money(n: number | null | undefined, cur = '¥') {
   if (n === undefined || n === null) return ''
-  if (n === 0) return '免费'
+  if (n === 0) return t('免费')
   return cur + (n >= 10 ? n.toFixed(0) : n >= 1 ? String(+n.toFixed(2)) : String(+n.toPrecision(2)))
 }
 
 export function priceText(info: ModelInfo | undefined, cur = '¥') {
   if (!info) return ''
-  if (info.source === 'local') return '本机运行，免费'
+  if (info.source === 'local') return t('本机运行，免费')
   if (info.input === undefined) return ''
-  if (!info.input && !info.output) return '免费'
-  const main = `输入 ${money(info.input, cur)} · 输出 ${money(info.output, cur)} / 百万 token`
-  return info.offpeak ? `${main}（空闲时段 ${money(info.offpeak[0], cur)} · ${money(info.offpeak[1], cur)}）` : main
+  if (!info.input && !info.output) return t('免费')
+  const main = t('输入 {input} · 输出 {output} / 百万 token', { input: money(info.input, cur), output: money(info.output, cur) })
+  return info.offpeak ? t('{main}（空闲时段 {input} · {output}）', { main, input: money(info.offpeak[0], cur), output: money(info.offpeak[1], cur) }) : main
 }
 
 export function priceSource(info: ModelInfo | undefined) {
-  if (!info?.source) return 'models.dev 里没有找到这个模型的单价，费用按 0 计'
-  if (info.source === 'config') return '单价写在 config.yaml 的 pricing 里，分高峰和空闲两档'
-  if (info.source === 'local') return '本机或内网的模型，费用按 0 计'
-  return `单价自动从 models.dev 获取${info.via ? `（按 ${info.via} 的价格估算）` : ''}`
+  if (!info?.source) return t('models.dev 里没有找到这个模型的单价，费用按 0 计')
+  if (info.source === 'config') return t('单价写在 config.yaml 的 pricing 里，分高峰和空闲两档')
+  if (info.source === 'local') return t('本机或内网的模型，费用按 0 计')
+  return info.via ? t('单价自动从 models.dev 获取（按 {via} 的价格估算）', { via: info.via }) : t('单价自动从 models.dev 获取')
 }
 
 export function PriceTag({ info }: { info: ModelInfo | undefined }) {
   const cur = useStore(x => x.settings?.prices.currency) || '¥'
   const text = priceText(info, cur)
-  return <span className={'chip' + (text ? '' : ' faint')} title={priceSource(info)}>{text || '没有单价'}</span>
+  return <span className={'chip' + (text ? '' : ' faint')} title={priceSource(info)}>{text || t('没有单价')}</span>
 }

@@ -8,6 +8,9 @@
 
 connect 是连接配置的模板：字符串里的 {字段名} 换成用户填的值。secret 字段先存进保险库，
 配置里只留 {vault:名字}，记在 owned 里，删除应用时一起删掉。
+
+en 是英文界面用的文案，写了的覆盖中文的，没写的照旧显示中文。界面语言能在运行中切换，
+所以读清单时原样留着，到 public()、title() 这些给界面用的地方再按当前语言换（_en）。
 """
 import inspect
 import json
@@ -15,6 +18,7 @@ import logging
 import re
 from pathlib import Path
 import yaml
+from .. import i18n
 from ..config import ROOT
 from . import checks
 
@@ -26,15 +30,23 @@ LOCAL = ROOT / "data" / "apps"
 WORKSPACE = ROOT / "data" / "workspace"
 
 # 分类按这个顺序显示。要加新分类，改这里
-CATEGORIES = {"notes": "笔记与文档", "mail": "邮件与日历", "files": "文件", "tasks": "任务与协作",
-              "design": "设计", "dev": "开发", "web": "搜索与网页", "life": "生活"}
+CATEGORIES = {"notes": i18n.N_("笔记与文档"), "mail": i18n.N_("邮件与日历"), "files": i18n.N_("文件"),
+              "tasks": i18n.N_("任务与协作"), "design": i18n.N_("设计"), "dev": i18n.N_("开发"),
+              "web": i18n.N_("搜索与网页"), "life": i18n.N_("生活")}
 # 没有品牌图标时可以用的线条图标，图形在 web/src/appIcons.ts
 GLYPHS = {"globe", "folder", "mail", "search", "train", "pin", "book", "doc", "feather", "plug",
           "chat", "hash", "package", "cloud", "palette", "table", "calendar", "check", "notebook"}
 
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")       # 文件名也是应用名，规则和 mcp_hub.NAME 一样
 KEYS = {"title", "category", "order", "by", "icon", "desc", "about", "can", "example", "note", "how",
-        "steps", "link", "link_label", "copy", "fields", "check", "deny", "confirm", "connect"}
+        "steps", "link", "link_label", "copy", "fields", "check", "deny", "confirm", "connect", "en"}
+# en 里能写的键：和中文的同名键一样，写了就在英文界面里替换掉。
+# fields 写成「字段的 key: {label, placeholder, invalid}」，check 写成「检查名: {hint}」，copy 只换 label
+EN_TEXT = ("title", "by", "desc", "about", "example", "note", "how", "link_label")
+EN_LIST = ("can", "steps")
+EN_KEYS = {*EN_TEXT, *EN_LIST, "copy", "fields", "check"}
+EN_FIELD_KEYS = ("label", "placeholder", "invalid")
+MENTION = re.compile(r"(?<![\w@.])@([a-z][a-z0-9_-]{0,23})\b")     # 和 skills._APP_REF 一样
 FIELD_KEYS = {"key", "label", "placeholder", "default", "secret", "optional", "nospace", "pattern", "invalid"}
 CONNECT_KEYS = {"type", "command", "args", "env", "url", "headers", "oauth"}
 OAUTH_KEYS = {"client_id", "client_secret", "scope", "params"}
@@ -132,6 +144,7 @@ def parse(name: str, m) -> dict:
     used = _check_connect(m.get("connect"), keys, bad)
     used |= _check_checks(m.get("check"), keys, bad)
     bad += [f"字段 {k} 没有用在 connect 或 check 里" for k in sorted(keys - used)]
+    _check_en(m.get("en"), m, fields, bad, text, texts)
 
     o = m["connect"].get("oauth") if isinstance(m.get("connect"), dict) else None
     oauth = o is True or isinstance(o, dict)
@@ -147,6 +160,61 @@ def parse(name: str, m) -> dict:
         "check": m.get("check") or {},
         "fields": [f | {"default": _fill(f["default"], builtin)} if "default" in f else f for f in fields],
     }
+
+
+def _check_en(en, m: dict, fields: list[dict], bad: list, text, texts):
+    """en：英文界面用的文案。只能换中文里已经有的文案，写了英文的中文改了时容易忘掉。"""
+    if en is None:
+        return
+    if not isinstance(en, dict):
+        bad.append("en 应该是一组「键: 值」（英文界面用的文案）")
+        return
+    bad += [f"en 里不认识的键 {k}（能写的：{'、'.join(sorted(EN_KEYS))}）" for k in en if k not in EN_KEYS]
+    bad += [f"en.{k} 没有对应的中文 {k}" for k in en if k in EN_KEYS and k not in m]
+    for k in EN_TEXT:
+        text(en.get(k), f"en.{k}")
+    for k in EN_LIST:
+        texts(en.get(k), f"en.{k}")
+    if isinstance(en.get("example"), str) and isinstance(m.get("example"), str):
+        want, got = set(MENTION.findall(m["example"])), set(MENTION.findall(en["example"]))
+        if got != want:
+            bad.append(f"en.example 要和中文的 example 一样 @ 这些应用：{'、'.join('@' + x for x in sorted(want)) or '（没有）'}")
+    cp = en.get("copy")
+    if cp is not None and not (isinstance(cp, dict) and set(cp) == {"label"} and isinstance(cp["label"], str)
+                               and cp["label"].strip()):
+        bad.append("en.copy 只写 label 一项文字（要复制的内容中英文都一样）")
+    ef = en.get("fields")
+    if ef is not None:
+        if not isinstance(ef, dict):
+            bad.append("en.fields 应该写成「字段的 key: {label: …}」")
+        else:
+            have = {f["key"]: f for f in fields}
+            for k, v in ef.items():
+                if k not in have:
+                    bad.append(f"en.fields 里的 {k} 不是 fields 里的字段")
+                elif not isinstance(v, dict):
+                    bad.append(f"en.fields.{k} 应该写成 label、placeholder、invalid 这样的一组键")
+                else:
+                    bad += [f"en.fields.{k} 里不认识的键 {x}（能写的：{'、'.join(EN_FIELD_KEYS)}）"
+                            for x in v if x not in EN_FIELD_KEYS]
+                    bad += [f"en.fields.{k}.{x} 没有对应的中文 {x}" for x in v if x in EN_FIELD_KEYS and x not in have[k]]
+                    for x in EN_FIELD_KEYS:
+                        text(v.get(x), f"en.fields.{k}.{x}")
+    ec = en.get("check")
+    if ec is not None:
+        ck = m.get("check") if isinstance(m.get("check"), dict) else {}
+        if not isinstance(ec, dict):
+            bad.append("en.check 应该写成「检查名: {hint: …}」")
+        else:
+            for k, v in ec.items():
+                if k not in ck:
+                    bad.append(f"en.check 里的 {k} 不是 check 里的检查")
+                elif not isinstance(v, dict) or set(v) != {"hint"}:
+                    bad.append(f"en.check.{k} 只写 hint 一项")
+                elif not isinstance(ck[k], dict) or "hint" not in ck[k]:
+                    bad.append(f"en.check.{k}.hint 没有对应的中文 hint")
+                else:
+                    text(v["hint"], f"en.check.{k}.hint")
 
 
 def _check_icon(ic, bad: list):
@@ -283,10 +351,25 @@ def _check_checks(ck, keys: set, bad: list) -> set[str]:
 
 
 # ---------- 给前端和其他模块用 ----------
+def _en(it: dict) -> dict:
+    """英文界面时，用清单 en 里写了的英文换掉中文；没写的、中文界面都原样返回。"""
+    en = it.get("en")
+    if not en or i18n.lang() != "en":
+        return it
+    o = it | {k: en[k] for k in (*EN_TEXT, *EN_LIST) if k in en}
+    if "copy" in en:
+        o["copy"] = it["copy"] | en["copy"]
+    if "fields" in en:
+        o["fields"] = [f | en["fields"].get(f["key"], {}) for f in it["fields"]]
+    if "check" in en:
+        o["check"] = {n: p | en["check"].get(n, {}) for n, p in it["check"].items()}
+    return o
+
+
 def public() -> list[dict]:
     out = []
-    for it in items().values():
-        o = {k: v for k, v in it.items() if k not in ("connect", "check", "order")}
+    for it in map(_en, items().values()):
+        o = {k: v for k, v in it.items() if k not in ("connect", "check", "order", "en")}
         o["fields"] = [{k: v for k, v in f.items() if k not in ("pattern", "nospace")} for f in it["fields"]]
         o.setdefault("example", "")
         o.setdefault("about", "")
@@ -298,14 +381,14 @@ def public() -> list[dict]:
 def categories() -> list[list[str]]:
     """有应用的分类，按显示顺序：[[键, 名字], …]。"""
     used = {i["category"] for i in items().values()}
-    return [[k, v] for k, v in CATEGORIES.items() if k in used]
+    return [[k, i18n.t(v)] for k, v in CATEGORIES.items() if k in used]
 
 
 def title(name: str) -> str:
     from .. import mcp_hub
     a = mcp_hub.get(name) or {}
     i = items().get(a.get("catalog") or name)
-    return i["title"] if i else "@" + name
+    return _en(i)["title"] if i else "@" + name
 
 
 def _fill(v, subst: dict):
@@ -326,16 +409,16 @@ def _values(it: dict, values: dict) -> dict:
         if f.get("nospace"):
             v = re.sub(r"\s+", "", v)
         if not v and not f.get("optional"):
-            raise ValueError(f"请填写{f['label']}")
+            raise ValueError(i18n.t("请填写{label}", label=f["label"]))
         if v and f.get("pattern") and not re.search(f["pattern"], v):
-            raise ValueError(f.get("invalid") or f"{f['label']}的格式不对")
+            raise ValueError(f.get("invalid") or i18n.t("{label}的格式不对", label=f["label"]))
         vals[f["key"]] = v
     return vals
 
 
 async def check(item_id: str, values: dict):
     """添加前先按清单里的 check 试一下填的东西对不对，错了直接告诉用户，不用等应用连接失败。"""
-    it = items().get(item_id) or {}
+    it = _en(items().get(item_id) or {})
     if not it.get("check"):
         return
     vals = _values(it, values)
@@ -348,8 +431,8 @@ def build(item_id: str, values: dict) -> dict:
     from .. import vault
     it = items().get(item_id)
     if not it:
-        raise ValueError("应用市场里没有这个应用")
-    vals = _values(it, values)
+        raise ValueError(i18n.t("应用市场里没有这个应用"))
+    vals = _values(_en(it), values)
     subst, owned = {}, []
     for f in it["fields"]:
         v = vals[f["key"]]

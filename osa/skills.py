@@ -13,6 +13,7 @@ import time
 from urllib.parse import urlparse
 import httpx
 import yaml
+from . import i18n
 from .memory import conn
 
 conn.execute("""create table if not exists skills(
@@ -62,11 +63,11 @@ def find(bot_id: int, name: str) -> dict | None:
 def _check(name: str, body: str):
     name = name.strip().lstrip("/")
     if not NAME_RE.match(name):
-        raise ValueError("技能名只能用中文、字母、数字、- 和 _，最长 40 个字")
+        raise ValueError(i18n.t("技能名只能用中文、字母、数字、- 和 _，最长 40 个字"))
     if not body.strip():
-        raise ValueError("技能内容不能为空")
+        raise ValueError(i18n.t("技能内容不能为空"))
     if len(body) > MAX_BODY:
-        raise ValueError(f"技能做法太长了（{len(body)} 个字），最多 {MAX_BODY} 个字")
+        raise ValueError(i18n.t("技能做法太长了（{count} 个字），最多 {max} 个字", count=len(body), max=MAX_BODY))
     return name
 
 
@@ -81,13 +82,13 @@ def save(bot_id: int | None, name: str, body: str, description: str = "", source
     if sid is None:
         n = conn.execute("select count(*) from skills where bot_id is ?", (bot_id,)).fetchone()[0]
         if n >= MAX_PER_BOT:
-            raise ValueError(f"每个 Bot 最多 {MAX_PER_BOT} 个技能")
+            raise ValueError(i18n.t("每个 Bot 最多 {n} 个技能", n=MAX_PER_BOT))
         sid = conn.execute("insert into skills(bot_id, name, description, body, source, created, updated) "
                            "values(?,?,?,?,?,?,?)", (bot_id, name, description[:200], body, source, now, now)).lastrowid
     else:
         dup = conn.execute("select id from skills where name=? and bot_id is ? and id != ?", (name, bot_id, sid)).fetchone()
         if dup:
-            raise ValueError(f"已经有叫 /{name} 的技能了")
+            raise ValueError(i18n.t("已经有叫 /{name} 的技能了", name=name))
         conn.execute("update skills set bot_id=?, name=?, description=?, body=?, updated=? where id=?",
                      (bot_id, name, description[:200], body, now, sid))
     conn.commit()
@@ -148,15 +149,15 @@ def from_file(text: str, filename: str = "") -> dict:
     """解析一个技能文件，返回 {name, description, body}；格式不对就抛 ValueError。"""
     text = (text or "").lstrip("\ufeff").replace("\r\n", "\n")
     if len(text) > MAX_FILE:
-        raise ValueError("文件太大了，不像是一个技能")
+        raise ValueError(i18n.t("文件太大了，不像是一个技能"))
     head, body = {}, text
     if m := re.match(r"^---[ \t]*\n(.*?)\n---[ \t]*(?:\n|$)", text, re.S):
         try:
             head = yaml.safe_load(m[1]) or {}
         except yaml.YAMLError as e:
-            raise ValueError(f"开头的 YAML 写错了：{str(e).splitlines()[0]}")
+            raise ValueError(i18n.t("开头的 YAML 写错了：{e}", e=str(e).splitlines()[0]))
         if not isinstance(head, dict):
-            raise ValueError("开头的 YAML 应该是一组「键: 值」")
+            raise ValueError(i18n.t("开头的 YAML 应该是一组「键: 值」"))
         body = text[m.end():]
     body = body.strip()
     name = head.get("name")
@@ -167,7 +168,7 @@ def from_file(text: str, filename: str = "") -> dict:
         name = h[1]
     name = _clean_name(name or "")
     if not name:
-        raise ValueError("没找到技能的名字：在文件开头写上 name")
+        raise ValueError(i18n.t("没找到技能的名字：在文件开头写上 name"))
     desc = head.get("description") or ""
     if not isinstance(desc, str):
         desc = str(desc)
@@ -178,7 +179,7 @@ def from_file(text: str, filename: str = "") -> dict:
 def share(sid: int, on: bool) -> dict:
     s = get(sid)
     if not s:
-        raise ValueError("没有这个技能")
+        raise ValueError(i18n.t("没有这个技能"))
     token = (s["share_token"] or secrets.token_urlsafe(16)) if on else None
     conn.execute("update skills set share_token=? where id=?", (token, sid))
     conn.commit()
@@ -197,7 +198,7 @@ def raw_url(url: str) -> tuple[str, str]:
     url = url.strip()
     u = urlparse(url)
     if u.scheme not in ("http", "https") or not u.netloc:
-        raise ValueError("链接要以 http:// 或 https:// 开头")
+        raise ValueError(i18n.t("链接要以 http:// 或 https:// 开头"))
     parts = [x for x in u.path.split("/") if x]
     if len(parts) == 2 and parts[0] == "skill":                       # 别人的 open-super-agent 分享出来的
         return f"{u.scheme}://{u.netloc}/api/shared/skills/{parts[1]}/raw", ""
@@ -220,20 +221,20 @@ async def fetch(url: str) -> dict:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
             async with c.stream("GET", src, headers={"accept": "text/markdown, text/plain;q=0.9, */*;q=0.5"}) as r:
                 if r.status_code == 404:
-                    raise ValueError("链接打不开（404）：分享可能已经取消了，或者地址不对")
+                    raise ValueError(i18n.t("链接打不开（404）：分享可能已经取消了，或者地址不对"))
                 if r.status_code >= 400:
-                    raise ValueError(f"链接打不开（{r.status_code}）")
+                    raise ValueError(i18n.t("链接打不开（{code}）", code=r.status_code))
                 if "text/html" in r.headers.get("content-type", ""):
-                    raise ValueError("这个链接打开是一个网页，不是技能文件。GitHub 上的请用文件或文件夹的链接")
+                    raise ValueError(i18n.t("这个链接打开是一个网页，不是技能文件。GitHub 上的请用文件或文件夹的链接"))
                 data = b""
                 async for chunk in r.aiter_bytes():
                     data += chunk
                     if len(data) > MAX_FILE:
-                        raise ValueError("文件太大了，不像是一个技能")
+                        raise ValueError(i18n.t("文件太大了，不像是一个技能"))
     except httpx.HTTPError as e:
-        raise ValueError(f"取不到这个链接（{type(e).__name__}）")
+        raise ValueError(i18n.t("取不到这个链接（{e}）", e=type(e).__name__))
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
-        raise ValueError("不是文字文件")
+        raise ValueError(i18n.t("不是文字文件"))
     return from_file(text, name)

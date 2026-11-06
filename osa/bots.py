@@ -1,6 +1,7 @@
 """Bot 和对话的增删改查。每个 Bot 有一个私聊对话；群聊的 bot_ids 有 2–6 个，lead 是协调者。"""
 import json
 import time
+from . import i18n
 from .memory import conn
 
 if "lead" not in {r[1] for r in conn.execute("pragma table_info(chats)")}:
@@ -45,11 +46,11 @@ def primary() -> dict:
 def create(name: str, avatar: dict | None = None, instructions: str = "", is_primary: bool = False) -> dict:
     n = conn.execute("select count(*) from bots").fetchone()[0]
     if n >= MAX_BOTS:
-        raise ValueError(f"最多 {MAX_BOTS} 个 Bot")
+        raise ValueError(i18n.t("最多 {n} 个 Bot", n=MAX_BOTS))
     avatar = avatar or {"shape": SHAPES[n % len(SHAPES)], "color": COLORS[n % len(COLORS)]}
     now = time.time()
     cur = conn.execute("insert into bots(name, avatar, instructions, is_primary, created) values(?,?,?,?,?)",
-                       (name.strip()[:40] or "未命名", json.dumps(avatar), instructions, int(is_primary), now))
+                       (name.strip()[:40] or i18n.t("未命名"), json.dumps(avatar), instructions, int(is_primary), now))
     bid = cur.lastrowid
     conn.execute("insert into chats(kind, title, bot_ids, updated) values('direct', ?, ?, ?)",
                  (name, json.dumps([bid]), now))
@@ -77,7 +78,7 @@ def delete(bot_id: int):
     if not b:
         return
     if b["is_primary"]:
-        raise ValueError("主 Bot 不能删除，先把别的 Bot 设为主 Bot")
+        raise ValueError(i18n.t("主 Bot 不能删除，先把别的 Bot 设为主 Bot"))
     conn.execute("delete from task_steps where task_id in (select id from messages where chat_id=?)", (b["chat_id"],))
     conn.execute("delete from messages where chat_id=?", (b["chat_id"],))
     conn.execute("delete from chats where id=?", (b["chat_id"],))
@@ -111,16 +112,16 @@ def _members(bot_ids) -> list[int]:
         i = int(i)
         if i not in ids:
             if not get(i):
-                raise ValueError(f"没有 Bot #{i}")
+                raise ValueError(i18n.t("没有 Bot #{id}", id=i))
             ids.append(i)
     if not GROUP_MIN <= len(ids) <= GROUP_MAX:
-        raise ValueError(f"群聊要有 {GROUP_MIN}–{GROUP_MAX} 个 Bot")
+        raise ValueError(i18n.t("群聊要有 {min}–{max} 个 Bot", min=GROUP_MIN, max=GROUP_MAX))
     return ids
 
 
 def auto_title(ids: list[int]) -> str:
     names = [get(i)["name"] for i in ids]
-    return "、".join(names[:3]) + (f" 等 {len(names)} 个" if len(names) > 3 else "")
+    return i18n.t("、").join(names[:3]) + (i18n.t(" 等 {n} 个", n=len(names)) if len(names) > 3 else "")
 
 
 def _lead(ids: list[int], lead) -> int:
@@ -133,7 +134,7 @@ def _lead(ids: list[int], lead) -> int:
 def create_group(bot_ids, title: str = "", lead=None) -> dict:
     ids = _members(bot_ids)
     if conn.execute("select count(*) from chats where kind='group'").fetchone()[0] >= MAX_GROUPS:
-        raise ValueError(f"最多 {MAX_GROUPS} 个群聊")
+        raise ValueError(i18n.t("最多 {n} 个群聊", n=MAX_GROUPS))
     cur = conn.execute("insert into chats(kind, title, bot_ids, updated, lead) values('group', ?, ?, ?, ?)",
                        ((title or "").strip()[:60] or auto_title(ids), json.dumps(ids), time.time(), _lead(ids, lead)))
     conn.commit()
@@ -143,7 +144,7 @@ def create_group(bot_ids, title: str = "", lead=None) -> dict:
 def update_group(chat_id: int, title: str | None = None, bot_ids=None, lead=None) -> dict:
     g = chat(chat_id)
     if not g or g["kind"] != "group":
-        raise ValueError("没有这个群聊")
+        raise ValueError(i18n.t("没有这个群聊"))
     ids = _members(bot_ids) if bot_ids is not None else g["bot_ids"]
     if title is not None:
         conn.execute("update chats set title=? where id=?", (title.strip()[:60] or auto_title(ids), chat_id))

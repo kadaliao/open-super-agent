@@ -15,7 +15,7 @@ reply 的样子：{"bot": 等回信的 Bot, "chat": 它在哪个对话里等, "d
 """
 import asyncio
 import time
-from . import bots, memory
+from . import bots, i18n, memory
 
 MAX_DEPTH = 5
 notify = None   # 由 server 设置：async (event) -> None
@@ -24,7 +24,7 @@ _queued: dict[tuple, dict] = {}   # 排着队还没开始的一轮：(Bot, 对�
 
 def _name(bot_id: int | None) -> str:
     b = bots.get(bot_id) if bot_id else None
-    return b["name"] if b else "已删除的 Bot"
+    return b["name"] if b else i18n.t("已删除的 Bot")
 
 
 async def _message(chat_id: int, content: str, bot_id: int, **meta) -> int:
@@ -54,11 +54,11 @@ async def answer(sender: int, reply: dict, text: str, from_chat: int, **meta):
     """sender 把回信送回 reply 指的 Bot。from_chat 是 sender 写回信的对话（它的私聊），在那里留一条“已回复”。"""
     to = bots.get(reply["bot"])
     if not to:
-        await _message(from_chat, "[等回信的 Bot 已经删除，回信没有送出]", sender, kind="note")
+        await _message(from_chat, i18n.t("[等回信的 Bot 已经删除，回信没有送出]"), sender, kind="note")
         return
     chat = bots.chat(reply["chat"])
     cid = reply["chat"] if chat and (chat["kind"] != "group" or to["id"] in chat["bot_ids"]) else to["chat_id"]
-    await _message(from_chat, f"[已回复 {to['name']}]", sender, kind="dm_reply", to=to["id"], sent=True, chat=cid)
+    await _message(from_chat, i18n.t("[已回复 {name}]", name=to["name"]), sender, kind="dm_reply", to=to["id"], sent=True, chat=cid)
     await _message(cid, text, sender, kind="dm_reply", to=to["id"], **meta)
     asyncio.create_task(_wake(to["id"], cid, {"reply": reply["then"], "depth": reply["depth"],
                                              "woke": {"kind": "reply", "from": sender, "text": text}}))
@@ -69,7 +69,7 @@ async def after_task(task):
     if task.status == "done":
         text = task.result   # 给模型看时 memory 会标上是哪个任务的结果
     else:   # result 里是“任务失败：……”或“已取消：谁取消的”
-        text = f"（任务 #{task.id} 没做完。{task.result or task.status}）"
+        text = i18n.t("（任务 #{id} 没做完。{result}）", id=task.id, result=task.result or task.status)
     await answer(task.bot_id, task.reply, text, task.chat_id, task_id=task.id, status=task.status)
 
 
@@ -101,7 +101,7 @@ async def _wake(bot_id: int, chat_id: int, turn: dict):
             await router.runtime(bot_id).respond(chat_id, turn)
     except Exception as e:
         if notify:
-            await notify({"type": "error", "chat_id": chat_id, "message": f"{_name(bot_id)} 出错了：{e}"})
+            await notify({"type": "error", "chat_id": chat_id, "message": i18n.t("{name} 出错了：{e}", name=_name(bot_id), e=e)})
     finally:
         if _queued.get(key) is turn:   # 群里没轮到它（比如已经不在群里）
             del _queued[key]

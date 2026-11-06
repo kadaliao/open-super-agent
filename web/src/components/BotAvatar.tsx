@@ -1,4 +1,5 @@
 import type { Avatar } from '../types'
+import { t } from '../i18n'
 
 // 形状都画在 100×100 的画布里；眼睛统一画在中间偏上
 const SHAPES: Record<string, string> = {
@@ -28,5 +29,5 @@ export default function BotAvatar({ avatar, size = 32, busy = false }: { avatar:
 }
 
 export const SHAPE_NAMES: Record<string, string> = {
-  square: '方块', circle: '圆', sparkle: '闪光', star: '星星', heart: '爱心', house: '房子', clover: '四叶草', flower: '花',
+  square: t('方块'), circle: t('圆'), sparkle: t('闪光'), star: t('星星'), heart: t('爱心'), house: t('房子'), clover: t('四叶草'), flower: t('花'),
 }

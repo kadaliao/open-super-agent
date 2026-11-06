@@ -9,6 +9,15 @@ can:
 - 按意思搜索网页
 - 读取网页正文
 example: '@exa 找几篇 2026 年讲 MCP 授权的英文文章'
+en:
+  title: Exa Search
+  by: Official (Exa)
+  desc: English web search built for AI, no setup
+  about: Exa's free remote search, good for English-language sources and finding similar pages. The free tier is rate-limited.
+  can:
+  - Search the web by meaning
+  - Read page content
+  example: '@exa find a few English articles from 2026 about MCP authorization'
 connect:
   type: http
   url: https://mcp.exa.ai/mcp

@@ -31,6 +31,7 @@ from pathlib import Path
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from . import i18n   # 只读 locales/en.json，不碰数据库（这个模块在打开数据库之前就要导入）
 from .config import CFG, ROOT
 
 MAGIC = b"OSABAK1\n"
@@ -66,7 +67,7 @@ def _nonce(prefix: bytes, i: int, last: bool) -> bytes:
 
 def check_passphrase(p: str):
     if len(p or "") < MIN_PASS:
-        raise BackupError(f"口令至少 {MIN_PASS} 个字符：备份里有你所有的密钥，口令就是保护它们的锁")
+        raise BackupError(i18n.t("口令至少 {n} 个字符：备份里有你所有的密钥，口令就是保护它们的锁", n=MIN_PASS))
 
 
 # ---------- 加密、解密 ----------
@@ -89,7 +90,7 @@ def encrypt(src: Path, dst: Path, passphrase: str):
 def decrypt(src: Path, dst: Path, passphrase: str):
     with open(src, "rb") as f:
         if f.read(len(MAGIC)) != MAGIC:
-            raise BackupError("这不是 open-super-agent 的备份文件")
+            raise BackupError(i18n.t("这不是 open-super-agent 的备份文件"))
         hline = f.readline(2048)
         try:
             head = json.loads(hline)
@@ -99,7 +100,7 @@ def decrypt(src: Path, dst: Path, passphrase: str):
         except (ValueError, KeyError, TypeError):
             ok = False
         if not ok or len(prefix) != 7:
-            raise BackupError("备份文件的开头坏了")
+            raise BackupError(i18n.t("备份文件的开头坏了"))
         aes, ad, size = _key(passphrase, head), MAGIC + hline, head["chunk"] + 16
         with open(dst, "wb") as out:
             i, buf = 0, f.read(size)
@@ -108,7 +109,7 @@ def decrypt(src: Path, dst: Path, passphrase: str):
                 try:
                     out.write(aes.decrypt(_nonce(prefix, i, not nxt), buf, ad))
                 except InvalidTag:
-                    raise BackupError("口令不对（或者文件坏了）" if i == 0 else "备份文件不完整，或者被改过")
+                    raise BackupError(i18n.t("口令不对（或者文件坏了）") if i == 0 else i18n.t("备份文件不完整，或者被改过"))
                 if not nxt:
                     return
                 buf, i = nxt, i + 1
@@ -216,11 +217,11 @@ def stage(upload: Path, passphrase: str) -> dict:
             names = set(z.namelist())
             meta = json.loads(z.read("backup.json"))
         except (zipfile.BadZipFile, KeyError, ValueError):
-            raise BackupError("备份文件里的内容坏了")
+            raise BackupError(i18n.t("备份文件里的内容坏了"))
         if meta.get("format") != FORMAT:
-            raise BackupError("这个备份是更新版本的 open-super-agent 做的，先升级再恢复")
+            raise BackupError(i18n.t("这个备份是更新版本的 open-super-agent 做的，先升级再恢复"))
         if "osa.db" not in names or sum(i.file_size for i in z.infolist()) > MAX_UNZIPPED:
-            raise BackupError("备份文件里的内容不对")
+            raise BackupError(i18n.t("备份文件里的内容不对"))
         shutil.rmtree(STAGE, ignore_errors=True)
         STAGE.mkdir(parents=True)
         with z.open("osa.db") as src, open(STAGE / "osa.db", "wb") as dst:
@@ -228,12 +229,12 @@ def stage(upload: Path, passphrase: str) -> dict:
         db = sqlite3.connect(STAGE / "osa.db")
         try:
             if db.execute("pragma integrity_check").fetchone()[0] != "ok":
-                raise BackupError("备份里的数据库坏了")
+                raise BackupError(i18n.t("备份里的数据库坏了"))
         except sqlite3.DatabaseError:
-            raise BackupError("备份里的数据库坏了")
+            raise BackupError(i18n.t("备份里的数据库坏了"))
         have = {r[0] for r in db.execute("select name from sqlite_master where type='table'")}
         if NEED_TABLES - have:
-            raise BackupError("备份里不是 open-super-agent 的数据")
+            raise BackupError(i18n.t("备份里不是 open-super-agent 的数据"))
         secrets = json.loads(z.read("secrets.json")) if "secrets.json" in names else {}
         key = vault._key()   # 这台机器的主密钥
         db.execute("create table if not exists vault(name text primary key, ciphertext blob, created real)")
@@ -270,7 +271,7 @@ def cancel():
 def confirm():
     """标记好，下次启动时换上。"""
     if not (STAGE / "meta.json").exists():
-        raise BackupError("没有等待恢复的备份，请重新上传")
+        raise BackupError(i18n.t("没有等待恢复的备份，请重新上传"))
     (STAGE / "ready").write_text(str(time.time()))
 
 

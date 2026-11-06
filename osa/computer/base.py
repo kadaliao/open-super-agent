@@ -12,6 +12,7 @@ import shlex
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from .. import i18n
 from ..config import CFG
 
 _HELPER = (Path(__file__).parent / "cdp_helper.py").read_bytes()
@@ -46,7 +47,7 @@ class ExecResult:
 
 def keysym(key: str) -> str:
     if not key or any(c.isspace() for c in key):
-        raise ComputerError(f"按键名不合法：{key!r}")
+        raise ComputerError(i18n.t("按键名不合法：{key}", key=repr(key)))
     low = key.lower()
     if low in KEYS:
         return KEYS[low]
@@ -89,7 +90,7 @@ class Computer:
 
     def busy(self) -> str:
         """谁在用电脑，给排队提示和 Bot 看。"""
-        return self.exclusive_label or "、".join(u["label"] for u in self.users.values())
+        return self.exclusive_label or i18n.t("、").join(u["label"] for u in self.users.values())
 
     def changed(self):
         if self.on_change:
@@ -106,7 +107,7 @@ class Computer:
                 self.changed()
                 try:
                     if on_wait:
-                        await on_wait(f"排队等电脑（{self.busy()} 正在用）")
+                        await on_wait(i18n.t("排队等电脑（{who} 正在用）", who=self.busy()))
                     await self._free.wait_for(ok)
                 finally:   # 排队时被取消也要从队里拿掉
                     self.waiting.pop(key, None)
@@ -118,7 +119,7 @@ class Computer:
         """演示录制：没有任务在用时才能开始，录制期间任务都排队。"""
         async with self._free:
             if self.exclusive or self.users:
-                raise ComputerError(f"电脑正在被用着（{self.busy()}）")
+                raise ComputerError(i18n.t("电脑正在被用着（{who}）", who=self.busy()))
             self.exclusive, self.exclusive_label = key, label
         self.changed()
 
@@ -170,19 +171,19 @@ class Computer:
     async def read_bytes(self, path: str, limit: int = 32 << 20) -> bytes:
         r = await self.exec(f"[ -f {shlex.quote(path)} ] || exit 3; base64 -w0 {shlex.quote(path)}", 120)
         if r.exit_code == 3:
-            raise ComputerError(f"文件不存在：{path}")
+            raise ComputerError(i18n.t("文件不存在：{path}", path=path))
         if r.exit_code:
-            raise ComputerError(r.stderr or "读取失败")
+            raise ComputerError(r.stderr or i18n.t("读取失败"))
         data = base64.b64decode(r.stdout)
         if len(data) > limit:
-            raise ComputerError("文件太大")
+            raise ComputerError(i18n.t("文件太大"))
         return data
 
     async def write_bytes(self, path: str, data: bytes):
         q = shlex.quote(path)
         r = await self.exec(f"mkdir -p \"$(dirname {q})\" && base64 -d > {q}", 120, stdin=base64.b64encode(data).decode())
         if r.exit_code:
-            raise ComputerError(r.stderr or "写入失败")
+            raise ComputerError(r.stderr or i18n.t("写入失败"))
 
     async def open_vnc(self):
         """返回一个双向通道 (recv, send, close)，传的是 VNC（RFB）字节流，给网页上的实时画面用。"""
@@ -210,7 +211,7 @@ class Computer:
             self.last_used = time.time()
             r = await self.exec(f"export DISPLAY={DISPLAY}; {cmd}", timeout, stdin)
         if r.exit_code:
-            raise ComputerError((r.stderr or r.stdout or f"退出码 {r.exit_code}").strip()[:500])
+            raise ComputerError((r.stderr or r.stdout or i18n.t("退出码 {code}", code=r.exit_code)).strip()[:500])
         return r
 
     async def screenshot(self) -> bytes:
@@ -235,7 +236,7 @@ class Computer:
     async def press(self, keys: str | list[str], as_human: bool = False):
         ks = keys if isinstance(keys, list) else [k for k in str(keys).replace(" ", "").split("+") if k]
         if not ks:
-            raise ComputerError("没有按键")
+            raise ComputerError(i18n.t("没有按键"))
         await self._desktop(f"xdotool key -- {shlex.quote('+'.join(keysym(k) for k in ks))}", as_human=as_human)
 
     # ---------- 浏览器（CDP） ----------
@@ -252,12 +253,12 @@ class Computer:
             r = await self.exec(f"export DISPLAY={DISPLAY}; python3 {HELPER_PATH}", 90, stdin)
             if r.exit_code == 0:
                 return json.loads(r.stdout.strip().splitlines()[-1])
-            err = (r.stderr or r.stdout or f"退出码 {r.exit_code}").strip()
+            err = (r.stderr or r.stdout or i18n.t("退出码 {code}", code=r.exit_code)).strip()
             if attempt == 0 and ("No such file" in err or "can't open file" in err):
                 self._helper_ok = False
                 continue
             raise ComputerError(err.splitlines()[-1].removeprefix("RuntimeError: ")[:500])
-        raise ComputerError("浏览器控制脚本运行失败")
+        raise ComputerError(i18n.t("浏览器控制脚本运行失败"))
 
     def _win(self, key: str, op: str = "") -> dict:
         """告诉脚本这次在哪个窗口做（见 cdp_helper.Ctx）。op 是要做的动作：对话里打开网页时可以换窗口。"""
@@ -324,7 +325,7 @@ class Computer:
                 raise
             self._set_window(key, out.get("window"), out.get("browser"))   # 点链接弹出的新窗口，脚本会跟过去
             return out
-        raise ComputerError("找不到浏览器窗口")
+        raise ComputerError(i18n.t("找不到浏览器窗口"))
 
     async def page_shot(self, key: str) -> bytes:
         """截取 key 自己窗口里的页面（不含浏览器边框），点击坐标以它为准。"""

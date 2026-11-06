@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
-from . import approvals, auth, bots, catalog, channels, computer, dm, groups, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import approvals, auth, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, memories, memory, push, router as rt, routines
 from . import prices, providers, search, settings, skills, tasklog, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
@@ -90,6 +90,8 @@ def _err(e: Exception):
 # ---------- Bot 与对话 ----------
 @app.get("/api/bootstrap")
 async def bootstrap(request: Request):
+    if not i18n.chosen():   # 第一次打开：新装的按浏览器的语言，升级上来的老用户保持中文
+        i18n.set_lang(i18n.from_header(request.headers.get("accept-language")) if settings.onboarding() else "zh")
     return {"bots": bots.list_bots(), "chats": bots.list_chats(), "settings": settings.public(),
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
@@ -110,7 +112,7 @@ async def create_bot(data: dict = Body(...)):
 @app.patch("/api/bots/{bot_id}")
 async def update_bot(bot_id: int, data: dict = Body(...)):
     if not bots.get(bot_id):
-        raise HTTPException(404, "没有这个 Bot")
+        raise HTTPException(404, i18n.t("没有这个 Bot"))
     b = bots.update(bot_id, **data)
     if data.get("name"):
         memory.conn.execute("update chats set title=? where id=?", (b["name"], b["chat_id"]))
@@ -130,7 +132,7 @@ async def make_primary(bot_id: int):
 async def delete_bot(bot_id: int):
     for t in list(rt.TASKS.values()):
         if t.bot_id == bot_id and t.status == "running":
-            rt.cancel(t.id, "Bot 已删除")
+            rt.cancel(t.id, i18n.t("Bot 已删除"))
     chat_id = (bots.get(bot_id) or {}).get("chat_id")
     try:
         bots.delete(bot_id)
@@ -176,10 +178,10 @@ async def update_group(chat_id: int, data: dict = Body(...)):
 async def delete_group(chat_id: int):
     chat = bots.chat(chat_id)
     if not chat or chat["kind"] != "group":
-        raise HTTPException(400, "只能删除群聊；Bot 的私聊随 Bot 一起删除")
+        raise HTTPException(400, i18n.t("只能删除群聊；Bot 的私聊随 Bot 一起删除"))
     for t in list(rt.TASKS.values()):
         if t.chat_id == chat_id and t.status == "running":
-            rt.cancel(t.id, "群聊已删除")
+            rt.cancel(t.id, i18n.t("群聊已删除"))
     bots.delete_group(chat_id)
     groups.forget(chat_id)
     channels.chat_removed(chat_id)
@@ -192,7 +194,7 @@ async def new_topic(chat_id: int):
     """新话题：之前的消息不再带进 Bot 的上下文，长期记忆还在。"""
     chat = bots.chat(chat_id)
     if not chat:
-        raise HTTPException(404, "没有这个对话")
+        raise HTTPException(404, i18n.t("没有这个对话"))
     return {"id": await reset_chat(chat)}
 
 
@@ -228,20 +230,20 @@ async def task_detail(task_id: int):
     """一个任务的详情和过程（每一步想了什么、调了什么工具、拿到了什么）。"""
     t = tasklog.detail(task_id)
     if not t:
-        raise HTTPException(404, "没有这个任务")
+        raise HTTPException(404, i18n.t("没有这个任务"))
     return {"task": _live(t), "steps": tasklog.steps(task_id)}
 
 
 @app.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: int):
-    return {"result": rt.cancel(task_id, "用户在界面上取消")}
+    return {"result": rt.cancel(task_id, i18n.t("用户在界面上取消"))}
 
 
 # ---------- 技能 ----------
 def _bot_or_404(bot_id: int) -> dict:
     b = bots.get(bot_id)
     if not b:
-        raise HTTPException(404, "没有这个 Bot")
+        raise HTTPException(404, i18n.t("没有这个 Bot"))
     return b
 
 
@@ -277,7 +279,7 @@ async def teach_start(bot_id: int, data: dict = Body(default={})):
 async def teach_action(action: str):
     """stop：结束并生成技能草稿（不保存，交给用户审核）；cancel：放弃这段录制。"""
     if action not in ("stop", "cancel"):
-        raise HTTPException(404, "未知操作")
+        raise HTTPException(404, i18n.t("未知操作"))
     try:
         if action == "stop":
             return await teach.stop()
@@ -311,15 +313,15 @@ async def push_unsubscribe(data: dict = Body(...)):
 @app.post("/api/push/test")
 async def push_test():
     if not push.count():
-        raise HTTPException(400, "还没有设备开启推送")
-    return {"results": await push.send("推送测试", "能收到这条，说明这台设备的推送是通的。", "/", "test")}
+        raise HTTPException(400, i18n.t("还没有设备开启推送"))
+    return {"results": await push.send(i18n.t("推送测试"), i18n.t("能收到这条，说明这台设备的推送是通的。"), "/", "test")}
 
 
 @app.put("/api/skills/{sid}")
 async def update_skill(sid: int, data: dict = Body(...)):
     old = skills.get(sid)
     if not old:
-        raise HTTPException(404, "没有这个技能")
+        raise HTTPException(404, i18n.t("没有这个技能"))
     owner = old["bot_id"] if "shared" not in data else (None if data["shared"] else data.get("bot_id", old["bot_id"]))
     try:
         s = skills.save(owner, data.get("name", old["name"]), data.get("body", old["body"]),
@@ -346,7 +348,7 @@ def _skill_file(s: dict) -> Response:
 async def export_skill(sid: int):
     s = skills.get(sid)
     if not s:
-        raise HTTPException(404, "没有这个技能")
+        raise HTTPException(404, i18n.t("没有这个技能"))
     return _skill_file(s)
 
 
@@ -381,7 +383,7 @@ async def parse_skill(bot_id: int, data: dict = Body(...)):
 async def shared_skill(token: str):
     s = skills.by_token(token)
     if not s:
-        raise HTTPException(404, "链接已失效")
+        raise HTTPException(404, i18n.t("链接已失效"))
     b = bots.get(s["bot_id"]) if s["bot_id"] else None
     return {k: s[k] for k in ("name", "description", "body", "updated")} | {"apps": skills.apps_in(s["body"])} | (
         {"bot": {"name": b["name"], "avatar": b["avatar"]}} if b else {})
@@ -391,7 +393,7 @@ async def shared_skill(token: str):
 async def shared_skill_raw(token: str):
     s = skills.by_token(token)
     if not s:
-        raise HTTPException(404, "链接已失效")
+        raise HTTPException(404, i18n.t("链接已失效"))
     return _skill_file(s)
 
 
@@ -469,7 +471,7 @@ async def share_template(bot_id: int, data: dict = Body(...)):
 async def shared_template(token: str):
     bid = templates.by_token(token)
     if not bid:
-        raise HTTPException(404, "链接已失效")
+        raise HTTPException(404, i18n.t("链接已失效"))
     t = templates.preview(templates.from_bot(bid))
     for a in t["apps"]:
         a.pop("connected", None)   # 那台连没连应用和看的人无关，不说
@@ -480,7 +482,7 @@ async def shared_template(token: str):
 async def shared_template_raw(token: str):
     bid = templates.by_token(token)
     if not bid:
-        raise HTTPException(404, "链接已失效")
+        raise HTTPException(404, i18n.t("链接已失效"))
     return _template_file(bid)
 
 
@@ -512,13 +514,13 @@ async def backup_export(data: dict = Body(...)):
 async def backup_upload(request: Request):
     """上传备份文件（请求体就是文件，口令放在 x-passphrase 头里，base64 编码）：解密、检查，返回摘要等确认。"""
     if backup.RESTART:
-        raise HTTPException(409, "正在重启，稍后再试")
+        raise HTTPException(409, i18n.t("正在重启，稍后再试"))
     try:
         passphrase = base64.b64decode(request.headers.get("x-passphrase", "")).decode()
     except ValueError:
         passphrase = ""
     if not passphrase:
-        raise HTTPException(400, "请填备份时设的口令")
+        raise HTTPException(400, i18n.t("请填备份时设的口令"))
     fd, tmp = tempfile.mkstemp(suffix=".osabak")
     try:
         size = 0
@@ -526,10 +528,10 @@ async def backup_upload(request: Request):
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > MAX_BACKUP:
-                    raise HTTPException(413, "文件太大了")
+                    raise HTTPException(413, i18n.t("文件太大了"))
                 f.write(chunk)
         if not size:
-            raise HTTPException(400, "没有收到文件")
+            raise HTTPException(400, i18n.t("没有收到文件"))
         return await asyncio.to_thread(backup.stage, Path(tmp), passphrase)
     except backup.BackupError as e:
         _err(e)
@@ -587,12 +589,12 @@ async def import_memories(bot_id: int, data: dict = Body(...)):
 async def update_memory(mid: int, data: dict = Body(...)):
     m = memories.get(mid)
     if not m:
-        raise HTTPException(404, "没有这条记忆")
+        raise HTTPException(404, i18n.t("没有这条记忆"))
     owner = m["bot_id"]
     if "shared" in data:
         owner = None if data["shared"] else (m["bot_id"] or data.get("bot_id"))
         if not data["shared"] and not (isinstance(owner, int) and bots.get(owner)):
-            raise HTTPException(400, "改成只给某个 Bot 时要说明是哪个 Bot")
+            raise HTTPException(400, i18n.t("改成只给某个 Bot 时要说明是哪个 Bot"))
     try:
         m = memories.update(mid, data.get("text"), owner)
     except ValueError as e:
@@ -612,14 +614,14 @@ async def delete_memory(mid: int):
 def _page_or_404(pid: int, content: bool = False) -> dict:
     p = library.get_page(pid, content)
     if not p:
-        raise HTTPException(404, "没有这个页面")
+        raise HTTPException(404, i18n.t("没有这个页面"))
     return p
 
 
 def _raw(page: dict) -> Response:
     """html 页面的原文，带 CSP：在沙箱里运行，碰不到这个站点的接口和数据。"""
     if page["format"] != "html":
-        raise HTTPException(404, "只有 html 页面有原文地址")
+        raise HTTPException(404, i18n.t("只有 html 页面有原文地址"))
     return HTMLResponse(page["content"], headers={"Content-Security-Policy": library.RAW_CSP,
                                                   "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"})
 
@@ -677,7 +679,7 @@ async def delete_page(pid: int):
 async def shared_page(token: str):
     p = library.by_token(token)
     if not p:
-        raise HTTPException(404, "链接已失效")
+        raise HTTPException(404, i18n.t("链接已失效"))
     b = bots.get(p["bot_id"]) if p["bot_id"] else None
     return {k: p[k] for k in ("title", "format", "content", "updated")} | (
         {"bot": {"name": b["name"], "avatar": b["avatar"]}} if b else {})
@@ -687,7 +689,7 @@ async def shared_page(token: str):
 async def shared_raw(token: str):
     p = library.by_token(token)
     if not p:
-        raise HTTPException(404, "链接已失效")
+        raise HTTPException(404, i18n.t("链接已失效"))
     return _raw(p)
 
 
@@ -751,7 +753,7 @@ async def upload_file(request: Request, dir: str = "", name: str = ""):
         _err(e)
     data = await request.body()
     if len(data) > library.MAX_UPLOAD:
-        raise HTTPException(413, f"文件太大（最多 {library.MAX_UPLOAD >> 20} MB）")
+        raise HTTPException(413, i18n.t("文件太大（最多 {n} MB）", n=library.MAX_UPLOAD >> 20))
     c = await _files_pc(True)
     try:
         return await library.put_file(c, dir, name, data)
@@ -782,7 +784,7 @@ async def pin_file(data: dict = Body(...)):
 def _routine_or_404(rid: int) -> dict:
     r = routines.get(rid)
     if not r:
-        raise HTTPException(404, "没有这个定时任务")
+        raise HTTPException(404, i18n.t("没有这个定时任务"))
     return r
 
 
@@ -825,7 +827,7 @@ async def routine_action(rid: int, action: str):
             _err(ValueError(res["reason"]))
         r = routines.get(rid)
     else:
-        raise HTTPException(404, "未知操作")
+        raise HTTPException(404, i18n.t("未知操作"))
     await broadcast({"type": "routines_changed", "bot_id": r["bot_id"]})
     return r
 
@@ -847,7 +849,7 @@ async def routine_runs(rid: int):
 # ---------- 电脑 ----------
 def _pc(bot_id: int):
     if not bots.get(bot_id):
-        raise HTTPException(404, "没有这个 Bot")
+        raise HTTPException(404, i18n.t("没有这个 Bot"))
     return computer.get(bot_id)
 
 
@@ -866,7 +868,7 @@ async def pc_type(bot_id: int, data: dict = Body(...)):
     """你接手电脑时从网页输入文字或按键（手机上点画面弹不出键盘，用这个）。"""
     c = _pc(bot_id)
     if c.controller != "human":
-        raise HTTPException(400, "先接手电脑再输入")
+        raise HTTPException(400, i18n.t("先接手电脑再输入"))
     try:
         if data.get("text"):
             await c.type(str(data["text"])[:2000], as_human=True)
@@ -896,7 +898,7 @@ async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
         elif action == "handback":
             return await handback(bot_id)
         else:
-            raise HTTPException(404, "未知操作")
+            raise HTTPException(404, i18n.t("未知操作"))
     except computer.ComputerError as e:
         _err(e)
     state = await _pc_state(bot_id)
@@ -932,12 +934,12 @@ async def pc_use(data: dict = Body(...)):
     c = computer.get()
     mid = (data.get("machine_id") or "").strip()
     if not hasattr(c, "use_machine") or not mid:
-        raise HTTPException(400, "只有 Instabox 后端能选已有的机器")
+        raise HTTPException(400, i18n.t("只有 Instabox 后端能选已有的机器"))
     if c.users or c.exclusive:
-        raise HTTPException(400, f"电脑正在被用着（{c.busy()}），等用完再换")
+        raise HTTPException(400, i18n.t("电脑正在被用着（{who}），等用完再换", who=c.busy()))
     try:
         if mid not in {m["id"] for m in await c.list_machines()}:
-            raise HTTPException(404, "账号下没有这台机器")
+            raise HTTPException(404, i18n.t("账号下没有这台机器"))
         c.use_machine(mid)
     except computer.ComputerError as e:
         _err(e)
@@ -954,7 +956,7 @@ async def pc_watch(data: dict = Body(...)):
     try:
         if key:
             if not (c.users.get(key) or {}).get("window"):
-                raise HTTPException(404, "这个任务已经不用电脑了，或者还没打开浏览器")
+                raise HTTPException(404, i18n.t("这个任务已经不用电脑了，或者还没打开浏览器"))
             await c.front(key)
         else:
             c.watch = None
@@ -1024,7 +1026,7 @@ async def _app_out(name: str) -> dict:
 async def install_app(item_id: str, data: dict = Body(default={})):
     """从应用市场添加：values 是用户填的内容（token 之类），密钥存进保险库，配置里只留引用。"""
     if mcp_hub.get(item_id):
-        _err(ValueError("已经添加过了"))
+        _err(ValueError(i18n.t("已经添加过了")))
     values = data.get("values") or {}
     try:
         await catalog.check(item_id, values)
@@ -1035,12 +1037,12 @@ async def install_app(item_id: str, data: dict = Body(default={})):
         return await _app_out(item_id)
     await mcp_hub.connect(item_id)
     if item_id not in mcp_hub._connected:   # 没连上就撤掉，用户改一下再点连接就行
-        msg = mcp_hub.status.get(item_id) or "没连上"
+        msg = str(mcp_hub.status.get(item_id) or i18n.t("没连上"))
         await mcp_hub.disconnect(item_id)
         mcp_hub.remove(item_id)
         await broadcast({"type": "apps_changed"})
         if any(w in msg for w in ("401", "403", "400 Bad Request", "Unauthorized", "parse JSON", "密钥无效", "鉴权失败", "invalid or expired")):
-            msg = "对方没有接受这个密钥，检查一下有没有复制完整。（" + msg[:120] + "）"
+            msg = i18n.t("对方没有接受这个密钥，检查一下有没有复制完整。（{msg}）", msg=msg[:120])
         _err(ValueError(msg))
     return await _app_out(item_id)
 
@@ -1070,25 +1072,25 @@ async def save_app(name: str, data: dict = Body(...)):
         await mcp_hub.connect(name)
     else:
         await mcp_hub.disconnect(name)
-        mcp_hub.status[name] = "未启用"
+        mcp_hub.status[name] = i18n.later("未启用")
     return await _app_out(name)
 
 
 @app.post("/api/apps/{name}/{action}")
 async def app_action(name: str, action: str):
     if not mcp_hub.get(name):
-        raise HTTPException(404, "没有这个应用")
+        raise HTTPException(404, i18n.t("没有这个应用"))
     if action in ("enable", "reconnect"):
         mcp_hub.save(name, {"enabled": True})
         await mcp_hub.connect(name)
     elif action == "disable":
         mcp_hub.save(name, {"enabled": False})
         await mcp_hub.disconnect(name)
-        mcp_hub.status[name] = "未启用"
+        mcp_hub.status[name] = i18n.later("未启用")
     elif action == "cancel":
         await mcp_hub.cancel_login(name)
     else:
-        raise HTTPException(404, "未知操作")
+        raise HTTPException(404, i18n.t("未知操作"))
     return await _app_out(name)
 
 
@@ -1096,7 +1098,7 @@ async def app_action(name: str, action: str):
 async def patch_app(name: str, data: dict = Body(...)):
     """只改确认策略、屏蔽词这类设置，改完重连让它生效。"""
     if not mcp_hub.get(name):
-        raise HTTPException(404, "没有这个应用")
+        raise HTTPException(404, i18n.t("没有这个应用"))
     try:
         a = mcp_hub.save(name, {k: v for k, v in data.items() if k in ("deny", "confirm")})
     except ValueError as e:
@@ -1119,7 +1121,7 @@ def _oauth_page(ok: bool, title: str, detail: str = "") -> HTMLResponse:
     from html import escape
     mark = "✓" if ok else "!"
     js = json.dumps({"type": "osa-app", "ok": ok})
-    return HTMLResponse(f"""<!doctype html><html lang="zh"><meta charset="utf-8">
+    return HTMLResponse(f"""<!doctype html><html lang="{"en" if i18n.lang() == "en" else "zh-CN"}"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)}</title>
 <style>body{{margin:0;height:100vh;display:grid;place-items:center;font-family:-apple-system,"PingFang SC",sans-serif;
 background:#0d0d0e;color:#ececec;text-align:center}}@media(prefers-color-scheme:light){{body{{background:#fbfbfa;color:#18181a}}}}
@@ -1133,31 +1135,31 @@ setTimeout(function(){{if(opener)close();else location.replace('/apps')}},{1200 
 async def oauth_start(name: str, request: Request):
     """点“连接”时在弹窗里打开：需要的话先从市场添加，然后跳到对方的登录授权页。"""
     if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
-        raise HTTPException(403, "请从应用市场里点连接")
+        raise HTTPException(403, i18n.t("请从应用市场里点连接"))
     a = mcp_hub.get(name)
     if not a:
         try:
             mcp_hub.save(name, catalog.build(name, {}) | {"enabled": True})
         except ValueError as e:
-            return _oauth_page(False, "没法连接", str(e))
+            return _oauth_page(False, i18n.t("没法连接"), str(e))
         a = mcp_hub.get(name)
     if not a.get("oauth"):
-        return _oauth_page(False, "这个应用不用登录授权", "回到应用市场里直接连接就行")
+        return _oauth_page(False, i18n.t("这个应用不用登录授权"), i18n.t("回到应用市场里直接连接就行"))
     kind, val = await mcp_hub.login(name, str(request.url_for("oauth_callback")))
     if kind == "url":
         return RedirectResponse(val, 302)
     ok = name in mcp_hub._connected
-    return _oauth_page(ok, f"已连接 {catalog.title(name)}" if ok else "没有连上", "" if ok else val)
+    return _oauth_page(ok, i18n.t("已连接 {title}", title=catalog.title(name)) if ok else i18n.t("没有连上"), "" if ok else val)
 
 
 @app.get("/oauth/callback", name="oauth_callback")
 async def oauth_callback(state: str = "", code: str = "", iss: str = "", error: str = "", error_description: str = ""):
     name = await mcp_hub.finish_login(state, code, iss, error_description or error)
     if not name:
-        return _oauth_page(False, "这次授权已经失效", "回到应用市场重新点一次连接")
+        return _oauth_page(False, i18n.t("这次授权已经失效"), i18n.t("回到应用市场重新点一次连接"))
     if name in mcp_hub._connected:
-        return _oauth_page(True, f"已连接 {catalog.title(name)}", "可以关掉这个窗口了")
-    return _oauth_page(False, "没有连上", mcp_hub.status.get(name, ""))
+        return _oauth_page(True, i18n.t("已连接 {title}", title=catalog.title(name)), i18n.t("可以关掉这个窗口了"))
+    return _oauth_page(False, i18n.t("没有连上"), str(mcp_hub.status.get(name, "")))
 
 
 @app.get("/api/rules")
@@ -1235,7 +1237,7 @@ async def update_channel(cid: int, data: dict = Body(...)):
 @app.post("/api/channels/{cid}/pair")
 async def repair_channel(cid: int):
     if not channels.row(cid):
-        raise HTTPException(404, "没有这个连接")
+        raise HTTPException(404, i18n.t("没有这个连接"))
     channels.new_pair_code(cid)
     channels.changed()
     return channels.public(channels.row(cid))
@@ -1347,7 +1349,7 @@ async def usage():
 
 @app.get("/api/status")
 async def status():
-    return {"mcp": mcp_hub.status, "mcp_tools": sorted(mcp_hub.TOOLS), "mcp_confirm": sorted(mcp_hub.CONFIRM),
+    return {"mcp": {k: str(v) for k, v in mcp_hub.status.items()}, "mcp_tools": sorted(mcp_hub.TOOLS), "mcp_confirm": sorted(mcp_hub.CONFIRM),
             "routines": [{"id": r["id"], "bot_id": r["bot_id"], "name": r["name"], "enabled": r["enabled"],
                           "trigger": routines.describe(r["trigger"])} for r in routines.list_for()]}
 
@@ -1359,14 +1361,14 @@ async def hook(name: str, request: Request):
     token = os.environ.get("OSA_WEBHOOK_TOKEN")
     if token:
         if request.headers.get("x-osa-token") != token:
-            raise HTTPException(401, "token 不对")
+            raise HTTPException(401, i18n.t("token 不对"))
     elif request.client.host not in ("127.0.0.1", "::1") or any(
             h in request.headers for h in ("x-forwarded-for", "forwarded", "tailscale-user-login")):
         # 经反向代理（如 tailscale serve）转发的请求来源也显示为本机，按外部请求处理
-        raise HTTPException(403, "未设置 OSA_WEBHOOK_TOKEN 时只接受本机请求")
+        raise HTTPException(403, i18n.t("未设置 OSA_WEBHOOK_TOKEN 时只接受本机请求"))
     r = routines.by_hook(name)
     if not r or not r["enabled"]:
-        raise HTTPException(404, f"没有启用的 webhook 定时任务：{name}")
+        raise HTTPException(404, i18n.t("没有启用的 webhook 定时任务：{name}", name=name))
     body = (await request.body()).decode(errors="replace")
     try:
         body = json.dumps(json.loads(body), ensure_ascii=False, indent=1)
@@ -1409,7 +1411,7 @@ async def safe_handle(chat: dict, text: str, via: str = ""):
         else:
             await rt.runtime(chat["bot_ids"][0]).handle_user(text, via)
     except Exception as e:
-        await broadcast({"type": "error", "chat_id": chat["id"], "message": f"出错了：{e}"})
+        await broadcast({"type": "error", "chat_id": chat["id"], "message": i18n.t("出错了：{e}", e=e)})
 
 
 channels.handle = safe_handle

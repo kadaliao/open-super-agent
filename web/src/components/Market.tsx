@@ -2,16 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, refreshApps, useStore } from '../store'
 import type { App, CatalogItem } from '../types'
 import { BrandIcon } from './BrandIcon'
+import { t, tc, tn } from '../i18n'
 
-const HOW: Record<string, string> = { oauth: '登录即用', token: '填一个密钥', none: '免配置' }
+const HOW: Record<string, string> = { oauth: t('登录即用'), token: t('填一个密钥'), none: t('免配置') }
 // 登录授权的应用也可能要先填几项（比如自己建的 OAuth 客户端），填好再登录
 const needsFields = (c: CatalogItem) => c.fields.some(f => !f.optional)
-export const howOf = (c: CatalogItem) => c.how || (c.kind === 'oauth' && needsFields(c) ? '填好后登录' : HOW[c.kind])
+export const howOf = (c: CatalogItem) => c.how || (c.kind === 'oauth' && needsFields(c) ? t('填好后登录') : HOW[c.kind])
 const STATE: Record<string, [string, string]> = {
-  connected: ['已连接', 'ok'], connecting: ['连接中…', 'busy'], login: ['等你授权…', 'busy'],
-  needs_login: ['需要重新登录', 'warn'], off: ['已停用', ''], error: ['没连上', 'bad'],
+  connected: [t('已连接'), 'ok'], connecting: [t('连接中…'), 'busy'], login: [t('等你授权…'), 'busy'],
+  needs_login: [t('需要重新登录'), 'warn'], off: [t('已停用'), ''], error: [t('没连上'), 'bad'],
 }
-const CONFIRM_NAMES: [string, string][] = [['auto', '写操作先问我'], ['all', '每次都问'], ['none', '都不问']]
+const CONFIRM_NAMES: [string, string][] = [['auto', t('写操作先问我')], ['all', t('每次都问')], ['none', t('都不问')]]
 
 // 图标写在应用清单里（osa/catalog/apps/*.yaml）：品牌图形 svg，或线条图标 glyph；自定义应用用插头
 export function AppIcon({ item, name, size = 44 }: { item?: CatalogItem; name?: string; size?: number }) {
@@ -45,7 +46,8 @@ async function oauthConnect(name: string, fresh: boolean, done: (err?: string) =
     if (!a || a.connected || a.state === 'connecting') return done()
     if (a.state === 'login') await api(`/api/apps/${name}/cancel`, { method: 'POST' }).catch(() => {})
     if (fresh) await api(`/api/apps/${name}`, { method: 'DELETE' }).catch(() => {})
-    done(a.status && !/取消|没有完成/.test(a.status) ? a.status : '没有完成授权')
+    // 取消了、超时没完成的，统一说“没有完成授权”（服务端的状态文字可能是中文或英文）
+    done(a.status && !/取消|没有完成|Authorization canceled|not completed/.test(a.status) ? a.status : t('没有完成授权'))   // i18n-ignore：匹配服务端的状态文字
   }, 500)
 }
 
@@ -73,7 +75,7 @@ export default function Market() {
   }
 
   if (custom) return (
-    <main className="chat market"><header className="chat-head"><span className="head-name">应用</span></header>
+    <main className="chat market"><header className="chat-head"><span className="head-name">{t('应用')}</span></header>
       <div className="scroller"><div className="m-body"><CustomEditor app={custom.app} onDone={() => setCustom(null)} /></div></div>
     </main>
   )
@@ -82,17 +84,17 @@ export default function Market() {
   return (
     <main className="chat market">
       <header className="chat-head">
-        <span className="head-name">应用</span>
-        <input className="m-search" type="search" placeholder="搜索应用" value={q} onChange={e => setQ(e.target.value)} />
+        <span className="head-name">{t('应用')}</span>
+        <input className="m-search" type="search" placeholder={t('搜索应用')} value={q} onChange={e => setQ(e.target.value)} />
       </header>
       <div className="scroller"><div className="m-body">
         <section className="m-hero">
-          <h2>让 Bot 用上你的应用</h2>
-          <p className="muted">连上以后，Bot 能替你查资料、记笔记、整理文件、发邮件。聊天时输入 <code>@</code> 可以指定用哪个。</p>
+          <h2>{t('让 Bot 用上你的应用')}</h2>
+          <p className="muted">{tn('连上以后，Bot 能替你查资料、记笔记、整理文件、发邮件。聊天时输入 {at} 可以指定用哪个。', { at: <code>@</code> })}</p>
         </section>
 
         {apps.length > 0 && <section>
-          <h4 className="m-h">我的应用</h4>
+          <h4 className="m-h">{t('我的应用')}</h4>
           <div className="m-mine">
             {apps.map(a => (
               <button key={a.name} className="m-mine-item" onClick={() => setOpen(a.name)}>
@@ -103,7 +105,7 @@ export default function Market() {
         </section>}
 
         <div className="m-cats">
-          {[['all', '全部'], ...categories].map(([k, v]) => <button key={k} className={cat === k ? 'on' : ''} onClick={() => setCat(k)}>{v}</button>)}
+          {[['all', t('全部')], ...categories].map(([k, v]) => <button key={k} className={cat === k ? 'on' : ''} onClick={() => setCat(k)}>{v}</button>)}
         </div>
         <div className="m-grid">
           {list.map(c => {
@@ -119,14 +121,14 @@ export default function Market() {
                 <div className="m-card-foot">
                   <span className="m-how">{howOf(c)}</span>
                   {a ? <StateTag app={a} />
-                    : <button className="btn small m-get" onClick={e => { e.stopPropagation(); quick(c) }}>连接</button>}
+                    : <button className="btn small m-get" onClick={e => { e.stopPropagation(); quick(c) }}>{t('连接')}</button>}
                 </div>
               </div>)
           })}
-          {!list.length && <div className="muted m-none">没有找到“{q}”。可以添加自定义应用。</div>}
+          {!list.length && <div className="muted m-none">{t('没有找到“{q}”。可以添加自定义应用。', { q })}</div>}
         </div>
         <p className="muted small m-foot">
-          找不到想要的？任何 MCP server 都能接：<button className="link-btn" onClick={() => setCustom({})}>添加自定义应用</button>
+          {tn('找不到想要的？任何 MCP server 都能接：{add}', { add: <button className="link-btn" onClick={() => setCustom({})}>{t('添加自定义应用')}</button> })}
         </p>
       </div></div>
       {open && (openItem || openApp) && <Sheet item={openItem} app={openApp} initErr={quickErr} onClose={() => { setOpen(null); setQuickErr('') }}
@@ -157,13 +159,14 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
   // values：先把填的内容存好（换内容时先删掉旧的），再打开授权弹窗；没登录成功就撤掉
   const login = (fresh: boolean, values?: Record<string, string>) => {
     setBusy('login'); setErr('')
-    const hint = (e: string) => item?.client && e === '没有完成授权' ? '。如果对方页面说回调地址（redirect_uri）不对，把上面的回调地址原样填到对方那里再试' : ''
-    oauthConnect(name, fresh, e => { setBusy(''); setErr(e ? e + hint(e) : ''); if (!e) setRekey(false) }, values && (async () => {
+    const withHint = (e: string) => item?.client && e === t('没有完成授权')
+      ? t('{err}。如果对方页面说回调地址（redirect_uri）不对，把上面的回调地址原样填到对方那里再试', { err: e }) : e
+    oauthConnect(name, fresh, e => { setBusy(''); setErr(e ? withHint(e) : ''); if (!e) setRekey(false) }, values && (async () => {
       if (app) await api(`/api/apps/${name}`, { method: 'DELETE' })
       await api(`/api/market/${item!.id}`, { method: 'POST', body: { values } })
     }))
   }
-  const remove = () => confirm(`断开 ${item?.title || name}？保存的密钥和授权会一起删掉。`) &&
+  const remove = () => confirm(t('断开 {name}？保存的密钥和授权会一起删掉。', { name: item?.title || name })) &&
     run('remove', () => api(`/api/apps/${name}`, { method: 'DELETE' }))
   const showForm = !app || rekey
   return (
@@ -173,22 +176,22 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
           <AppIcon item={item} name={name} size={56} />
           <div className="m-sheet-title">
             <h3>{item?.title || '@' + name}</h3>
-            <span className="muted small">{item ? `${catName[item.category] || ''} · ${item.by}` : '自定义应用'}</span>
+            <span className="muted small">{item ? `${catName[item.category] || ''} · ${item.by}` : t('自定义应用')}</span>
           </div>
           <button className="icon-btn" onClick={onClose}>✕</button>
         </div>
         <div className="m-sheet-body">
           {app && <div className="m-status">
             <StateTag app={app} />
-            <span className="muted small">{app.connected ? `${app.tools.length} 个工具 · 聊天里用 @${app.name}` : app.status}</span>
+            <span className="muted small">{app.connected ? t('{n} 个工具 · 聊天里用 @{name}', { n: app.tools.length, name: app.name }) : app.status}</span>
           </div>}
 
           {item && app && item.kind === 'oauth' && !app.oauth && !app.catalog && <div className="m-connect">
-            <p>这是之前用 token 接的 {item.title}。现在可以直接用账号登录，以后不用再管 token。</p>
+            <p>{t('这是之前用 token 接的 {title}。现在可以直接用账号登录，以后不用再管 token。', { title: item.title })}</p>
             <button className="btn primary m-big" disabled={!!busy} onClick={() => {
               setBusy('login'); setErr('')
               oauthConnect(name, true, e => { setBusy(''); setErr(e || '') }, () => api(`/api/apps/${name}`, { method: 'DELETE' }))
-            }}>{busy === 'login' ? '等你在弹窗里授权…' : `改用 ${item.title} 账号登录`}</button>
+            }}>{busy === 'login' ? t('等你在弹窗里授权…') : t('改用 {title} 账号登录', { title: item.title })}</button>
           </div>}
 
           {item && showForm && <ConnectForm item={item} busy={busy} rekey={rekey} values={values} setValues={setValues}
@@ -202,23 +205,23 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
 
           {app && <div className="m-actions">
             {app.oauth && app.state === 'needs_login' &&
-              <button className="btn primary" disabled={!!busy} onClick={() => login(false)}>{busy === 'login' ? '等你授权…' : '重新登录'}</button>}
+              <button className="btn primary" disabled={!!busy} onClick={() => login(false)}>{busy === 'login' ? t('等你授权…') : t('重新登录')}</button>}
             {app.state === 'error' &&
-              <button className="btn primary" disabled={!!busy} onClick={() => run('re', () => api(`/api/apps/${name}/reconnect`, { method: 'POST' }))}>{busy === 're' ? '连接中…' : '重试'}</button>}
-            {app.state === 'login' && <button className="btn" onClick={() => run('cancel', () => api(`/api/apps/${name}/cancel`, { method: 'POST' }))}>取消授权</button>}
+              <button className="btn primary" disabled={!!busy} onClick={() => run('re', () => api(`/api/apps/${name}/reconnect`, { method: 'POST' }))}>{busy === 're' ? t('连接中…') : t('重试')}</button>}
+            {app.state === 'login' && <button className="btn" onClick={() => run('cancel', () => api(`/api/apps/${name}/cancel`, { method: 'POST' }))}>{t('取消授权')}</button>}
             <label className="m-toggle"><span className="switch"><input type="checkbox" checked={app.enabled} disabled={!!busy}
               onChange={e => run('toggle', () => api(`/api/apps/${name}/${e.target.checked ? 'enable' : 'disable'}`, { method: 'POST' }))} /><span /></span>
-              {busy === 'toggle' ? '…' : app.enabled ? '启用中' : '已停用'}</label>
+              {busy === 'toggle' ? '…' : app.enabled ? t('启用中') : t('已停用')}</label>
             <span className="grow" />
-            {item?.kind === 'token' && !rekey && <button className="ghost-btn" onClick={() => setRekey(true)}>换个密钥</button>}
-            {item?.kind === 'oauth' && needsFields(item) && !rekey && <button className="ghost-btn" onClick={() => setRekey(true)}>重新填写</button>}
-            <button className="ghost-btn danger-text" disabled={!!busy} onClick={remove}>断开</button>
+            {item?.kind === 'token' && !rekey && <button className="ghost-btn" onClick={() => setRekey(true)}>{t('换个密钥')}</button>}
+            {item?.kind === 'oauth' && needsFields(item) && !rekey && <button className="ghost-btn" onClick={() => setRekey(true)}>{t('重新填写')}</button>}
+            <button className="ghost-btn danger-text" disabled={!!busy} onClick={remove}>{t('断开')}</button>
           </div>}
 
           {item && <>
             <p className="m-about">{item.about || item.desc}</p>
-            {item.can.length > 0 && <><h4 className="m-h">能做什么</h4><ul className="m-can">{item.can.map(x => <li key={x}>{x}</li>)}</ul></>}
-            {item.example && <><h4 className="m-h">试试这样说</h4><div className="m-example">{item.example}</div></>}
+            {item.can.length > 0 && <><h4 className="m-h">{t('能做什么')}</h4><ul className="m-can">{item.can.map(x => <li key={x}>{x}</li>)}</ul></>}
+            {item.example && <><h4 className="m-h">{t('试试这样说')}</h4><div className="m-example">{item.example}</div></>}
           </>}
 
           {app && <Advanced app={app} onEdit={onEdit} />}
@@ -237,8 +240,8 @@ function ConnectForm({ item, busy, rekey, values, setValues, onLogin, onSubmit }
   const oauth = item.kind === 'oauth'
   if (oauth && !needsFields(item)) return (
     <div className="m-connect">
-      <button className="btn primary m-big" disabled={!!busy} onClick={() => onLogin()}>{busy === 'login' ? '等你在弹窗里授权…' : `用 ${item.title} 账号登录`}</button>
-      <p className="muted small">会打开 {item.title} 的授权页面，选好允许访问的内容就连上了，不用复制任何密钥。</p>
+      <button className="btn primary m-big" disabled={!!busy} onClick={() => onLogin()}>{busy === 'login' ? t('等你在弹窗里授权…') : t('用 {title} 账号登录', { title: item.title })}</button>
+      <p className="muted small">{t('会打开 {title} 的授权页面，选好允许访问的内容就连上了，不用复制任何密钥。', { title: item.title })}</p>
       {item.note && <p className="m-note">{item.note}</p>}
     </div>
   )
@@ -246,7 +249,7 @@ function ConnectForm({ item, busy, rekey, values, setValues, onLogin, onSubmit }
   return (
     <form className="m-connect" onSubmit={e => { e.preventDefault(); ready && (oauth ? onLogin(values) : onSubmit(values)) }}>
       {item.steps.length > 0 && <ol className="m-steps">{item.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>}
-      {item.link && <a className="btn m-link" href={item.link} target="_blank" rel="noreferrer">{item.link_label || `打开 ${item.title} 设置`} ↗</a>}
+      {item.link && <a className="btn m-link" href={item.link} target="_blank" rel="noreferrer">{item.link_label || t('打开 {title} 设置', { title: item.title })} ↗</a>}
       {item.copy && <CopyBox label={item.copy.label} text={item.copy.text} rows={8} />}
       {item.client && <Callback />}
       {item.fields.map((f, i) => (
@@ -256,10 +259,10 @@ function ConnectForm({ item, busy, rekey, values, setValues, onLogin, onSubmit }
         </label>))}
       {item.note && <p className="m-note">{item.note}</p>}
       <button className="btn primary m-big" type="submit" disabled={!ready || !!busy}>
-        {oauth ? (busy === 'login' ? '等你在弹窗里授权…' : `填好了，去 ${item.title} 登录`)
-          : busy === 'install' ? (item.remote ? '连接中…' : '连接中…第一次要下载，可能要一两分钟') : rekey ? '换好了，重新连接' : item.kind === 'none' ? '添加' : '连接'}
+        {oauth ? (busy === 'login' ? t('等你在弹窗里授权…') : t('填好了，去 {title} 登录', { title: item.title }))
+          : busy === 'install' ? (item.remote ? t('连接中…') : t('连接中…第一次要下载，可能要一两分钟')) : rekey ? t('换好了，重新连接') : item.kind === 'none' ? t('添加') : t('连接')}
       </button>
-      {item.fields.some(f => f.secret) && <p className="muted small">密钥加密存在你自己的服务器上，不会出现在聊天记录里。</p>}
+      {item.fields.some(f => f.secret) && <p className="muted small">{t('密钥加密存在你自己的服务器上，不会出现在聊天记录里。')}</p>}
     </form>
   )
 }
@@ -275,7 +278,7 @@ function CopyBox({ label, text, rows }: { label: string; text: string; rows?: nu
     const ok = navigator.clipboard ? navigator.clipboard.writeText(value) : Promise.resolve(document.execCommand('copy'))
     ok.then(() => setCopied(true), () => {})
   }
-  const btn = <button type="button" className="btn" onClick={copy}>{copied ? '已复制' : '复制'}</button>
+  const btn = <button type="button" className="btn" onClick={copy}>{copied ? t('已复制') : t('复制')}</button>
   return (
     <div className="field">{label}
       {rows ? <><textarea ref={ref} readOnly rows={rows} value={value} className="m-copy" onFocus={e => e.target.select()} />{btn}</>
@@ -288,8 +291,8 @@ function CopyBox({ label, text, rows }: { label: string; text: string; rows?: nu
 function Callback() {
   const url = useStore(s => s.oauthCallback)
   return <>
-    <CopyBox label="回调地址（Redirect URL）" text="{callback}" />
-    {/^http:/.test(url) && <span className="m-note">这是 http 地址，不少服务（比如 Slack）只接受 https 的回调地址。先给服务配好 https（见部署文档），再从 https 地址打开这一页。</span>}
+    <CopyBox label={t('回调地址（Redirect URL）')} text="{callback}" />
+    {/^http:/.test(url) && <span className="m-note">{t('这是 http 地址，不少服务（比如 Slack）只接受 https 的回调地址。先给服务配好 https（见部署文档），再从 https 地址打开这一页。')}</span>}
   </>
 }
 
@@ -298,27 +301,27 @@ function Advanced({ app, onEdit }: { app: App; onEdit: () => void }) {
   const [msg, setMsg] = useState('')
   const patch = async (body: any) => {
     setMsg('')
-    try { await api(`/api/apps/${app.name}`, { method: 'PATCH', body }); await refreshApps(); setMsg('已保存') }
+    try { await api(`/api/apps/${app.name}`, { method: 'PATCH', body }); await refreshApps(); setMsg(t('已保存')) }
     catch (e: any) { setMsg(e.message) }
   }
   const confirmRule = typeof app.confirm === 'string' ? app.confirm : 'auto'
   return (
     <details className="m-adv">
-      <summary>高级设置</summary>
-      <div className="field">要不要先问我
+      <summary>{t('高级设置')}</summary>
+      <div className="field">{t('要不要先问我')}
         <div className="seg">{CONFIRM_NAMES.map(([k, v]) =>
           <button key={k} className={confirmRule === k ? 'on' : ''} onClick={() => patch({ confirm: k })}>{v}</button>)}</div>
-        <span className="muted small">“写操作”指新建、修改、删除、发送这类会改东西的操作。单个工具的规则在 设置 → 确认规则 里改。</span>
+        <span className="muted small">{t('“写操作”指新建、修改、删除、发送这类会改东西的操作。单个工具的规则在 设置 → 确认规则 里改。')}</span>
       </div>
-      {app.tools.length > 0 && <div className="field">工具（{app.tools.length} 个，带 * 的默认先问）
-        <div className="m-tools">{app.tools.map(t => <code key={t}>{t}{app.confirm_tools.includes(t) ? '*' : ''}</code>)}</div>
+      {app.tools.length > 0 && <div className="field">{t('工具（{n} 个，带 * 的默认先问）', { n: app.tools.length })}
+        <div className="m-tools">{app.tools.map(x => <code key={x}>{x}{app.confirm_tools.includes(x) ? '*' : ''}</code>)}</div>
       </div>}
-      <label className="field">屏蔽的工具（名字里含这些词的工具不给 Bot 用，逗号分隔）
+      <label className="field">{t('屏蔽的工具（名字里含这些词的工具不给 Bot 用，逗号分隔）')}
         <span className="env-row"><input value={deny} onChange={e => setDeny(e.target.value)} placeholder="delete, archive" />
-          <button className="btn" onClick={() => patch({ deny: deny.split(/[,，\s]+/).filter(Boolean) })}>保存</button></span>
+          <button className="btn" onClick={() => patch({ deny: deny.split(/[,，\s]+/).filter(Boolean) })}>{t('保存')}</button></span>
       </label>
       {msg && <span className="muted small">{msg}</span>}
-      <button className="link-btn small" onClick={onEdit}>查看或修改连接配置</button>
+      <button className="link-btn small" onClick={onEdit}>{t('查看或修改连接配置')}</button>
     </details>
   )
 }
@@ -351,58 +354,59 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
     try {
       const r: App = await put()
       await refreshApps()
-      if (!r.connected) { setErr(r.status || '没连上'); return }
+      if (!r.connected) { setErr(r.status || t('没连上')); return }
       onDone()
     } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
   const remove = async () => {
-    if (!app || !confirm(`删除应用 @${app.name}？`)) return
+    if (!app || !confirm(t('删除应用 @{name}？', { name: app.name }))) return
     await api(`/api/apps/${app.name}`, { method: 'DELETE' }); await refreshApps(); onDone()
   }
   return (
     <div className="app-editor">
-      <button className="ghost-btn back" onClick={onDone}>← 返回应用市场</button>
-      <h3>{isNew ? '添加自定义应用' : `@${app.name}`}</h3>
-      <p className="muted small">应用就是 MCP server。远程的填地址，本机的填启动命令。{app?.status && <><br />状态：{app.status}</>}</p>
-      <label className="field">名字（聊天里用 @{name || '名字'} 指定）
-        <input value={name} disabled={!isNew} onChange={e => setName(e.target.value.toLowerCase())} placeholder="例如 mytools" /></label>
-      <div className="field">连接方式
-        <div className="seg"><button className={remote ? 'on' : ''} onClick={() => setType('http')}>远程地址</button>
-          <button className={type === 'stdio' ? 'on' : ''} onClick={() => setType('stdio')}>本机命令</button></div>
+      <button className="ghost-btn back" onClick={onDone}>← {t('返回应用市场')}</button>
+      <h3>{isNew ? t('添加自定义应用') : `@${app.name}`}</h3>
+      <p className="muted small">{t('应用就是 MCP server。远程的填地址，本机的填启动命令。')}{app?.status && <><br />{t('状态：{status}', { status: app.status })}</>}</p>
+      <label className="field">{t('名字（聊天里用 @{name} 指定）', { name: name || tc('placeholder', '名字') })}
+        <input value={name} disabled={!isNew} onChange={e => setName(e.target.value.toLowerCase())} placeholder={t('例如 mytools')} /></label>
+      <div className="field">{t('连接方式')}
+        <div className="seg"><button className={remote ? 'on' : ''} onClick={() => setType('http')}>{t('远程地址')}</button>
+          <button className={type === 'stdio' ? 'on' : ''} onClick={() => setType('stdio')}>{t('本机命令')}</button></div>
       </div>
       {remote ? <>
-        <label className="field">地址<input value={url} onChange={e => setUrl(e.target.value)} placeholder={type === 'sse' ? 'https://example.com/sse' : 'https://example.com/mcp'} /></label>
-        <div className="field">协议
+        <label className="field">{t('地址')}<input value={url} onChange={e => setUrl(e.target.value)} placeholder={type === 'sse' ? 'https://example.com/sse' : 'https://example.com/mcp'} /></label>
+        <div className="field">{t('协议')}
           <div className="seg"><button className={type === 'http' ? 'on' : ''} onClick={() => setType('http')}>Streamable HTTP</button>
-            <button className={type === 'sse' ? 'on' : ''} onClick={() => setType('sse')}>SSE（旧版）</button></div>
-          <span className="muted small">对方文档里的地址以 /sse 结尾的，一般选 SSE。</span>
+            <button className={type === 'sse' ? 'on' : ''} onClick={() => setType('sse')}>{t('SSE（旧版）')}</button></div>
+          <span className="muted small">{t('对方文档里的地址以 /sse 结尾的，一般选 SSE。')}</span>
         </div>
-        <div className="field">登录方式
-          <div className="seg">{[['none', '不用'], ['oauth', '登录授权（OAuth）'], ['token', 'Token']].map(([k, v]) =>
+        <div className="field">{t('登录方式')}
+          <div className="seg">{[['none', t('不用')], ['oauth', t('登录授权（OAuth）')], ['token', 'Token']].map(([k, v]) =>
             <button key={k} className={authKind === k ? 'on' : ''} onClick={() => setAuthKind(k)}>{v}</button>)}</div>
         </div>
-        {authKind === 'token' && <label className="field">Token（放进 Authorization: Bearer 请求头）
+        {authKind === 'token' && <label className="field">{t('Token（放进 Authorization: Bearer 请求头）')}
           <input type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)}
-            placeholder={app?.headers.includes('Authorization') ? '已保存在保险库，留空则不修改' : '加密保存到保险库'} /></label>}
+            placeholder={app?.headers.includes('Authorization') ? t('已保存在保险库，留空则不修改') : t('加密保存到保险库')} /></label>}
       </> : <>
-        <label className="field">启动命令<input value={command} onChange={e => setCommand(e.target.value)} placeholder="npx / uvx / 可执行文件路径" /></label>
-        <label className="field">参数（每行一个）<textarea rows={3} value={args} onChange={e => setArgs(e.target.value)} /></label>
-        <div className="field">环境变量 <span className="muted small">值可以写 <code>vault:名字</code>（取保险库）或 <code>env:名字</code>（取服务的环境变量）</span>
+        <label className="field">{t('启动命令')}<input value={command} onChange={e => setCommand(e.target.value)} placeholder={t('npx / uvx / 可执行文件路径')} /></label>
+        <label className="field">{t('参数（每行一个）')}<textarea rows={3} value={args} onChange={e => setArgs(e.target.value)} /></label>
+        <div className="field">{t('环境变量')} <span className="muted small">{tn('值可以写 {vault}（取保险库）或 {env}（取服务的环境变量）', {
+            vault: <code>vault:{tc('placeholder', '名字')}</code>, env: <code>env:{tc('placeholder', '名字')}</code> })}</span>
           {env.map(([k, v], i) => (
             <div className="env-row" key={i}>
-              <input value={k} placeholder="变量名" onChange={e => setEnv(env.map((x, j) => j === i ? [e.target.value, x[1]] : x))} />
-              <input value={v} placeholder="值" onChange={e => setEnv(env.map((x, j) => j === i ? [x[0], e.target.value] : x))} />
+              <input value={k} placeholder={t('变量名')} onChange={e => setEnv(env.map((x, j) => j === i ? [e.target.value, x[1]] : x))} />
+              <input value={v} placeholder={t('值')} onChange={e => setEnv(env.map((x, j) => j === i ? [x[0], e.target.value] : x))} />
               <button className="icon-btn" onClick={() => setEnv(env.filter((_, j) => j !== i))}>✕</button>
             </div>))}
-          <button className="btn small-btn" onClick={() => setEnv([...env, ['', '']])}>+ 添加变量</button>
+          <button className="btn small-btn" onClick={() => setEnv([...env, ['', '']])}>+ {t('添加变量')}</button>
         </div>
       </>}
       {err && <div className="error-line">{err}</div>}
       <div className="row-actions">
-        {!isNew && <button className="btn danger" onClick={remove}>删除</button>}
+        {!isNew && <button className="btn danger" onClick={remove}>{t('删除')}</button>}
         <span className="grow" />
         <button className="btn primary" disabled={busy || !name || (remote ? !url : !command)} onClick={save}>
-          {busy ? '连接中…' : '保存并连接'}</button>
+          {busy ? t('连接中…') : t('保存并连接')}</button>
       </div>
     </div>
   )

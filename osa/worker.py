@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import approvals, library, memories, memory, mcp_hub, search, tasklog, tools
+from . import approvals, i18n, library, memories, memory, mcp_hub, search, tasklog, tools
 from .computer import tools as ctools
 
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
@@ -13,7 +13,9 @@ PAGES_CHANGED = None   # 由 server 设置：async () -> None，资料库有新�
 WORKER_PROMPT = """你是执行任务的 Worker。用工具查证事实，给出结论时附上来源链接。
 需要读写用户的外部服务（应用）时，使用名字带“应用名__”前缀的工具；任务里写了“@应用名”就必须用那个应用。
 写操作会先请用户确认；被拒绝时不要换个工具绕过去，按用户的意见调整或说明无法完成。
-完成后直接输出最终答案（中文，简洁、结构清晰）。今天是 {date}。"""
+完成后直接输出最终答案（{lang}，简洁、结构清晰）。今天是 {date}。"""
+# 最终答案用什么语言：中文界面和以前一样；英文界面默认英文
+ANSWER_LANG = {"zh": "中文", "en": "默认用英文，任务是用别的语言写的就用那种语言"}
 PAGE_HINT = "任务要求做成页面或报告时，用 save_page 保存，最终答案里附上返回的链接。"
 
 
@@ -120,19 +122,20 @@ async def _tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, p
                 shots.append(shot)
             return out, "done"
         if name == "search_memory":
-            await progress("查记忆和资料库：" + str(args.get("query", ""))[:40])
+            await progress(i18n.t("查记忆和资料库：{query}", query=str(args.get("query", ""))[:40]))
             return await search.tool(task.bot_id, args), "done"
         if name == "read_page":
-            await progress(f"读页面 #{args.get('page_id')}")
+            await progress(i18n.t("读页面 #{id}", id=args.get("page_id")))
             return library.tool_read_page(args), "done"
         if name == "save_page" and pages:
-            await progress("保存页面：" + str(args.get("title", ""))[:40])
+            await progress(i18n.t("保存页面：{title}", title=str(args.get("title", ""))[:40]))
             out = library.tool_save_page(task.bot_id, args, task.id)
             if PAGES_CHANGED:
                 await PAGES_CHANGED()
             return out, "done"
-        await progress({"web_search": "搜索：", "fetch_url": "读取网页："}.get(name, name + " ")
-                       + str(args.get("query") or args.get("url") or "")[:60])
+        what = str(args.get("query") or args.get("url") or "")[:60]
+        await progress(i18n.t("搜索：{what}", what=what) if name == "web_search" else
+                       i18n.t("读取网页：{what}", what=what) if name == "fetch_url" else f"{name} {what}")
         fn = tools.lookup(name)
         if fn and name in mcp_hub.TOOLS and approvals.decide(name)[0]:
             await log.update(step, status="waiting")
@@ -149,7 +152,7 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     client, model = client_for("worker")
     use_pc = (CFG.get("computer") or {}).get("enabled", True)
     pages = not label   # Heavy 模式的几个 Worker 只出草稿，不各自存页面
-    system = WORKER_PROMPT.format(date=time.strftime("%Y-%m-%d")) + ("\n" + PAGE_HINT if pages else "") \
+    system = WORKER_PROMPT.format(date=time.strftime("%Y-%m-%d"), lang=ANSWER_LANG[i18n.lang()]) + ("\n" + PAGE_HINT if pages else "") \
         + ("\n\n" + ctools.SYSTEM_HINT if use_pc else "")
     if known := memories.worker_block(task.bot_id):
         system += f"\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}"
@@ -184,7 +187,7 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
             task.last_progress = time.time()
         if shots:
             msgs.append(ctools.image_message(shots[-1]))
-    await log.note("步数用完了，根据已有信息写结果")
+    await log.note(i18n.t("步数用完了，根据已有信息写结果"))
     msgs.append({"role": "user", "content": "步数用完了，请根据已有信息给出最终答案。"})
     m = await _reply(task, log, "worker", client, model, msgs)
     return m.get("content") or ""
@@ -194,18 +197,19 @@ async def run_heavy(task: Task) -> str:
     """Heavy 模式：N 个 Worker 独立并行解题，Reviewer 互审后汇总。"""
     n = CFG["heavy"]["workers"]
     angles = ["从最直接的角度", "从反面/质疑的角度核查", "从数据和一手来源角度", "从实践/落地角度"]
-    await tasklog.Log(task).note(f"{n} 个研究员分头做，做完汇总")
+    await tasklog.Log(task).note(i18n.t("{n} 个研究员分头做，做完汇总", n=n))
     drafts = await asyncio.gather(*[
         run_worker(task, f"{task.goal}\n\n（你是第 {i+1} 个独立研究员，请{angles[i % len(angles)]}回答）", f"h{i}")
         for i in range(n)], return_exceptions=True)
     for i, d in enumerate(drafts):
         if isinstance(d, Exception):
-            await tasklog.Log(task, f"h{i}").note(f"出错：{d}", "error")
+            await tasklog.Log(task, f"h{i}").note(i18n.t("出错：{error}", error=d), "error")
     drafts = [d for d in drafts if isinstance(d, str)]
     client, model = client_for("reviewer")
     joined = "\n\n".join(f"=== 方案 {i+1} ===\n{d}" for i, d in enumerate(drafts))
-    await tasklog.Log(task).note(f"{len(drafts)} 份草稿交给审稿人汇总")
+    await tasklog.Log(task).note(i18n.t("{n} 份草稿交给审稿人汇总", n=len(drafts)))
     m = await _reply(task, tasklog.Log(task, "review"), "reviewer", client, model, [
-        {"role": "system", "content": "你是审稿人。比较几份独立答案，找出矛盾和错误，合成一份最可靠的最终答案，保留来源链接。"},
+        {"role": "system", "content": "你是审稿人。比较几份独立答案，找出矛盾和错误，合成一份最可靠的最终答案，保留来源链接。"
+                                      + i18n.model_hint()},
         {"role": "user", "content": f"问题：{task.goal}\n\n{joined}"}])
     return m.get("content") or ""

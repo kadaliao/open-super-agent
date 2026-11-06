@@ -11,6 +11,16 @@ can:
 example: '@dingtalk-doc 把这周的会议纪要整理成一篇钉钉文档'
 deny: [delete, permission, transfer_owner, revert]
 note: 要用加入了企业或组织的钉钉账号登录。
+en:
+  title: DingTalk Docs
+  by: Official (DingTalk)
+  desc: Find and create DingTalk docs
+  about: DingTalk's official connection. Once you scan the QR code with DingTalk to sign in, the bot can find DingTalk docs you have access to, create new docs, and write organized content into them.
+  can:
+  - Find docs by title and keyword
+  - Create docs and write organized content into them
+  example: "@dingtalk-doc turn this week's meeting notes into a DingTalk doc"
+  note: Sign in with a DingTalk account that belongs to a company or organization.
 connect:
   type: http
   url: https://mcp-gw.dingtalk.com/oauth/server/doc

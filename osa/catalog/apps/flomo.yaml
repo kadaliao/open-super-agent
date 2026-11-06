@@ -11,6 +11,17 @@ can:
 - 回顾某个主题下你写过的东西
 example: '@flomo 把这段话记下来，打上 #读书 标签'
 note: 需要 flomo MAX 会员。只有 PRO 的话，用下面的「flomo 快速记录」。
+en:
+  title: flomo
+  by: Official (flomo)
+  desc: Capture ideas, search notes, let the bot know what you've written
+  about: flomo's official connection. The bot can save ideas to flomo and search and review your notes.
+  can:
+  - Save ideas and quotes from the chat as memos
+  - Search old notes by keyword or tag
+  - Review what you've written on a topic
+  example: '@flomo save this passage with the tag #reading'
+  note: Requires flomo MAX. If you only have PRO, use "flomo quick capture" below.
 connect:
   type: http
   url: https://flomoapp.com/mcp

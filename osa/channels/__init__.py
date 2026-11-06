@@ -17,7 +17,7 @@ import json
 import re
 import secrets
 import time
-from .. import approvals, bots, memory, vault
+from .. import approvals, bots, i18n, memory, vault
 from . import fmt
 
 conn = memory.conn
@@ -29,11 +29,11 @@ conn.commit()
 
 PAIR_TTL = 30 * 60
 PAIR_MAX_FAILS = 10
-HELP = """直接发消息就是在和「{name}」说话，和网页上是同一个对话。
+HELP = i18n.N_("""直接发消息就是在和「{name}」说话，和网页上是同一个对话。
 - 发文件或图片：存到电脑的 uploads 目录，Bot 能接着处理
 - /new 开始新话题
 - /stop 停下这个对话里正在做的任务
-- 需要你确认的操作会发来一张卡片，点上面的按钮，或者回复“允许 #编号”“拒绝 #编号”"""
+- 需要你确认的操作会发来一张卡片，点上面的按钮，或者回复“允许 #编号”“拒绝 #编号”""")
 
 # 由 server 设置
 handle = None      # async (chat, text, via) -> None：和网页发消息走同一个入口
@@ -75,7 +75,7 @@ def public_url() -> str:
 def set_public_url(url: str):
     url = (url or "").strip().rstrip("/")
     if url and not re.fullmatch(r"https?://[^\s/]+(/[^\s]*)?", url):
-        raise ValueError("地址要以 http:// 或 https:// 开头")
+        raise ValueError(i18n.t("地址要以 http:// 或 https:// 开头"))
     conn.execute("insert or replace into settings values('public_url', ?)", (url,))
     conn.commit()
 
@@ -83,9 +83,9 @@ def set_public_url(url: str):
 def public(r: dict) -> dict:
     ch = RUNNING.get(r["id"])
     cls = PLATFORMS[r["kind"]]
-    out = {"id": r["id"], "kind": r["kind"], "title": cls.title, "name": r["name"], "chat_id": r["chat_id"],
+    out = {"id": r["id"], "kind": r["kind"], "title": i18n.t(cls.title), "name": r["name"], "chat_id": r["chat_id"],
            "enabled": bool(r["enabled"]), "state": (ch.state if ch else "connecting") if r["enabled"] else "off",
-           "error": ch.error if ch and r["enabled"] else "", "paired": bool(r["peer"]), "peer_name": r["peer_name"],
+           "error": str(ch.error) if ch and r["enabled"] else "", "paired": bool(r["peer"]), "peer_name": r["peer_name"],
            "created": r["created"]}
     if not r["peer"]:
         ok = bool(r["pair_code"]) and r["pair_expires"] > time.time() and r["pair_fails"] < PAIR_MAX_FAILS
@@ -112,13 +112,13 @@ def _refresh(cid: int):
 async def create(kind: str, fields: dict, chat_id: int) -> dict:
     cls = PLATFORMS.get(kind)
     if not cls:
-        raise ValueError(f"不支持的聊天软件：{kind}")
+        raise ValueError(i18n.t("不支持的聊天软件：{kind}", kind=kind))
     if not bots.chat(chat_id):
-        raise ValueError("要绑定的对话不存在")
+        raise ValueError(i18n.t("要绑定的对话不存在"))
     info = await cls.check(fields)
     for r in rows():
         if r["kind"] == kind and cls.same(r, info):
-            raise ValueError(f"这个账号已经连接过了（{r['name']}）")
+            raise ValueError(i18n.t("这个账号已经连接过了（{name}）", name=r["name"]))
     cur = conn.execute("insert into channels(kind, name, config, chat_id, created) values(?,?,?,?,?)",
                        (kind, info["name"], json.dumps(info["config"], ensure_ascii=False), chat_id, time.time()))
     conn.commit()
@@ -142,10 +142,10 @@ def new_pair_code(cid: int):
 async def update(cid: int, data: dict) -> dict:
     r = row(cid)
     if not r:
-        raise ValueError("没有这个连接")
+        raise ValueError(i18n.t("没有这个连接"))
     if "chat_id" in data:
         if not bots.chat(int(data["chat_id"])):
-            raise ValueError("要绑定的对话不存在")
+            raise ValueError(i18n.t("要绑定的对话不存在"))
         conn.execute("update channels set chat_id=? where id=?", (int(data["chat_id"]), cid))
     if "enabled" in data:
         conn.execute("update channels set enabled=? where id=?", (int(bool(data["enabled"])), cid))
@@ -158,7 +158,7 @@ async def update(cid: int, data: dict) -> dict:
             _stop_one(cid)
     _refresh(cid)
     if "chat_id" in data and (ch := RUNNING.get(cid)) and r["peer"]:
-        ch.say(f"已改成和「{_chat_title(r['chat_id'])}」对话。")
+        ch.say(i18n.t("已改成和「{title}」对话。", title=_chat_title(r["chat_id"])))
     changed()
     return public(r)
 
@@ -180,7 +180,7 @@ def chat_removed(chat_id: int):
             conn.commit()
             _refresh(r["id"])
             if (ch := RUNNING.get(r["id"])) and r["peer"]:
-                ch.say(f"原来绑定的对话被删除了，改成和「{_chat_title(to)}」对话。")
+                ch.say(i18n.t("原来绑定的对话被删除了，改成和「{title}」对话。", title=_chat_title(to)))
     changed()
 
 
@@ -227,12 +227,16 @@ def _bot_name(bot_id) -> str:
 
 def _chat_title(chat_id) -> str:
     c = bots.chat(chat_id) if chat_id else None
-    return (c["title"] if c else "") or "已删除的对话"
+    return (c["title"] if c else "") or i18n.t("已删除的对话")
 
 
 def _duration(s) -> str:
     s = int(s or 0)
-    return f"{s} 秒" if s < 60 else f"{s // 60} 分 {s % 60} 秒" if s < 3600 else f"{s // 3600} 小时 {s % 3600 // 60} 分"
+    if s < 60:
+        return i18n.t("{s} 秒", s=s)
+    if s < 3600:
+        return i18n.t("{m} 分 {s} 秒", m=s // 60, s=s % 60)
+    return i18n.t("{h} 小时 {m} 分", h=s // 3600, m=s % 3600 // 60)
 
 
 def _absolute(md: str) -> str:
@@ -259,19 +263,24 @@ def render(m: dict, group: bool) -> str | None:
         body = re.sub(r"^\[任务 #\d+ 结果\]\s*", "", content)
         d = conn.execute("select content from messages where id=?", (tid,)).fetchone()
         routine = re.match(r"\[任务已派发\] \[定时任务 ([^\]]+)\]", d[0]) if d else None
-        what = f"定时任务「{routine[1]}」" if routine else f"任务 #{tid} "
-        head = f"✅ {what}完成" if status == "done" else f"❌ {what}失败" if status == "failed" else f"⏹ {what}没做完"
+        if routine:
+            head = i18n.t("✅ 定时任务「{name}」完成", name=routine[1]) if status == "done" else \
+                i18n.t("❌ 定时任务「{name}」失败", name=routine[1]) if status == "failed" else \
+                i18n.t("⏹ 定时任务「{name}」没做完", name=routine[1])
+        else:
+            head = i18n.t("✅ 任务 #{id} 完成", id=tid) if status == "done" else \
+                i18n.t("❌ 任务 #{id} 失败", id=tid) if status == "failed" else i18n.t("⏹ 任务 #{id} 没做完", id=tid)
         if meta.get("elapsed"):
-            head += f"（用时 {_duration(meta['elapsed'])}）"
+            head += i18n.t("（用时 {d}）", d=_duration(meta["elapsed"]))
         return f"**{head}**" + (f" · {name}" if group else "") + f"\n\n{body}"
     if kind == "cancel":
         return "⏹ " + content.strip("[]")
     if kind == "handoff":
-        return f"{name} → {_bot_name(meta.get('to'))}：{meta.get('note') or content}"
+        return i18n.t("{name} → {to}：{note}", name=name, to=_bot_name(meta.get("to")), note=meta.get("note") or content)
     if kind == "dm":
-        return f"✉️ {name} 私信 {_bot_name(meta.get('to'))}：{content}"
+        return i18n.t("✉️ {name} 私信 {to}：{text}", name=name, to=_bot_name(meta.get("to")), text=content)
     if kind == "dm_reply":
-        return None if meta.get("sent") else f"**↩️ {name} 回信**\n\n{content}"
+        return None if meta.get("sent") else i18n.t("**↩️ {name} 回信**", name=name) + f"\n\n{content}"
     if kind == "note":
         return "ℹ️ " + content.strip("[]")
     return None
@@ -282,50 +291,59 @@ def card_for(ev: dict) -> dict:
     who = _bot_name(ev.get("bot_id"))
     origin = ""
     if ev.get("origin_chat_id") and ev["origin_chat_id"] != ev.get("chat_id"):
-        origin = f"（在群聊「{_chat_title(ev['origin_chat_id'])}」里派的）"
+        origin = i18n.t("（在群聊「{title}」里派的）", title=_chat_title(ev["origin_chat_id"]))
     url = public_url()
     if ev.get("kind") == "help":
         try:
             reason = json.loads(ev.get("args") or "{}").get("需要你做的事") or ev.get("args")
         except ValueError:
             reason = ev.get("args")
-        return {"id": ev["id"], "kind": "help", "title": f"🙋 {who} 需要你帮忙",
-                "body": f"{reason}\n\n任务 #{ev.get('task_id')} 已暂停{origin}。要在网页上接手电脑处理，处理完点“处理完了”，Bot 会接着做。",
-                "buttons": [("处理完了", "done", "primary"), ("处理不了", "fail", "")],
-                "link": ("去网页接手", f"{url}/?chat={ev.get('chat_id')}") if url else None, "done": ""}
+        return {"id": ev["id"], "kind": "help", "title": i18n.t("🙋 {name} 需要你帮忙", name=who),
+                "body": f"{reason}\n\n" + i18n.t("任务 #{id} 已暂停{origin}。要在网页上接手电脑处理，处理完点“处理完了”，Bot 会接着做。",
+                                               id=ev.get("task_id"), origin=origin),
+                "buttons": [(i18n.t("处理完了"), "done", "primary"), (i18n.t("处理不了"), "fail", "")],
+                "link": (i18n.t("去网页接手"), f"{url}/?chat={ev.get('chat_id')}") if url else None, "done": ""}
     tool, args = ev.get("tool") or "", (ev.get("args") or "")[:800]
     goal = re.sub(r"\s+", " ", ev.get("goal") or "")
     when = ""
     if ev.get("expires"):
-        when = f"\n后台任务，{time.strftime('%H:%M', time.localtime(ev['expires']))} 前没确认按拒绝处理。"
-    buttons = [("允许一次", "ok", "primary"), ("拒绝", "no", "danger")]
+        when = "\n" + i18n.t("后台任务，{time} 前没确认按拒绝处理。", time=time.strftime("%H:%M", time.localtime(ev["expires"])))
+    buttons = [(i18n.t("允许一次"), "ok", "primary"), (i18n.t("拒绝"), "no", "danger")]
+    task_line = i18n.t("任务 #{id}：{goal}", id=ev.get("task_id"), goal=goal) + origin + when
     if tool == "ask_approval":   # Worker 自己要求确认的一步：直接写要做的事；“总是允许”对它没有意义
         try:
             what = json.loads(args).get("操作") or args
         except ValueError:
             what = args
-        body = f"{what}\n\n任务 #{ev.get('task_id')}：{goal}{origin}{when}"
+        body = f"{what}\n\n{task_line}"
     else:
         app, _, name = tool.rpartition("__")
-        body = f"{'应用 @' + app + ' 的 ' if app else ''}**{name}**\n任务 #{ev.get('task_id')}：{goal}{origin}{when}\n```\n{args}\n```"
-        buttons.append(("总是允许", "always", ""))
-    return {"id": ev["id"], "kind": "approval", "title": f"⚠️ {who} 需要你确认", "body": body,
+        head = i18n.t("应用 @{app} 的 **{tool}**", app=app, tool=name) if app else f"**{name}**"
+        body = f"{head}\n{task_line}\n```\n{args}\n```"
+        buttons.append((i18n.t("总是允许"), "always", ""))
+    return {"id": ev["id"], "kind": "approval", "title": i18n.t("⚠️ {name} 需要你确认", name=who), "body": body,
             "buttons": buttons, "link": None, "done": ""}
 
 
-# 打字代替按按钮：“允许 #12”“拒绝 12”。钉钉卡片上的链接点一下就发出这样一句话
-WORDS = {"允许一次": "ok", "允许": "ok", "同意": "ok", "拒绝": "no", "总是允许": "always", "处理完了": "done", "处理不了": "fail"}
-ACT_WORD = {"ok": "允许一次", "no": "拒绝", "always": "总是允许", "done": "处理完了", "fail": "处理不了"}
-_WORD_CMD = re.compile(r"^(" + "|".join(sorted(WORDS, key=len, reverse=True)) + r")\s*[#＃]?\s*(\d+)\s*[。.!！]?$")
+# 打字代替按按钮：“允许 #12”“拒绝 12”。钉钉卡片上的链接点一下就发出这样一句话。中英文都认，不分大小写
+_ALIASES = {"ok": i18n.both("允许一次") | i18n.both("允许") | i18n.both("同意"), "no": i18n.both("拒绝"),
+            "always": i18n.both("总是允许"), "done": i18n.both("处理完了"), "fail": i18n.both("处理不了")}
+WORDS = {w.lower(): act for act, words in _ALIASES.items() for w in words}
+ACT_WORD = {"ok": i18n.N_("允许一次"), "no": i18n.N_("拒绝"), "always": i18n.N_("总是允许"), "done": i18n.N_("处理完了"),
+            "fail": i18n.N_("处理不了")}
+_WORD_CMD = re.compile(r"^(" + "|".join(re.escape(w) for w in sorted(WORDS, key=len, reverse=True)) +
+                       r")\s*[#＃]?\s*(\d+)\s*[。.!！]?$", re.I)
 
 
 def word_command(act: str, aid: int) -> str:
-    """点了等于按按钮的那句话。"""
-    return f"{ACT_WORD[act]} #{aid}"
+    """点了等于按按钮的那句话（用界面的语言）。"""
+    return f"{i18n.t(ACT_WORD[act])} #{aid}"
 
 
-DONE_TEXT = {"approval": {"approved": "✓ 已允许", "always": "✓ 已允许，以后自动允许", "rejected": "✕ 已拒绝", "expired": "已过期，按拒绝处理", "cancelled": "任务已取消"},
-             "help": {"approved": "✓ 已处理完，Bot 继续", "rejected": "✕ 没有处理", "expired": "已过期", "cancelled": "任务已取消"}}
+DONE_TEXT = {"approval": {"approved": i18n.N_("✓ 已允许"), "always": i18n.N_("✓ 已允许，以后自动允许"), "rejected": i18n.N_("✕ 已拒绝"),
+                          "expired": i18n.N_("已过期，按拒绝处理"), "cancelled": i18n.N_("任务已取消")},
+             "help": {"approved": i18n.N_("✓ 已处理完，Bot 继续"), "rejected": i18n.N_("✕ 没有处理"), "expired": i18n.N_("已过期"),
+                      "cancelled": i18n.N_("任务已取消")}}
 
 
 class Channel:
@@ -380,7 +398,7 @@ class Channel:
 
     async def download(self, ref) -> bytes | tuple[bytes, str]:
         """取附件；文件名要下载了才知道的平台返回 (内容, 文件名)。"""
-        raise ValueError("这个聊天软件还不支持收文件")
+        raise ValueError(i18n.t("这个聊天软件还不支持收文件"))
 
     async def aclose(self):
         pass
@@ -402,9 +420,9 @@ class Channel:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            self.set_state("error", f"停止了：{e}")
+            self.set_state("error", i18n.later("停止了：{error}", error=e))
 
-    def set_state(self, state: str, error: str = ""):
+    def set_state(self, state: str, error: "str | i18n.Later" = ""):
         if (state, error) != (self.state, self.error):
             self.state, self.error = state, error
             changed()
@@ -450,7 +468,7 @@ class Channel:
         if not hit:
             return
         msg_id, card = hit
-        done = DONE_TEXT[card["kind"]].get(status, status)
+        done = i18n.t(DONE_TEXT[card["kind"]].get(status, status))
         await self.edit_card(peer, msg_id, card | {"buttons": [], "link": None, "done": done})
 
     def consider(self, ev: dict):
@@ -514,23 +532,23 @@ class Channel:
             return   # 不是配对过的人：不理
         cmd = text.split()[0].split("@")[0].lower() if text.startswith("/") else ""
         if cmd in ("/start", "/help"):
-            return self.say(HELP.format(name=_chat_title(r["chat_id"])))
+            return self.say(i18n.t(HELP, name=_chat_title(r["chat_id"])))
         if cmd == "/new":
             await reset(r["chat_id"])
-            return self.say("已开始新话题，之前的对话不再带进上下文（长期记忆还在）。")
-        if (m := _WORD_CMD.match(text)) and int(m[2]) in self.carding:
-            ok, toast = await self._press(peer, f"ap:{m[2]}:{WORDS[m[1]]}")
+            return self.say(i18n.t("已开始新话题，之前的对话不再带进上下文（长期记忆还在）。"))
+        if (m := _WORD_CMD.match(text.replace("’", "'"))) and int(m[2]) in self.carding:
+            ok, toast = await self._press(peer, f"ap:{m[2]}:{WORDS[m[1].lower()]}")
             if not ok:   # 成功的话卡片会更新成结果，不用再说一遍
                 self.say(toast)
             return
         if cmd == "/stop":
             from .. import router
-            done = [router.cancel(t.id, "用户在聊天软件里停止") for t in list(router.TASKS.values())
+            done = [router.cancel(t.id, i18n.t("用户在聊天软件里停止")) for t in list(router.TASKS.values())
                     if t.chat_id == r["chat_id"] and t.status == "running"]
-            return self.say("已停止：" + "、".join(done) if done else "现在没有正在做的任务。")
+            return self.say(i18n.t("已停止：{tasks}", tasks=i18n.t("、").join(done)) if done else i18n.t("现在没有正在做的任务。"))
         chat = bots.chat(r["chat_id"])
         if not chat:
-            return self.say("绑定的对话不存在了，请在网页的 设置 → 聊天软件 里重新选择。")
+            return self.say(i18n.t("绑定的对话不存在了，请在网页的 设置 → 聊天软件 里重新选择。"))
         paths = []
         for name, fref in files:
             try:
@@ -538,7 +556,7 @@ class Channel:
                 data, name = (got[0], got[1] or name) if isinstance(got, tuple) else (got, name)
                 paths.append(await save_upload(name, data))
             except Exception as e:
-                self.say(f"附件「{name}」没存上：{e}")
+                self.say(i18n.t("附件「{name}」没存上：{error}", name=name, error=e))
         if paths:
             text = (text + "\n" if text else "") + "\n".join(f"[附件] {p}" for p in paths)
         if text:
@@ -554,15 +572,15 @@ class Channel:
             conn.commit()
             self.row = row(self.id)
             changed()
-            return self.say("配对成功 ✓\n\n" + HELP.format(name=_chat_title(r["chat_id"])), peer)
+            return self.say(i18n.t("配对成功 ✓") + "\n\n" + i18n.t(HELP, name=_chat_title(r["chat_id"])), peer)
         if code and valid:
             conn.execute("update channels set pair_fails=pair_fails+1 where id=?", (self.id,))
             conn.commit()
             self.row = row(self.id)
             if self.row["pair_fails"] >= PAIR_MAX_FAILS:
                 changed()
-            return self.say("配对码不对。", peer)
-        self.say("这个机器人还没配对。在 open-super-agent 网页的 设置 → 聊天软件 里找到它的 6 位配对码，发给我。", peer)
+            return self.say(i18n.t("配对码不对。"), peer)
+        self.say(i18n.t("这个机器人还没配对。在 open-super-agent 网页的 设置 → 聊天软件 里找到它的 6 位配对码，发给我。"), peer)
 
     async def press(self, peer: str, data: str) -> str:
         """卡片上的按钮被点了。返回给用户的一句提示。"""
@@ -571,25 +589,25 @@ class Channel:
     async def _press(self, peer: str, data: str) -> tuple[bool, str]:
         """(处理了没有, 提示)。"""
         if not peer or peer != self.row["peer"]:
-            return False, "没有权限"
+            return False, i18n.t("没有权限")
         m = re.fullmatch(r"ap:(\d+):(\w+)", data or "")
         if not m or int(m[1]) not in self.carding:
-            return False, "这个按钮已经失效了"
+            return False, i18n.t("这个按钮已经失效了")
         aid, act = int(m[1]), m[2]
         item = approvals.pending.get(aid)
         if not item:
-            return False, "已经处理过了"
+            return False, i18n.t("已经处理过了")
         if act not in ACT_WORD:
-            return False, "这个按钮已经失效了"
+            return False, i18n.t("这个按钮已经失效了")
         kind = item.get("kind")
         if act in ("done", "fail") and kind != "help" or act in ("ok", "no", "always") and kind == "help":
-            return False, "这个请求不能这样处理"
+            return False, i18n.t("这个请求不能这样处理")
         if act == "done":
             await handback(item["bot_id"])
-            return True, "已交还电脑，Bot 继续"
+            return True, i18n.t("已交还电脑，Bot 继续")
         if act == "fail":
             approvals.resolve(aid, False, "用户表示处理不了")
-            return True, "已告诉 Bot"
+            return True, i18n.t("已告诉 Bot")
         return True, approvals.resolve(aid, act in ("ok", "always"), "", act == "always")
 
 

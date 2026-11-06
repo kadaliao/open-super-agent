@@ -38,6 +38,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
 - 📦 **Backup and migration**: export all data, secrets included, as one encrypted file and upload it on the new machine to carry on. Servers can also back up on a schedule from the command line.
 - 🔄 **Any model**: add model providers in Settings (DeepSeek, OpenAI, OpenRouter, SiliconFlow, Alibaba Bailian, Zhipu, Kimi, Ollama, or any OpenAI-compatible endpoint), paste an API key and test it in one click; pick a model per role. Prices are fetched automatically.
+- 🌐 **English and Chinese**: the UI, notifications and messaging-app messages come in both languages; switch in Settings. In the English UI, bots reply in English by default.
 
 The architecture follows DeepSeek's Super-agent design: a Router that converses, Workers that execute, and a Watchdog that supervises.
 
@@ -88,7 +89,6 @@ Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANG
 - **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; using the bot in chat-app group chats.
 - **Computers**: Teach a task across the whole desktop, not just the browser; snapshots and rollback.
 - **Bot abilities**: voice conversations.
-- **Easier to deploy and use**: an English UI.
 
 The reasoning and priorities are in [docs/roadmap.md](docs/roadmap.md) (Chinese). Feature requests are welcome as issues.
 

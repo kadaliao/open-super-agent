@@ -21,6 +21,25 @@ fields:
 - key: token
   label: 个人 Token
   secret: true
+en:
+  title: Yuque
+  by: Official (Yuque)
+  desc: Search and read knowledge bases, create and update docs
+  about: Yuque's official MCP. Enter a personal token, and the bot can find, read, and write docs in your knowledge bases.
+  can:
+  - List knowledge bases and docs, read their content
+  - Search docs
+  - Create and update docs and quick notes
+  example: '@yuque find the last requirements doc in the "Product" knowledge base and summarize the key points'
+  note: Yuque personal tokens may require a Super membership.
+  steps:
+  - Open Yuque's "Token" settings page and click "New" (新建)
+  - Check the permissions you need and confirm. For read-only access, check only "Read" (读取)
+  - Copy the generated token and paste it below
+  link_label: Open Yuque token settings
+  fields:
+    token:
+      label: Personal token
 deny: [delete]
 connect:
   type: stdio

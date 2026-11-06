@@ -9,6 +9,7 @@ import os
 import re
 import time
 from cryptography.fernet import Fernet, InvalidToken
+from . import i18n
 from .memory import conn, db_path
 
 conn.execute("create table if not exists vault(name text primary key, ciphertext blob, created real)")
@@ -38,9 +39,9 @@ def _key() -> Fernet:
 
 def put(name: str, value: str):
     if not NAME.match(name):
-        raise ValueError("名字只能用字母、数字和下划线，且不能以数字开头")
+        raise ValueError(i18n.t("名字只能用字母、数字和下划线，且不能以数字开头"))
     if not value:
-        raise ValueError("值不能为空")
+        raise ValueError(i18n.t("值不能为空"))
     conn.execute("insert or replace into vault values(?,?,?)", (name, _key().encrypt(value.encode()), time.time()))
     conn.commit()
 

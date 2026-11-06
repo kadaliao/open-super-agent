@@ -12,6 +12,15 @@ can:
 - 新建 issue，指派、设优先级
 - 更新状态、写评论
 example: '@linear 把刚才发现的三个 bug 建成 issue，指派给我'
+en:
+  by: Official (Linear)
+  desc: Find and create issues, update project progress
+  about: Linear's official connection. Once you sign in, the bot can search issues, create and update issues, and leave comments.
+  can:
+  - Search and read issues and projects
+  - Create issues, assign them, set priority
+  - Update status, leave comments
+  example: '@linear file the three bugs we just found as issues and assign them to me'
 connect:
   type: http
   url: https://mcp.linear.app/mcp

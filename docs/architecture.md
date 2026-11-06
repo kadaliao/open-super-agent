@@ -57,6 +57,7 @@ osa/
   library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
   bots.py          Bot 和对话的增删改查、旧数据迁移
   settings.py      界面里改的设置（覆盖 config.yaml）
+  i18n.py          界面语言：t() 按中文原文查 locales/en.json；python -m osa.i18n 检查前后端的翻译
   backup.py        备份与迁移：加密的备份文件、恢复前检查、启动时换上、命令行
   approvals.py     确认卡片：写操作确认（approval）、请你帮忙（help）
   mcp_hub.py       MCP 连接（本机命令 / 远程地址）、OAuth 登录授权与令牌刷新、工具命名（<server>__<tool>）、deny / confirm 规则
@@ -83,6 +84,7 @@ compose.yaml        Docker Compose 部署（deploy/Caddyfile 是 --profile https
 web/public/         PWA：manifest.json、sw.js（推送和离线提示页）、图标
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
+  i18n.ts          界面语言：t() 按中文原文查 locales/en.json
   components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、
                    Memories（记忆面板）、Library（资料库和分享页）、Groups（新建群聊和群聊面板）、Tasks（任务列表和过程）、Markdown
 ```
@@ -101,7 +103,7 @@ web/src/
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |
 | `channels` | 聊天软件连接：平台、绑定的对话（`chat_id`）、配对的私聊（`peer`）、配对码；token / App Secret 在保险库的 `channel_<id>` |
-| `settings` | 界面里改过的设置 |
+| `settings` | 界面里改过的设置；`language` 是界面语言（zh / en） |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
 
 ## 设计约定
@@ -242,6 +244,13 @@ web/src/
   `server.py` 在导入任何会打开数据库的模块之前调用 `backup.apply_pending()` 换上新库（旧库连同 `-wal`、`-shm` 改名留着）。
   systemd、Docker（`python -m uvicorn`）、直接运行都能这样重启；`--reload` 的子进程重新执行不了，只能退出等手动重启。
 - 命令行和服务各自打开数据库；命令行先检查主密钥能不能解开保险库里的值，对不上（没带 `OSA_VAULT_KEY`）就拒绝。
+
+### 界面语言
+- 中文原文就是翻译的键，英文在 `en.json`，没翻译的地方显示中文。中文界面和加翻译之前完全一样。
+- 语言是全局的一个设置（单用户），前后端共用：服务端发的报错、卡片、推送、聊天软件里的消息都按它来。前端在 localStorage 留一份，
+  打开页面不用等接口；和服务端的不一样时重新加载一次。没设过时，新装的按第一次打开时浏览器的语言，升级上来的老用户定为中文。
+- 写给模型的提示词保持中文，英文界面只在末尾加一句默认用英文回复；中文界面的提示词一个字不变。
+- 存进数据库、之后还要比对的标记（`[任务已派发]` 等）存中文原文，在显示的地方翻。
 
 ### 推送与 PWA
 - 推送按 RFC 8291（aes128gcm）加密、RFC 8292（VAPID）签名，只用 `cryptography` 和 `httpx`。推送服务只看得到密文。

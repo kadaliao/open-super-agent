@@ -25,6 +25,26 @@ fields:
   nospace: true
   pattern: ^[^:/?&=#]+$
   invalid: 只复制 access_token= 后面那一段，不要整个网址
+en:
+  title: Baidu Netdisk
+  by: Official (Baidu Netdisk)
+  how: Authorize, then paste a token
+  desc: Find files, organize your drive, create share links
+  about: Baidu Netdisk's official connection. The bot can search your files by name or meaning, list folders, check storage, create folders, move, copy, and rename files, save files from a URL, and create share links. It asks you before making changes. It can't delete files.
+  can:
+  - Search files by keyword or meaning, list them by type (documents, images, videos)
+  - Create folders, move, copy, and rename files (asks first)
+  - Save files from a URL to your drive, create share links (asks first)
+  example: '@baidu-netdisk find last year''s health checkup report PDF and put it in the "My documents" folder'
+  steps:
+  - Click the button below to open Baidu's authorization page, then scan the QR code or sign in with your account
+  - Leave both permissions checked and click "Authorize" (授权)
+  - You'll land on a blank page with "access_token=…" in the address bar. Copy the part after access_token= and before the next &, and paste it below
+  link_label: Open Baidu authorization page
+  note: The authorization expires after 30 days. When it does, click the button above to authorize again, then click "Change key" and paste the new token. To stop using it, revoke access under "Authorization management" (授权管理) in your Baidu account.
+  fields:
+    token:
+      invalid: Copy only the part after access_token=, not the whole URL
 deny: [file_del]
 confirm: [copy, move, rename, upload, share, make_dir]
 connect:

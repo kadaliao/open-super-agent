@@ -13,6 +13,16 @@ can:
 - 查国家、城市、化学物质、天体等的数据
 example: '@wolfram 每月存 3000 元，年利率 2.5% 按月复利，10 年后一共多少？'
 note: Wolfram 说明这是给个人少量使用的，免费。
+en:
+  by: Official (Wolfram)
+  desc: Do math, convert units, look up all kinds of data
+  about: Wolfram's official connection, no sign-up needed. The bot can use Wolfram|Alpha to solve equations, compute integrals, and convert units, and look up data on countries, chemicals, celestial bodies, and more. For more complex calculations it writes and runs Wolfram Language code, which is more reliable than doing the math in its head. Wolfram|Alpha only understands English, so the bot translates questions into English first.
+  can:
+  - Solve equations, compute integrals, run statistics
+  - Convert units and currencies, count days between dates
+  - Look up data on countries, cities, chemicals, celestial bodies, and more
+  example: '@wolfram if I save 3,000 yuan a month at 2.5% annual interest compounded monthly, how much will I have after 10 years?'
+  note: Wolfram says this is free for light personal use.
 connect:
   type: http
   url: https://agenttools.wolfram.com/mcp

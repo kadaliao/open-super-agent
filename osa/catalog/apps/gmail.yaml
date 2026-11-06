@@ -35,6 +35,30 @@ check:
     user: '{email}'
     password: '{password}'
     hint: 注意填的是应用专用密码，不是平时的登录密码
+en:
+  by: IMAP · Community
+  how: Email + password
+  desc: Read and search email, tidy your inbox, draft and send for you
+  about: Connects to your Gmail over IMAP. The bot can find, read, and archive email and draft replies. It asks you before sending or deleting. No need to create an app in Google Cloud; an app password is enough.
+  can:
+  - Find email by sender, subject, or date; read bodies and attachments
+  - Archive, move, mark as read
+  - Draft, reply, forward, send (asks first)
+  example: '@gmail which emails today need a reply from me? Draft replies for them'
+  steps:
+  - Turn on 2-Step Verification for your Google account (skip if it's already on)
+  - Open the "App passwords" page, enter any name (like Super Agent), and click "Create"
+  - Copy the 16-character password that appears and paste it below
+  link_label: Open Google app passwords
+  fields:
+    email:
+      label: Email address
+      invalid: That doesn't look like an email address
+    password:
+      label: App password
+  check:
+    imap:
+      hint: Use the app password, not your regular sign-in password
 deny: [email_command]
 connect:
   type: stdio

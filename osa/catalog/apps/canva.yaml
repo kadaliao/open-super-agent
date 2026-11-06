@@ -11,6 +11,16 @@ can:
 - 修改已有设计里的文字、图片，导出成 PNG 或 PDF
 example: '@canva 做一张周六读书会的海报，竖版，温暖一点的配色'
 note: 用 canva.com 的账号登录。国内版「可画」（canva.cn）是另一套账号，登不上。
+en:
+  by: Official (Canva)
+  desc: Find designs, create and edit posters and slides
+  about: Canva's official connection. Once you sign in with your Canva account, the bot can search your designs, create posters, social media graphics, and presentations from your description, edit text and images in existing designs, and export them as images or PDFs.
+  can:
+  - Search and view your designs and folders
+  - Create new designs from a description, apply brand templates
+  - Edit text and images in existing designs, export as PNG or PDF
+  example: "@canva make a poster for Saturday's book club, portrait, with warm colors"
+  note: Sign in with a canva.com account. Accounts from the China edition (canva.cn) are separate and won't work.
 deny: [merge]
 connect:
   type: http

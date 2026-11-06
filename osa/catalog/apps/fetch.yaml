@@ -9,6 +9,15 @@ can:
 - 读取网页正文，去掉广告和导航
 - 分段读很长的页面
 example: '@fetch 读一下这篇文章，列出作者的三个主要观点：https://…'
+en:
+  title: Web fetch
+  by: Official (MCP)
+  desc: Turn any web page into clean text for the bot to read
+  about: The bot can already search and read the web. With this, long pages and docs sites are converted to cleaner Markdown, so it reads them more accurately.
+  can:
+  - Read page content without ads and navigation
+  - Read very long pages in chunks
+  example: "@fetch read this article and list the author's three main points: https://…"
 connect:
   type: stdio
   command: uvx

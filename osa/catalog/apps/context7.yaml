@@ -9,6 +9,14 @@ can:
 - 按库名查找文档
 - 取出某个主题的最新用法和示例代码
 example: '@context7 查一下 FastAPI 最新版本里依赖注入怎么写'
+en:
+  by: Official (Upstash)
+  desc: Latest docs and examples for programming libraries
+  about: Lets the bot check the latest library docs while coding, instead of relying on outdated APIs from the model's memory.
+  can:
+  - Find docs by library name
+  - Get the latest usage and example code for a topic
+  example: '@context7 how do you write dependency injection in the latest version of FastAPI?'
 connect:
   type: http
   url: https://mcp.context7.com/mcp

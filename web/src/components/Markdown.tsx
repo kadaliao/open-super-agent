@@ -2,16 +2,17 @@ import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
+import { t } from '../i18n'
 
 function CodeBlock(props: any) {
   const { children, ...rest } = props
   const copy = (e: React.MouseEvent) => {
     const pre = (e.currentTarget as HTMLElement).parentElement?.querySelector('code')
     navigator.clipboard?.writeText(pre?.textContent || '')
-    ;(e.currentTarget as HTMLElement).textContent = '已复制'
-    setTimeout(() => ((e.target as HTMLElement).textContent = '复制'), 1200)
+    ;(e.currentTarget as HTMLElement).textContent = t('已复制')
+    setTimeout(() => ((e.target as HTMLElement).textContent = t('复制')), 1200)
   }
-  return <div className="code-wrap"><button className="code-copy" onClick={copy}>复制</button><pre {...rest}>{children}</pre></div>
+  return <div className="code-wrap"><button className="code-copy" onClick={copy}>{t('复制')}</button><pre {...rest}>{children}</pre></div>
 }
 
 // 站内的资料库链接（/library/pages/12）在应用里打开；其余链接开新标签页

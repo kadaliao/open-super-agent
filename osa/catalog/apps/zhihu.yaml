@@ -24,6 +24,22 @@ fields:
   label: Access Secret
   secret: true
   nospace: true
+en:
+  title: Zhihu
+  by: Official (Zhihu)
+  desc: Search Zhihu and the web, see trending topics, ask Zhihu Zhida
+  about: Zhihu's official connection. The bot can search Q&As and articles on Zhihu, search the web, see Zhihu's trending list, and answer questions with Zhihu Zhida. Read-only; it won't post anything for you.
+  can:
+  - Search Zhihu Q&As and articles, and the wider web
+  - See Zhihu's trending list
+  - Answer questions with Zhihu Zhida
+  example: '@zhihu what do people on Zhihu think about buying a resale home right now? Summarize a few top-voted answers'
+  steps:
+  - Sign in to the Zhihu Open Platform and go to "Personal center → Overview" (个人中心 → 概览)
+  - Under "Access Secret management" (Access Secret 管理), click "Request new Access Secret" (申请新 Access Secret) → "Confirm" (确认申请)
+  - Click "Copy" (复制), then "I've saved it" (我已保存); you can't see it again after closing. Paste it below
+  link_label: Open Zhihu Open Platform
+  note: There's a free daily quota, much higher with real-name verification. Beyond that, you pay per call.
 connect:
   type: http
   url: https://developer.zhihu.com/api/mcp/v1

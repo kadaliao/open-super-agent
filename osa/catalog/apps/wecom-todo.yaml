@@ -25,6 +25,26 @@ fields:
   placeholder: https://qyapi.weixin.qq.com/mcp/…?apikey=…
   pattern: ^https://qyapi\.weixin\.qq\.com/mcp/.*apikey=
   invalid: 要复制的是「StreamableHttp URL」，以 https://qyapi.weixin.qq.com/mcp/ 开头
+en:
+  title: WeCom To-do
+  by: Official (WeCom)
+  how: Paste a link
+  desc: View, add, and complete WeCom to-dos
+  about: WeCom's official connection, authorized through a "Smart bot" (智能机器人) in WeCom. The bot can view your to-dos, and create, edit, and complete them. It asks you before deleting.
+  can:
+  - View your to-do list
+  - Create and edit to-dos
+  - Mark to-dos done
+  example: '@wecom-todo add the three things assigned to me in the meeting to my WeCom to-dos'
+  steps:
+  - In WeCom, open "Workspace → Smart bot → Create bot → Create manually" (工作台 → 智能机器人 → 创建机器人 → 手动创建), choose "Create in API mode" (API模式创建), set the connection to "Use persistent connection" (使用长连接), choose who can see it, and save (skip if you've done this before)
+  - Go back to "Smart bot → Manage" (智能机器人 → 管理), find the bot, and click "Edit" (编辑)
+  - Under "Available permissions" (可使用权限), click "Go authorize" (去授权), then click "Authorize" (授权) for each "To-do" (待办) item
+  - Click the ">" at the top right of "To-do" (待办), click "Copy" (复制) next to "StreamableHttp URL", and paste it below
+  note: The authorization expires after 7 days. When it does, authorize again in WeCom, then click "Change key" and paste the newly copied link. In organizations with more than 10 people, the bot acts as the WeCom bot and can do a bit less.
+  fields:
+    url:
+      invalid: Copy the "StreamableHttp URL"; it starts with https://qyapi.weixin.qq.com/mcp/
 connect:
   type: http
   url: '{url}'

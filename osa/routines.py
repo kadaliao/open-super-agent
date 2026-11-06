@@ -13,7 +13,7 @@ import re
 import time
 from .config import CFG, call_kwargs, client_for
 from .memory import conn
-from . import memory, skills
+from . import i18n, memory, skills
 
 conn.execute("""create table if not exists routines(
   id integer primary key, bot_id integer, name text, prompt text default '', skill text default '',
@@ -28,6 +28,7 @@ KEEP_RUNS = 20
 KINDS = ("daily", "every", "webhook")
 RUNNING: dict[int, int] = {}      # routine_id -> 正在跑的 run id
 notify = None                     # 由 server 设置
+DAYS = (i18n.N_("周一"), i18n.N_("周二"), i18n.N_("周三"), i18n.N_("周四"), i18n.N_("周五"), i18n.N_("周六"), i18n.N_("周日"))
 
 
 def _row(r) -> dict:
@@ -76,17 +77,17 @@ def runs(rid: int) -> list[dict]:
 def _clean_trigger(t: dict) -> dict:
     kind = t.get("kind")
     if kind not in KINDS:
-        raise ValueError("触发方式只能是 daily（每天定时）、every（每隔几分钟）或 webhook")
+        raise ValueError(i18n.t("触发方式只能是 daily（每天定时）、every（每隔几分钟）或 webhook"))
     if kind == "daily":
         times = [x.strip() for x in (t.get("times") or []) if x.strip()]
         if not times or not all(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", x) for x in times):
-            raise ValueError("时间要写成 HH:MM，比如 09:00")
+            raise ValueError(i18n.t("时间要写成 HH:MM，比如 09:00"))
         days = sorted({int(d) for d in (t.get("days") or []) if 1 <= int(d) <= 7})
         return {"kind": kind, "times": sorted(set(times)), "days": days}
     if kind == "every":
         m = int(t.get("minutes") or 0)
         if m < 5:
-            raise ValueError("间隔至少 5 分钟")
+            raise ValueError(i18n.t("间隔至少 5 分钟"))
         return {"kind": kind, "minutes": m}
     words = lambda k: [w.strip() for w in (t.get(k) or []) if w.strip()]
     return {"kind": kind, "include": words("include"), "exclude": words("exclude"),
@@ -111,21 +112,25 @@ def next_after(trig: dict, now: float) -> float | None:
     return None
 
 
-def describe(trig: dict) -> str:
+def describe(trig: dict, in_lang: str | None = None) -> str:
+    """触发方式的一句话说明。默认按界面语言；写进提示词时传 in_lang="zh"。"""
+    lang = in_lang or i18n.lang()
     if trig["kind"] == "every":
         m = trig["minutes"]
-        return f"每 {m // 60} 小时" if m % 60 == 0 else f"每 {m} 分钟"
+        return i18n.t("每 {n} 小时", lang, n=m // 60) if m % 60 == 0 else i18n.t("每 {n} 分钟", lang, n=m)
     if trig["kind"] == "daily":
-        days = "每天" if not trig["days"] or len(trig["days"]) == 7 else "每周" + "、".join("一二三四五六日"[d - 1] for d in trig["days"])
-        return f"{days} {'、'.join(trig['times'])}"
-    return "收到 webhook 时"
+        sep = i18n.t("、", lang)
+        days = i18n.t("每天", lang) if not trig["days"] or len(trig["days"]) == 7 else \
+            i18n.t("每周{days}", lang, days=sep.join(i18n.t(DAYS[d - 1], lang).removeprefix("周") for d in trig["days"]))
+        return i18n.t("{days} {times}", lang, days=days, times=sep.join(trig["times"]))
+    return i18n.t("收到 webhook 时", lang)
 
 
 # ---------- 增删改 ----------
 def save(bot_id: int, data: dict, rid: int | None = None) -> dict:
     old = get(rid) if rid else None
     if rid and not old:
-        raise ValueError("没有这个定时任务")
+        raise ValueError(i18n.t("没有这个定时任务"))
     cur = old or {"name": "", "prompt": "", "skill": "", "trigger": {}, "enabled": True}
     name = (data.get("name", cur["name"]) or "").strip()[:40]
     prompt = (data.get("prompt", cur["prompt"]) or "").strip()[:4000]
@@ -133,22 +138,22 @@ def save(bot_id: int, data: dict, rid: int | None = None) -> dict:
     trig = _clean_trigger(data.get("trigger") or cur["trigger"])
     enabled = bool(data.get("enabled", cur["enabled"]))
     if not name:
-        raise ValueError("名字不能为空")
+        raise ValueError(i18n.t("名字不能为空"))
     if not prompt and not skill:
-        raise ValueError("要写清楚做什么，或者选一个技能")
+        raise ValueError(i18n.t("要写清楚做什么，或者选一个技能"))
     if skill and not skills.find(bot_id, skill):
-        raise ValueError(f"没有技能 /{skill}")
+        raise ValueError(i18n.t("没有技能 /{skill}", skill=skill))
     if trig["kind"] == "webhook":
         if not re.fullmatch(r"[\w-]{1,40}", name):
-            raise ValueError("webhook 类的名字会出现在网址里，只能用字母、数字、- 和 _")
+            raise ValueError(i18n.t("webhook 类的名字会出现在网址里，只能用字母、数字、- 和 _"))
         other = by_hook(name)
         if other and other["id"] != rid:
-            raise ValueError(f"已经有叫 {name} 的 webhook 了")
+            raise ValueError(i18n.t("已经有叫 {name} 的 webhook 了", name=name))
     now = time.time()
     nxt = next_after(trig, now)
     if not rid:
         if conn.execute("select count(*) from routines where bot_id=?", (bot_id,)).fetchone()[0] >= MAX_PER_BOT:
-            raise ValueError(f"每个 Bot 最多 {MAX_PER_BOT} 个定时任务")
+            raise ValueError(i18n.t("每个 Bot 最多 {n} 个定时任务", n=MAX_PER_BOT))
         rid = conn.execute("insert into routines(bot_id, name, prompt, skill, trigger, enabled, next_run, created, updated) "
                            "values(?,?,?,?,?,?,?,?,?)", (bot_id, name, prompt, skill, json.dumps(trig, ensure_ascii=False),
                                                        int(enabled), nxt, now, now)).lastrowid
@@ -206,10 +211,10 @@ async def _changed(r: dict):
 def _keyword_filter(trig: dict, text: str) -> str | None:
     low = text.lower()
     if any(w.lower() in low for w in trig.get("exclude", [])):
-        return "命中排除词"
+        return i18n.t("命中排除词")
     inc = trig.get("include", [])
     if inc and not any(w.lower() in low for w in inc):
-        return "没有命中关键词"
+        return i18n.t("没有命中关键词")
     return None
 
 
@@ -217,7 +222,7 @@ async def _llm_filter(rule: str, text: str) -> tuple[bool, str]:
     client, model = client_for("filter")
     resp = await client.chat.completions.create(model=model, messages=[
         {"role": "system", "content": "你是事件过滤器。根据规则判断事件是否需要处理。"
-                                      '只输出 JSON：{"handle": true/false, "reason": "一句话"}'},
+                                      '只输出 JSON：{"handle": true/false, "reason": "一句话"}' + i18n.model_hint()},
         {"role": "user", "content": f"规则：{rule}\n\n事件：\n{text[:6000]}"}],
         response_format={"type": "json_object"}, **call_kwargs("filter"))
     memory.record_usage("filter", model, resp.usage)
@@ -225,11 +230,11 @@ async def _llm_filter(rule: str, text: str) -> tuple[bool, str]:
         d = json.loads(resp.choices[0].message.content)
         return bool(d.get("handle")), d.get("reason", "")
     except Exception:
-        return True, "过滤结果解析失败，默认放行"
+        return True, i18n.t("过滤结果解析失败，默认放行")
 
 
 def goal_for(r: dict, event: str = "") -> str:
-    parts = [f"这是定时任务「{r['name']}」（{describe(r['trigger'])}）的一次运行。"]
+    parts = [f"这是定时任务「{r['name']}」（{describe(r['trigger'], 'zh')}）的一次运行。"]
     if r["skill"] and (s := skills.find(r["bot_id"], r["skill"])):
         parts.append(f"按技能 /{s['name']} 的做法执行：\n{s['body']}")
     if r["prompt"]:
@@ -244,9 +249,9 @@ async def fire(r: dict, source: str, event: str = "") -> dict:
     from . import bots, router
     rid = r["id"]
     if rid in RUNNING:
-        _record(rid, source, "skipped", "上一次还没跑完，这次跳过")
+        _record(rid, source, "skipped", i18n.t("上一次还没跑完，这次跳过"))
         await _changed(r)
-        return {"accepted": False, "reason": "上一次还没跑完"}
+        return {"accepted": False, "reason": i18n.t("上一次还没跑完")}
     if r["trigger"].get("kind") == "webhook" and source == "webhook":
         if reason := _keyword_filter(r["trigger"], event):
             _record(rid, source, "filtered", reason)
@@ -255,11 +260,11 @@ async def fire(r: dict, source: str, event: str = "") -> dict:
         if rule := r["trigger"].get("llm_filter"):
             ok, reason = await _llm_filter(rule, event)
             if not ok:
-                _record(rid, source, "filtered", f"LLM：{reason}")
+                _record(rid, source, "filtered", i18n.t("LLM：{reason}", reason=reason))
                 await _changed(r)
                 return {"accepted": False, "stage": "llm", "reason": reason}
     if not bots.get(r["bot_id"]):
-        return {"accepted": False, "reason": "Bot 不存在"}
+        return {"accepted": False, "reason": i18n.t("Bot 不存在")}
     run_id = _record(rid, source, "running")
     RUNNING[rid] = run_id
     rt = router.runtime(r["bot_id"])

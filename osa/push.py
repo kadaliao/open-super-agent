@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from . import i18n
 from .config import CFG
 from .memory import conn
 
@@ -89,7 +90,7 @@ def encrypt(payload: bytes, p256dh: str, auth: str) -> bytes:
 def subscribe(sub: dict, ua: str = "") -> int:
     ep, keys = sub.get("endpoint", ""), sub.get("keys") or {}
     if not ep.startswith("https://") or not keys.get("p256dh") or not keys.get("auth"):
-        raise ValueError("订阅信息不完整")
+        raise ValueError(i18n.t("订阅信息不完整"))
     conn.execute("insert or replace into push_subs values(?,?,?,?,?)", (ep, keys["p256dh"], keys["auth"], ua[:200], time.time()))
     conn.commit()
     return count()
@@ -110,11 +111,11 @@ async def _send_one(c: httpx.AsyncClient, ep: str, p256dh: str, auth: str, data:
             "Authorization": vapid_header(ep), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
             "TTL": "86400", "Urgency": urgency})
     except httpx.HTTPError as e:
-        return f"发送失败：{e}"
+        return i18n.t("发送失败：{e}", e=e)
     if r.status_code in (404, 410):
         unsubscribe(ep)
-        return "订阅已失效，已删除"
-    return "ok" if r.status_code < 300 else f"推送服务返回 {r.status_code}：{r.text[:200]}"
+        return i18n.t("订阅已失效，已删除")
+    return "ok" if r.status_code < 300 else i18n.t("推送服务返回 {code}：{text}", code=r.status_code, text=r.text[:200])
 
 
 async def send(title: str, body: str, url: str = "/", tag: str = "", urgency: str = "normal") -> list[str]:
@@ -144,8 +145,9 @@ def message_for(event: dict) -> tuple[str, str, str, str] | None:
     if t == "approval" and event.get("status") == "pending":
         who = _bot_name(event.get("bot_id"))
         if event.get("kind") == "help":
-            return f"{who} 需要你帮忙", "任务暂停了，等你接手电脑处理", url, f"approval-{event['id']}"
-        return f"{who} 需要你确认", f"{event.get('tool', '')}：{event.get('goal', '')}", url, f"approval-{event['id']}"
+            return i18n.t("{who} 需要你帮忙", who=who), i18n.t("任务暂停了，等你接手电脑处理"), url, f"approval-{event['id']}"
+        return i18n.t("{who} 需要你确认", who=who), i18n.t("{tool}：{goal}", tool=event.get("tool", ""), goal=event.get("goal", "")), \
+            url, f"approval-{event['id']}"
     if t == "message":
         m = event.get("message") or {}
         kind = (m.get("meta") or {}).get("kind")
@@ -153,7 +155,9 @@ def message_for(event: dict) -> tuple[str, str, str, str] | None:
             return _bot_name(m.get("bot_id")), _plain(m["content"])[:120], url, f"chat-{cid}"
         if m.get("role") == "task" and kind == "result":
             ok = (m.get("meta") or {}).get("status") == "done"
-            return f"{_bot_name(m.get('bot_id'))} {'做完了任务' if ok else '的任务失败了'}", _plain(m["content"])[:120], url, f"chat-{cid}"
+            who = _bot_name(m.get("bot_id"))
+            return (i18n.t("{who} 做完了任务", who=who) if ok else i18n.t("{who} 的任务失败了", who=who)), \
+                _plain(m["content"])[:120], url, f"chat-{cid}"
     if t == "teach" and event.get("draft"):
-        return "演示录制已结束", f"技能草稿「{event['draft']['name']}」等你审核", "/", "teach"
+        return i18n.t("演示录制已结束"), i18n.t("技能草稿「{name}」等你审核", name=event["draft"]["name"]), "/", "teach"
     return None

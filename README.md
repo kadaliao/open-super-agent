@@ -42,6 +42,7 @@ Grok Bot 的体验很好，但价格高，模型也换不了。open-super-agent 
 - 💰 **费用透明**：按角色、任务和天统计 token 和金额，有每日预算；Watchdog 会自动取消卡住、死循环或超预算的任务。
 - 📦 **备份与迁移**：全部数据（连同密钥）导出成一个加密文件，换机器、从本机搬到服务器时上传就能接着用；服务器上也能用命令行定时备份。
 - 🔄 **模型自选**：在设置里添加模型服务（DeepSeek、OpenAI、OpenRouter、硅基流动、阿里云百炼、智谱、Kimi、Ollama，或任何兼容 OpenAI 的接口），填 API Key、点一下测试就能用；对话、后台任务等各自选模型，单价自动获取。
+- 🌐 **中文 / English**：界面、通知和聊天软件里的消息都有中英文两种，设置里一键切换；英文界面下 Bot 默认用英文回复。
 
 ## 快速开始
 
@@ -101,7 +102,6 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 - **更多客户端**：macOS / Windows 桌面端（菜单栏、快捷键、系统通知，还能把你自己的电脑借给 Bot 用）；iOS / Android 原生 App；在聊天软件的群里使用机器人。
 - **电脑**：“演示一遍”从浏览器扩展到整个桌面；快照与回滚。
 - **Bot 能力**：语音对话。
-- **好部署、好上手**：界面英文版。
 
 每个方向的考虑和先后顺序见 [docs/roadmap.md](docs/roadmap.md)。想要的功能欢迎提 issue。
 

@@ -4,21 +4,22 @@ import type { Approval, Bot, Message, Task } from '../types'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
 import Markdown from './Markdown'
+import { locale, t, tn } from '../i18n'
 
-const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
-  telegram: '来自 Telegram', feishu: '来自飞书', dingtalk: '来自钉钉', wecom: '来自企业微信', discord: '来自 Discord',
+  telegram: t('来自 Telegram'), feishu: t('来自飞书'), dingtalk: t('来自钉钉'), wecom: t('来自企业微信'), discord: t('来自 Discord'),
 }
-const secs = (s: number) => (s < 60 ? `${Math.round(s)} 秒` : `${Math.floor(s / 60)} 分 ${Math.round(s % 60)} 秒`)
+const secs = (s: number) => (s < 60 ? t('{n} 秒', { n: Math.round(s) }) : t('{m} 分 {s} 秒', { m: Math.floor(s / 60), s: Math.round(s % 60) }))
 
 // 旧版本的任务记录没有 kind，从文字里推断
 function taskKind(m: Message): { kind: string; taskId?: number } {
   if (m.meta.kind) return { kind: m.meta.kind, taskId: m.meta.task_id ?? (m.meta.kind === 'dispatch' ? m.id : undefined) }
-  if (m.content.startsWith('[任务已派发]')) return { kind: 'dispatch', taskId: m.id }
-  const r = m.content.match(/^\[任务 #(\d+) 结果\]/)
+  if (m.content.startsWith('[任务已派发]')) return { kind: 'dispatch', taskId: m.id }   // i18n-ignore：存在消息里的标记
+  const r = m.content.match(/^\[任务 #(\d+) 结果\]/)   // i18n-ignore：存在消息里的标记
   if (r) return { kind: 'result', taskId: Number(r[1]) }
-  if (/^\[任务 #\d+ 已取消/.test(m.content)) return { kind: 'cancel' }
-  if (m.content.startsWith('[触发器')) return { kind: 'trigger' }
+  if (/^\[任务 #\d+ 已取消/.test(m.content)) return { kind: 'cancel' }   // i18n-ignore：存在消息里的标记
+  if (m.content.startsWith('[触发器')) return { kind: 'trigger' }   // i18n-ignore：存在消息里的标记
   return { kind: 'note' }
 }
 
@@ -28,7 +29,7 @@ function Thinking({ text, seconds, live }: { text: string; seconds?: number; liv
   return (
     <div className={'thinking' + (open ? ' open' : '')}>
       <button onClick={() => setOpen(!open)}>
-        <span className={live ? 'pulse' : ''}>{live ? '正在思考' : `思考了 ${secs(seconds || 0)}`}</span>
+        <span className={live ? 'pulse' : ''}>{live ? t('正在思考') : t('思考了 {time}', { time: secs(seconds || 0) })}</span>
         <span className="chev">›</span>
       </button>
       {open && <div className="thinking-body">{text}</div>}
@@ -38,11 +39,11 @@ function Thinking({ text, seconds, live }: { text: string; seconds?: number; liv
 
 function CopyBtn({ text }: { text: string }) {
   const [ok, setOk] = useState(false)
-  return <button className="ghost-btn" onClick={() => { navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200) }}>{ok ? '已复制' : '复制'}</button>
+  return <button className="ghost-btn" onClick={() => { navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200) }}>{ok ? t('已复制') : t('复制')}</button>
 }
 
 // 群聊里每条消息上面标出是哪个 Bot 说的
-const Speaker = ({ bot, show }: { bot?: Bot; show?: boolean }) => show ? <div className="speaker">{bot?.name || '已删除的 Bot'}</div> : null
+const Speaker = ({ bot, show }: { bot?: Bot; show?: boolean }) => show ? <div className="speaker">{bot?.name || t('已删除的 Bot')}</div> : null
 
 function BotMessage({ bot, m, children, showName }: { bot?: Bot; m: Message; children?: React.ReactNode; showName?: boolean }) {
   return (
@@ -64,23 +65,25 @@ function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: T
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (status !== 'running') return
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
   }, [status])
-  const goal = m.content.replace(/^\[任务已派发\]\s*/, '')
-  const label: Record<string, string> = { running: task?.waiting_approval ? '等你确认' : '进行中', done: '已完成', failed: '失败', cancelled: '已取消', interrupted: '已中断' }
+  const goal = m.content.replace(/^\[任务已派发\]\s*/, '')   // i18n-ignore：存在消息里的标记
+  const label: Record<string, string> = { running: task?.waiting_approval ? t('等你确认') : t('进行中'), done: t('已完成'), failed: t('失败'), cancelled: t('已取消'), interrupted: t('已中断') }
+  const heavy = m.meta.mode === 'heavy'
+  const name = owner ? (heavy ? t('{name} 的Heavy 任务', { name: owner.name }) : t('{name} 的后台任务', { name: owner.name })) : heavy ? t('Heavy 任务') : t('后台任务')
   return (
     <div className={`task-card ${status}${task?.waiting_approval ? ' waiting' : ''}`}>
       <div className="task-top">
         <span className="dot" />
-        <b>{owner ? `${owner.name} 的` : ''}{m.meta.mode === 'heavy' ? 'Heavy 任务' : '后台任务'} #{m.id}</b>
-        <span className="muted">{label[status] || status}{status === 'running' && task ? ` · ${secs((now / 1000) - task.started)}` : ''}{task?.steps ? ` · ${task.steps} 步` : ''}</span>
-        <button className="ghost-btn" title="看这个任务每一步做了什么" onClick={() => showTask(m.id)}>过程</button>
-        {status === 'running' && <button className="ghost-btn" onClick={() => api(`/api/tasks/${m.id}/cancel`, { method: 'POST' })}>停止</button>}
+        <b>{name} #{m.id}</b>
+        <span className="muted">{label[status] || status}{status === 'running' && task ? ` · ${secs((now / 1000) - task.started)}` : ''}{task?.steps ? ` · ${t('{n} 步', { n: task.steps })}` : ''}</span>
+        <button className="ghost-btn" title={t('看这个任务每一步做了什么')} onClick={() => showTask(m.id)}>{t('过程')}</button>
+        {status === 'running' && <button className="ghost-btn" onClick={() => api(`/api/tasks/${m.id}/cancel`, { method: 'POST' })}>{t('停止')}</button>}
       </div>
       <div className="task-goal">{goal}</div>
-      {handoffTo && <div className="task-action">做完交给 {handoffTo.name}</div>}
-      {replyTo && <div className="task-action">做完把结果回给 {replyTo.name}</div>}
+      {handoffTo && <div className="task-action">{t('做完交给 {name}', { name: handoffTo.name })}</div>}
+      {replyTo && <div className="task-action">{t('做完把结果回给 {name}', { name: replyTo.name })}</div>}
       {status === 'running' && task?.last_action && <div className="task-action">→ {task.last_action}</div>}
     </div>
   )
@@ -90,21 +93,21 @@ function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: T
 function SavePageBtn({ bot, text, goal, taskId }: { bot?: Bot; text: string; goal: string; taskId?: number }) {
   const [saved, setSaved] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
-  if (saved) return <button className="ghost-btn" onClick={() => openLibrary(saved)}>已存为页面 · 打开</button>
+  if (saved) return <button className="ghost-btn" onClick={() => openLibrary(saved)}>{t('已存为页面 · 打开')}</button>
   const save = async () => {
     setBusy(true)
     try {
       const h1 = text.match(/^#\s+(.+)$/m)?.[1]
-      const title = (h1 || goal.split('\n').find(l => l.trim()) || `任务 #${taskId} 的结果`).replace(/^\[定时任务 [^\]]+\]\s*/, '').slice(0, 60)
+      const title = (h1 || goal.split('\n').find(l => l.trim()) || t('任务 #{id} 的结果', { id: taskId ?? '' })).replace(/^\[定时任务 [^\]]+\]\s*/, '').slice(0, 60)   // i18n-ignore：去掉存在消息里的标记
       const p = await api('/api/pages', { method: 'POST', body: { bot_id: bot?.id, title, content: text, task_id: taskId } })
       setSaved(p.id)
     } finally { setBusy(false) }
   }
-  return <button className="ghost-btn" disabled={busy} onClick={save}>存为页面</button>
+  return <button className="ghost-btn" disabled={busy} onClick={save}>{t('存为页面')}</button>
 }
 
 function ResultMessage({ bot, m, goal, showName }: { bot?: Bot; m: Message; goal: string; showName?: boolean }) {
-  const text = m.content.replace(/^\[任务 #\d+ 结果\]\n?/, '')
+  const text = m.content.replace(/^\[任务 #\d+ 结果\]\n?/, '')   // i18n-ignore：存在消息里的标记
   const [open, setOpen] = useState(text.length < 1800)
   const status = m.meta.status || 'done'
   return (
@@ -113,13 +116,13 @@ function ResultMessage({ bot, m, goal, showName }: { bot?: Bot; m: Message; goal
       <div className="msg-body">
         <Speaker bot={bot} show={showName} />
         <div className={`result-head ${status}`}>
-          {status === 'failed' ? '任务失败' : '任务完成'} · #{taskKind(m).taskId}{m.meta.elapsed ? ` · 用时 ${secs(m.meta.elapsed)}` : ''}
+          {status === 'failed' ? t('任务失败') : t('任务完成')} · #{taskKind(m).taskId}{m.meta.elapsed ? ` · ${t('用时 {time}', { time: secs(m.meta.elapsed) })}` : ''}
         </div>
         <div className={open ? '' : 'clamp'}><Markdown text={text} /></div>
-        {!open && <button className="expand" onClick={() => setOpen(true)}>展开全文</button>}
+        {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} />
           {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}
-          {taskKind(m).taskId && <button className="ghost-btn" onClick={() => showTask(taskKind(m).taskId!)}>查看过程</button>}</div>
+          {taskKind(m).taskId && <button className="ghost-btn" onClick={() => showTask(taskKind(m).taskId!)}>{t('查看过程')}</button>}</div>
       </div>
     </div>
   )
@@ -128,24 +131,24 @@ function ResultMessage({ bot, m, goal, showName }: { bot?: Bot; m: Message; goal
 // 群里派的任务：卡片在私聊里，注明来自哪个群
 function Origin({ a }: { a: Approval }) {
   const g = useStore(s => (a.origin_chat_id && a.origin_chat_id !== a.chat_id ? chatById(s, a.origin_chat_id) : undefined))
-  return g ? <> · 在群聊「<button className="link-btn" onClick={() => openChat(g.id)}>{g.title}</button>」里派的</> : null
+  return g ? <> · {tn('在群聊「{chat}」里派的', { chat: <button className="link-btn" onClick={() => openChat(g.id)}>{g.title}</button> })}</> : null
 }
 
 function HelpCard({ a }: { a: Approval }) {
   const done = a.status && a.status !== 'pending'
   let reason = ''
-  try { reason = JSON.parse(a.args)['需要你做的事'] } catch { reason = a.args }
-  if (done) return <div className="sys-line">{a.status === 'approved' ? '✓ 你已处理完，Bot 继续' : '✕ 没有处理'}（任务 #{a.task_id}）</div>
+  try { reason = JSON.parse(a.args)['需要你做的事'] } catch { reason = a.args }   // i18n-ignore：工具参数的键
+  if (done) return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('你已处理完，Bot 继续') : '✕ ' + t('没有处理')}{t('（任务 #{id}）', { id: a.task_id })}</div>
   return (
     <div className="approval-card help">
-      <div className="approval-title">🙋 需要你帮忙</div>
+      <div className="approval-title">🙋 {t('需要你帮忙')}</div>
       <div className="help-reason">{reason}</div>
-      <div className="muted small">任务 #{a.task_id} 已暂停<Origin a={a} />。接手电脑处理完后点“交还”，Bot 会接着做。</div>
+      <div className="muted small">{tn('任务 #{id} 已暂停{origin}。接手电脑处理完后点“交还”，Bot 会接着做。', { id: a.task_id, origin: <Origin a={a} /> })}</div>
       <div className="approval-actions">
-        <button className="btn" onClick={() => approve(a.id, false, '用户表示处理不了')}>我处理不了</button>
+        <button className="btn" onClick={() => approve(a.id, false, '用户表示处理不了')}>{t('我处理不了')}</button>{/* i18n-ignore：拒绝理由是给模型看的 */}
         <span className="grow" />
-        <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-computer', { detail: { botId: a.bot_id, takeover: true, taskId: a.task_id } }))}>接手电脑</button>
-        <button className="btn primary" onClick={() => api(`/api/bots/${a.bot_id}/computer/handback`, { method: 'POST' })}>处理完了，交还</button>
+        <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-computer', { detail: { botId: a.bot_id, takeover: true, taskId: a.task_id } }))}>{t('接手电脑')}</button>
+        <button className="btn primary" onClick={() => api(`/api/bots/${a.bot_id}/computer/handback`, { method: 'POST' })}>{t('处理完了，交还')}</button>
       </div>
     </div>
   )
@@ -155,20 +158,20 @@ function ApprovalCard({ a }: { a: Approval }) {
   if (a.kind === 'help') return <HelpCard a={a} />
   const [note, setNote] = useState('')
   const done = a.status && a.status !== 'pending'
-  const label: Record<string, string> = { approved: a.always ? '已允许，以后自动允许' : '已允许', rejected: '已拒绝', expired: '超时未确认，按拒绝处理', cancelled: '任务已取消' }
-  if (done) return <div className="sys-line">{a.status === 'approved' ? '✓' : '✕'} {label[a.status!] || a.status} <code>{a.tool}</code>（任务 #{a.task_id}）</div>
+  const label: Record<string, string> = { approved: a.always ? t('已允许，以后自动允许') : t('已允许'), rejected: t('已拒绝'), expired: t('超时未确认，按拒绝处理'), cancelled: t('任务已取消') }
+  if (done) return <div className="sys-line">{a.status === 'approved' ? '✓' : '✕'} {label[a.status!] || a.status} <code>{a.tool}</code>{t('（任务 #{id}）', { id: a.task_id })}</div>
   const [app, tool] = a.tool.includes('__') ? a.tool.split('__', 2) : ['', a.tool]
   return (
     <div className="approval-card">
-      <div className="approval-title">需要你确认{app && <> · 应用 <b>@{app}</b></>} <code>{tool}</code></div>
-      <div className="muted small">来自任务 #{a.task_id}<Origin a={a} />：{a.goal}
-        {a.expires ? ` · 后台任务，${new Date(a.expires * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 前没确认按拒绝处理` : ''}</div>
+      <div className="approval-title">{t('需要你确认')}{app && <> · {tn('应用 {app}', { app: <b>@{app}</b> })}</>} <code>{tool}</code></div>
+      <div className="muted small">{tn('来自任务 #{id}{origin}：{goal}', { id: a.task_id, origin: <Origin a={a} />, goal: a.goal })}
+        {a.expires ? ' · ' + t('后台任务，{time} 前没确认按拒绝处理', { time: new Date(a.expires * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }) : ''}</div>
       <pre className="approval-args">{a.args}</pre>
       <div className="approval-actions">
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="附一句意见（可选）" />
-        <button className="btn" onClick={() => approve(a.id, false, note)}>拒绝</button>
-        <button className="btn" onClick={() => approve(a.id, true, note)}>允许一次</button>
-        <button className="btn primary" title={`以后 ${a.tool} 不再询问，可在设置 → 确认规则里撤销`} onClick={() => approve(a.id, true, note, true)}>总是允许</button>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder={t('附一句意见（可选）')} />
+        <button className="btn" onClick={() => approve(a.id, false, note)}>{t('拒绝')}</button>
+        <button className="btn" onClick={() => approve(a.id, true, note)}>{t('允许一次')}</button>
+        <button className="btn primary" title={t('以后 {tool} 不再询问，可在设置 → 确认规则里撤销', { tool: a.tool })} onClick={() => approve(a.id, true, note, true)}>{t('总是允许')}</button>
       </div>
     </div>
   )
@@ -177,9 +180,9 @@ function ApprovalCard({ a }: { a: Approval }) {
 function HandoffLine({ from, to, text }: { from?: Bot; to?: Bot; text: string }) {
   return (
     <div className="handoff">
-      {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || '已删除的 Bot'}</b>
-      <span className="muted">交给</span>
-      {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || '已删除的 Bot'}</b>
+      {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || t('已删除的 Bot')}</b>
+      <span className="muted">{t('交给')}</span>
+      {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || t('已删除的 Bot')}</b>
       <span className="handoff-text">{text}</span>
     </div>
   )
@@ -193,12 +196,12 @@ function DmLine({ m, from, to, here }: { m: Message; from?: Bot; to?: Bot; here:
   return (
     <div className="handoff dm">
       <span className="dm-icon">✉</span>
-      {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || '已删除的 Bot'}</b>
-      <span className="muted">私信</span>
-      {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || '已删除的 Bot'}</b>
-      {there && <button className="link-btn small" onClick={() => openChat(there)}>{m.meta.chat && m.meta.chat !== here ? '去发信的对话' : `去看 ${to?.name}`}</button>}
+      {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || t('已删除的 Bot')}</b>
+      <span className="muted">{t('私信')}</span>
+      {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || t('已删除的 Bot')}</b>
+      {there && <button className="link-btn small" onClick={() => openChat(there)}>{m.meta.chat && m.meta.chat !== here ? t('去发信的对话') : t('去看 {name}', { name: to?.name || '' })}</button>}
       <span className={'handoff-text' + (open ? '' : ' clamp3')}>{m.content}</span>
-      {!open && <button className="expand" onClick={() => setOpen(true)}>展开</button>}
+      {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开')}</button>}
     </div>
   )
 }
@@ -211,22 +214,22 @@ function DmReply({ m, bot, to }: { m: Message; bot?: Bot; to?: Bot }) {
     <div className="msg bot">
       {bot && <BotAvatar avatar={bot.avatar} size={28} />}
       <div className="msg-body">
-        <div className="speaker">{bot?.name || '已删除的 Bot'}</div>
-        <div className={'result-head' + (bad ? ' failed' : '')}>↩ 回了 {to?.name || '已删除的 Bot'} 的私信{m.meta.task_id ? ` · 任务 #${m.meta.task_id}` : ''}</div>
+        <div className="speaker">{bot?.name || t('已删除的 Bot')}</div>
+        <div className={'result-head' + (bad ? ' failed' : '')}>↩ {t('回了 {name} 的私信', { name: to?.name || t('已删除的 Bot') })}{m.meta.task_id ? ' · ' + t('任务 #{id}', { id: m.meta.task_id }) : ''}</div>
         <div className={open ? '' : 'clamp'}><Markdown text={m.content} /></div>
-        {!open && <button className="expand" onClick={() => setOpen(true)}>展开全文</button>}
+        {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} />
-          {bot && <button className="ghost-btn" onClick={() => openChat(bot.chat_id)}>去 {bot.name} 的私聊</button>}
-          {m.meta.task_id && <button className="ghost-btn" onClick={() => showTask(m.meta.task_id)}>查看过程</button>}</div>
+          {bot && <button className="ghost-btn" onClick={() => openChat(bot.chat_id)}>{t('去 {name} 的私聊', { name: bot.name })}</button>}
+          {m.meta.task_id && <button className="ghost-btn" onClick={() => showTask(m.meta.task_id)}>{t('查看过程')}</button>}</div>
       </div>
     </div>
   )
 }
 
 const STARTERS = [
-  '每天早上 9 点给我整理 AI 领域的重要新闻',
-  '帮我调研一下自部署 SearxNG 的最佳实践',
-  '你能做哪些事？先介绍一下你的能力',
+  t('每天早上 9 点给我整理 AI 领域的重要新闻'),
+  t('帮我调研一下自部署 SearxNG 的最佳实践'),
+  t('你能做哪些事？先介绍一下你的能力'),
 ]
 
 export function GroupAvatars({ bots, size = 26 }: { bots: Bot[]; size?: number }) {
@@ -287,22 +290,22 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
     owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)}
     replyTo={botOf(byId.get(tid)!.meta.reply_to)} />
   const starters = group && members.length >= 2
-    ? ['@所有人 先各自介绍一下你们能做什么', `@${members[0].name} 查一下今天的 AI 新闻，查完交给 @${members[1].name} 写一段 100 字的总结`]
+    ? [t('@所有人 先各自介绍一下你们能做什么'), t('@{a} 查一下今天的 AI 新闻，查完交给 @{b} 写一段 100 字的总结', { a: members[0].name, b: members[1].name })]
     : STARTERS
 
   return (
     <main className="chat">
       <header className="chat-head">
-        <button className="head-bot" onClick={onToggleDetails} title={group ? '群聊设置' : 'Bot 详情'}>
+        <button className="head-bot" onClick={onToggleDetails} title={group ? t('群聊设置') : t('Bot 详情')}>
           {group ? <GroupAvatars bots={members} /> : <BotAvatar avatar={bot!.avatar} size={26} />}
           <span className="head-name">{title}</span>
-          {group ? <span className="muted small">{members.length} 个 Bot</span> : bot!.is_primary && <span className="star" title="主 Bot">★</span>}
+          {group ? <span className="muted small">{t('{n} 个 Bot', { n: members.length })}</span> : bot!.is_primary && <span className="star" title={t('主 Bot')}>★</span>}
         </button>
         <div className="head-actions">
-          <button className="ghost-btn" title="之前的对话不再带进上下文，省 token；长期记忆还在" onClick={() => {
-            if (confirm(`开始新话题？${group ? '群里的 Bot' : bot!.name} 不再参考之前的对话（记录还在，长期记忆也还在）。`)) api(`/api/chats/${active}/reset`, { method: 'POST' })
-          }}>新话题</button>
-          <button className="icon-btn" onClick={onToggleDetails} title="详情">☰</button>
+          <button className="ghost-btn" title={t('之前的对话不再带进上下文，省 token；长期记忆还在')} onClick={() => {
+            if (confirm(group ? t('开始新话题？群里的 Bot 不再参考之前的对话（记录还在，长期记忆也还在）。') : t('开始新话题？{name} 不再参考之前的对话（记录还在，长期记忆也还在）。', { name: bot!.name }))) api(`/api/chats/${active}/reset`, { method: 'POST' })
+          }}>{t('新话题')}</button>
+          <button className="icon-btn" onClick={onToggleDetails} title={t('详情')}>☰</button>
         </div>
       </header>
       <div className="scroller" ref={scroller} onScroll={onScroll}>
@@ -311,15 +314,15 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
             <div className="welcome">
               <GroupAvatars bots={members} size={56} />
               <h2>{chat.title}</h2>
-              <p className="muted">@ 某个 Bot 让它来做，@所有人 让大家都说说；不 @ 的消息由协调者{lead ? ` ${lead.name} ` : ''}接，它会分给合适的 Bot。
-                Bot 之间可以交接工作；要你确认的操作会出现在各自的私聊里。</p>
+              <p className="muted">{lead ? t('@ 某个 Bot 让它来做，@所有人 让大家都说说；不 @ 的消息由协调者 {lead} 接，它会分给合适的 Bot。', { lead: lead.name }) : t('@ 某个 Bot 让它来做，@所有人 让大家都说说；不 @ 的消息由协调者接，它会分给合适的 Bot。')}
+                {' '}{t('Bot 之间可以交接工作；要你确认的操作会出现在各自的私聊里。')}</p>
               <div className="starters">{starters.map(s => <button key={s} onClick={() => window.dispatchEvent(new CustomEvent('osa-fill', { detail: s }))}>{s}</button>)}</div>
             </div>
           ) : (
             <div className="welcome">
               <BotAvatar avatar={bot!.avatar} size={72} />
               <h2>{bot!.name}</h2>
-              <p className="muted">给 {bot!.name} 布置第一份工作。它会记住你交代的职责，在后台替你完成任务。</p>
+              <p className="muted">{t('给 {name} 布置第一份工作。它会记住你交代的职责，在后台替你完成任务。', { name: bot!.name })}</p>
               <div className="starters">{starters.map(s => <button key={s} onClick={() => window.dispatchEvent(new CustomEvent('osa-fill', { detail: s }))}>{s}</button>)}</div>
             </div>
           ))}
@@ -333,14 +336,14 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
             const k = taskKind(m)
             if (k.kind === 'dispatch') return attached.has(m.id) ? null : task(m.id)
             if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group}
-              goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />
+              goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />   // i18n-ignore：存在消息里的标记
             if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
             if (k.kind === 'dm') return <DmLine key={m.id} m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />
-            if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ 已把回信发给 {botOf(m.meta.to)?.name || '已删除的 Bot'}
-              {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChat(m.meta.chat)}>去看</button></>}</div>
+            if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
+              {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChat(m.meta.chat)}>{t('去看')}</button></>}</div>
             if (k.kind === 'dm_reply') return <DmReply key={m.id} m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} />
-            if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>新话题 · 之前的对话不再带进上下文，长期记忆还在</span></div>
-            if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, '触发器 $1：').slice(0, 160)}</div>
+            if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>
+            if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>   // i18n-ignore：存在消息里的标记
             return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>
           })}
           {stream && (() => {
@@ -361,8 +364,8 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
             const b = botOf(a.bot_id)
             return (
               <div key={a.id} className="elsewhere">
-                <span>⚠ {b?.name} 的任务 #{a.task_id} {a.kind === 'help' ? '需要你帮忙' : '需要你确认'}，卡片在它的私聊里</span>
-                {b && <button className="btn" onClick={() => openChat(b.chat_id)}>去处理</button>}
+                <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id }) : t('{name} 的任务 #{id} 需要你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })}</span>
+                {b && <button className="btn" onClick={() => openChat(b.chat_id)}>{t('去处理')}</button>}
               </div>
             )
           })}
@@ -371,7 +374,7 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
       </div>
       <SetupHint />
       <Composer chatId={active} bot={bot} members={group ? members : []}
-        busy={stream ? (group ? botOf(stream.bot_id)?.name || '有人' : bot!.name) : ''} />
+        busy={stream ? (group ? botOf(stream.bot_id)?.name || t('有人') : bot!.name) : ''} />
     </main>
   )
 }
@@ -382,8 +385,8 @@ function SetupHint() {
   if (!problem) return null
   return (
     <div className="setup-hint">
-      <span>⚠ {problem}，Bot 现在没法回复。</span>
-      <button className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-settings', { detail: 'models' }))}>去配置模型</button>
+      <span>⚠ {t('{problem}，Bot 现在没法回复。', { problem })}</span>
+      <button className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-settings', { detail: 'models' }))}>{t('去配置模型')}</button>
     </div>
   )
 }

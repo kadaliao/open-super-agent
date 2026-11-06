@@ -21,6 +21,7 @@ from collections import deque
 from urllib.parse import quote, quote_plus
 import httpx
 import websockets
+from .. import i18n
 from . import Channel, fmt, word_command
 
 API = os.environ.get("OSA_DINGTALK_API", "https://api.dingtalk.com").rstrip("/")   # 测试时换成假的服务器
@@ -54,7 +55,7 @@ def _link(label: str, text: str) -> str:
 
 
 class DingTalk(Channel):
-    kind, title, max_len = "dingtalk", "钉钉", 3000
+    kind, title, max_len = "dingtalk", i18n.N_("钉钉"), 3000
 
     def __init__(self, r: dict, secret: str):
         super().__init__(r, secret)
@@ -91,14 +92,14 @@ class DingTalk(Channel):
     async def check(cls, fields: dict) -> dict:
         app_key, secret = (fields.get("app_key") or "").strip(), (fields.get("app_secret") or "").strip()
         if not app_key or not secret:
-            raise ValueError("请填 Client ID（AppKey）和 Client Secret（AppSecret），在开发者后台应用的“凭证与基础信息”里")
+            raise ValueError(i18n.t("请填 Client ID（AppKey）和 Client Secret（AppSecret），在开发者后台应用的“凭证与基础信息”里"))
         async with httpx.AsyncClient(timeout=20) as c:
             try:
                 await _token(c, app_key, secret)
             except DingError as e:
-                raise ValueError(f"Client ID 或 Client Secret 不对（{e.msg or e.code}）")
+                raise ValueError(i18n.t("Client ID 或 Client Secret 不对（{error}）", error=e.msg or e.code))
             except (httpx.HTTPError, ValueError, KeyError) as e:
-                raise ValueError(f"连不上钉钉（{type(e).__name__}）")
+                raise ValueError(i18n.t("连不上钉钉（{error}）", error=type(e).__name__))
         name = (fields.get("name") or "").strip()[:40] or app_key
         return {"name": name, "config": {"app_key": app_key}, "secret": secret}
 
@@ -120,15 +121,15 @@ class DingTalk(Channel):
                     backoff = 5
                     async for raw in ws:
                         asyncio.create_task(self._safe(self._frame(ws, raw)))
-                self.set_state("error", "长连接断了，正在重连")
+                self.set_state("error", i18n.later("长连接断了，正在重连"))
             except DingError as e:
                 if e.status in (400, 401, 403):
-                    self.set_state("error", f"钉钉拒绝了连接（{e.msg or e.code}）。确认应用开了机器人能力、消息接收模式选的是 Stream 模式；"
-                                            "Client Secret 重置过的话，删掉这个连接重新添加")
+                    self.set_state("error", i18n.later("钉钉拒绝了连接（{error}）。确认应用开了机器人能力、消息接收模式选的是 Stream 模式；"
+                                                   "Client Secret 重置过的话，删掉这个连接重新添加", error=e.msg or e.code))
                 else:
-                    self.set_state("error", f"钉钉返回错误（{e.msg or e.status}），稍后自动重试")
+                    self.set_state("error", i18n.later("钉钉返回错误（{error}），稍后自动重试", error=e.msg or e.status))
             except (OSError, httpx.HTTPError, websockets.WebSocketException, ValueError, KeyError) as e:
-                self.set_state("error", f"连接钉钉失败（{type(e).__name__}），稍后自动重试")
+                self.set_state("error", i18n.later("连接钉钉失败（{error}），稍后自动重试", error=type(e).__name__))
             await asyncio.sleep(backoff + random.random() * 5)
             backoff = min(backoff * 2, 120)
 
@@ -185,10 +186,10 @@ class DingTalk(Channel):
             text = content.get("recognition") or ""
             if not text:
                 if peer == self.row["peer"]:
-                    self.say("没听清这条语音，请再说一遍或者打字。")
+                    self.say(i18n.t("没听清这条语音，请再说一遍或者打字。"))
                 return
         elif peer == self.row["peer"]:
-            self.say("暂时只能收文字、语音、图片和文件。")
+            self.say(i18n.t("暂时只能收文字、语音、图片和文件。"))
             return
         await self.inbound(peer, m.get("senderNick") or "", text, [f for f in files if f[1]])
 
@@ -196,7 +197,7 @@ class DingTalk(Channel):
         try:
             d = await self.api("/v1.0/robot/messageFiles/download", {"downloadCode": code, "robotCode": self.robot_code})
         except DingError as e:
-            raise ValueError(f"钉钉不让下载（{e.msg or e.code}）")
+            raise ValueError(i18n.t("钉钉不让下载（{error}）", error=e.msg or e.code))
         r = await self.http.get(d["downloadUrl"], timeout=120)
         r.raise_for_status()
         return r.content
@@ -218,7 +219,7 @@ class DingTalk(Channel):
                 "msgParam": json.dumps({"title": title, "text": text}, ensure_ascii=False)})
         except DingError as e:
             if e.status == 403 or "permission" in (e.code + e.msg).lower() or "权限" in e.msg:
-                self.set_state("error", "发不出消息：应用还没开通“企业内机器人发送消息”权限（开发者后台 → 权限管理），开通后重新发布")
+                self.set_state("error", i18n.later("发不出消息：应用还没开通“企业内机器人发送消息”权限（开发者后台 → 权限管理），开通后重新发布"))
             raise
         if d.get("invalidStaffIdList") or d.get("flowControlledStaffIdList"):
             raise DingError(200, "", f"钉钉没发出去：{d}")
@@ -230,13 +231,13 @@ class DingTalk(Channel):
         links = [_link(label, word_command(act, card["id"])) for label, act, _ in card["buttons"]]
         if card.get("link"):
             links.append(f"[{card['link'][0]}]({card['link'][1]})")
-        say = "、".join(f"“{word_command(act, card['id'])}”" for _, act, _ in card["buttons"][:2])
+        say = i18n.t("、").join(i18n.t("“{text}”", text=word_command(act, card["id"])) for _, act, _ in card["buttons"][:2])
         text = (f"### {card['title']}\n\n{card['body']}\n\n" + " ｜ ".join(links) +
-                f"\n\n点上面的链接，或者直接回复{say}。")
+                "\n\n" + i18n.t("点上面的链接，或者直接回复{say}。", say=say))
         await self._markdown(peer, card["title"], fmt.dingtalk_md(text))
         return ""
 
     async def edit_card(self, peer: str, msg_id: str, card: dict):
         """钉钉改不了这条消息：发一条结果。"""
         what = fmt.title_line(card["body"], 40)
-        await self._markdown(peer, card["done"], f"**{card['done']}**（#{card['id']} {what}）")
+        await self._markdown(peer, card["done"], f"**{card['done']}**" + i18n.t("（#{id} {what}）", id=card["id"], what=what))

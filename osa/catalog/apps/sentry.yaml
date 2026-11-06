@@ -11,6 +11,14 @@ can:
 - 查看最近的 issue 和报错详情
 - 按项目、时间、关键词搜索事件
 example: '@sentry 昨天线上新增了哪些报错？最严重的是哪个？'
+en:
+  by: Official (Sentry)
+  desc: Look into production errors and find the cause
+  about: Sentry's official connection. Once you sign in, the bot can view your projects' errors and events and help work out the cause.
+  can:
+  - View recent issues and error details
+  - Search events by project, time, or keyword
+  example: '@sentry what new production errors showed up yesterday? Which is the most serious?'
 connect:
   type: http
   url: https://mcp.sentry.dev/mcp

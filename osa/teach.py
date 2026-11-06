@@ -11,7 +11,7 @@ import re
 import time
 from urllib.parse import urlparse
 from .config import call_kwargs, client_for
-from . import computer, memory, skills
+from . import computer, i18n, memory, skills
 
 MAX_S = 600
 KEY = "teach"
@@ -34,15 +34,15 @@ async def _changed(extra: dict | None = None, pc: int | None = None):
 async def start(bot_id: int, note: str = "") -> dict:
     global state, _timer
     if state:
-        raise ValueError("已经在录制了，先结束上一段")
+        raise ValueError(i18n.t("已经在录制了，先结束上一段"))
     c = computer.get()
     if c.users or c.exclusive:
-        raise ValueError(f"电脑正在被用着（{c.busy()}），等它做完或者先停掉再录")
+        raise ValueError(i18n.t("电脑正在被用着（{who}），等它做完或者先停掉再录", who=c.busy()))
     await c.start()
     try:
-        await c.claim_exclusive(KEY, "演示录制")
+        await c.claim_exclusive(KEY, i18n.t("演示录制"))
     except computer.ComputerError as e:
-        raise ValueError(f"{e}，等它做完或者先停掉再录") from None
+        raise ValueError(i18n.t("{error}，等它做完或者先停掉再录", error=e)) from None
     path = f"/tmp/osa-rec-{int(time.time())}.jsonl"
     try:
         await c.browser("rec_start", as_human=True, file=path, max_s=MAX_S + 30)
@@ -63,14 +63,14 @@ async def _auto_stop(started: float):
             result = await stop()
             await _changed({"bot_id": result["bot_id"], "draft": result["draft"], "steps": result["steps"], "auto": True})
         except Exception as e:
-            await _changed({"error": f"自动结束录制时出错：{e}"})
+            await _changed({"error": i18n.t("自动结束录制时出错：{error}", error=e)})
 
 
 async def _finish() -> tuple[dict, list[dict]]:
     """停掉录制、交还电脑，返回 (录制信息, 录到的操作)。"""
     global state, _timer
     if not state:
-        raise ValueError("现在没有在录制")
+        raise ValueError(i18n.t("现在没有在录制"))
     s, state = state, None
     if _timer and _timer is not asyncio.current_task():
         _timer.cancel()
@@ -94,7 +94,7 @@ async def stop() -> dict:
     s, events = await _finish()
     steps = describe(events, s["started"])
     if not steps:
-        raise ValueError("没录到浏览器里的操作。录制只记网页上的点击、输入和打开的网址")
+        raise ValueError(i18n.t("没录到浏览器里的操作。录制只记网页上的点击、输入和打开的网址"))
     draft = await draft_skill(steps, s["note"])
     return {"bot_id": s["bot_id"], "draft": draft, "steps": steps}
 
@@ -116,23 +116,26 @@ def describe(events: list[dict], started: float) -> list[str]:
             if url == last_url:
                 continue
             last_url = url
-            verb = "开始时在" if e.get("start") else "新标签页打开" if e.get("new_tab") else "页面到了"
-            line = f"{verb} {url}" + (f"（{e['title']}）" if e.get("title") else "")
+            line = i18n.t("开始时在 {url}", url=url) if e.get("start") else \
+                i18n.t("新标签页打开 {url}", url=url) if e.get("new_tab") else i18n.t("页面到了 {url}", url=url)
+            line += i18n.t("（{title}）", title=e["title"]) if e.get("title") else ""
         elif kind == "click":
-            line = f"点击 {e.get('kind', '元素')}「{e.get('name') or '（无文字）'}」" + (f" → {e['href']}" if e.get("href") else "")
+            line = i18n.t("点击 {kind}「{name}」", kind=e.get("kind", i18n.t("元素")), name=e.get("name") or i18n.t("（无文字）")) \
+                + (f" → {e['href']}" if e.get("href") else "")
         elif kind == "input":
-            line = f"在「{e.get('field') or '输入框'}」输入「{e.get('value', '')}」" + ("（密码类，没有记录内容）" if e.get("secret") else "") \
-                + ("，然后按回车" if e.get("submit") else "")
+            line = i18n.t("在「{field}」输入「{value}」", field=e.get("field") or i18n.t("输入框"), value=e.get("value", "")) \
+                + (i18n.t("（密码类，没有记录内容）") if e.get("secret") else "") + (i18n.t("，然后按回车") if e.get("submit") else "")
         elif kind == "select":
-            line = f"在「{e.get('field') or '下拉框'}」选择「{e.get('value', '')}」"
+            line = i18n.t("在「{field}」选择「{value}」", field=e.get("field") or i18n.t("下拉框"), value=e.get("value", ""))
         elif kind == "check":
-            line = f"{'勾选' if e.get('checked') else '取消勾选'}「{e.get('field', '')}」"
+            line = i18n.t("勾选「{field}」", field=e.get("field", "")) if e.get("checked") else \
+                i18n.t("取消勾选「{field}」", field=e.get("field", ""))
         elif kind == "key":
-            line = f"按 {e.get('key')}"
+            line = i18n.t("按 {key}", key=e.get("key"))
         else:
             continue
         if kind != "navigate" and e.get("url") and urlparse(e["url"]).netloc != urlparse(last_url).netloc:
-            line += f"（在 {urlparse(e['url']).netloc}）"
+            line += i18n.t("（在 {site}）", site=urlparse(e["url"]).netloc)
         out.append(f"{when} {line}")
         last = (kind, e.get("field"), sig)
     return out[-300:]
@@ -166,7 +169,7 @@ async def draft_skill(steps: list[str], note: str = "") -> dict:
     d = {}
     for _ in range(2):   # 解析不出来就再问一次
         resp = await client.chat.completions.create(model=model, messages=[
-            {"role": "system", "content": DRAFT_PROMPT}, {"role": "user", "content": user}],
+            {"role": "system", "content": DRAFT_PROMPT + i18n.model_hint()}, {"role": "user", "content": user}],
             response_format={"type": "json_object"}, **call_kwargs("router"))
         memory.record_usage("router", model, resp.usage)
         d = _parse(resp.choices[0].message.content or "")
@@ -174,6 +177,6 @@ async def draft_skill(steps: list[str], note: str = "") -> dict:
             break
     name = re.sub(r"[^\w一-鿿-]", "", str(d.get("name") or ""))[:40]
     if not name or not skills.NAME_RE.match(name):
-        name = f"演示{time.strftime('%m%d%H%M')}"
-    body = str(d.get("body") or "").strip() or "按下面录到的步骤做：\n" + "\n".join(steps)
+        name = i18n.t("演示{time}", time=time.strftime("%m%d%H%M"))
+    body = str(d.get("body") or "").strip() or i18n.t("按下面录到的步骤做：") + "\n" + "\n".join(steps)
     return {"name": name, "description": str(d.get("description") or note or "")[:200], "body": body[:8000]}

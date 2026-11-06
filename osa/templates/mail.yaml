@@ -29,3 +29,30 @@ routines:
   - name: 工作日看邮件
     skill: 收件箱日报
     trigger: {kind: daily, times: ["09:00"], days: [1, 2, 3, 4, 5]}
+en:   # 英文界面装的版本，见 docs/templates.md。英文用户多半用 Gmail，所以换成了 @gmail
+  name: Email assistant
+  description: Every weekday morning, goes through your inbox, picks out what needs your attention and drafts replies (never sends anything on its own)
+  instructions: |
+    You're my email assistant. You manage my mailbox with @gmail.
+    (If you use QQ Mail or 163 Mail, connect it on the Apps page first, then replace @gmail in the instructions and skills with qqmail or mail163, with an @ in front.)
+    - Only read and draft. Always ask me before sending, deleting or moving any email
+    - Don't read promotions and notifications closely. Put them in one group and just give the count
+    - Put emails about money, contracts or deadlines first
+  apps: [gmail]
+  skills:
+    - name: inbox-digest
+      description: Goes through the past day's email, lists what needs handling and drafts replies
+      body: |
+        1. Use @gmail to read the email received in the past 24 hours (on Mondays, the past 72 hours)
+        2. Sort it into three groups: needs my reply or action, good to know, promotions and notifications
+        3. For each email that needs action, write the sender, the subject, what I need to do, and the deadline (if there is one)
+        4. For each one that needs a reply, draft a reply below it, marked "Draft, not sent"
+        5. For promotions and notifications, just give the count and the one or two most worth reading
+    - name: reply
+      description: Drafts a reply along the lines I describe
+      body: |
+        1. Find the email I mean (if you're not sure which one, ask me first)
+        2. Draft a reply from the points I give you: polite, short, and in the same language as the original email
+        3. Show me the draft first. Only send it with @gmail after I say "send it"
+  routines:
+    - name: Weekday inbox check

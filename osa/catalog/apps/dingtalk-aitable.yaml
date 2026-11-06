@@ -11,6 +11,17 @@ can:
 - 查看和调整字段
 example: '@dingtalk-aitable 把今天收到的三张报销单加到「报销登记」表'
 note: 要用加入了企业或组织的钉钉账号登录。
+en:
+  title: DingTalk AI Table
+  by: Official (DingTalk)
+  desc: Query tables, add records, edit fields
+  about: "DingTalk's official connection. Once you scan the QR code with DingTalk to sign in, the bot can read and write your DingTalk AI Tables: query data by condition, add and update records, and adjust fields. Good for ledgers, customer lists, project trackers, and similar tables."
+  can:
+  - Find records by condition and summarize them
+  - Add and update records
+  - View and adjust fields
+  example: '@dingtalk-aitable add the three expense claims I got today to the "Expense log" table'
+  note: Sign in with a DingTalk account that belongs to a company or organization.
 connect:
   type: http
   url: https://mcp-gw.dingtalk.com/oauth/server/aitable

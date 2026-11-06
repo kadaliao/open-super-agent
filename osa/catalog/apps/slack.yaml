@@ -45,6 +45,28 @@ fields:
   label: Client Secret
   secret: true
   nospace: true
+en:
+  by: Official (Slack)
+  how: Create a Slack app, then sign in
+  desc: Search messages, read channels and threads, post for you
+  about: Slack's official connection. Slack doesn't support automatic registration, so first create an app just for your own workspace in Slack's app dashboard (about 3 minutes), then sign in with your Slack account. The bot can search messages and files, read channels and threads, view canvases, and send messages and create canvases for you. It asks you before sending.
+  can:
+  - Search messages, files, and members
+  - Read channels, threads, and DMs
+  - Send messages, create canvases (asks first)
+  example: '@slack what was discussed in #product today? Sum it up in three points'
+  steps:
+  - Open the Slack app dashboard, click "Create New App" → "From a manifest", and choose your workspace
+  - Copy the whole config below into it, replacing what's there, then click "Next" → "Create"
+  - In the app's left sidebar, under "Agents", find "Slack Model Context Protocol (MCP) Server" and turn it on
+  - In the left sidebar, go to "Basic Information" → "App Credentials" and copy the Client ID and Client Secret below
+  link_label: Open Slack app dashboard
+  copy:
+    label: App Manifest
+  note: Don't turn on public distribution (Manage Distribution); keep it to your own workspace. If your workspace restricts third-party apps, an admin needs to approve it.
+  fields:
+    client_id:
+      invalid: The Client ID is two numbers joined by a dot, under "App Credentials"
 confirm: [send, schedule_message, create, add_, update, upload]
 connect:
   type: http

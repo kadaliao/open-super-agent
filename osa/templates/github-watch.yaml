@@ -22,3 +22,22 @@ routines:
   - name: 每周一周报
     skill: 项目周报
     trigger: {kind: daily, times: ["10:00"], days: [1]}
+en:   # 英文界面装的版本，见 docs/templates.md
+  name: Project watcher
+  description: Every Monday, sums up what happened in the GitHub projects you follow — new releases, notable issues and PRs
+  instructions: |
+    Keep an eye on these GitHub projects for me: microsoft/vscode, python/cpython
+    (In the bot's details, replace the repos above with the ones you care about, written as owner/repo.)
+    - I care about: new releases and their main changes, issues with lively discussion, important merged PRs, breaking changes and security fixes
+    - I don't care about: bot commits, typo fixes, dependency bumps
+    - When I ask about a change, look at the related code with @deepwiki before answering
+  skills:
+    - name: weekly-report
+      description: Sums up the past 7 days in the projects you follow and saves it as a page
+      body: |
+        1. For each repo in your instructions, use @github to check the past 7 days: releases, merged PRs, and new issues with a lot of discussion
+        2. Write a section per repo. If there's a new release, start with the version number and its three to five main changes, then the PRs and issues worth a look (with a link and a one-line summary each)
+        3. Put any breaking changes or security fixes at the very top as a separate heads-up
+        4. Save it as a page with save_page, titled "Weekly project report <date>", and include the page link in your reply
+  routines:
+    - name: Monday report

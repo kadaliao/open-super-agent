@@ -15,6 +15,7 @@ import time
 from urllib.parse import parse_qs, quote, urlsplit
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from . import i18n
 from .memory import db_path
 
 COOKIE = "osa_session"
@@ -120,7 +121,7 @@ class AuthMiddleware:
         path, method = scope["path"], scope.get("method", "GET")
         if (scope["type"] == "websocket" or method not in ("GET", "HEAD", "OPTIONS")) \
                 and not path.startswith("/hooks/") and not _same_origin(headers):
-            return await _deny(scope, send, 403, "跨站请求被拒绝")
+            return await _deny(scope, send, 403, i18n.t("跨站请求被拒绝"))
         if _public(path):
             return await self.app(scope, receive, send)
         exp = check_token(_cookies(headers).get(COOKIE))
@@ -131,7 +132,7 @@ class AuthMiddleware:
                 qs = scope.get("query_string", b"").decode("latin-1")
                 nxt = path + ("?" + qs if qs else "")
                 return await _redirect(send, "/login" + ("" if nxt == "/" else "?next=" + quote(nxt, safe="")))
-            return await _deny(scope, send, 401, "请先登录")
+            return await _deny(scope, send, 401, i18n.t("请先登录"))
         if scope["type"] == "http" and exp - time.time() < RENEW_BELOW:
             cookie = _cookie_header(new_token(), MAX_AGE, scope.get("scheme") == "https").encode("latin-1")
 
@@ -169,12 +170,12 @@ def _blocked(ip: str) -> bool:
 
 
 # ---------- 登录页 ----------
-PAGE = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+PAGE = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d0d0e"><link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Super Agent">
-<title>登录 · Open Super Agent</title><style>
+<title>{login} · Open Super Agent</title><style>
 :root{--bg:#0d0d0e;--bg2:#151517;--line:#26262a;--fg:#ececec;--fg2:#a8a8ad;--fg3:#6e6e74;--acc:#ececec;--acc-fg:#0d0d0e;--bad:#ef6b6b;color-scheme:dark}
 @media (prefers-color-scheme:light){:root{--bg:#fbfbfa;--bg2:#f2f2f0;--line:#e2e2df;--fg:#18181a;--fg2:#57575c;--fg3:#8d8d92;--acc:#18181a;--acc-fg:#fbfbfa;color-scheme:light}}
 *{box-sizing:border-box}html,body{margin:0;height:100%}
@@ -188,13 +189,21 @@ button:hover{opacity:.88}.err{color:var(--bad);font-size:13px;margin:0;text-alig
 </style></head><body><form method="post" action="/login">
 <div class="logo">◆</div><h1>Open Super Agent</h1>
 <input type="hidden" name="next" value="{next}">
-<input type="password" name="password" placeholder="密码" autocomplete="current-password" autofocus required>
-{error}<button type="submit">登录</button></form></body></html>"""
+<input type="password" name="password" placeholder="{password}" autocomplete="current-password" autofocus required>
+{error}<button type="submit">{login}</button></form></body></html>"""
 
 
-def _page(nxt: str, error: str = "", status: int = 200) -> HTMLResponse:
+def _lang(request: Request) -> str:
+    """登录前也要知道用哪种语言：设过就用设置里的，没设过按浏览器的。"""
+    return i18n.chosen() or i18n.from_header(request.headers.get("accept-language"))
+
+
+def _page(request: Request, nxt: str, error: str = "", status: int = 200) -> HTMLResponse:
+    lang = _lang(request)
     err = f'<p class="err">{html.escape(error)}</p>' if error else ""
     body = PAGE.replace("{next}", html.escape(nxt, quote=True)).replace("{error}", err)
+    body = body.replace("{lang}", "en" if lang == "en" else "zh-CN").replace("{login}", i18n.t("登录", in_lang=lang)) \
+        .replace("{password}", i18n.t("密码", in_lang=lang))
     return HTMLResponse(body, status, headers={"cache-control": "no-store"})
 
 
@@ -203,7 +212,7 @@ async def login_page(request: Request):
     nxt = _safe_next(request.query_params.get("next"))
     if not enabled() or check_token(request.cookies.get(COOKIE)):
         return RedirectResponse(nxt, 303)
-    return _page(nxt)
+    return _page(request, nxt)
 
 
 @router.post("/login")
@@ -214,11 +223,11 @@ async def login(request: Request):
         return RedirectResponse(nxt, 303)
     ip = request.client.host if request.client else "?"
     if _blocked(ip):
-        return _page(nxt, "输错次数太多，请 10 分钟后再试", 429)
+        return _page(request, nxt, i18n.t("输错次数太多，请 10 分钟后再试", in_lang=_lang(request)), 429)
     if not check_password(form.get("password", "")):
         _fails.setdefault(ip, []).append(time.time())
         await asyncio.sleep(1)
-        return _page(nxt, "密码不对", 401)
+        return _page(request, nxt, i18n.t("密码不对", in_lang=_lang(request)), 401)
     _fails.pop(ip, None)
     r = RedirectResponse(nxt, 303)
     r.headers.append("set-cookie", _cookie_header(new_token(), MAX_AGE, request.url.scheme == "https"))

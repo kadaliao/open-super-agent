@@ -11,6 +11,17 @@ can:
 - 找空闲的会议室并预约
 example: '@dingtalk-calendar 明天下午找个空闲会议室，约产品组开半小时周会'
 note: 要用加入了企业或组织的钉钉账号登录。
+en:
+  title: DingTalk Calendar
+  by: Official (DingTalk)
+  desc: View and create events, book free meeting rooms
+  about: DingTalk's official connection. Once you scan the QR code with DingTalk to sign in, the bot can view your calendar, create events, and find and book a free meeting room.
+  can:
+  - View today's and this week's events
+  - Create events
+  - Find and book a free meeting room
+  example: '@dingtalk-calendar find a free meeting room tomorrow afternoon and set up a 30-minute weekly meeting with the product team'
+  note: Sign in with a DingTalk account that belongs to a company or organization.
 connect:
   type: http
   url: https://mcp-gw.dingtalk.com/oauth/server/calendar

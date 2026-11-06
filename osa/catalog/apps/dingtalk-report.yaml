@@ -11,6 +11,17 @@ can:
 - 按模板写日报、周报
 example: '@dingtalk-report 按今天做的事帮我写一篇日报，先给我看看再提交'
 note: 要用加入了企业或组织的钉钉账号登录。
+en:
+  title: DingTalk Reports
+  by: Official (DingTalk)
+  desc: Write daily and weekly reports, view past reports
+  about: DingTalk's official connection. Once you scan the QR code with DingTalk to sign in, the bot can read report templates and the reports you've submitted, and write daily and weekly reports from a template.
+  can:
+  - Read report templates
+  - View submitted reports
+  - Write daily and weekly reports from a template
+  example: '@dingtalk-report write my daily report based on what I did today, and show me before submitting it'
+  note: Sign in with a DingTalk account that belongs to a company or organization.
 connect:
   type: http
   url: https://mcp-gw.dingtalk.com/oauth/server/report

@@ -10,6 +10,7 @@ import fnmatch
 import itertools
 import json
 import time
+from . import i18n
 from .config import CFG
 from .memory import conn
 
@@ -47,16 +48,17 @@ def default_confirm(rule, tool) -> bool:
 
 # ---------- 规则 ----------
 def rules() -> list[dict]:
-    return [{"id": i, "pattern": p, "action": a, "note": n, "created": c}
+    # 自动生成的说明存的是中文原文，显示时按界面语言翻；用户自己写的原样
+    return [{"id": i, "pattern": p, "action": a, "note": i18n.t(n) if n else n, "created": c}
             for i, p, a, n, c in conn.execute("select id, pattern, action, note, created from rules order by id")]
 
 
 def add_rule(pattern: str, action: str, note: str = "") -> dict:
     pattern = pattern.strip()
     if not pattern:
-        raise ValueError("规则不能为空")
+        raise ValueError(i18n.t("规则不能为空"))
     if action not in ("allow", "ask"):
-        raise ValueError("action 只能是 allow 或 ask")
+        raise ValueError(i18n.t("action 只能是 allow 或 ask"))
     old = conn.execute("select id from rules where pattern=? and action=?", (pattern, action)).fetchone()
     if old:
         return next(r for r in rules() if r["id"] == old[0])
@@ -119,14 +121,15 @@ async def request(task, tool: str, args: dict, kind: str = "approval") -> tuple[
 def resolve(aid: int, ok: bool, note: str = "", always: bool = False) -> str:
     item = pending.get(aid)
     if not item or item["future"].done():
-        return f"没有待确认的请求 #{aid}"
+        return i18n.t("没有待确认的请求 #{id}", id=aid)
     if ok and always and item["kind"] == "approval":
-        add_rule(item["tool"], "allow", "在确认卡片上点了总是允许")
+        add_rule(item["tool"], "allow", i18n.N_("在确认卡片上点了总是允许"))
     item["future"].set_result((ok, note))
     if notify:
         asyncio.create_task(notify({"type": "approval", "id": aid, "chat_id": item["chat_id"],
                                     "status": "approved" if ok else "rejected", "always": ok and always}))
-    return f"已{'允许' if ok else '拒绝'}请求 #{aid}" + ("，以后同类操作自动允许" if ok and always else "")
+    return (i18n.t("已允许请求 #{id}", id=aid) if ok else i18n.t("已拒绝请求 #{id}", id=aid)) \
+        + (i18n.t("，以后同类操作自动允许") if ok and always else "")
 
 
 def cancel_for_task(task_id: int):

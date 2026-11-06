@@ -9,17 +9,21 @@
     apps: [exa, fetch]                      只写应用名，不带配置和密钥；装的时候列出来，没连的去应用页连
     skills: [{name, description, body}]
     routines: [{name, prompt, skill, trigger}]   trigger 和定时任务的一样（daily / every / webhook）
+    en: {name, description, instructions, apps, skills: [{name, description, body}], routines: [{name, prompt}]}
+                                            可选：英文界面装的版本，只写要换的字段；skills、routines 按顺序和上面一一对应
 
 - 内置模板在 osa/templates/*.yaml；也可以从文件、链接装（别人分享的 /template/<token>、GitHub 上的文件）。
 - 导出、分享的是 Bot 现在的样子：它自己的技能，加上定时任务用到的共用技能。对话、记忆、资料库不带。
 - 装之前先完整检查一遍（parse），通过了才建 Bot、技能、定时任务，不会装到一半。定时任务可以选先暂停。
 - 模板里的人设、技能、定时任务都是给 Bot 的指令，来路不明的装之前要看一遍（预览里全列出来了）。
+- 用哪种语言在解析时定（parse 按当前界面语言）：英文界面把 en: 盖上去，预览和装的都是英文的；
+  定时任务的 skill 跟着换成同一位置的英文技能名。导出、分享的模板没有 en:，原样装。
 """
 import re
 import secrets
 from pathlib import Path
 import yaml
-from . import bots, catalog, mcp_hub, routines, skills
+from . import bots, catalog, i18n, mcp_hub, routines, skills
 from .memory import conn
 
 BUILTIN = Path(__file__).parent / "templates"
@@ -27,6 +31,11 @@ FORMAT = 1
 MAX_SKILLS, MAX_ROUTINES, MAX_APPS = 30, 20, 20
 APP_ID = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
 COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+EN_KEYS = ("name", "description", "instructions", "apps")
+EN_LISTS = {"skills": (("name", "description", "body"),
+                       i18n.N_("en.skills 要和 skills 一一对应：个数、顺序都一样，每一项只能写 name、description、body")),
+            "routines": (("name", "prompt"),
+                         i18n.N_("en.routines 要和 routines 一一对应：个数、顺序都一样，每一项只能写 name、prompt"))}
 
 if "template_token" not in {r[1] for r in conn.execute("pragma table_info(bots)")}:
     conn.execute("alter table bots add column template_token text")
@@ -35,70 +44,105 @@ conn.commit()
 
 
 # ---------- 检查 ----------
-def parse(text: str) -> dict:
-    """解析并检查一份模板，返回干净的字典；有问题抛 ValueError（一次说一个）。"""
+def _check_en(t: dict):
+    """en: 的结构：只能写认识的字段，skills、routines 和原来的一样多。内容在盖上去以后和中文的一样检查。"""
+    en = t["en"]
+    if not isinstance(en, dict) or set(en) - set(EN_KEYS) - set(EN_LISTS):
+        raise ValueError(i18n.t("en 里只能写 name、description、instructions、apps、skills、routines"))
+    for key, (fields, msg) in EN_LISTS.items():
+        xs, base = en.get(key), t.get(key) or []
+        if xs is not None and not (isinstance(xs, list) and isinstance(base, list) and len(xs) == len(base) and
+                                   all(x is None or isinstance(x, dict) and set(x) <= set(fields) for x in xs)):
+            raise ValueError(i18n.t(msg))
+
+
+def _english(t: dict) -> dict:
+    """把 en: 里写了的字段盖到原来的上面（没写、写空的保持原样）。定时任务的 skill 换成同一位置的英文技能名。"""
+    en = t["en"]
+
+    def over(base, e):
+        return base | {k: v for k, v in (e or {}).items() if v} if isinstance(base, dict) else base
+    out = t | {k: en[k] for k in EN_KEYS if en.get(k)}
+    rename = {}
+    if isinstance(t.get("skills"), list) and en.get("skills"):
+        out["skills"] = [over(s, e) for s, e in zip(t["skills"], en["skills"])]
+        rename = {skills._clean_name(s.get("name") or ""): skills._clean_name(e["name"])
+                  for s, e in zip(t["skills"], en["skills"]) if isinstance(s, dict) and e and e.get("name")}
+    if isinstance(t.get("routines"), list):
+        rs = [over(r, e) for r, e in zip(t["routines"], en.get("routines") or [None] * len(t["routines"]))]
+        out["routines"] = [r | {"skill": rename.get(str(r["skill"]).strip().lstrip("/"), r["skill"])}
+                           if isinstance(r, dict) and r.get("skill") else r for r in rs]
+    return out
+
+
+def parse(text: str, lang: str | None = None) -> dict:
+    """解析并检查一份模板，返回干净的字典；有问题抛 ValueError（一次说一个）。
+    lang 是装哪种语言的版本，不给就按现在的界面语言：英文的用 en: 里的字段（有的话）。返回的字典里没有 en。"""
     if len(text or "") > 400_000:
-        raise ValueError("文件太大了，不像是一个 Bot 模板")
+        raise ValueError(i18n.t("文件太大了，不像是一个 Bot 模板"))
     try:
         t = yaml.safe_load(text or "")
     except yaml.YAMLError as e:
-        raise ValueError(f"YAML 写错了：{str(e).splitlines()[0]}")
+        raise ValueError(i18n.t("YAML 写错了：{err}", err=str(e).splitlines()[0]))
     if not isinstance(t, dict) or "osa_template" not in t:
-        raise ValueError("这不是 open-super-agent 的 Bot 模板（开头要有 osa_template: 1）")
+        raise ValueError(i18n.t("这不是 open-super-agent 的 Bot 模板（开头要有 osa_template: 1）"))
     if t["osa_template"] != FORMAT:
-        raise ValueError("这个模板是更新版本的 open-super-agent 做的，先升级再装")
+        raise ValueError(i18n.t("这个模板是更新版本的 open-super-agent 做的，先升级再装"))
+    if t.get("en") is not None:
+        _check_en(t)
+        if (lang or i18n.lang()) == "en":
+            t = _english(t)
     name = str(t.get("name") or "").strip()[:40]
     if not name:
-        raise ValueError("模板缺少 name（Bot 的名字）")
+        raise ValueError(i18n.t("模板缺少 name（Bot 的名字）"))
     av = t.get("avatar") if isinstance(t.get("avatar"), dict) else {}
     avatar = {"shape": av.get("shape") if av.get("shape") in bots.SHAPES else bots.SHAPES[0],
               "color": av.get("color") if isinstance(av.get("color"), str) and COLOR.match(av["color"]) else bots.COLORS[0]}
     instructions = str(t.get("instructions") or "").strip()
     if len(instructions) > 4000:
-        raise ValueError("人设（instructions）最多 4000 个字")
+        raise ValueError(i18n.t("人设（instructions）最多 4000 个字"))
     apps = t.get("apps") or []
     if not isinstance(apps, list) or len(apps) > MAX_APPS or not all(isinstance(a, str) and APP_ID.match(a) for a in apps):
-        raise ValueError("apps 应该是应用名的列表（小写字母开头，比如 notion、gmail）")
+        raise ValueError(i18n.t("apps 应该是应用名的列表（小写字母开头，比如 notion、gmail）"))
     out_skills, seen = [], set()
     raw_skills = t.get("skills") or []
     if not isinstance(raw_skills, list) or len(raw_skills) > MAX_SKILLS:
-        raise ValueError(f"skills 应该是一个列表，最多 {MAX_SKILLS} 个")
+        raise ValueError(i18n.t("skills 应该是一个列表，最多 {n} 个", n=MAX_SKILLS))
     for i, s in enumerate(raw_skills, 1):
         if not isinstance(s, dict):
-            raise ValueError(f"第 {i} 个技能应该写 name、description、body")
+            raise ValueError(i18n.t("第 {i} 个技能应该写 name、description、body", i=i))
         sname = skills._clean_name(s.get("name") or "")
         try:
             body = str(s.get("body") or "").strip()
             skills._check(sname, body)
         except ValueError as e:
-            raise ValueError(f"技能 {s.get('name') or i}：{e}")
+            raise ValueError(i18n.t("技能 {name}：{err}", name=s.get("name") or i, err=e))
         if sname in seen:
-            raise ValueError(f"技能 /{sname} 写了两次")
+            raise ValueError(i18n.t("技能 /{name} 写了两次", name=sname))
         seen.add(sname)
         out_skills.append({"name": sname, "description": " ".join(str(s.get("description") or "").split())[:200], "body": body})
     out_routines = []
     raw_routines = t.get("routines") or []
     if not isinstance(raw_routines, list) or len(raw_routines) > MAX_ROUTINES:
-        raise ValueError(f"routines 应该是一个列表，最多 {MAX_ROUTINES} 个")
+        raise ValueError(i18n.t("routines 应该是一个列表，最多 {n} 个", n=MAX_ROUTINES))
     for i, r in enumerate(raw_routines, 1):
         if not isinstance(r, dict):
-            raise ValueError(f"第 {i} 个定时任务应该写 name、prompt 或 skill、trigger")
+            raise ValueError(i18n.t("第 {i} 个定时任务应该写 name、prompt 或 skill、trigger", i=i))
         rname = str(r.get("name") or "").strip()[:40]
         prompt = str(r.get("prompt") or "").strip()[:4000]
         skill = str(r.get("skill") or "").strip().lstrip("/")
-        where = f"定时任务 {rname or i}"
         if not rname:
-            raise ValueError(f"第 {i} 个定时任务缺少 name")
+            raise ValueError(i18n.t("第 {i} 个定时任务缺少 name", i=i))
         if not prompt and not skill:
-            raise ValueError(f"{where}：要写 prompt（做什么），或者 skill（用哪个技能）")
+            raise ValueError(i18n.t("定时任务 {name}：要写 prompt（做什么），或者 skill（用哪个技能）", name=rname))
         if skill and skill not in seen:
-            raise ValueError(f"{where}：模板里没有技能 /{skill}")
+            raise ValueError(i18n.t("定时任务 {name}：模板里没有技能 /{skill}", name=rname, skill=skill))
         try:
             trig = routines._clean_trigger(r.get("trigger") or {})
         except (ValueError, TypeError) as e:
-            raise ValueError(f"{where}：{e}")
+            raise ValueError(i18n.t("定时任务 {name}：{err}", name=rname, err=e))
         if trig["kind"] == "webhook" and not re.fullmatch(r"[\w-]{1,40}", rname):
-            raise ValueError(f"{where}：webhook 类的名字会出现在网址里，只能用字母、数字、- 和 _")
+            raise ValueError(i18n.t("定时任务 {name}：webhook 类的名字会出现在网址里，只能用字母、数字、- 和 _", name=rname))
         out_routines.append({"name": rname, "prompt": prompt, "skill": skill, "trigger": trig})
     return {"name": name, "description": " ".join(str(t.get("description") or "").split())[:300], "avatar": avatar,
             "instructions": instructions, "apps": list(dict.fromkeys(apps)), "skills": out_skills, "routines": out_routines}
@@ -129,7 +173,7 @@ def builtin() -> list[dict]:
 
 def builtin_text(tid: str) -> str:
     if not re.fullmatch(r"[a-z0-9-]{1,40}", tid or "") or not (BUILTIN / f"{tid}.yaml").exists():
-        raise ValueError("没有这个模板")
+        raise ValueError(i18n.t("没有这个模板"))
     return (BUILTIN / f"{tid}.yaml").read_text()
 
 
@@ -137,7 +181,7 @@ def builtin_text(tid: str) -> str:
 def from_bot(bot_id: int) -> dict:
     b = bots.get(bot_id)
     if not b:
-        raise ValueError("没有这个 Bot")
+        raise ValueError(i18n.t("没有这个 Bot"))
     rs = routines.list_for(bot_id)
     used = {r["skill"] for r in rs if r.get("skill")}
     ss = [s for s in skills.list_for(bot_id) if s["bot_id"] == bot_id or s["name"] in used]
@@ -176,7 +220,7 @@ def to_text(t: dict) -> str:
         if isinstance(x, list):
             return [walk(v) for v in x]
         return blk(x)
-    head = "# open-super-agent 的 Bot 模板：新建 Bot → 从模板创建 → 导入这个文件\n"
+    head = "# " + i18n.t("open-super-agent 的 Bot 模板：新建 Bot → 从模板创建 → 导入这个文件") + "\n"
     return head + yaml.dump(walk(t), Dumper=_Dumper, allow_unicode=True, sort_keys=False, width=1000)
 
 
@@ -184,7 +228,7 @@ def to_text(t: dict) -> str:
 def share(bot_id: int, on: bool) -> str | None:
     b = conn.execute("select template_token from bots where id=?", (bot_id,)).fetchone()
     if not b:
-        raise ValueError("没有这个 Bot")
+        raise ValueError(i18n.t("没有这个 Bot"))
     token = (b[0] or secrets.token_urlsafe(16)) if on else None
     conn.execute("update bots set template_token=? where id=?", (token, bot_id))
     conn.commit()
@@ -208,7 +252,7 @@ def raw_url(url: str) -> str:
     from urllib.parse import urlparse
     u = urlparse(url.strip())
     if u.scheme not in ("http", "https") or not u.netloc:
-        raise ValueError("链接要以 http:// 或 https:// 开头")
+        raise ValueError(i18n.t("链接要以 http:// 或 https:// 开头"))
     parts = [x for x in u.path.split("/") if x]
     if len(parts) == 2 and parts[0] == "template":
         return f"{u.scheme}://{u.netloc}/api/shared/templates/{parts[1]}/raw"
@@ -223,13 +267,13 @@ async def fetch(url: str) -> dict:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
             r = await c.get(raw_url(url))
     except httpx.HTTPError as e:
-        raise ValueError(f"取不到这个链接（{type(e).__name__}）")
+        raise ValueError(i18n.t("取不到这个链接（{err}）", err=type(e).__name__))
     if r.status_code == 404:
-        raise ValueError("链接打不开（404）：分享可能已经取消了，或者地址不对")
+        raise ValueError(i18n.t("链接打不开（404）：分享可能已经取消了，或者地址不对"))
     if r.status_code >= 400:
-        raise ValueError(f"链接打不开（{r.status_code}）")
+        raise ValueError(i18n.t("链接打不开（{code}）", code=r.status_code))
     if "text/html" in r.headers.get("content-type", ""):
-        raise ValueError("这个链接打开是一个网页，不是模板文件")
+        raise ValueError(i18n.t("这个链接打开是一个网页，不是模板文件"))
     return parse(r.text)
 
 
@@ -256,22 +300,28 @@ def install(t: dict, enable_routines: bool = True, name: str = "") -> dict:
     return bots.get(b["id"])
 
 
-if __name__ == "__main__":   # python -m osa.templates：检查内置模板（CI 里也跑）
+if __name__ == "__main__":   # python -m osa.templates：检查内置模板（CI 里也跑），中英文两个版本都检查
     import sys
     bad = 0
     market = catalog.items()
     for p in sorted(BUILTIN.glob("*.yaml")):
-        try:
-            t = parse(p.read_text())
-        except ValueError as e:
-            print("✗", p.name, e)
-            bad += 1
-            continue
-        if missing := [a for a in t["apps"] if a not in market]:
-            print("✗", p.name, "应用市场里没有：", "、".join(missing))
-            bad += 1
-            continue
-        text = " ".join([t["instructions"]] + [s["body"] for s in t["skills"]] + [r["prompt"] for r in t["routines"]])
-        extra = sorted(set(skills._APP_REF.findall(text)) & set(market) - set(t["apps"]))
-        print("✓", p.name, t["name"], f"（提到了 @{'、@'.join(extra)}，但没写进 apps）" if extra else "")
+        for lang in i18n.LANGS:
+            try:
+                t = parse(p.read_text(), lang)
+            except ValueError as e:
+                print("✗", p.name, lang, e)
+                bad += 1
+                continue
+            if missing := [a for a in t["apps"] if a not in market]:
+                print("✗", p.name, lang, "应用市场里没有：", "、".join(missing))
+                bad += 1
+                continue
+            text = " ".join([t["instructions"]] + [s["body"] for s in t["skills"]] + [r["prompt"] for r in t["routines"]])
+            extra = sorted(set(skills._APP_REF.findall(text)) & set(market) - set(t["apps"]))
+            notes = [f"提到了 @{'、@'.join(extra)}，但没写进 apps"] if extra else []
+            if lang == "en" and i18n.CJK.search(" ".join([t["name"], t["description"], text]
+                                                          + [s["name"] + s["description"] for s in t["skills"]]
+                                                          + [r["name"] for r in t["routines"]])):
+                notes.append("英文版里还有中文：没写 en:，或者 en: 里漏了字段")
+            print("✓", p.name, lang, t["name"], f"（{'；'.join(notes)}）" if notes else "")
     sys.exit(1 if bad else 0)

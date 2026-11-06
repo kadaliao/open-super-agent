@@ -27,6 +27,28 @@ fields:
   placeholder: https://mcp.feishu.cn/mcp/mcp_…
   pattern: ^https://mcp\.(feishu\.cn|larksuite\.com)/mcp/mcp_\w+
   invalid: 要复制的是「服务器 URL」，以 https://mcp.feishu.cn/mcp/mcp_ 开头
+en:
+  title: Feishu Docs
+  by: Official (Feishu)
+  how: Paste a link
+  desc: Search, read, and create Feishu docs, view comments
+  about: "Feishu's official personal MCP link. The link carries your authorization, so the bot can act as you: search and read Feishu docs, view comments, create and edit docs, and add comments. It asks you before making changes."
+  can:
+  - Search and read docs you have access to
+  - Create docs and edit existing ones
+  - View and add comments
+  example: "@feishu find last week's team meeting notes and list the items that aren't done yet"
+  steps:
+  - Open the Feishu MCP page and sign in, then click "Create MCP service" (创建 MCP 服务) on the left
+  - Under "MCP tool settings" (MCP 工具配置), make sure it's your own account
+  - On the "Add tools" (添加工具) card, click "Add" (添加), choose "Docs" (云文档), and click "Add" again. When "Get user authorization" (获取用户授权) pops up, click "Authorize" (授权)
+  - Under "How to use the MCP service" (如何使用 MCP 服务), copy the "Server URL" (服务器 URL) and paste it below
+  link_label: Open Feishu MCP page
+  note: The link expires after 7 days. Before then, click "Reauthorize" (重新授权) on the Feishu MCP page to extend it. Feishu says these personal links will be phased out over time.
+  fields:
+    url:
+      label: Server URL
+      invalid: Copy the "Server URL" (服务器 URL); it starts with https://mcp.feishu.cn/mcp/mcp_
 connect:
   type: http
   url: '{url}'

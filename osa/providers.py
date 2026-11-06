@@ -15,7 +15,7 @@ import zlib
 from urllib.parse import urlparse
 import openai
 from openai import AsyncOpenAI
-from . import vault
+from . import i18n, vault
 from .config import CFG
 from .memory import conn
 
@@ -27,32 +27,49 @@ MODELS_TTL = 600
 PRESETS = [
     {"id": "deepseek", "title": "DeepSeek", "base_url": "https://api.deepseek.com", "color": "#4d6bfe",
      "key_url": "https://platform.deepseek.com/api_keys", "models": ["deepseek-flash", "deepseek-v4-flash"],
-     "desc": "便宜，中文好；默认配置用它"},
+     "desc": i18n.N_("便宜，中文好；默认配置用它")},
     {"id": "openai", "title": "OpenAI", "base_url": "https://api.openai.com/v1", "color": "#111111",
      "key_url": "https://platform.openai.com/api-keys", "embedding": "text-embedding-3-small", "models": ["gpt-6.1-terra", "gpt-6-sol", "gpt-5.6-terra"],
-     "desc": "GPT 系列"},
+     "desc": i18n.N_("GPT 系列")},
     {"id": "openrouter", "title": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "color": "#6467f2",
      "key_url": "https://openrouter.ai/settings/keys", "models": ["deepseek/deepseek-v4.1-flash", "google/gemini-3.8-flash", "openai/gpt-6.1-terra"],
-     "desc": "一个密钥用几百个模型"},
-    {"id": "siliconflow", "title": "硅基流动", "base_url": "https://api.siliconflow.cn/v1", "color": "#7c3aed",
+     "desc": i18n.N_("一个密钥用几百个模型")},
+    {"id": "siliconflow", "title": i18n.N_("硅基流动"), "base_url": "https://api.siliconflow.cn/v1", "color": "#7c3aed",
      "key_url": "https://cloud.siliconflow.cn/account/ak", "embedding": "BAAI/bge-m3", "models": ["zai-org/GLM-5.3-Flash", "Qwen/Qwen3.8-27B", "Pro/moonshotai/Kimi-K2.6"],
-     "desc": "开源模型多，有免费的 embedding"},
-    {"id": "dashscope", "title": "阿里云百炼", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "color": "#ff6a00",
+     "desc": i18n.N_("开源模型多，有免费的 embedding")},
+    {"id": "dashscope", "title": i18n.N_("阿里云百炼"), "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "color": "#ff6a00",
      "key_url": "https://bailian.console.aliyun.com/?apiKey=1", "embedding": "text-embedding-v4", "models": ["qwen3.8-flash", "qwen3.7-plus", "qwen3.6-flash"],
-     "desc": "通义千问"},
-    {"id": "zhipu", "title": "智谱", "base_url": "https://open.bigmodel.cn/api/paas/v4", "color": "#3859ff",
+     "desc": i18n.N_("通义千问")},
+    {"id": "zhipu", "title": i18n.N_("智谱"), "base_url": "https://open.bigmodel.cn/api/paas/v4", "color": "#3859ff",
      "key_url": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys", "embedding": "embedding-3", "models": ["glm-5.3-flash", "glm-5v-turbo", "glm-4.6v"],
-     "desc": "GLM 系列"},
+     "desc": i18n.N_("GLM 系列")},
     {"id": "moonshot", "title": "Kimi", "base_url": "https://api.moonshot.cn/v1", "color": "#16191e",
      "key_url": "https://platform.moonshot.cn/console/api-keys", "models": ["kimi-k3", "kimi-k2.6"],
-     "desc": "月之暗面"},
+     "desc": i18n.N_("月之暗面")},
     {"id": "ollama", "title": "Ollama", "base_url": "http://localhost:11434/v1", "color": "#5b5b63", "no_key": True,
-     "embedding": "nomic-embed-text", "desc": "本机跑的模型，不用密钥",
-     "note": "用 Docker 部署时，地址写 http://host.docker.internal:11434/v1"},
-    {"id": "custom", "title": "其他", "base_url": "", "color": "#5b5b63",
-     "desc": "任何兼容 OpenAI 的接口：vLLM、LM Studio、one-api……"},
+     "embedding": "nomic-embed-text", "desc": i18n.N_("本机跑的模型，不用密钥"),
+     "note": i18n.N_("用 Docker 部署时，地址写 http://host.docker.internal:11434/v1")},
+    {"id": "custom", "title": i18n.N_("其他"), "base_url": "", "color": "#5b5b63",
+     "desc": i18n.N_("任何兼容 OpenAI 的接口：vLLM、LM Studio、one-api……")},
 ]
 PRESET = {p["id"]: p for p in PRESETS}
+_PRESET_TITLES = {p["title"] for p in PRESETS}
+
+
+def presets() -> list[dict]:
+    """给界面的服务商列表：名字、说明按界面语言翻好（新的副本，不改 PRESETS）。"""
+    return [p | {k: i18n.t(p[k]) for k in ("title", "desc", "note") if p.get(k)} for p in PRESETS]
+
+
+def _title(t: str) -> str:
+    """服务商的中文名（硅基流动……）按界面语言显示；用户自己起的名字原样。"""
+    return i18n.t(t) if t in _PRESET_TITLES else t
+
+
+def _stored_title(t: str) -> str:
+    """界面上填回来的是翻好的名字（SiliconFlow）：存原文，换回中文界面时还能显示成“硅基流动”。"""
+    return next((zh for zh in _PRESET_TITLES if t == i18n.t(zh, in_lang="en")), t)
+
 
 _clients: dict[tuple, AsyncOpenAI] = {}
 _models: dict[str, dict] = {}   # 名字 → {ts, models, error, note}
@@ -129,7 +146,7 @@ def describe(name: str) -> dict:
     k = api_key(name)
     m = _models.get(name) or {}
     return {
-        "name": name, "title": p.get("title") or PRESET.get(p.get("preset") or name, {}).get("title") or name,
+        "name": name, "title": _title(p.get("title") or PRESET.get(p.get("preset") or name, {}).get("title") or name),
         "preset": p.get("preset") or (name if name in PRESET else "custom"), "base_url": p["base_url"],
         "source": p.get("source", "config"), "key_env": env,
         "key_source": "vault" if in_vault else "env" if from_env else "",
@@ -146,7 +163,7 @@ def public() -> list[dict]:
 def client(name: str, timeout: float | None = None) -> AsyncOpenAI:
     p = CFG["providers"].get(name)
     if not p:
-        raise ValueError(f"没有这个模型服务：{name}")
+        raise ValueError(i18n.t("没有这个模型服务：{name}", name=name))
     k = (p["base_url"], api_key(name) or "none", timeout)
     if k not in _clients:
         _clients[k] = AsyncOpenAI(base_url=k[0], api_key=k[1], **({"timeout": timeout} if timeout else {}))
@@ -161,19 +178,19 @@ def explain(e: Exception, base_url: str = "") -> str:
         err = body.get("error") if isinstance(body.get("error"), dict) else body
         detail = str((err or {}).get("message") or e.message or "")[:200]
     if isinstance(e, openai.AuthenticationError):
-        return "密钥不对，或者已经失效（401）"
+        return i18n.t("密钥不对，或者已经失效（401）")
     if isinstance(e, openai.PermissionDeniedError):
-        return f"没有权限（403）：可能没开通这个模型，或者账户欠费。{detail}"
+        return i18n.t("没有权限（403）：可能没开通这个模型，或者账户欠费。{detail}", detail=detail)
     if isinstance(e, openai.NotFoundError):
-        return f"找不到（404）：接口地址或模型名字不对。{detail}"
+        return i18n.t("找不到（404）：接口地址或模型名字不对。{detail}", detail=detail)
     if isinstance(e, openai.RateLimitError):
-        return f"请求太多或余额不足（429）。{detail}"
+        return i18n.t("请求太多或余额不足（429）。{detail}", detail=detail)
     if isinstance(e, openai.APITimeoutError):
-        return f"连接超时：{base_url}"
+        return i18n.t("连接超时：{url}", url=base_url)
     if isinstance(e, openai.APIConnectionError):
-        return f"连不上 {base_url}"
+        return i18n.t("连不上 {url}", url=base_url)
     if isinstance(e, openai.APIStatusError):
-        return f"出错了（{e.status_code}）：{detail}"
+        return i18n.t("出错了（{code}）：{detail}", code=e.status_code, detail=detail)
     return f"{type(e).__name__}: {str(e)[:200]}"
 
 
@@ -188,11 +205,11 @@ async def check(base_url: str, key: str) -> dict:
     """拉一次模型列表，顺便验证地址和密钥。有的服务不提供列表（404），这时只能自己填模型名字。"""
     try:
         models = await _list(base_url, key)
-        return {"ok": True, "models": models, "error": "", "note": "" if models else "连上了，但是没有列出模型，选模型时直接填名字"}
+        return {"ok": True, "models": models, "error": "", "note": "" if models else i18n.t("连上了，但是没有列出模型，选模型时直接填名字")}
     except openai.NotFoundError:
-        return {"ok": True, "models": [], "error": "", "note": "这个服务不提供模型列表，选模型时直接填名字"}
+        return {"ok": True, "models": [], "error": "", "note": i18n.t("这个服务不提供模型列表，选模型时直接填名字")}
     except openai.AuthenticationError as e:
-        return {"ok": False, "models": [], "error": explain(e) if key else "要填 API Key 才能用", "note": ""}
+        return {"ok": False, "models": [], "error": explain(e) if key else i18n.t("要填 API Key 才能用"), "note": ""}
     except Exception as e:
         return {"ok": False, "models": [], "error": explain(e, base_url), "note": ""}
 
@@ -201,15 +218,15 @@ async def models(name: str, refresh: bool = False) -> dict:
     """这个服务有哪些模型，带上单价和能力。服务自己不列的，用 models.dev 里这一家的列表。"""
     from . import prices
     if name not in CFG["providers"]:
-        raise ValueError(f"没有这个模型服务：{name}")
+        raise ValueError(i18n.t("没有这个模型服务：{name}", name=name))
     m = _models.get(name)
     if refresh or not m or time.time() - m["ts"] > MODELS_TTL:
         if needs_key(name) and not api_key(name):
-            m = {"ok": False, "models": [], "error": "还没填 API Key", "note": ""}
+            m = {"ok": False, "models": [], "error": i18n.t("还没填 API Key"), "note": ""}
         else:
             m = await check(CFG["providers"][name]["base_url"], api_key(name))
         if m["ok"] and not m["models"] and (known := prices.models_of(name)):
-            m.update(models=known, note="这个服务没有列出模型，下面是 models.dev 收录的，也可以直接填名字")
+            m.update(models=known, note=i18n.t("这个服务没有列出模型，下面是 models.dev 收录的，也可以直接填名字"))
         m["ts"] = time.time()
         _models[name] = m
     return {**m, "name": name, "items": prices.annotate(name, m["models"])}
@@ -219,7 +236,7 @@ async def models(name: str, refresh: bool = False) -> dict:
 def _clean_url(url: str) -> str:
     url = (url or "").strip().rstrip("/")
     if not re.match(r"^https?://[^\s/]+", url):
-        raise ValueError("接口地址要以 http:// 或 https:// 开头")
+        raise ValueError(i18n.t("接口地址要以 http:// 或 https:// 开头"))
     return url
 
 
@@ -236,7 +253,7 @@ def _new_name(base: str) -> str:
 def save(name: str | None, data: dict) -> str:
     """name 为空是新建。api_key 留空表示不改；clear_key 删掉界面里填的密钥（回到环境变量）。"""
     d = _load()
-    title = (data.get("title") or "").strip()[:40]
+    title = _stored_title((data.get("title") or "").strip()[:40])
     url = _clean_url(data.get("base_url", ""))
     preset = data.get("preset") if data.get("preset") in PRESET else None
     if name is None:
@@ -244,7 +261,7 @@ def save(name: str | None, data: dict) -> str:
         d[name] = {"title": title or PRESET.get(preset or "", {}).get("title") or name, "base_url": url, "preset": preset or "custom"}
     else:
         if name not in CFG["providers"]:
-            raise ValueError(f"没有这个模型服务：{name}")
+            raise ValueError(i18n.t("没有这个模型服务：{name}", name=name))
         d.setdefault(name, {}).update({"base_url": url, **({"title": title} if title else {})})
     key = (data.get("api_key") or "").strip()
     if key:
@@ -267,11 +284,11 @@ def users(name: str) -> list[str]:
 
 def delete(name: str, role_names: dict):
     if name not in CFG["providers"]:
-        raise ValueError(f"没有这个模型服务：{name}")
+        raise ValueError(i18n.t("没有这个模型服务：{name}", name=name))
     if CFG["providers"][name].get("source") == "config":
-        raise ValueError("这个是 config.yaml 里写的，要在那里删")
+        raise ValueError(i18n.t("这个是 config.yaml 里写的，要在那里删"))
     if u := users(name):
-        raise ValueError(f"{'、'.join(role_names.get(x, x) for x in u)}还在用它，先换成别的模型")
+        raise ValueError(i18n.t("{roles}还在用它，先换成别的模型", roles=i18n.t("、").join(i18n.t(role_names.get(x, x)) for x in u)))
     d = _load()
     d.pop(name, None)
     _store(d)
@@ -297,9 +314,9 @@ async def test(provider: str, model: str, kind: str = "chat", role: str = "") ->
     """真的调一次：chat 先带一张红色图片问颜色，看能不能看图；不支持图片再只发文字。embedding 算一条向量。"""
     from . import memory
     if provider not in CFG["providers"]:
-        raise ValueError(f"没有这个模型服务：{provider}")
+        raise ValueError(i18n.t("没有这个模型服务：{name}", name=provider))
     if not (model or "").strip():
-        raise ValueError("先选一个模型")
+        raise ValueError(i18n.t("先选一个模型"))
     base = CFG["providers"][provider]["base_url"]
     c = AsyncOpenAI(base_url=base, api_key=api_key(provider) or "none", timeout=60, max_retries=0)
     t0 = time.time()

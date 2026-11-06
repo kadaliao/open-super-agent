@@ -9,6 +9,14 @@ can:
 - 查看仓库的文档目录和内容
 - 就某个仓库提问，得到带出处的回答
 example: '@deepwiki vercel/next.js 的路由缓存是怎么实现的？'
+en:
+  by: Official (Cognition)
+  desc: 'Understand any public GitHub repo: architecture, modules, usage'
+  about: DeepWiki has generated docs for public GitHub repos. The bot can ask how a repo is designed or where a feature is implemented.
+  can:
+  - View a repo's docs outline and content
+  - Ask questions about a repo and get answers with sources
+  example: '@deepwiki how is the router cache implemented in vercel/next.js?'
 connect:
   type: http
   url: https://mcp.deepwiki.com/mcp

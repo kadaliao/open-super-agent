@@ -737,6 +737,9 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 
 /* ---------- 任务 ---------- */
 .app.mid-panel { --panel: 440px; }
+/* 英文的标签比中文长：右栏默认宽一点、标签挤一点，六个标签一行放得下 */
+:root:lang(en) .app:not(.wide-panel):not(.mid-panel) { --panel: 420px; }
+:root:lang(en) .panel-head .panel-tabs button { padding: 6px 6px; }
 .panel-tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .panel-tabs::-webkit-scrollbar { display: none; }
 .panel-tabs button { flex: none; }

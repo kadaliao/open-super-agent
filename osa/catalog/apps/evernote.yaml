@@ -12,6 +12,16 @@ can:
 - 新建笔记
 example: '@evernote 找一下我去年记的装修清单'
 note: 只支持 Evernote 国际版账号，国内的印象笔记账号登不上。
+en:
+  title: Evernote
+  by: Official (Evernote)
+  desc: Search, read, and create Evernote notes
+  about: Evernote's official connection (international accounts). Once you sign in, the bot can find and read your notes and create new ones.
+  can:
+  - Search and read notes
+  - Create notes
+  example: '@evernote find the renovation checklist I wrote last year'
+  note: Only international Evernote accounts work. Accounts from the China edition (Yinxiang Biji) can't sign in.
 connect:
   type: http
   url: https://mcp.evernote.com/mcp

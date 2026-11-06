@@ -6,7 +6,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, dm, library, memories, memory, routines, search, skills, tasklog
+from . import approvals, bots, dm, i18n, library, memories, memory, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -183,7 +183,7 @@ def runtime(bot_id: int) -> "Router":
 
 def cancel(tid: int, reason: str) -> str:
     t = TASKS.get(tid)
-    return runtime(t.bot_id).cancel(tid, reason) if t else f"没有任务 #{tid}"
+    return runtime(t.bot_id).cancel(tid, reason) if t else i18n.t("没有任务 #{id}", id=tid)
 
 
 class Router:
@@ -241,11 +241,12 @@ class Router:
                     shown = await self._think(bots.chat(chat_id))
                 except Exception as e:
                     if owed:
-                        await dm.answer(self.bot_id, owed, f"（{(self.bot or {}).get('name', 'Bot')} 处理时出错：{e}）", chat_id)
+                        await dm.answer(self.bot_id, owed, i18n.t("（{name} 处理时出错：{error}）",
+                                                                  name=(self.bot or {}).get("name", "Bot"), error=e), chat_id)
                     raise
                 # 欠着回信：没派任务、也没再私信别人的话，这一轮的回复就是回信（派了的由任务结果、对方回信接着送）
                 if owed and not self._turn_tasks and not self._turn_dms:
-                    await dm.answer(self.bot_id, owed, shown or "（没有回复内容）", chat_id)
+                    await dm.answer(self.bot_id, owed, shown or i18n.t("（没有回复内容）"), chat_id)
             finally:
                 self.turn = {}
 
@@ -329,7 +330,7 @@ class Router:
             date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), skills=skills.summary(self.bot_id),
             routines=self._routine_list(), capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id, related),
             approvals=approvals.summary(self.bot_id), group=self._group_block(chat), others=self._others(),
-            turn=self._turn_block())}] \
+            turn=self._turn_block()) + i18n.model_hint()}] \
             + memory.context(cid, self.bot_id if chat["kind"] == "group" else None, me=self.bot_id)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
@@ -440,7 +441,7 @@ class Router:
             except (ValueError, TypeError) as e:
                 return f"没建成：{e}"
             await self.emit({"type": "routines_changed"})
-            when = routines.describe(r["trigger"])
+            when = routines.describe(r["trigger"], in_lang="zh")
             if r["next_run"]:
                 when += "，下次 " + time.strftime("%m-%d %H:%M", time.localtime(r["next_run"]))
             if kind == "webhook":
@@ -464,11 +465,12 @@ class Router:
         if name == "cancel_task":
             woke = self.turn.get("woke")
             if not woke:
-                return self.cancel(args["task_id"], "用户要求取消")
+                return self.cancel(args["task_id"], i18n.t("用户要求取消"))
             t, owed = self.tasks.get(args["task_id"]), self.turn.get("reply")
             if t and t.reply and owed and dm.same(t.reply, owed):
                 t.reply = None   # 还是回给同一个 Bot：这一轮的回复或新派的任务会接着回它，不用再说一声“已取消”
-            return self.cancel(args["task_id"], f"{self.bot['name']} 收到 {dm._name(woke['from'])} 的新消息后自己取消的")
+            return self.cancel(args["task_id"], i18n.t("{name} 收到 {sender} 的新消息后自己取消的", name=self.bot["name"],
+                                                       sender=dm._name(woke["from"])))
         if name == "resolve_approval":
             return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")))
         if name == "recall":
@@ -575,7 +577,7 @@ class Router:
         return task
 
     def _routine_list(self) -> str:
-        return "\n".join(f"- {r['name']}（{routines.describe(r['trigger'])}{'' if r['enabled'] else '，已暂停'}）"
+        return "\n".join(f"- {r['name']}（{routines.describe(r['trigger'], in_lang='zh')}{'' if r['enabled'] else '，已暂停'}）"
                          for r in routines.list_for(self.bot_id)) or "暂无"
 
     def _task_list(self) -> str:
@@ -599,7 +601,7 @@ class Router:
             await self._done(task)
             return
         except Exception as e:
-            task.status, task.result = "failed", f"任务失败：{e}"
+            task.status, task.result = "failed", i18n.t("任务失败：{error}", error=e)
         await tasklog.close(task, task.status, task.result if task.status == "failed" else "")
         memory.update_meta(task.id, status=task.status, elapsed=round(time.time() - task.started), steps=task.steps)
         await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", task.chat_id, kind="result", task_id=task.id,
@@ -622,12 +624,14 @@ class Router:
     def cancel(self, tid: int, reason: str) -> str:
         t = self.tasks.get(tid)
         if not t or t.status != "running":
-            return f"任务 #{tid} 不在运行中"
+            return i18n.t("任务 #{id} 不在运行中", id=tid)
         approvals.cancel_for_task(tid)
         t.handle.cancel()
-        t.status, t.result = "cancelled", f"已取消：{reason}"
+        t.status, t.result = "cancelled", i18n.t("已取消：{reason}", reason=reason)
         memory.update_meta(tid, status="cancelled", elapsed=round(time.time() - t.started), steps=t.steps)
-        asyncio.create_task(tasklog.close(t, "cancelled", f"已取消：{reason}"))
-        asyncio.create_task(self.add("task", f"[任务 #{tid} 已取消：{reason}]", t.chat_id, kind="cancel", task_id=tid))
+        asyncio.create_task(tasklog.close(t, "cancelled", t.result))
+        # 新记录靠 meta 的 kind 认出是取消；前端只给没有 meta 的旧记录按“[任务 #N 已取消”的原文认
+        asyncio.create_task(self.add("task", i18n.t("[任务 #{id} 已取消：{reason}]", id=tid, reason=reason), t.chat_id,
+                                     kind="cancel", task_id=tid))
         asyncio.create_task(self.emit({"type": "task", "task": t.public()}, t.chat_id))
-        return f"已取消 #{tid}"
+        return i18n.t("已取消 #{id}", id=tid)

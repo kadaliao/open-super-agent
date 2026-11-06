@@ -12,6 +12,15 @@ can:
 - 新建和修改页面，整理会议纪要、周报
 - 往数据库里加条目、改属性
 example: '@notion 把刚才的讨论整理成一页会议纪要，放到「会议」数据库里'
+en:
+  by: Official (Notion)
+  desc: Search, read, and edit your pages and databases
+  about: Uses Notion's official connection. Sign in and choose which pages to allow, and the bot can look things up, write pages, and add entries to databases.
+  can:
+  - Search and read pages across your workspace
+  - Create and edit pages, write up meeting notes and weekly reports
+  - Add entries to databases, change properties
+  example: '@notion turn the discussion we just had into meeting notes and put them in the "Meetings" database'
 deny: [delete, archive]
 connect:
   type: http

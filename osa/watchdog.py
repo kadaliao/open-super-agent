@@ -2,7 +2,7 @@
 import asyncio
 import time
 from .config import CFG
-from . import memory
+from . import i18n, memory
 
 
 async def watchdog():
@@ -19,12 +19,12 @@ async def watchdog():
                 continue
             reason = None
             if now - t.started - t.paused_s > lim["task_timeout_s"]:
-                reason = f"运行超过 {lim['task_timeout_s']} 秒"
+                reason = i18n.t("运行超过 {n} 秒", n=lim["task_timeout_s"])
             elif now - t.last_progress > 180:
-                reason = "3 分钟没有进展"
+                reason = i18n.t("3 分钟没有进展")
             elif len(t.recent_calls) >= 4 and len(set(t.recent_calls[-4:])) == 1:
-                reason = "连续重复同一个工具调用，疑似死循环"
+                reason = i18n.t("连续重复同一个工具调用，疑似死循环")
             elif memory.tokens_today() > lim["daily_token_budget"]:
-                reason = "今日 token 预算用完"
+                reason = i18n.t("今日 token 预算用完")
             if reason:
-                cancel(t.id, f"Watchdog：{reason}")
+                cancel(t.id, i18n.t("Watchdog：{reason}", reason=reason))

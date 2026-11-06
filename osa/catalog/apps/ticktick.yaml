@@ -11,6 +11,14 @@ can:
 - 查看任务和清单
 - 添加、修改、完成任务
 example: '@ticktick 明天上午有什么要做的？'
+en:
+  by: Official (TickTick)
+  desc: View and add to-dos (Dida365's international version)
+  about: TickTick's official connection (the international version of Dida365). Once you sign in, the bot can view and manage your tasks.
+  can:
+  - View tasks and lists
+  - Add, edit, and complete tasks
+  example: '@ticktick what do I have to do tomorrow morning?'
 connect:
   type: http
   url: https://mcp.ticktick.com/

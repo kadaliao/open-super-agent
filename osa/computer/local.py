@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from .. import i18n
 from ..config import CFG, ROOT
 from .base import Computer, ComputerError, ExecResult
 
@@ -52,7 +53,7 @@ async def _run(*args, stdin: str | None = None, timeout: float = 120) -> tuple[i
     except asyncio.TimeoutError:
         p.kill()
         await p.wait()
-        return 124, "", "超时"
+        return 124, "", i18n.t("超时")
     return p.returncode, out.decode(errors="replace"), err.decode(errors="replace")
 
 
@@ -85,7 +86,7 @@ class LocalComputer(Computer):
     async def status(self) -> dict:
         code, out, _ = await _run("docker", "inspect", "-f", "{{json .State}}", self.name, timeout=15)
         if code:
-            return {"state": "none", "detail": "还没有创建"}
+            return {"state": "none", "detail": i18n.t("还没有创建")}
         st = json.loads(out)
         state = {"running": "running", "paused": "paused", "exited": "stopped", "created": "stopped",
                  "restarting": "starting"}.get(st.get("Status"), "error")
@@ -97,7 +98,7 @@ class LocalComputer(Computer):
             code, out, err = await _run("docker", "build", "--platform", await platform(), "-t", IMAGE,
                                         str(IMAGE_DIR), timeout=1800)
             if code:
-                raise ComputerError("电脑镜像构建失败：" + (err or out)[-800:])
+                raise ComputerError(i18n.t("电脑镜像构建失败：{error}", error=(err or out)[-800:]))
 
     async def start(self):
         async with self._starting:
@@ -118,13 +119,13 @@ class LocalComputer(Computer):
                     "-e", f"SCREEN_W={self.width}", "-e", f"SCREEN_H={self.height}",
                     "--label", "osa=computer", IMAGE, timeout=120)
                 if code:
-                    raise ComputerError("电脑启动失败：" + (err or out)[-500:])
+                    raise ComputerError(i18n.t("电脑启动失败：{error}", error=(err or out)[-500:]))
             for _ in range(60):   # 等桌面就绪
                 r = await self.exec("DISPLAY=:1 xdotool getdisplaygeometry", 10)
                 if r.exit_code == 0:
                     return
                 await asyncio.sleep(0.5)
-            raise ComputerError("桌面没有在 30 秒内启动")
+            raise ComputerError(i18n.t("桌面没有在 30 秒内启动"))
 
     async def pause(self):
         if (await self.status())["state"] == "running":

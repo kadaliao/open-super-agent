@@ -2,6 +2,7 @@
 computer_* 截的是自己窗口里的页面、按页面坐标点击，动作之后自动附上新截图，模型马上能看到结果。"""
 import contextvars
 import base64
+from .. import i18n
 from . import ComputerError, get
 
 AUTO_SHOT = {"computer_click", "computer_type", "computer_key", "computer_scroll"}
@@ -93,7 +94,41 @@ def _label(task, key: str) -> str:
     if isinstance(task.id, str):
         return task.id
     part = key.rpartition(":")[2]
-    return f"任务 #{task.id}" + (f" · 研究员 {int(part[1:]) + 1}" if part[:1] == "h" and part[1:].isdigit() else "")
+    return i18n.t("任务 #{id}", id=task.id) + \
+        (" · " + i18n.t("研究员 {n}", n=int(part[1:]) + 1) if part[:1] == "h" and part[1:].isdigit() else "")
+
+
+def _progress_label(name: str, args: dict) -> str:
+    """任务卡片和任务过程里显示的这一步在做什么。"""
+    fixed = {"browser_snapshot": i18n.N_("查看页面"), "browser_back": i18n.N_("后退"), "browser_read": i18n.N_("读取页面"),
+             "computer_screenshot": i18n.N_("截图")}
+    if name in fixed:
+        return i18n.t(fixed[name])
+    if name == "browser_open":
+        return i18n.t("打开 {url}", url=args.get("url", ""))
+    if name == "browser_click":
+        return i18n.t("点击 [{ref}]", ref=args.get("ref"))
+    if name in ("browser_type", "computer_type"):
+        return i18n.t("输入 “{text}”", text=str(args.get("text", ""))[:30])
+    if name in ("browser_key", "computer_key"):
+        return i18n.t("按键 {key}", key=args.get("key") if name == "browser_key" else args.get("keys"))
+    if name in ("browser_scroll", "computer_scroll"):
+        return i18n.t("滚动 {direction}", direction=args.get("direction"))
+    if name == "browser_upload":
+        return i18n.t("上传文件到 [{ref}]", ref=args.get("ref"))
+    if name == "computer_click":
+        return i18n.t("点击 ({x}, {y})", x=args.get("x"), y=args.get("y"))
+    if name == "computer_shell":
+        return i18n.t("终端：{cmd}", cmd=str(args.get("cmd", ""))[:60])
+    if name == "computer_read_file":
+        return i18n.t("读取 {path}", path=args.get("path"))
+    if name == "computer_write_file":
+        return i18n.t("写入 {path}", path=args.get("path"))
+    if name == "ask_human":
+        return i18n.t("请你帮忙：{reason}", reason=str(args.get("reason", ""))[:60])
+    if name == "ask_approval":
+        return i18n.t("请求确认：{action}", action=str(args.get("action", ""))[:60])
+    return name
 
 
 async def call(task, name: str, args: dict, notify_progress, key: str = "") -> tuple[str, bytes | None]:
@@ -104,19 +139,7 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
     if name in WINDOW and not key.startswith("chat-"):
         await c.claim(key, _label(task, key), notify_progress,
                       {"task_id": task.id if isinstance(task.id, int) else None, "bot_id": task.bot_id})
-    labels = {
-        "browser_open": f"打开 {args.get('url', '')}", "browser_snapshot": "查看页面",
-        "browser_click": f"点击 [{args.get('ref')}]", "browser_type": f"输入 “{str(args.get('text', ''))[:30]}”",
-        "browser_key": f"按键 {args.get('key')}", "browser_scroll": f"滚动 {args.get('direction')}",
-        "browser_back": "后退", "browser_read": "读取页面", "browser_upload": f"上传文件到 [{args.get('ref')}]",
-        "computer_screenshot": "截图",
-        "computer_click": f"点击 ({args.get('x')}, {args.get('y')})", "computer_type": f"输入 “{str(args.get('text', ''))[:30]}”",
-        "computer_key": f"按键 {args.get('keys')}", "computer_scroll": f"滚动 {args.get('direction')}",
-        "computer_shell": f"终端：{str(args.get('cmd', ''))[:60]}", "computer_read_file": f"读取 {args.get('path')}",
-        "computer_write_file": f"写入 {args.get('path')}", "ask_human": "请你帮忙：" + str(args.get("reason", ""))[:60],
-        "ask_approval": "请求确认：" + str(args.get("action", ""))[:60],
-    }
-    await notify_progress(labels.get(name, name))
+    await notify_progress(_progress_label(name, args))
     try:
         if name == "browser_upload":
             paths = args.get("paths") or []

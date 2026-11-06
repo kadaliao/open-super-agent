@@ -22,6 +22,25 @@ fields:
   secret: true
   pattern: ^https://flomoapp\.com/iwh/
   invalid: 链接应该以 https://flomoapp.com/iwh/ 开头
+en:
+  title: flomo quick capture
+  by: Community
+  how: Paste API link
+  desc: Save notes to flomo with its API link (write-only)
+  about: 'For flomo PRO members: with the API link flomo provides, the bot can save content to flomo. This way it can only create notes, not search them.'
+  can:
+  - 'Save content as a memo, with #tags if you like'
+  example: "@flomo-api save today's three takeaways to flomo with the tag #journal"
+  steps:
+  - Open flomo's "API" settings page (requires PRO)
+  - Copy the link on that page that starts with https://flomoapp.com/iwh/
+  - Paste it below
+  link_label: Open flomo API settings
+  fields:
+    url:
+      label: API link
+      placeholder: https://flomoapp.com/iwh/…
+      invalid: The link should start with https://flomoapp.com/iwh/
 connect:
   type: stdio
   command: npx

@@ -18,6 +18,8 @@ jobs:
         run: uv run python -m osa.catalog
       - name: Check Bot templates
         run: uv run python -m osa.templates
+      - name: Check translations
+        run: uv run python -m osa.i18n
 
   frontend:
     runs-on: ubuntu-latest

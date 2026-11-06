@@ -35,6 +35,31 @@ check:
     user: '{email}'
     password: '{password}'
     hint: 注意填的是授权码，不是平时的登录密码
+en:
+  title: QQ Mail
+  by: IMAP · Community
+  how: Email + password
+  desc: Read and search email, tidy your inbox, draft and send for you
+  about: Connects to your QQ Mail over IMAP. The bot can find, read, and archive email and draft replies. It asks you before sending or deleting.
+  can:
+  - Find email by sender, subject, or date; read bodies and attachments
+  - Archive, move, mark as read
+  - Draft, reply, forward, send (asks first)
+  example: '@qqmail which emails today need a reply from me? Draft replies for them'
+  steps:
+  - In QQ Mail on the web, go to "Settings → Account & security → Security settings" (设置 → 账号与安全 → 安全设置)
+  - Turn on "IMAP/SMTP service" (IMAP/SMTP 服务). After you verify as prompted, you'll get an authorization code
+  - Paste the authorization code below (not your QQ password)
+  link_label: Open QQ Mail
+  fields:
+    email:
+      label: Email address
+      invalid: That doesn't look like an email address
+    password:
+      label: Authorization code
+  check:
+    imap:
+      hint: Use the authorization code, not your regular sign-in password
 deny: [email_command]
 connect:
   type: stdio

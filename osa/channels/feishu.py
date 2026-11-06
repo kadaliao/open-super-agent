@@ -20,6 +20,7 @@ from collections import deque
 from urllib.parse import parse_qs, urlparse
 import httpx
 import websockets
+from .. import i18n
 from . import Channel, fmt
 
 DOMAINS = {"feishu": "https://open.feishu.cn", "lark": "https://open.larksuite.com"}
@@ -158,7 +159,7 @@ def _post_text(content: dict) -> tuple[str, list[str]]:
 
 
 class Feishu(Channel):
-    kind, title, max_len = "feishu", "飞书", 6000
+    kind, title, max_len = "feishu", i18n.N_("飞书"), 6000
 
     def __init__(self, r: dict, secret: str):
         super().__init__(r, secret)
@@ -202,20 +203,22 @@ class Feishu(Channel):
         app_id, secret = (fields.get("app_id") or "").strip(), (fields.get("app_secret") or "").strip()
         domain = fields.get("domain") if fields.get("domain") in DOMAINS else "feishu"
         if not app_id.startswith("cli_"):
-            raise ValueError("App ID 应该以 cli_ 开头，在开发者后台应用的“凭证与基础信息”里")
+            raise ValueError(i18n.t("App ID 应该以 cli_ 开头，在开发者后台应用的“凭证与基础信息”里"))
         if not secret:
-            raise ValueError("请填 App Secret")
+            raise ValueError(i18n.t("请填 App Secret"))
         async with httpx.AsyncClient(timeout=20) as c:
             try:
                 tok, _ = await _tenant_token(c, domain, app_id, secret)
                 r = await c.get(base(domain) + "/open-apis/bot/v3/info", headers={"Authorization": f"Bearer {tok}"})
                 d = r.json()
             except FeishuError as e:
-                raise ValueError(f"App ID 或 App Secret 不对（{e.msg}）")
+                raise ValueError(i18n.t("App ID 或 App Secret 不对（{error}）", error=e.msg))
             except (httpx.HTTPError, ValueError) as e:
-                raise ValueError(f"连不上{'飞书' if domain == 'feishu' else ' Lark'}（{type(e).__name__}）")
+                raise ValueError(i18n.t("连不上飞书（{error}）", error=type(e).__name__) if domain == "feishu"
+                                 else i18n.t("连不上 Lark（{error}）", error=type(e).__name__))
         if d.get("code") != 0:
-            raise ValueError(f"应用还没开启机器人能力：在开发者后台“添加应用能力”里添加“机器人”，再发布一个版本（{d.get('msg')}）")
+            raise ValueError(i18n.t("应用还没开启机器人能力：在开发者后台“添加应用能力”里添加“机器人”，再发布一个版本（{error}）",
+                                    error=d.get("msg")))
         bot = d.get("bot") or {}
         return {"name": bot.get("app_name") or app_id,
                 "config": {"app_id": app_id, "domain": domain, "open_id": bot.get("open_id", "")}, "secret": secret}
@@ -235,7 +238,7 @@ class Feishu(Channel):
                                  json={"AppID": self.row["config"]["app_id"], "AppSecret": self.secret})
         d = r.json()
         if d.get("code") != 0:
-            raise FeishuError(d.get("code"), d.get("msg") or "拿不到长连接地址")
+            raise FeishuError(d.get("code"), d.get("msg") or i18n.t("拿不到长连接地址"))
         return d["data"]["URL"], d["data"].get("ClientConfig") or {}
 
     async def run(self):
@@ -254,11 +257,11 @@ class Feishu(Channel):
                                 await self._frame(ws, raw)
                     finally:
                         pinger.cancel()
-                self.set_state("error", "长连接断了，正在重连")
+                self.set_state("error", i18n.later("长连接断了，正在重连"))
             except FeishuError as e:
-                self.set_state("error", f"飞书拒绝了连接（{e.msg}），稍后自动重试。App Secret 重置过的话，删掉这个连接重新添加")
+                self.set_state("error", i18n.later("飞书拒绝了连接（{error}），稍后自动重试。App Secret 重置过的话，删掉这个连接重新添加", error=e.msg))
             except (OSError, httpx.HTTPError, websockets.WebSocketException, ValueError, KeyError) as e:
-                self.set_state("error", f"连接飞书失败（{type(e).__name__}），稍后自动重试")
+                self.set_state("error", i18n.later("连接飞书失败（{error}），稍后自动重试", error=type(e).__name__))
             await asyncio.sleep(backoff + random.random() * 5)
             backoff = min(backoff * 2, 120)
 
@@ -326,7 +329,7 @@ class Feishu(Channel):
             elif mtype in ("file", "media"):
                 files = [(content.get("file_name") or f"file_{mid[-10:]}", (mid, content.get("file_key", ""), "file"))]
             elif peer == self.row["peer"]:
-                self.say("暂时只能收文字、图片和文件。语音请用输入法的语音转文字。")
+                self.say(i18n.t("暂时只能收文字、图片和文件。语音请用输入法的语音转文字。"))
                 return None
             if peer == self.row["peer"]:
                 self.last_msg = mid
@@ -346,7 +349,7 @@ class Feishu(Channel):
                                 params={"type": kind}, headers={"Authorization": f"Bearer {await self.token()}"}, timeout=120)
         if "application/json" in r.headers.get("content-type", ""):
             d = r.json()
-            raise ValueError(f"飞书不让下载（{d.get('msg')}），检查应用有没有“获取与上传图片或文件资源”权限")
+            raise ValueError(i18n.t("飞书不让下载（{error}），检查应用有没有“获取与上传图片或文件资源”权限", error=d.get("msg")))
         r.raise_for_status()
         return r.content
 

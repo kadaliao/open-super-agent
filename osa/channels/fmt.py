@@ -9,6 +9,7 @@
 """
 import html
 import re
+from .. import i18n
 
 FENCE = re.compile(r"^\s*(```|~~~)")
 _CODE_BLOCK = re.compile(r"^([ \t]*)(```|~~~)([^\n]*)\n(.*?)(?:\n[ \t]*\2[ \t]*$|\Z)", re.S | re.M)
@@ -101,7 +102,7 @@ def telegram_html(md: str) -> str:
 
 def plain(md: str) -> str:
     """退回纯文本时用：去掉最显眼的 Markdown 记号。"""
-    text = _LINK.sub(lambda m: f"{m[1]}（{m[2]}）", md)
+    text = _LINK.sub(lambda m: i18n.t("{text}（{url}）", text=m[1], url=m[2]), md)
     text = _BOLD.sub(lambda m: m[1] or m[2], text)
     return _HEADING.sub(lambda m: m[1], text)
 
@@ -164,4 +165,4 @@ def title_line(md: str, limit: int = 30) -> str:
         line = re.sub(r"^[#>\-*+\s]+|[`*_~]", "", line).strip()
         if line:
             return line[:limit]
-    return "消息"
+    return i18n.t("消息")

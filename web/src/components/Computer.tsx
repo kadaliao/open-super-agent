@@ -2,19 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
 import { api, useStore, setComputer, setTeachDraft } from '../store'
 import type { ComputerState, Teach } from '../types'
+import { lang, t } from '../i18n'
 import BotAvatar from './BotAvatar'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
+const SEP = lang === 'en' ? ', ' : '、'
 
 /** 演示录制中：计时、完成（生成技能草稿）、放弃。 */
-function TeachBar({ t }: { t: Teach }) {
+function TeachBar({ teach }: { teach: Teach }) {
   const [now, setNow] = useState(Date.now())
   const [busy, setBusy] = useState('')
-  const bot = useStore(s => s.bots.find(b => b.id === t.bot_id))
+  const bot = useStore(s => s.bots.find(b => b.id === teach.bot_id))
   useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i) }, [])
   const act = async (a: 'stop' | 'cancel') => {
-    if (a === 'cancel' && !confirm('放弃这段录制？录到的操作不会保存。')) return
+    if (a === 'cancel' && !confirm(t('放弃这段录制？录到的操作不会保存。'))) return
     setBusy(a)
     try {
       const r = await api(`/api/teach/${a}`, { method: 'POST' })
@@ -22,14 +24,14 @@ function TeachBar({ t }: { t: Teach }) {
     } catch (e: any) { alert(e.message) }
     setBusy('')
   }
-  const left = Math.max(0, t.max_s - (now / 1000 - t.started))
+  const left = Math.max(0, teach.max_s - (now / 1000 - teach.started))
   return (
     <div className="teach-bar">
       <span className="rec-dot" />
-      <span className="teach-text">{busy === 'stop' ? `正在把操作整理成 ${bot?.name || 'Bot'} 的技能…` : `正在录制演示 ${mmss(now / 1000 - t.started)}`}
-        <span className="muted small">{busy ? '' : ` · 还能录 ${mmss(left)} · 只记浏览器里的操作，密码不会记录`}</span></span>
-      <button className="btn" disabled={!!busy} onClick={() => act('cancel')}>放弃</button>
-      <button className="btn primary" disabled={!!busy} onClick={() => act('stop')}>{busy === 'stop' ? '整理中…' : '完成，生成技能'}</button>
+      <span className="teach-text">{busy === 'stop' ? t('正在把操作整理成 {name} 的技能…', { name: bot?.name || 'Bot' }) : t('正在录制演示 {time}', { time: mmss(now / 1000 - teach.started) })}
+        <span className="muted small">{busy ? '' : ' · ' + t('还能录 {time} · 只记浏览器里的操作，密码不会记录', { time: mmss(left) })}</span></span>
+      <button className="btn" disabled={!!busy} onClick={() => act('cancel')}>{t('放弃')}</button>
+      <button className="btn primary" disabled={!!busy} onClick={() => act('stop')}>{busy === 'stop' ? t('整理中…') : t('完成，生成技能')}</button>
     </div>
   )
 }
@@ -40,19 +42,19 @@ function TypeBar({ botId }: { botId: number }) {
   const send = (body: any) => api(`/api/bots/${botId}/computer/type`, { method: 'POST', body }).catch((e: any) => alert(e.message))
   return (
     <div className="type-bar">
-      <input value={text} placeholder="输入文字发到电脑（先在画面上点一下输入框）" onChange={e => setText(e.target.value)}
+      <input value={text} placeholder={t('输入文字发到电脑（先在画面上点一下输入框）')} onChange={e => setText(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && text) { send({ text }); setText('') } }} />
-      <button className="btn" disabled={!text} onClick={() => { send({ text }); setText('') }}>发送</button>
-      <button className="btn" onClick={() => send({ key: 'Return' })}>回车</button>
+      <button className="btn" disabled={!text} onClick={() => { send({ text }); setText('') }}>{t('发送')}</button>
+      <button className="btn" onClick={() => send({ key: 'Return' })}>{t('回车')}</button>
       <button className="btn" onClick={() => send({ key: 'BackSpace' })}>⌫</button>
     </div>
   )
 }
 
 const STATE: Record<string, string> = {
-  none: '还没启动', starting: '启动中', running: '运行中', paused: '已暂停', stopped: '已停止', error: '出错了',
+  none: t('还没启动'), starting: t('启动中'), running: t('运行中'), paused: t('已暂停'), stopped: t('已停止'), error: t('出错了'),
 }
-const BACKEND: Record<string, string> = { local: '本地 Docker', instabox: 'Instabox 云端' }
+const BACKEND: Record<string, string> = { local: t('本地 Docker'), instabox: t('Instabox 云端') }
 
 /** 电脑的实时画面。interactive=false 时只能看。 */
 export function ComputerView({ botId, interactive }: { botId: number; interactive: boolean }) {
@@ -85,7 +87,7 @@ export function ComputerView({ botId, interactive }: { botId: number; interactiv
   return (
     <div className={'pc-view' + (interactive ? ' live' : '')}>
       <div ref={box} className="pc-canvas" />
-      {conn !== 'connected' && <div className="pc-overlay">{conn === 'connecting' ? '正在连接画面…' : '画面已断开，正在重连…'}</div>}
+      {conn !== 'connected' && <div className="pc-overlay">{conn === 'connecting' ? t('正在连接画面…') : t('画面已断开，正在重连…')}</div>}
     </div>
   )
 }
@@ -100,20 +102,20 @@ function Users({ st }: { st: ComputerState }) {
     api<ComputerState>('/api/computer/watch', { method: 'POST', body: { key } }).then(setComputer).catch((e: any) => alert(e.message))
   return (
     <div className="pc-users">
-      <span className="muted small">{users.length > 1 ? `${users.length} 个任务同时在用` : '在用'}</span>
+      <span className="muted small">{users.length > 1 ? t('{n} 个任务同时在用', { n: users.length }) : t('在用')}</span>
       {users.map(u => {
         const bot = bots.find(b => b.id === u.bot_id)
         const on = st.watch === u.key
         const last = u.task_id ? tasks[u.task_id]?.last_action : ''
         return (
           <button key={u.key} className={'chip pc-user' + (on ? ' on' : '')} disabled={!u.window}
-            title={(last ? last + '\n' : '') + (!u.window ? '还没打开浏览器' : on ? '画面固定在这个任务的窗口上，再点一下取消' : '在画面上看这个任务')}
+            title={(last ? last + '\n' : '') + (!u.window ? t('还没打开浏览器') : on ? t('画面固定在这个任务的窗口上，再点一下取消') : t('在画面上看这个任务'))}
             onClick={() => watch(on ? null : u.key)}>
-            {bot && <BotAvatar avatar={bot.avatar} size={14} />}{u.label}{on && <span className="pin">· 正在看</span>}
+            {bot && <BotAvatar avatar={bot.avatar} size={14} />}{u.label}{on && <span className="pin">· {t('正在看')}</span>}
           </button>
         )
       })}
-      {!!st.waiting?.length && <span className="muted small" title={st.waiting.join('、')}>{st.waiting.length} 个在排队</span>}
+      {!!st.waiting?.length && <span className="muted small" title={st.waiting.join(SEP)}>{t('{n} 个在排队', { n: st.waiting.length })}</span>}
     </div>
   )
 }
@@ -139,14 +141,14 @@ function MachinePicker({ botId, onErr }: { botId: number; onErr: (e: string) => 
   if (!list || fixed || !list.length) return null
   const others = list.filter(m => !m.current)
   if (!others.length) return null
-  if (!open) return <button className="ghost-btn" onClick={() => setOpen(true)}>换成账号里已有的另一台电脑</button>
+  if (!open) return <button className="ghost-btn" onClick={() => setOpen(true)}>{t('换成账号里已有的另一台电脑')}</button>
   return (
     <div className="machine-list">
-      <div className="muted small">你的 Instabox 账号里已经有 {list.length} 台电脑，可以直接用，不用新建：</div>
+      <div className="muted small">{t('你的 Instabox 账号里已经有 {n} 台电脑，可以直接用，不用新建：', { n: list.length })}</div>
       {others.map(m => (
         <div key={m.id} className="kv">
-          <span>{m.name || m.id}<span className="muted small"> · {STATE[m.state] || m.state}{m.template && ` · ${m.template}`}{m.ours && ' · 之前为这里创建的'}</span></span>
-          <button className="btn" onClick={() => use(m.id)}>用这台</button>
+          <span>{m.name || m.id}<span className="muted small"> · {STATE[m.state] || m.state}{m.template && ` · ${m.template}`}{m.ours && ' · ' + t('之前为这里创建的')}</span></span>
+          <button className="btn" onClick={() => use(m.id)}>{t('用这台')}</button>
         </div>
       ))}
     </div>
@@ -155,7 +157,7 @@ function MachinePicker({ botId, onErr }: { botId: number; onErr: (e: string) => 
 
 export function ComputerPanel({ botId }: { botId: number }) {
   const st = useStore(s => s.computers[botId])
-  const task = useStore(s => Object.values(s.tasks).find(t => t.bot_id === botId && t.status === 'running'))
+  const task = useStore(s => Object.values(s.tasks).find(x => x.bot_id === botId && x.status === 'running'))
   const teach = useStore(s => s.teach)
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
@@ -180,7 +182,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
     return () => window.removeEventListener('osa-takeover', h)
   }, [botId])
 
-  if (!st) return <div className="muted small">读取电脑状态…</div>
+  if (!st) return <div className="muted small">{t('读取电脑状态…')}</div>
   const running = st.state === 'running'
   const human = st.controller === 'human'
   return (
@@ -190,29 +192,29 @@ export function ComputerPanel({ botId }: { botId: number }) {
         <span>{STATE[st.state] || st.state}</span>
         <span className="muted small">· {BACKEND[st.backend] || st.backend}</span>
         <span className="grow" />
-        {running && <button className="ghost-btn" onClick={() => setBig(true)} title="放大">⤢ 放大</button>}
+        {running && <button className="ghost-btn" onClick={() => setBig(true)} title={t('放大')}>⤢ {t('放大')}</button>}
       </div>
       {running && <Users st={st} />}
       {running ? <ComputerView botId={botId} interactive={human} /> : (
         <div className="pc-empty">
-          <p className="muted small">所有 Bot 共用一台电脑（浏览器 + 终端）。几个任务可以同时用，每个任务一个浏览器窗口，登录状态和文件共用；
-            最多同时 {st.parallel || 3} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。</p>
+          <p className="muted small">{t('所有 Bot 共用一台电脑（浏览器 + 终端）。几个任务可以同时用，每个任务一个浏览器窗口，登录状态和文件共用；')}
+            {' '}{t('最多同时 {n} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。', { n: st.parallel || 3 })}</p>
           {st.backend === 'instabox' && <MachinePicker key={st.detail} botId={botId} onErr={setErr} />}
-          <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? '启动中…（首次需要一会儿）' : st.state === 'paused' ? '恢复' : st.state === 'none' ? '新建并启动电脑' : '启动电脑'}</button>
+          <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? t('启动中…（首次需要一会儿）') : st.state === 'paused' ? t('恢复') : st.state === 'none' ? t('新建并启动电脑') : t('启动电脑')}</button>
         </div>
       )}
-      {teach && <TeachBar t={teach} />}
+      {teach && <TeachBar teach={teach} />}
       {running && human && touch && <TypeBar botId={botId} />}
       {running && !teach && (
         <div className="pc-actions">
           {human ? <>
-            <span className="pc-you">你正在操作</span>
-            <button className="btn primary" onClick={() => act('handback')}>交还给 Bot</button>
+            <span className="pc-you">{t('你正在操作')}</span>
+            <button className="btn primary" onClick={() => act('handback')}>{t('交还给 Bot')}</button>
           </> : <>
-            <span className="muted small">{task?.last_action ? `Bot：${task.last_action}` : 'Bot 控制中（你只能看）'}</span>
+            <span className="muted small">{task?.last_action ? t('Bot：{action}', { action: task.last_action }) : t('Bot 控制中（你只能看）')}</span>
             <span className="grow" />
-            <button className="btn" onClick={() => { act('takeover'); setBig(true) }}>接手</button>
-            <button className="btn" disabled={!!busy} onClick={() => act('pause')}>暂停</button>
+            <button className="btn" onClick={() => { act('takeover'); setBig(true) }}>{t('接手')}</button>
+            <button className="btn" disabled={!!busy} onClick={() => act('pause')}>{t('暂停')}</button>
           </>}
         </div>
       )}
@@ -221,13 +223,13 @@ export function ComputerPanel({ botId }: { botId: number }) {
         <div className="modal-bg" onMouseDown={() => setBig(false)}>
           <div className="pc-big" onMouseDown={e => e.stopPropagation()}>
             <div className="pc-bar">
-              <span className={'pc-dot ' + st.state} /><b>电脑</b>
-              <span className="muted small">{human ? '· 你正在操作' : '· Bot 控制中'}</span><span className="grow" />
-              {teach ? null : human ? <button className="btn primary" onClick={() => act('handback')}>交还给 Bot</button>
-                : <button className="btn" onClick={() => act('takeover')}>接手</button>}
+              <span className={'pc-dot ' + st.state} /><b>{t('电脑')}</b>
+              <span className="muted small">{'· ' + (human ? t('你正在操作') : t('Bot 控制中'))}</span><span className="grow" />
+              {teach ? null : human ? <button className="btn primary" onClick={() => act('handback')}>{t('交还给 Bot')}</button>
+                : <button className="btn" onClick={() => act('takeover')}>{t('接手')}</button>}
               <button className="icon-btn" onClick={() => setBig(false)}>✕</button>
             </div>
-            {teach && <TeachBar t={teach} />}
+            {teach && <TeachBar teach={teach} />}
             <Users st={st} />
             <ComputerView botId={botId} interactive={human} />
             {human && touch && <TypeBar botId={botId} />}

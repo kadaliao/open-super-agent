@@ -13,6 +13,18 @@ fields:
 - key: path
   label: 允许访问的目录
   default: '{workspace}'
+en:
+  title: Folder
+  by: Official (MCP)
+  desc: Read and write files in a chosen folder on the server
+  about: Lets the bot read and write a folder on the server directly, for example to store reports or organize materials. It can only access the folder you specify.
+  can:
+  - List, read, and search files
+  - Create and edit files, create folders
+  example: '@filesystem save this weekly report as weekly/this-week.md'
+  fields:
+    path:
+      label: Allowed folder
 connect:
   type: stdio
   command: npx

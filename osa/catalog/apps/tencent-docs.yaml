@@ -10,6 +10,16 @@ can:
 - 新建文档，把整理好的内容写进去
 - 修改已有文档
 example: '@tencent-docs 新建一个文档，把这周的待办整理成表格'
+en:
+  title: Tencent Docs
+  by: Official (Tencent Docs)
+  desc: Find, read, create, and edit your Tencent Docs
+  about: Tencent Docs' official connection. Once you sign in with QQ or WeChat, the bot can read and write your docs and sheets.
+  can:
+  - Search and read docs and sheets
+  - Create docs and write organized content into them
+  - Edit existing docs
+  example: "@tencent-docs create a doc and put this week's to-dos in a table"
 deny: [delete]
 connect:
   type: http

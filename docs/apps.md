@@ -32,6 +32,15 @@ can:
 - 新建 issue，指派、设优先级
 - 更新状态、写评论
 example: '@linear 把刚才发现的三个 bug 建成 issue，指派给我'
+en:                     # 英文界面用的文案，可以不写，见下面「英文文案」
+  by: Official (Linear)
+  desc: Find and create issues, update project progress
+  about: Linear's official connection. Once you sign in, the bot can search issues, create and update issues, and leave comments.
+  can:
+  - Search and read issues and projects
+  - Create issues, assign them, set priority
+  - Update status, leave comments
+  example: '@linear file the three bugs we just found as issues and assign them to me'
 connect:
   type: http
   url: https://mcp.linear.app/mcp
@@ -96,6 +105,20 @@ fields:
 - key: key
   label: Web 服务 Key
   secret: true
+en:
+  title: Amap
+  by: Official (Amap)
+  how: Needs a key
+  desc: Find places, plan routes, check the weather
+  # about、can、example 也要写，这里省略
+  steps:
+  - Sign in to the Amap Open Platform console, go to "App management → My apps" (应用管理 → 我的应用), and create an app
+  - Click "Add Key" (添加 Key) on the app and choose "Web service" (Web 服务) as the platform
+  - Paste the generated key below
+  link_label: Open Amap console
+  fields:
+    key:
+      label: Web service key
 connect:
   type: http
   url: https://mcp.amap.com/mcp?key={key}
@@ -149,6 +172,7 @@ connect:
 | `check` | | 添加前先试一下填的对不对 |
 | `deny` | | 工具名里含这些词的工具不开放（不区分大小写），比如 `[delete]` |
 | `confirm` | | 哪些工具调用前先问用户：`auto`（默认：对方标了只读的放行，名字里有 create、send、delete 这类词的先问）、`all`、`none`，或者自己列一组词 |
+| `en` | | 英文界面用的文案，见下面「英文文案」 |
 
 `fields` 里每一项：
 
@@ -172,6 +196,41 @@ connect:
 | `command`、`args`、`env` | 本机运行的应用用。数字要加引号，比如 `'993'` |
 
 `check` 目前有 `imap`（邮箱先试登录一次），用法见 [`checks.py`](../osa/catalog/checks.py)。需要别的检查时，在那里加一个函数。
+
+## 英文文案
+
+界面切到英文时，应用页显示清单里 `en` 写的英文；没写 `en`，或者 `en` 里没写的那一项，照旧显示中文。
+`en` 可以不写，但写上的话英文用户能看懂，很欢迎。放在中文文案后面、`deny` / `confirm` / `connect` 前面。
+
+能写的键和中文的同名键一一对应，写了就替换那一项，只能换中文里已经有的：
+
+| 键 | 说明 |
+|---|---|
+| `title` | 名字。英文品牌名（Notion、Slack）不用写；中文名的写对方官方的英文名：高德地图 → Amap，钉钉 → DingTalk，滴答清单 → Dida365 |
+| `by` | 统一写成 `Official (Airtable)`；社区的写 `Community`，IMAP 的写 `IMAP · Community` |
+| `desc`、`about`、`note`、`how`、`link_label` | 一段文字 |
+| `can`、`steps` | 一组文字，整组替换，条数可以和中文不一样 |
+| `example` | 开头的 `@应用名` 要和中文的一模一样（检查时会核对），后面的话翻成英文 |
+| `copy` | 只写 `label`；要复制的 `text` 中英文一样 |
+| `fields` | 写成「字段的 key: 要换的键」，能换 `label`、`placeholder`、`invalid` |
+| `check` | 写成「检查名: {hint: …}」，换登录失败时接在后面的提示 |
+
+```yaml
+en:
+  desc: Read and search email, tidy your inbox, draft and send for you
+  fields:
+    email:
+      label: Email address
+      invalid: That doesn't look like an email address
+    password:
+      label: App password
+  check:
+    imap:
+      hint: Use the app password, not your regular sign-in password
+```
+
+英文写得简短、口语化，用美式英语、句首大写（`Open Amap console`，不是 `Open Amap Console`）。
+步骤里要点的按钮在只有中文界面的网站上时，英文后面括号里留上中文原文，方便对着找：`click "Create" (创建)`。
 
 ## 图标
 
@@ -213,3 +272,4 @@ icon:
 - 删除这类没法撤回的操作，放进 `deny`，除非这正是这个应用的用途。
 - 密钥字段一定要标 `secret: true`。
 - 文案用简洁、口语化的中文，`about` 写清楚用的是谁的连接、Bot 能干什么。
+- 最好也写上 `en`（见 [英文文案](#英文文案)）。英文不熟的话可以不写，维护者会补上。

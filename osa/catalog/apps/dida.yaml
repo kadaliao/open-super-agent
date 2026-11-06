@@ -12,6 +12,16 @@ can:
 - 添加任务，设置日期和提醒
 - 修改、完成任务
 example: '@dida 把刚才说的三件事加到待办，周五之前做完'
+en:
+  title: Dida365
+  by: Official (Dida365)
+  desc: View and add to-dos, plan what to do today
+  about: Dida365's official connection. Once you sign in, the bot can view your lists and tasks, and add, edit, and complete to-dos.
+  can:
+  - View today's and this week's tasks
+  - Add tasks with dates and reminders
+  - Edit and complete tasks
+  example: '@dida add the three things I just mentioned to my to-dos, due before Friday'
 connect:
   type: http
   url: https://mcp.dida365.com/

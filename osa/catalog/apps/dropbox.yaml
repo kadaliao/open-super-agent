@@ -11,6 +11,14 @@ can:
 - 搜索文件、读取内容
 - 移动、重命名、整理文件夹
 example: '@dropbox 找一下去年的报税材料都在哪'
+en:
+  by: Official (Dropbox)
+  desc: Find, read, and organize files in Dropbox
+  about: Dropbox's official connection. Once you sign in, the bot can search and read your files and help organize folders.
+  can:
+  - Search files and read their contents
+  - Move, rename, and organize folders
+  example: "@dropbox where are last year's tax documents?"
 deny: [delete]
 connect:
   type: http

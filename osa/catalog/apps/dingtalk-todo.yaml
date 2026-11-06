@@ -11,6 +11,17 @@ can:
 - 标记完成或未完成
 example: '@dingtalk-todo 把刚才会上分给我的两件事加到钉钉待办'
 note: 要用加入了企业或组织的钉钉账号登录。
+en:
+  title: DingTalk To-do
+  by: Official (DingTalk)
+  desc: View, add, and complete DingTalk to-dos
+  about: DingTalk's official connection. Once you scan the QR code with DingTalk to sign in, the bot can find your DingTalk to-dos by condition, create to-dos, and mark them done or not done.
+  can:
+  - Find to-dos by condition
+  - Create to-dos
+  - Mark to-dos done or not done
+  example: '@dingtalk-todo add the two things assigned to me in the meeting to my DingTalk to-dos'
+  note: Sign in with a DingTalk account that belongs to a company or organization.
 connect:
   type: http
   url: https://mcp-gw.dingtalk.com/oauth/server/todo

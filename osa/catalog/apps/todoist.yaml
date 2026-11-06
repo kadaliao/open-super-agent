@@ -12,6 +12,15 @@ can:
 - 添加任务、设置截止日期和优先级
 - 完成、修改任务
 example: '@todoist 今天还有哪些没做完？挑最重要的三件'
+en:
+  by: Official (Todoist)
+  desc: Manage tasks and projects, plan your schedule
+  about: Todoist's official connection. Once you sign in, the bot can view, add, and complete your tasks.
+  can:
+  - View today's and upcoming tasks
+  - Add tasks, set due dates and priority
+  - Complete and edit tasks
+  example: "@todoist what's still unfinished today? Pick the three most important"
 connect:
   type: http
   url: https://ai.todoist.net/mcp
