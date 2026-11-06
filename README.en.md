@@ -85,6 +85,7 @@ The detailed docs are currently in Chinese:
 - [Configuration](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
+- [Desktop app (preview)](docs/desktop.md): the macOS app, running on your computer or connecting to your server
 - [Chat apps](docs/channels.md): connecting Telegram, Feishu/Lark, DingTalk, WeCom and Discord
 - [Adding an app to the market](docs/apps.md)
 - [Writing a Bot template](docs/templates.md)

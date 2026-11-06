@@ -30,9 +30,14 @@ PY="$OUT/runtime/bin/python3"
 
 echo "==> 依赖（按 uv.lock，不含开发依赖）"
 uv export --frozen --no-dev --no-emit-project --no-hashes --format requirements.txt -o "$OUT/requirements.txt" >/dev/null
-uv pip install --quiet --python "$PY" --python-platform "$TRIPLE" --break-system-packages \
-  -r "$OUT/requirements.txt" "uv==$(uv --version | awk '{print $2}')"
-rm "$OUT/requirements.txt"
+# cryptography 从 49.0（2026-06）起不再提供 Intel Mac 的安装包。Intel 版用最后一个有 universal2 包的 48.0
+# （用到的 Fernet、AESGCM、Scrypt、HKDF、ec 这些接口没变，测试在 48.0 下全过）
+: > "$OUT/overrides.txt"
+[ "$ARCH" = x86_64 ] && echo "cryptography==48.0.0" > "$OUT/overrides.txt"
+# 只用现成的安装包：缺了就报错，不在这台机器上现场编译（交叉编译出来的会缺 OpenSSL 这类依赖，装上了也用不了）
+uv pip install --quiet --python "$PY" --python-platform "$TRIPLE" --break-system-packages --only-binary :all: \
+  --override "$OUT/overrides.txt" -r "$OUT/requirements.txt" "uv==$(uv --version | awk '{print $2}')"
+rm "$OUT/requirements.txt" "$OUT/overrides.txt"
 
 echo "==> 精简"
 LIB="$OUT/runtime/lib/python$PY_VERSION"
@@ -57,7 +62,7 @@ rsync -a --exclude __pycache__ osa "$OUT/app/"
 cp config.yaml pyproject.toml LICENSE "$OUT/app/"
 
 echo "==> 试一下能不能导入"
-if [ "$ARCH" = "$(uname -m | sed 's/arm64/aarch64/')" ]; then
-  (cd "$OUT/app" && OSA_DATA_DIR="$(mktemp -d)" "$PY" -B -c "import osa.server; print('ok')")
-fi
+RUN=()
+[ "$ARCH" != "$(uname -m | sed 's/arm64/aarch64/')" ] && RUN=(arch -"$ARCH")   # Apple 芯片上打 Intel 版：用 Rosetta 试
+(cd "$OUT/app" && OSA_DATA_DIR="$(mktemp -d)" ${RUN[@]+"${RUN[@]}"} "$PY" -B -c "import osa.server; print('ok')")
 du -sh "$OUT/runtime" "$OUT/app"

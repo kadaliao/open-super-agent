@@ -98,6 +98,7 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 | [配置](docs/configuration.md) | 模型服务和各项工作用的模型、限额与单价、电脑后端、应用、确认规则与保险库、定时任务、远程访问 |
 | [架构](docs/architecture.md) | 各组件如何协作、代码目录、设计约定 |
 | [开发](docs/development.md) | 本地开发、测试方法、调试技巧 |
+| [桌面 App（预览）](docs/desktop.md) | macOS 桌面 App：在这台电脑上运行或连接服务器、系统通知、菜单栏、自动更新 |
 | [聊天软件](docs/channels.md) | 连接 Telegram、飞书、钉钉、企业微信、Discord，配对，权限和常见问题 |
 | [给应用市场加应用](docs/apps.md) | 应用清单的格式、图标、在本机试、提 PR |
 | [写一个 Bot 模板](docs/templates.md) | 模板的格式、从现有 Bot 导出、加进内置 |

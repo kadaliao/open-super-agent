@@ -5,7 +5,7 @@ mod server;
 mod store;
 mod tray;
 
-use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,6 +16,7 @@ use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWind
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
 /// 页面加载前放进去的 window.osaDesktop（网页里的 web/src/desktop.ts 会用它）。
@@ -284,6 +285,50 @@ fn desktop_open_external(app: AppHandle, url: String) {
     }
 }
 
+// ---------- 自动更新 ----------
+
+static UPDATING: AtomicBool = AtomicBool::new(false);
+
+/// 启动半分钟后看一次有没有新版，之后每 6 小时看一次。开发版不看
+fn start_update_loop(app: &AppHandle) {
+    if cfg!(debug_assertions) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(30));
+        loop {
+            tauri::async_runtime::block_on(check_update(&app, false));
+            std::thread::sleep(Duration::from_secs(6 * 3600));
+        }
+    });
+}
+
+/// 有新版就在后台下载、装好（换掉 App 本身），下次打开时生效。manual：从菜单栏点的，结果都告诉你
+async fn check_update(app: &AppHandle, manual: bool) {
+    if UPDATING.swap(true, SeqCst) {
+        return;
+    }
+    let result = async {
+        let Some(update) = app.updater()?.check().await? else {
+            return Ok::<_, tauri_plugin_updater::Error>(None);
+        };
+        let version = update.version.clone();
+        update.download_and_install(|_, _| {}, || {}).await?;
+        Ok(Some(version))
+    }
+    .await;
+    UPDATING.store(false, SeqCst);
+    let current = app.package_info().version.to_string();
+    let (title, body) = match result {
+        Ok(Some(v)) => (format!("{}{v}", tr("已经更新到 ", "Updated to ")), tr("下次打开 App 时生效", "It takes effect the next time you open the app").to_string()),
+        Ok(None) if manual => (tr("已经是最新版", "You're up to date").to_string(), current),
+        Err(e) if manual => (tr("检查更新失败", "Couldn't check for updates").to_string(), e.to_string()),
+        _ => return,
+    };
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
 // ---------- 菜单栏 ----------
 
 pub fn on_menu(app: &AppHandle, id: &str) {
@@ -298,6 +343,10 @@ pub fn on_menu(app: &AppHandle, id: &str) {
             show_setup(app, "?switch=1");
         }
         "logs" => open_logs(app.clone()),
+        "update" => {
+            let app = app.clone();
+            std::thread::spawn(move || tauri::async_runtime::block_on(check_update(&app, true)));
+        }
         "autostart" => tray::toggle_autostart(app),
         "quit" => app.exit(0),
         _ => {}
@@ -421,6 +470,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app)))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -456,6 +506,7 @@ pub fn run() {
             let handle = app.handle().clone();
             build_main(&handle, !hidden)?;
             tray::create(&handle)?;
+            start_update_loop(&handle);
             // ⌘⇧空格（Windows 上 Ctrl+Shift+空格）呼出或藏起窗口；被别的程序占了就算了
             let _ = handle.global_shortcut().register(Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space));
             // 点了系统通知：打开窗口和对应的对话

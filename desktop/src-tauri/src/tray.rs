@@ -22,6 +22,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &item("switch", tr("切换服务器…", "Switch server…"))?,
             &autostart,
             &item("logs", tr("打开日志文件夹", "Open logs folder"))?,
+            &item("update", tr("检查更新…", "Check for updates…"))?,
             &PredefinedMenuItem::separator(app)?,
             &item("quit", tr("退出 Open Super Agent", "Quit Open Super Agent"))?,
         ],

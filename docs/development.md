@@ -135,6 +135,19 @@ docker rm -f osa-computer       # 删掉旧容器，下次使用时会用新镜�
 
 `--platform` 要写成本机的架构：如果环境里设置了 `DOCKER_DEFAULT_PLATFORM`，会构建出需要模拟运行的镜像，非常慢。
 
+## 桌面 App
+
+代码在 `desktop/`（Tauri 2），怎么运行、打包、发布见 [桌面 App](desktop.md)。外壳只是一个窗口，打开服务器自己的网址；
+网页里和 App 打交道的只有 `web/src/desktop.ts`（`window.osaDesktop`）：没有它时一切照旧。
+
+## 发版
+
+1. `CHANGELOG.md` 把 [未发布] 改成新版本号和日期，底部加上比较链接。
+2. 改版本号：`pyproject.toml`、`uv.lock`（open-super-agent 那一项）、`web/package.json` 和 `web/package-lock.json`（`npm version x.y.z --no-git-tag-version`）、
+   `desktop/package.json` 和 `desktop/package-lock.json`（同样用 `npm version`；桌面 App 的版本号读它，和 tag 不一致时打包会失败）。
+3. 提交“chore: 发布 vx.y.z”，打带注释的 tag，push 提交和 tag。CI 会打桌面 App 的安装包，传到这个版本的 release。
+4. `gh release create` 写说明：一段概述、升级提醒、完整对比链接，后面附 CHANGELOG 里这一版的内容（相对链接换成指向这个 tag 的绝对链接）。
+
 ## 常见问题
 
 | 现象 | 原因和处理 |

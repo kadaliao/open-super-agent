@@ -1,0 +1,161 @@
+name: Desktop
+
+# 打包 macOS 桌面 App（Apple 芯片和 Intel 各一个，都在 Apple 芯片的机器上打）。
+# 打 v* 的 tag：安装包和自动更新用的文件传到这个版本的 release，再更新 desktop-updates 里的 latest.json（装好的 App 看它判断有没有新版）。
+# 手动运行：只打包，安装包在这次运行的 Artifacts 里，不发布。
+# 配了 Apple 证书（APPLE_CERTIFICATE 等，见 docs/desktop.md）就签名并公证；没配就用临时签名，第一次打开要去“隐私与安全性”里点“仍要打开”。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.label }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: aarch64, target: aarch64-apple-darwin, label: arm64 }
+          - { arch: x86_64, target: x86_64-apple-darwin, label: x64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          v=$(node -p "require('./desktop/package.json').version")
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "desktop/package.json 的版本 $v 和 tag $GITHUB_REF_NAME 不一致"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Frontend
+        run: cd web && npm ci && npm run build
+
+      - name: Python runtime
+        run: desktop/scripts/build-runtime.sh ${{ matrix.arch }}
+
+      - name: Apple certificate
+        id: cert
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            echo "没配 Apple 证书：用临时签名，不公证"
+            exit 0
+          fi
+          KC="$RUNNER_TEMP/build.keychain-db"
+          KCPW=$(openssl rand -hex 16)
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          id=$(security find-identity -v -p codesigning "$KC" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+          [ -n "$id" ] || { echo "证书里没有 Developer ID Application"; exit 1; }
+          echo "identity=$id" >> "$GITHUB_OUTPUT"
+          if [ -n "$APPLE_API_KEY_P8" ]; then
+            printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            echo "api_key_path=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sign Python runtime
+        if: steps.cert.outputs.identity != '-'
+        run: desktop/scripts/sign-runtime.sh "${{ steps.cert.outputs.identity }}"
+
+      - name: Build app
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ steps.cert.outputs.identity }}
+          # 下面三个都有时 Tauri 会公证并把公证结果钉进安装包
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_PATH: ${{ steps.cert.outputs.api_key_path }}
+        run: |
+          npm ci
+          npx tauri build --target ${{ matrix.target }} --bundles app,dmg
+
+      - name: Collect
+        run: |
+          v=$(node -p "require('./desktop/package.json').version")
+          B="desktop/src-tauri/target/${{ matrix.target }}/release/bundle"
+          mkdir out
+          cp "$B"/dmg/*.dmg "out/OpenSuperAgent-$v-${{ matrix.label }}.dmg"
+          cp "$B/macos/Open Super Agent.app.tar.gz" "out/OpenSuperAgent-$v-${{ matrix.label }}.app.tar.gz"
+          cp "$B/macos/Open Super Agent.app.tar.gz.sig" "out/OpenSuperAgent-$v-${{ matrix.label }}.app.tar.gz.sig"
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.label }}
+          path: out/*
+
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Upload to the release
+        run: |
+          pre=""
+          case "$TAG" in *-*) pre="--prerelease" ;; esac
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG" --notes "桌面 App 预览版，说明见 docs/desktop.md" $pre
+          gh release upload "$TAG" out/* --clobber
+
+      - name: Update the feed installed apps check
+        run: |
+          python3 - "${TAG#v}" "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" > latest.json <<'PY'
+          import datetime, json, sys
+          version, base = sys.argv[1], sys.argv[2]
+          platforms = {}
+          for label, key in (("arm64", "darwin-aarch64"), ("x64", "darwin-x86_64")):
+              name = f"OpenSuperAgent-{version}-{label}.app.tar.gz"
+              platforms[key] = {"signature": open(f"out/{name}.sig").read().strip(), "url": f"{base}/{name}"}
+          print(json.dumps({
+              "version": version,
+              "notes": f"https://github.com/kadaliao/open-super-agent/releases/tag/v{version}",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }, indent=2))
+          PY
+          cat latest.json
+          gh release view desktop-updates >/dev/null 2>&1 || gh release create desktop-updates --prerelease --target main \
+            --title "桌面 App 自动更新" --notes "装好的桌面 App 从这里的 latest.json 判断有没有新版，不要删。"
+          gh release upload desktop-updates latest.json --clobber
