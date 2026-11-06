@@ -4,6 +4,8 @@
 - telegram_html：Telegram 只认一小部分 HTML（b、i、s、code、pre、a、blockquote），其余都要转义。
   解析失败时由调用方退回纯文本，所以这里只求常见写法显示正常。
 - feishu_md：飞书富文本的 md 标签不支持标题，标题改成加粗。
+- dingtalk_md：钉钉的 markdown 消息里单个换行不换行，行尾补两个空格（标准的硬换行）；代码块原样保留。
+- discord_md：Discord 只认一到三级标题，更小的改成加粗；表格不支持，放进代码块里等宽显示。
 """
 import html
 import re
@@ -132,3 +134,34 @@ def fence_segments(md: str) -> list[str]:
     if buf:
         out.append("\n".join(buf))
     return [s for s in out if s.strip()]
+
+
+def _outside_code(md: str, fn) -> str:
+    """只改代码块以外的部分。"""
+    out, pos = [], 0
+    for m in _CODE_BLOCK.finditer(md):
+        out.append(fn(md[pos:m.start()]))
+        out.append(m[0])
+        pos = m.end()
+    out.append(fn(md[pos:]))
+    return "".join(out)
+
+
+def dingtalk_md(md: str) -> str:
+    return _outside_code(md, lambda t: re.sub(r"(?<=\S)[ \t]*\n(?=[ \t]*\S)", "  \n", t))
+
+
+def discord_md(md: str) -> str:
+    def fix(t: str) -> str:
+        t = re.sub(r"^#{4,6}\s+(.+?)\s*#*\s*$", r"**\1**", t, flags=re.M)
+        return re.sub(r"(?:^\|.*\|[ \t]*(?:\n|$))+", lambda m: f"```\n{m[0].rstrip()}\n```\n", t, flags=re.M)
+    return _outside_code(md, fix)
+
+
+def title_line(md: str, limit: int = 30) -> str:
+    """一段 Markdown 的第一行纯文字，当通知标题用。"""
+    for line in plain(md).splitlines():
+        line = re.sub(r"^[#>\-*+\s]+|[`*_~]", "", line).strip()
+        if line:
+            return line[:limit]
+    return "消息"

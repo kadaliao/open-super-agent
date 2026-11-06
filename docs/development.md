@@ -55,8 +55,13 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 - **聊天软件**：不需要真账号。`OSA_TELEGRAM_API`、`OSA_FEISHU_API` 指向本机的假服务器，就能把整个流程跑一遍：
   假的 Telegram 实现 `getMe / getUpdates / sendMessage / editMessageText / answerCallbackQuery / getFile` 几个方法；
   假的飞书实现换 token、`/callback/ws/endpoint` 和一个 WebSocket，帧用 lark-oapi 里的 `pbbp2_pb2.Frame` 编解码（顺便验证手写的编解码）。
-  从假服务器推一条带配对码的消息完成配对，再让 Bot 派一个要 `ask_approval` 的任务，模拟点按钮（Telegram 的 `callback_query`、飞书的 `card.action.trigger`），
-  应该看到卡片更新成“已允许”、任务结果发回来。陌生人的消息和按钮都应该被忽略。
+  钉钉、企业微信、Discord 分别用 `OSA_DINGTALK_API`（OpenAPI 和 `/v1.0/gateway/connections/open`，返回的 endpoint 指向假的 WebSocket）、
+  `OSA_WECOM_WS`（长连接地址）、`OSA_DISCORD_API`（REST，`/gateway/bot` 返回假的 Gateway）。帧格式以官方 SDK（`dingtalk-stream`、
+  `wecom-aibot-sdk`）的源码为准；企业微信的附件要用 AES-256-CBC 加密后再给，测解密。
+  从假服务器推一条带配对码的消息完成配对，再让 Bot 派一个要 `ask_approval` 的任务，模拟点按钮（Telegram 的 `callback_query`、飞书的 `card.action.trigger`、
+  企业微信的 `template_card_event`、Discord 的 `INTERACTION_CREATE`，钉钉是回复“允许一次 #编号”），
+  应该看到卡片更新成“已允许”（钉钉是另发一条结果）、任务结果发回来。陌生人的消息和按钮都应该被忽略。
+  在同一个进程里起服务（`uvicorn.Server(...).serve()`）的话，可以直接调用 `approvals.request` 造确认请求，把 `channels.save_upload` 换掉就不用开电脑。
 - **资料库**：让 Bot 把结果做成页面，`GET /api/pages` 看列表；HTML 页面在沙箱 iframe 里，
   可以写一个会 `fetch('/api/bootstrap')` 的探针页，确认请求被 CSP 拦下。
 

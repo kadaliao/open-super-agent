@@ -21,7 +21,7 @@ watching: dict[WebSocket, bool] = {}   # 每个页面现在是不是正被看着
 
 
 async def broadcast(event: dict):
-    channels.on_event(event)   # 聊天软件（Telegram、飞书）里也发一份
+    channels.on_event(event)   # 聊天软件（Telegram、飞书、钉钉……）里也发一份
     for ws in list(clients):
         try:
             await ws.send_json(event)

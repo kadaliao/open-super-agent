@@ -6,7 +6,9 @@ import Composer from './Composer'
 import Markdown from './Markdown'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-const VIA: Record<string, string> = { telegram: '来自 Telegram', feishu: '来自飞书' }
+const VIA: Record<string, string> = {
+  telegram: '来自 Telegram', feishu: '来自飞书', dingtalk: '来自钉钉', wecom: '来自企业微信', discord: '来自 Discord',
+}
 const secs = (s: number) => (s < 60 ? `${Math.round(s)} 秒` : `${Math.floor(s / 60)} 分 ${Math.round(s % 60)} 秒`)
 
 // 旧版本的任务记录没有 kind，从文字里推断

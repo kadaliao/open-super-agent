@@ -12,7 +12,7 @@
 | `INSTABOX_API_KEY` | 否 | 设置后，电脑改用 Instabox 云主机 |
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
 | `OSA_CONFIG` | 否 | 配置文件路径，默认 `config.yaml` |
-| `HTTPS_PROXY` | 否 | 服务器在国内、要用 Telegram 时设置，见 [聊天软件](channels.md) |
+| `HTTPS_PROXY` | 否 | 服务器在国内、要用 Telegram 或 Discord 时设置，见 [聊天软件](channels.md) |
 
 密钥只放在环境变量里，`config.yaml` 只写变量名。
 

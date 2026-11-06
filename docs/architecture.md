@@ -43,7 +43,10 @@ osa/
   channels/        聊天软件：连接和配对、界面事件转成聊天软件里的消息和卡片、收消息走和网页一样的入口
     telegram.py    Telegram Bot API：长轮询、内联按钮
     feishu.py      飞书 / Lark：长连接（手写的 protobuf 帧编解码）、富文本和消息卡片
-    fmt.py         Markdown 转 Telegram HTML、按长度切消息
+    dingtalk.py    钉钉：Stream 长连接、会话回复地址 / batchSend 发 markdown、dtmd:// 链接代替按钮
+    wecom.py       企业微信智能机器人：长连接、按钮交互卡片、附件 AES 解密
+    discord.py     Discord：Gateway（心跳、Resume）、embed 卡片和按钮
+    fmt.py         Markdown 转各家能显示的格式、按长度切消息
   worker.py        后台任务：Task、ReAct 循环、Heavy 模式
   memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
@@ -145,7 +148,12 @@ web/src/
 - **只认配对的私聊**：消息和按钮都先比对 `peer`，不是就不理。确认卡片的按钮只能处理这个连接发出去的请求（`carding`）。
 - 确认请求本来就发到 Bot 的私聊；绑定群聊的连接也会收到在这个群里派的任务的卡片（看 `origin_chat_id`）。
 - 飞书 3 秒内没收到回包会重推事件：收到事件马上回包，真正的处理放到后台任务里，再按 `event_id` 去重。
+- **打字等于按按钮**：“允许 #12”“拒绝 12”这样的话，编号是这个连接发出去的待确认请求时，按点了对应按钮处理，不交给 Router。
+  钉钉的确认就靠它（卡片上是 `dtmd://dingtalkclient/sendMessage?content=…` 链接，点了替用户发出这句话）。
+- 改不了卡片的时候发一条结果：钉钉发出去的消息不能改；企业微信只能在点按钮后 5 秒内改，在网页上处理的也只能另发一条。
+- 企业微信同一个机器人只能一处连着，被别处顶掉后等 2 分钟再连，免得两边来回抢。
 - 平台都实现 `check / run / send_text / send_card / edit_card`，再在 `PLATFORMS` 里注册，就能加新的聊天软件。
+  可选：`typing`（正在输入）、`download`（附件，文件名要下载后才知道的返回 `(内容, 文件名)`）、`pair_link` / `setup_link`（配对页上的按钮）。
 
 ### 推送与 PWA
 - 推送按 RFC 8291（aes128gcm）加密、RFC 8292（VAPID）签名，只用 `cryptography` 和 `httpx`。推送服务只看得到密文。

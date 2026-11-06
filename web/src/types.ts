@@ -78,8 +78,9 @@ export type FileEntry ={ name: string; path: string; dir: boolean; size: number;
 export type FileListing =
   | { running: false; state: string; path: string; root: string }
   | { running: true; path: string; root: string; entries: FileEntry[]; pins: FileEntry[] }
+export type ChannelKind = 'telegram' | 'feishu' | 'dingtalk' | 'wecom' | 'discord'
 export type Channel = {
-  id: number; kind: 'telegram' | 'feishu'; title: string; name: string; chat_id: number; enabled: boolean
+  id: number; kind: ChannelKind; title: string; name: string; chat_id: number; enabled: boolean
   state: 'connected' | 'connecting' | 'error' | 'off'; error: string; paired: boolean; peer_name: string; created: number
-  pair_code?: string; pair_expires?: number; pair_link?: string
+  pair_code?: string; pair_expires?: number; pair_link?: string; setup_link?: string
 }

@@ -66,7 +66,7 @@ def topic_start(chat_id: int) -> int:
     return r[0] or 0
 
 
-VIA = {"telegram": " Telegram", "feishu": "飞书"}
+VIA = {"telegram": " Telegram", "feishu": "飞书", "dingtalk": "钉钉", "wecom": "企业微信", "discord": " Discord"}
 
 
 def context(chat_id: int, viewer: int | None = None) -> list[dict]:

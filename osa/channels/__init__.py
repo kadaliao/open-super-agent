@@ -1,14 +1,16 @@
-"""聊天软件接入：在 Telegram、飞书里和 Bot 对话。
+"""聊天软件接入：在 Telegram、飞书、钉钉、企业微信、Discord 里和 Bot 对话。
 
-- 一个连接 = 聊天软件里的一个机器人账号（Telegram 的 bot token、飞书的自建应用），绑定这边的一个对话
+- 一个连接 = 聊天软件里的一个机器人账号（Telegram 的 bot token、飞书和钉钉的自建应用、企业微信的智能机器人、
+  Discord 的应用），绑定这边的一个对话
   （某个 Bot 的私聊或一个群聊）。在聊天软件里说的话和网页上是同一个对话，记录两边都看得到。
 - 只和配对过的那个人说话：添加后生成 6 位配对码（30 分钟内有效），在聊天软件里发给机器人，这个私聊就成了“主人”；
   之后别人发来的消息一律不理。配对码输错 10 次作废。
 - 进：文字走和网页一样的入口（handle）；文件和图片存到电脑的 uploads 目录，消息里带上路径；/new、/stop、/help 是命令。
+  “允许 #12”“拒绝 #12”这样的话等于点卡片上的按钮（钉钉的卡片没有回调按钮，靠它）。
 - 出：监听界面事件（on_event）。Bot 的回复、任务结果、取消、交接发到聊天软件；确认和“请你帮忙”变成带按钮的卡片，
-  点按钮就处理确认；不管在哪边处理的，卡片都会更新成结果。所有发送按顺序排队（outbox），不会乱序。
+  点按钮就处理确认；不管在哪边处理的，卡片都会更新成结果（改不了卡片的平台发一条结果）。所有发送按顺序排队（outbox），不会乱序。
 - 密钥存在保险库（channel_<id>），表里只记名字和不敏感的配置。
-- 收消息用长轮询（Telegram）和长连接（飞书），不需要公网地址。同一个机器人账号只能有一处在收消息。
+- 收消息用长轮询（Telegram）和长连接（其余几家），不需要公网地址。同一个机器人账号只能有一处在收消息。
 """
 import asyncio
 import json
@@ -31,7 +33,7 @@ HELP = """直接发消息就是在和「{name}」说话，和网页上是同一�
 - 发文件或图片：存到电脑的 uploads 目录，Bot 能接着处理
 - /new 开始新话题
 - /stop 停下这个对话里正在做的任务
-- 需要你确认的操作会发来一张带按钮的卡片"""
+- 需要你确认的操作会发来一张卡片，点上面的按钮，或者回复“允许 #编号”“拒绝 #编号”"""
 
 # 由 server 设置
 handle = None      # async (chat, text, via) -> None：和网页发消息走同一个入口
@@ -88,7 +90,7 @@ def public(r: dict) -> dict:
     if not r["peer"]:
         ok = bool(r["pair_code"]) and r["pair_expires"] > time.time() and r["pair_fails"] < PAIR_MAX_FAILS
         out |= {"pair_code": r["pair_code"] if ok else "", "pair_expires": r["pair_expires"] if ok else 0,
-                "pair_link": cls.pair_link(r) if ok else ""}
+                "pair_link": cls.pair_link(r) if ok else "", "setup_link": cls.setup_link(r) if ok else ""}
     return out
 
 
@@ -307,6 +309,17 @@ def card_for(ev: dict) -> dict:
             "buttons": buttons, "link": None, "done": ""}
 
 
+# 打字代替按按钮：“允许 #12”“拒绝 12”。钉钉卡片上的链接点一下就发出这样一句话
+WORDS = {"允许一次": "ok", "允许": "ok", "同意": "ok", "拒绝": "no", "总是允许": "always", "处理完了": "done", "处理不了": "fail"}
+ACT_WORD = {"ok": "允许一次", "no": "拒绝", "always": "总是允许", "done": "处理完了", "fail": "处理不了"}
+_WORD_CMD = re.compile(r"^(" + "|".join(sorted(WORDS, key=len, reverse=True)) + r")\s*[#＃]?\s*(\d+)\s*[。.!！]?$")
+
+
+def word_command(act: str, aid: int) -> str:
+    """点了等于按按钮的那句话。"""
+    return f"{ACT_WORD[act]} #{aid}"
+
+
 DONE_TEXT = {"approval": {"approved": "✓ 已允许", "always": "✓ 已允许，以后自动允许", "rejected": "✕ 已拒绝", "expired": "已过期，按拒绝处理", "cancelled": "任务已取消"},
              "help": {"approved": "✓ 已处理完，Bot 继续", "rejected": "✕ 没有处理", "expired": "已过期", "cancelled": "任务已取消"}}
 
@@ -341,6 +354,11 @@ class Channel:
     def pair_link(r: dict) -> str:
         return ""
 
+    @staticmethod
+    def setup_link(r: dict) -> str:
+        """配对前要先打开的链接（比如把 Discord 机器人邀请到服务器），没有就是空。"""
+        return ""
+
     async def run(self):
         raise NotImplementedError
 
@@ -356,7 +374,8 @@ class Channel:
     async def typing(self, peer: str):
         pass
 
-    async def download(self, ref) -> bytes:
+    async def download(self, ref) -> bytes | tuple[bytes, str]:
+        """取附件；文件名要下载了才知道的平台返回 (内容, 文件名)。"""
         raise ValueError("这个聊天软件还不支持收文件")
 
     async def aclose(self):
@@ -495,6 +514,11 @@ class Channel:
         if cmd == "/new":
             await reset(r["chat_id"])
             return self.say("已开始新话题，之前的对话不再带进上下文（长期记忆还在）。")
+        if (m := _WORD_CMD.match(text)) and int(m[2]) in self.carding:
+            ok, toast = await self._press(peer, f"ap:{m[2]}:{WORDS[m[1]]}")
+            if not ok:   # 成功的话卡片会更新成结果，不用再说一遍
+                self.say(toast)
+            return
         if cmd == "/stop":
             from .. import router
             done = [router.cancel(t.id, "用户在聊天软件里停止") for t in list(router.TASKS.values())
@@ -506,7 +530,9 @@ class Channel:
         paths = []
         for name, fref in files:
             try:
-                paths.append(await save_upload(name, await self.download(fref)))
+                got = await self.download(fref)
+                data, name = (got[0], got[1] or name) if isinstance(got, tuple) else (got, name)
+                paths.append(await save_upload(name, data))
             except Exception as e:
                 self.say(f"附件「{name}」没存上：{e}")
         if paths:
@@ -536,22 +562,31 @@ class Channel:
 
     async def press(self, peer: str, data: str) -> str:
         """卡片上的按钮被点了。返回给用户的一句提示。"""
+        return (await self._press(peer, data))[1]
+
+    async def _press(self, peer: str, data: str) -> tuple[bool, str]:
+        """(处理了没有, 提示)。"""
         if not peer or peer != self.row["peer"]:
-            return "没有权限"
+            return False, "没有权限"
         m = re.fullmatch(r"ap:(\d+):(\w+)", data or "")
         if not m or int(m[1]) not in self.carding:
-            return "这个按钮已经失效了"
+            return False, "这个按钮已经失效了"
         aid, act = int(m[1]), m[2]
         item = approvals.pending.get(aid)
         if not item:
-            return "已经处理过了"
+            return False, "已经处理过了"
+        if act not in ACT_WORD:
+            return False, "这个按钮已经失效了"
+        kind = item.get("kind")
+        if act in ("done", "fail") and kind != "help" or act in ("ok", "no", "always") and kind == "help":
+            return False, "这个请求不能这样处理"
         if act == "done":
             await handback(item["bot_id"])
-            return "已交还电脑，Bot 继续"
+            return True, "已交还电脑，Bot 继续"
         if act == "fail":
             approvals.resolve(aid, False, "用户表示处理不了")
-            return "已告诉 Bot"
-        return approvals.resolve(aid, act in ("ok", "always"), "", act == "always")
+            return True, "已告诉 Bot"
+        return True, approvals.resolve(aid, act in ("ok", "always"), "", act == "always")
 
 
 async def save_upload(name: str, data: bytes) -> str:
@@ -566,5 +601,9 @@ async def save_upload(name: str, data: bytes) -> str:
 
 from .telegram import Telegram   # noqa: E402  平台实现要用到上面的 Channel
 from .feishu import Feishu        # noqa: E402
+from .dingtalk import DingTalk    # noqa: E402
+from .wecom import WeCom          # noqa: E402
+from .discord import Discord      # noqa: E402
 
-PLATFORMS: dict[str, type[Channel]] = {"telegram": Telegram, "feishu": Feishu}
+PLATFORMS: dict[str, type[Channel]] = {"telegram": Telegram, "feishu": Feishu, "dingtalk": DingTalk, "wecom": WeCom,
+                                       "discord": Discord}
