@@ -1,6 +1,6 @@
 [project]
 name = "open-super-agent"
-version = "0.6.0"
+version = "0.6.1"
 description = "Self-hosted super agent: Router + parallel Workers + Watchdog (inspired by DeepSeek Super-agent)"
 requires-python = ">=3.11"
 dependencies = [
