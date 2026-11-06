@@ -176,6 +176,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dialog-bg { z-index: 100; }   /* 确认框盖在设置、应用市场这些弹窗上面 */
 .dialog-text { margin: 0; white-space: pre-wrap; line-height: 1.6; }
+.drop-overlay { position: fixed; inset: 12px; z-index: 40; display: grid; place-items: center; pointer-events: none;
+  border: 2px dashed var(--fg3); border-radius: 18px; background: color-mix(in srgb, var(--bg) 82%, transparent); color: var(--fg); font-size: 15px; }
 .pill { font-size: 12.5px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--line); }
 .pill.ok { color: var(--good); } .pill.bad { color: var(--bad); }
 .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }

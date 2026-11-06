@@ -73,6 +73,43 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
     }
     setUploading(''); ref.current?.focus()
   }
+  const attachRef = useRef(attach)
+  attachRef.current = attach
+
+  // 把文件拖到窗口里任何地方，都传给这个对话
+  const [dragging, setDragging] = useState(false)
+  useEffect(() => {
+    const files = (e: DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files')
+    let depth = 0   // dragenter / dragleave 在子元素之间也会触发，数一下进出才知道是不是真的离开了窗口
+    const enter = (e: DragEvent) => { if (files(e)) { depth++; setDragging(true) } }
+    const leave = (e: DragEvent) => { if (files(e) && --depth <= 0) { depth = 0; setDragging(false) } }
+    const drop = (e: DragEvent) => {
+      if (!files(e)) return
+      e.preventDefault(); depth = 0; setDragging(false)
+      attachRef.current(e.dataTransfer!.files)
+    }
+    window.addEventListener('dragenter', enter)
+    window.addEventListener('dragleave', leave)
+    window.addEventListener('drop', drop)
+    return () => {
+      window.removeEventListener('dragenter', enter)
+      window.removeEventListener('dragleave', leave)
+      window.removeEventListener('drop', drop)
+    }
+  }, [])
+  // 粘贴截图：剪贴板里的图片都叫 image.png，换成带时间的名字，免得后一张把前一张覆盖掉
+  const paste = (e: React.ClipboardEvent) => {
+    const list = Array.from(e.clipboardData.files)
+    if (!list.length) return
+    e.preventDefault()
+    const d = new Date(), pad = (n: number) => String(n).padStart(2, '0')
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+    const dt = new DataTransfer()
+    list.forEach((f, i) => dt.items.add(f.name === 'image.png' || !f.name
+      ? new File([f], `paste-${stamp}${list.length > 1 ? '-' + (i + 1) : ''}.${(f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: f.type })
+      : f))
+    attach(dt.files)
+  }
 
   // 语音输入：说的话接在已经打的字后面，识别中的部分实时显示，停下来后可以改了再发
   const [listening, setListening] = useState(false)
@@ -108,6 +145,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
 
   return (
     <div className="composer-wrap">
+      {dragging && <div className="drop-overlay">{t('松开鼠标，上传到电脑的 uploads 目录')}</div>}
       {matches.length > 0 && (
         <div className="mention-list">
           {matches.map((a, i) => (
@@ -121,6 +159,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
         <input ref={fileInput} type="file" multiple hidden onChange={e => { attach(e.target.files); e.target.value = '' }} />
         <textarea ref={ref} rows={1} value={text} placeholder={group ? t('发到群里，@ 指定 Bot') : t('给 {name} 发消息', { name: bot!.name })}
           onChange={e => setText(e.target.value)}
+          onPaste={paste}
           onCompositionStart={() => (composing.current = true)}
           onCompositionEnd={() => (composing.current = false)}
           onKeyDown={e => {

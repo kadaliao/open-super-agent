@@ -21,6 +21,13 @@ export default function App() {
   const [side, setSide] = useState(false)   // 手机上的侧栏抽屉
   const [tab, setTab] = useState(() => localStorage.getItem('osa.tab') || 'computer')
   useEffect(() => localStorage.setItem('osa.tab', tab), [tab])
+  // 文件拖到没有接收的地方（比如资料库页面）时，别让浏览器直接打开它、离开这个页面
+  useEffect(() => {
+    const keep = (e: DragEvent) => { if (Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault() }
+    window.addEventListener('dragover', keep)
+    window.addEventListener('drop', keep)
+    return () => { window.removeEventListener('dragover', keep); window.removeEventListener('drop', keep) }
+  }, [])
   // 对话里点“接手电脑”：打开右栏的电脑标签并接手
   useEffect(() => {
     const h = (e: Event) => {
