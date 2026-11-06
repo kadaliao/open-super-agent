@@ -461,7 +461,13 @@ class Router:
         if name == "list_tasks":
             return self._task_list()
         if name == "cancel_task":
-            return self.cancel(args["task_id"], "用户要求取消")
+            woke = self.turn.get("woke")
+            if not woke:
+                return self.cancel(args["task_id"], "用户要求取消")
+            t, owed = self.tasks.get(args["task_id"]), self.turn.get("reply")
+            if t and t.reply and owed and dm.same(t.reply, owed):
+                t.reply = None   # 还是回给同一个 Bot：这一轮的回复或新派的任务会接着回它，不用再说一声“已取消”
+            return self.cancel(args["task_id"], f"{self.bot['name']} 收到 {dm._name(woke['from'])} 的新消息后自己取消的")
         if name == "resolve_approval":
             return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")))
         if name == "recall":

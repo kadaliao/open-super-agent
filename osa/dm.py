@@ -77,6 +77,11 @@ def _owed(reply: dict | None):
     return reply and (reply["bot"], reply["chat"], _owed(reply["then"]))
 
 
+def same(a: dict | None, b: dict | None) -> bool:
+    """两个回信去向是不是同一个（同一个 Bot、同一个对话、往后也一样）。"""
+    return _owed(a) == _owed(b)
+
+
 async def _wake(bot_id: int, chat_id: int, turn: dict):
     """让 bot_id 在 chat_id 里说一轮。turn 是这一轮的来由：{"reply", "depth", "woke"}。"""
     from . import groups, router
