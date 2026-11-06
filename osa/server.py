@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
-from . import approvals, auth, bots, catalog, channels, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import approvals, auth, bots, catalog, channels, computer, dm, groups, library, mcp_hub, memories, memory, push, router as rt, routines
 from . import prices, providers, search, settings, skills, tasklog, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
@@ -43,6 +43,7 @@ approvals.notify = broadcast
 mcp_hub.notify = broadcast
 routines.notify = broadcast
 groups.notify = broadcast
+dm.notify = broadcast
 teach.notify = broadcast
 channels.notify = broadcast
 tasklog.notify = broadcast

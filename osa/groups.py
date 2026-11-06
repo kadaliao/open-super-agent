@@ -6,6 +6,7 @@
 - dispatch 时填了 handoff_to 的，后台任务做完自动交接；在这之前，同一轮里点名给对方的发言先跳过，免得它空等着表态。
 - 一轮（用户的一条消息，或一次任务交接）最多 MAX_TURNS 次发言，防止 Bot 之间来回停不下来。
 - 确认卡片和“请你帮忙”都发到 Bot 的私聊（见 approvals），群里不出现。
+- 群里的 Bot 私信了群外的 Bot（见 dm.py），回信回到群里时，它按 "dm" 排进来接着说。
 """
 import asyncio
 import re
@@ -24,8 +25,10 @@ class Group:
         self.handoffs: list[int] = []       # 当前发言的 Bot 交出去的工作，它说完就轮到这些 Bot
         self.expected: dict[int, int] = {}  # bot_id -> 有几个任务做完后会交给它
 
-    async def run(self, first: list[tuple[int, str]]):
-        """依次让 Bot 发言。first 是 [(bot_id, 原因)]，原因：mention / lead / handoff。"""
+    async def run(self, first: list[tuple[int, str]], turn: dict | None = None):
+        """依次让 Bot 发言。first 是 [(bot_id, 原因)]，原因：mention / lead / handoff / dm。
+        turn 是私信引起的这一轮的来由（见 dm.py），只给原因是 dm 的那一轮；私信深度这一串都沿用。"""
+        turn = turn or {}
         queue, turns = list(first), 0
         while queue:
             bot_id, why = queue.pop(0)
@@ -41,7 +44,7 @@ class Group:
             self.handoffs = []
             from . import router
             try:
-                await router.runtime(bot_id).respond(self.chat_id)
+                await router.runtime(bot_id).respond(self.chat_id, turn if why == "dm" else {"depth": turn.get("depth", 0)})
             except Exception as e:
                 if notify:
                     await notify({"type": "error", "chat_id": self.chat_id, "message": f"{_name(bot_id)} 出错了：{e}"})
@@ -142,7 +145,14 @@ async def after_task(task):
         await _message(task.chat_id, "task", f"→ {_name(h['to'])}：{request}（任务 #{task.id} 的结果）",
                        task.bot_id, kind="handoff", to=h["to"], note=f"任务 #{task.id} 的结果在上面。{request}",
                        task_id=task.id)
-        await g.run([(h["to"], "handoff")])
+        await g.run([(h["to"], "handoff")], {"depth": task.depth})
+
+
+async def wake(chat_id: int, bot_id: int, turn: dict):
+    """群里的 Bot 收到了私信的回信：等群里这一轮说完，让它接着说。"""
+    g = get(chat_id)
+    async with g.lock:
+        await g.run([(bot_id, "dm")], turn)
 
 
 def forget(chat_id: int):

@@ -75,13 +75,15 @@ def topic_start(chat_id: int) -> int:
 VIA = {"telegram": " Telegram", "feishu": "飞书", "dingtalk": "钉钉", "wecom": "企业微信", "discord": " Discord"}
 
 
-def context(chat_id: int, viewer: int | None = None) -> list[dict]:
+def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> list[dict]:
     """组装给 Router 的历史消息。viewer 是群聊里正在发言的 Bot：
-    它自己的回复保持 assistant；别的 Bot 的发言、任务和交接都换成带名字的通知。私聊时 viewer 为空。"""
+    它自己的回复保持 assistant；别的 Bot 的发言、任务和交接都换成带名字的通知。私聊时 viewer 为空。
+    me 是正在发言的 Bot（私聊也给），Bot 之间的私信按它的角度写成“谁私信了你 / 你回了谁”。"""
     n = CFG["memory"]["inline_messages"]
     rows = conn.execute("select id, role, content, meta, bot_id from messages where chat_id=? and id > ? order by id",
                         (chat_id, topic_start(chat_id))).fetchall()
-    names = dict(conn.execute("select id, name from bots")) if viewer is not None else {}
+    names = dict(conn.execute("select id, name from bots"))
+    me = viewer if viewer is not None else me
     name = lambda b: names.get(b, "已删除的 Bot")
     old, recent = rows[:-n], rows[-n:]
     msgs = []
@@ -102,6 +104,8 @@ def context(chat_id: int, viewer: int | None = None) -> list[dict]:
             else:
                 text = f"（系统通知：{name(b)} 把工作交给了 {name(to)}）{meta.get('note') or c}"
             msgs.append({"role": "user", "content": text})
+        elif r == "task" and meta.get("kind") in ("dm", "dm_reply"):
+            msgs.append({"role": "user", "content": _dm_line(meta, c, b, me, name)})
         elif r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式
             whose = f"{name(b)} 的" if others and b else ""
             note = f"（系统通知，非用户发言；这是{whose}任务结果，已作为卡片直接展示给用户，不用复述，除非用户问起）" \
@@ -125,6 +129,24 @@ def context(chat_id: int, viewer: int | None = None) -> list[dict]:
                 c = f"{c}\n\n{meta['skill_prompt']}"
             msgs.append({"role": "user", "content": c})
     return msgs
+
+
+def _dm_line(meta: dict, c: str, sender: int | None, me: int | None, name) -> str:
+    """Bot 之间的私信和回信（见 dm.py），按 me 的角度写。sender 是发信的 Bot，meta["to"] 是收信的。"""
+    to = meta.get("to")
+    if meta["kind"] == "dm":
+        if to == me:
+            return f"（{name(sender)} 私信了你，不是用户说的话）{c}"
+        if sender == me:
+            return f"（系统通知：你私信了 {name(to)}，等它回信）{c}"
+        return f"（系统通知：{name(sender)} 私信了 {name(to)}）{c}"
+    if meta.get("sent"):   # 写回信的那一边留的记录，回信内容就是上面那条回复或任务结果
+        return f"（系统通知：{'你' if sender == me else name(sender)}已把回信发给 {name(to)}）"
+    if meta.get("task_id") and meta.get("status") == "done":
+        c = f"任务 #{meta['task_id']} 的结果：\n{c}"
+    if to == me:
+        return f"（{name(sender)} 回了你的私信，不是用户说的话）{c}"
+    return f"（系统通知：{name(sender)} 回了 {name(to)} 的私信）{c}"
 
 
 def _is_peak(ts: float) -> bool:

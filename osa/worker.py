@@ -39,6 +39,8 @@ class Task:
     on_done: object = None                 # 定时任务用：async (task) -> None，任务结束时调用
     approval_chat_id: int = 0              # 确认卡片发到哪个对话：总是 Bot 的私聊（群聊里派的任务也一样）
     handoff: dict | None = None            # 群聊：做完后把结果交给谁 {"to": bot_id, "note": str}
+    reply: dict | None = None              # 因私信派的任务：做完把结果作为回信送给谁（见 dm.py）
+    depth: int = 0                         # 派任务那一轮的私信深度，交接、回信沿用
 
 
 def _public(self) -> dict:

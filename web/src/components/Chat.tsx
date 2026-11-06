@@ -59,7 +59,7 @@ function BotMessage({ bot, m, children, showName }: { bot?: Bot; m: Message; chi
   )
 }
 
-function TaskCard({ m, task, owner, handoffTo }: { m: Message; task?: Task; owner?: Bot; handoffTo?: Bot }) {
+function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: Task; owner?: Bot; handoffTo?: Bot; replyTo?: Bot }) {
   const status = task?.status || m.meta.status || 'done'
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -80,6 +80,7 @@ function TaskCard({ m, task, owner, handoffTo }: { m: Message; task?: Task; owne
       </div>
       <div className="task-goal">{goal}</div>
       {handoffTo && <div className="task-action">做完交给 {handoffTo.name}</div>}
+      {replyTo && <div className="task-action">做完把结果回给 {replyTo.name}</div>}
       {status === 'running' && task?.last_action && <div className="task-action">→ {task.last_action}</div>}
     </div>
   )
@@ -184,6 +185,44 @@ function HandoffLine({ from, to, text }: { from?: Bot; to?: Bot; text: string })
   )
 }
 
+// Bot 之间的私信：谁私信了谁、说了什么；点名字去看对方那边
+function DmLine({ m, from, to, here }: { m: Message; from?: Bot; to?: Bot; here: number }) {
+  const [open, setOpen] = useState(m.content.length < 240)
+  // 在收信的私聊里，链接回发信的那个对话；在发信的对话里，链接到收信 Bot 的私聊
+  const there = m.meta.chat && m.meta.chat !== here ? m.meta.chat : to && to.chat_id !== here ? to.chat_id : null
+  return (
+    <div className="handoff dm">
+      <span className="dm-icon">✉</span>
+      {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || '已删除的 Bot'}</b>
+      <span className="muted">私信</span>
+      {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || '已删除的 Bot'}</b>
+      {there && <button className="link-btn small" onClick={() => openChat(there)}>{m.meta.chat && m.meta.chat !== here ? '去发信的对话' : `去看 ${to?.name}`}</button>}
+      <span className={'handoff-text' + (open ? '' : ' clamp3')}>{m.content}</span>
+      {!open && <button className="expand" onClick={() => setOpen(true)}>展开</button>}
+    </div>
+  )
+}
+
+// 私信的回信：显示成发信 Bot 的一条消息，长的折起来
+function DmReply({ m, bot, to }: { m: Message; bot?: Bot; to?: Bot }) {
+  const [open, setOpen] = useState(m.content.length < 1800)
+  const bad = m.meta.status && m.meta.status !== 'done'
+  return (
+    <div className="msg bot">
+      {bot && <BotAvatar avatar={bot.avatar} size={28} />}
+      <div className="msg-body">
+        <div className="speaker">{bot?.name || '已删除的 Bot'}</div>
+        <div className={'result-head' + (bad ? ' failed' : '')}>↩ 回了 {to?.name || '已删除的 Bot'} 的私信{m.meta.task_id ? ` · 任务 #${m.meta.task_id}` : ''}</div>
+        <div className={open ? '' : 'clamp'}><Markdown text={m.content} /></div>
+        {!open && <button className="expand" onClick={() => setOpen(true)}>展开全文</button>}
+        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} />
+          {bot && <button className="ghost-btn" onClick={() => openChat(bot.chat_id)}>去 {bot.name} 的私聊</button>}
+          {m.meta.task_id && <button className="ghost-btn" onClick={() => showTask(m.meta.task_id)}>查看过程</button>}</div>
+      </div>
+    </div>
+  )
+}
+
 const STARTERS = [
   '每天早上 9 点给我整理 AI 领域的重要新闻',
   '帮我调研一下自部署 SearxNG 的最佳实践',
@@ -245,7 +284,8 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
   const empty = messages && messages.length === 0 && !stream
   const title = group ? chat.title : bot!.name
   const task = (tid: number) => byId.get(tid) && <TaskCard key={tid} m={byId.get(tid)!} task={tasks[tid]}
-    owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)} />
+    owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)}
+    replyTo={botOf(byId.get(tid)!.meta.reply_to)} />
   const starters = group && members.length >= 2
     ? ['@所有人 先各自介绍一下你们能做什么', `@${members[0].name} 查一下今天的 AI 新闻，查完交给 @${members[1].name} 写一段 100 字的总结`]
     : STARTERS
@@ -295,6 +335,10 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
             if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group}
               goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />
             if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
+            if (k.kind === 'dm') return <DmLine key={m.id} m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />
+            if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ 已把回信发给 {botOf(m.meta.to)?.name || '已删除的 Bot'}
+              {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChat(m.meta.chat)}>去看</button></>}</div>
+            if (k.kind === 'dm_reply') return <DmReply key={m.id} m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} />
             if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>新话题 · 之前的对话不再带进上下文，长期记忆还在</span></div>
             if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, '触发器 $1：').slice(0, 160)}</div>
             return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>

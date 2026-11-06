@@ -344,6 +344,11 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .handoff { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 14px 0 14px 40px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; font-size: 13px; }
 .handoff b { font-weight: 600; }
 .handoff-text { flex-basis: 100%; color: var(--fg2); }
+.handoff.dm { border-style: solid; background: var(--bg2); }
+.handoff.dm .handoff-text { white-space: pre-wrap; }
+.handoff.dm .link-btn { margin-left: auto; font-size: 12.5px; }
+.handoff.dm .expand { padding: 0; }
+.dm-icon { color: var(--fg3); }
 .elsewhere { display: flex; align-items: center; gap: 10px; margin: 12px 0 12px 40px; padding: 9px 12px; border: 1px solid var(--warn); border-radius: 12px; font-size: 13.5px; }
 .elsewhere span { flex: 1; }
 .bot-picker { display: flex; flex-wrap: wrap; gap: 6px; }

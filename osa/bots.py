@@ -31,6 +31,12 @@ def get(bot_id: int) -> dict | None:
     return _bot(r) if r else None
 
 
+def by_name(name: str) -> dict | None:
+    """按名字找 Bot（不区分大小写，去掉开头的 @）。"""
+    key = (name or "").strip().lstrip("@").strip().lower()
+    return next((b for b in list_bots() if b["name"].lower() == key), None) if key else None
+
+
 def primary() -> dict:
     r = conn.execute("select id from bots where is_primary=1").fetchone()
     return get(r[0])

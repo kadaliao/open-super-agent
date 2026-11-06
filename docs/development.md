@@ -49,6 +49,10 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 - **群聊**：`POST /api/groups {"bot_ids":[1,2]}` 建群，然后通过 WebSocket 往群的 chat_id 发
   “@A 查……，查完交给 @B 写总结”，应该看到 A 派任务（带 handoff_to）、B 不抢话、任务结果出来后出现交接记录、B 写出总结。
   再让 A 派一个要 `ask_approval` 的任务，确认卡片应该出现在 A 的私聊里（`chat_id` 是私聊，`origin_chat_id` 是群）。
+- **Bot 之间的私信**：再建一个 Bot（比如“研究员”），在主 Bot 的私聊里发“让研究员查一下……”。应该看到主 Bot 的对话里出现私信卡片，
+  研究员的私聊里出现同一封来信、它派任务（卡片上写“做完把结果回给 …”），任务做完后回信出现在主 Bot 的对话里，主 Bot 再说一轮。
+  在界面上停掉研究员的任务，主 Bot 应该收到“没做完，已取消：用户在界面上取消”，照实告诉用户而不是自己重做。
+  在群里 @ 主 Bot 让群外的 Bot 做事，回信应该回到群里。
 - **演示一遍**：`POST /api/bots/<id>/teach/start` 开始后，可以在电脑里直接跑浏览器控制脚本模拟用户操作：
   `echo '{"op":"open","url":"https://example.com"}' | docker exec -i osa-computer env DISPLAY=:1 python3 /tmp/osa-cdp-*.py`；
   再 `POST /api/teach/stop` 拿到 `steps` 和 `draft`，存成技能后在对话里 `/名字` 重放。

@@ -268,6 +268,10 @@ def render(m: dict, group: bool) -> str | None:
         return "⏹ " + content.strip("[]")
     if kind == "handoff":
         return f"{name} → {_bot_name(meta.get('to'))}：{meta.get('note') or content}"
+    if kind == "dm":
+        return f"✉️ {name} 私信 {_bot_name(meta.get('to'))}：{content}"
+    if kind == "dm_reply":
+        return None if meta.get("sent") else f"**↩️ {name} 回信**\n\n{content}"
     if kind == "note":
         return "ℹ️ " + content.strip("[]")
     return None

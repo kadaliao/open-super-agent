@@ -191,6 +191,11 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 不需要配置。限制：每个群 2–6 个 Bot，最多 50 个群；每一轮（用户的一条消息或一次任务交接）最多 8 次 Bot 发言（`osa/groups.py` 的 `MAX_TURNS`）。
 群里的模型调用都记在各个 Bot 的 `router` 角色下。
 
+## Bot 之间的私信
+
+不需要配置。Bot 可以私信另一个 Bot 请它帮忙（不用拉群），对方的回复会自动回到原来的对话。
+为了防止 Bot 之间来回停不下来，一串私信最多转 5 手（`osa/dm.py` 的 `MAX_DEPTH`），到了就停下来告诉你。每次回复都算用量。
+
 ## 记忆与资料库
 
 不需要额外配置，下面这些是代码里的上限：

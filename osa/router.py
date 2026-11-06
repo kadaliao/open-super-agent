@@ -6,7 +6,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, library, memories, memory, routines, search, skills, tasklog
+from . import approvals, bots, dm, library, memories, memory, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -38,11 +38,17 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
   （按元素编号操作，返回页面文字），要看画面才用 computer_screenshot / look_at_screen；只有多步、耗时、需要终端或要等人接手的活才派任务。
 - 用户用“@应用名”指定应用时，派任务的 goal 里原样保留“@应用名”，并写明要用这个应用完成。
   提到的应用没连接时，告诉用户去设置 → 应用里连接，不要假装能做。
+- 别的 Bot 更适合做的事（用户点名要某个 Bot 做，或者按下面“其他 Bot”的职责明显归它管），用 message_bot 私信它，
+  把要它做的事写完整（它看不到这里的对话）；然后简短告诉用户交给了谁，不要自己再派任务重复做。
+  它的回信会自动回到这个对话，到时你会接着说一轮。私信不用拉群，私聊和群聊里都能用。
 - 用户的新指令和正在跑的任务冲突（比如换了要做的事）时，先 cancel_task 把旧任务停掉再做。
 今天是 {date}。
 
 后台 Worker 当前能用的工具（判断能不能做时以此为准）：
 {capabilities}
+
+其他 Bot（需要时用 message_bot 私信它们帮忙）：
+{others}
 
 你的技能（用户用 /名字 调用）：
 {skills}
@@ -57,7 +63,7 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 {tasks}
 
 等待用户确认的写操作（用户在聊天里同意或拒绝时，调用 resolve_approval；意思不明确就先问清楚，不要替用户做决定）：
-{approvals}{group}"""
+{approvals}{group}{turn}"""
 
 GROUP_PROMPT = """
 
@@ -71,7 +77,29 @@ GROUP_PROMPT = """
   如果要等后台任务做完才能交接，在 dispatch 里填 handoff_to 和 handoff_note，任务结果会自动转给它，不用你再回来。
 - 你那部分要等别的 Bot 先做完时，简短说一句会接着做就行，不要重复别人的工作。
 - 交接给你的工作，直接做完并给出结果；需要查证就派任务。
-- 确认卡片和“接手电脑”的请求会出现在你和用户的私聊里，不在群里。"""
+- 确认卡片和“接手电脑”的请求会出现在你和用户的私聊里，不在群里。
+- 群里的成员用 handoff；不在群里的 Bot 才用 message_bot 私信。"""
+
+DM_TURN = """
+
+这一轮是因为 {name} 私信了你（见最近的消息），不是用户直接说的；用户能在你的私聊里看到。
+你这一轮的回复会自动作为回信发给 {name}，写给它看：能直接答就直接答；要查证、多步的就 dispatch，任务结果会自动发给 {name}，
+不用你再回来；做不了就说明原因。不要再用 message_bot 回复 {name}。"""
+
+REPLY_TURN = """
+
+这一轮是因为 {name} 回了你的私信（见最近的消息）。"""
+REPLY_SHOWN = ("回信已经显示在对话里了，不用整段复述：说清结论、要用户做什么，或者接下来怎么办。"
+               "回信说任务被取消或失败了，照实告诉用户就行，不要自己重派、拆开重做或换个 Bot 再做，等用户决定。")
+REPLY_OWED = ("你这一轮的回复会自动作为回信发给 {owed}，它看不到 {name} 的回信，把它要的内容写全；"
+              "还需要别人帮忙可以继续派任务或私信。")
+
+MESSAGE_BOT = {"type": "function", "function": {"name": "message_bot",
+    "description": "私信另一个 Bot，请它帮忙做事。它在自己的私聊里处理，回信会自动回到当前对话，你到时再接着说",
+    "parameters": {"type": "object", "properties": {
+        "to": {"type": "string", "description": "Bot 的名字"},
+        "text": {"type": "string", "description": "要它做什么，写完整、自包含（它看不到这里的对话）"}},
+        "required": ["to", "text"]}}}
 
 HANDOFF = {"type": "function", "function": {"name": "handoff", "description": "在群聊里把工作交给另一个 Bot，它会马上接着做",
     "parameters": {"type": "object", "properties": {
@@ -165,6 +193,7 @@ class Router:
         self.bot_id = bot_id
         self.lock = asyncio.Lock()
         self.chat: dict = {}              # 本轮在哪个对话里说话（_think 开始时设置）
+        self.turn: dict = {}              # 本轮的来由（respond 设置）：欠谁回信、私信深度
 
     @property
     def bot(self) -> dict:
@@ -201,14 +230,29 @@ class Router:
         await self.add("user", text, **meta)
         await self.respond(self.chat_id)
 
-    async def respond(self, chat_id: int):
-        """在某个对话里说一轮话。群聊由 groups 决定轮到谁。"""
+    async def respond(self, chat_id: int, turn: dict | None = None):
+        """在某个对话里说一轮话。群聊由 groups 决定轮到谁。
+        turn 是这一轮的来由（见 dm.py）：reply 是这一轮欠谁回信，depth 是私信的深度，woke 是被谁的私信或回信叫醒的。"""
         async with self.lock:
-            await self._think(bots.chat(chat_id))
+            self.turn = turn or {}
+            owed = self.turn.get("reply")
+            try:
+                try:
+                    shown = await self._think(bots.chat(chat_id))
+                except Exception as e:
+                    if owed:
+                        await dm.answer(self.bot_id, owed, f"（{(self.bot or {}).get('name', 'Bot')} 处理时出错：{e}）", chat_id)
+                    raise
+                # 欠着回信：没派任务、也没再私信别人的话，这一轮的回复就是回信（派了的由任务结果、对方回信接着送）
+                if owed and not self._turn_tasks and not self._turn_dms:
+                    await dm.answer(self.bot_id, owed, shown or "（没有回复内容）", chat_id)
+            finally:
+                self.turn = {}
 
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
-        tools = ROUTER_TOOLS + ([HANDOFF] if self.chat["kind"] == "group" else [])
+        tools = ROUTER_TOOLS + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
+            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else [])
         cid = self.chat["id"]
         stream = await client.chat.completions.create(
             model=model, messages=msgs, stream=True, **({"tools": tools} if use_tools else {}),
@@ -249,6 +293,26 @@ class Router:
             "用户 @ 你、或者别的 Bot 把工作交给你时才轮到你。"
         return GROUP_PROMPT.format(title=chat["title"], members="\n".join(lines), lead=lead)
 
+    def _turn_block(self) -> str:
+        woke = self.turn.get("woke")
+        if not woke:
+            return ""
+        name = bots.get(woke["from"])["name"] if bots.get(woke["from"]) else "已删除的 Bot"
+        if woke["kind"] == "dm":
+            return DM_TURN.format(name=name)
+        owed = self.turn.get("reply")
+        if owed:
+            o = bots.get(owed["bot"])
+            return REPLY_TURN.format(name=name) + REPLY_OWED.format(owed=o["name"] if o else "等回信的 Bot", name=name)
+        return REPLY_TURN.format(name=name) + REPLY_SHOWN
+
+    def _others(self) -> str:
+        rows = [b for b in bots.list_bots() if b["id"] != self.bot_id]
+        lines = [f"- {b['name']}：{(b['instructions'] or '职责没写明').replace(chr(10), ' ')[:80]}" for b in rows[:30]]
+        if len(rows) > 30:
+            lines.append(f"- ……还有 {len(rows) - 30} 个")
+        return "\n".join(lines) or "暂无（只有你一个 Bot）"
+
     async def _think(self, chat: dict):
         client, model = client_for("router")
         b = self.bot
@@ -256,15 +320,20 @@ class Router:
         cid = chat["id"]
         last = memory.conn.execute("select content from messages where chat_id=? and role='user' order by id desc limit 1",
                                    (cid,)).fetchone()
-        related = await memories.related(self.bot_id, last[0] if last else "")
+        woke = self.turn.get("woke")
+        related = await memories.related(self.bot_id, woke["text"] if woke else (last[0] if last else ""))
+        if started := self.turn.get("started"):
+            started()   # 下面就读对话了：这之前到的私信、回信都看得到，之后到的另起一轮（见 dm.py）
         msgs = [{"role": "system", "content": ROUTER_PROMPT.format(
             name=b["name"], instructions=b["instructions"] or "你的具体职责以用户在对话里交代的为准。",
             date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), skills=skills.summary(self.bot_id),
             routines=self._routine_list(), capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id, related),
-            approvals=approvals.summary(self.bot_id), group=self._group_block(chat))}] \
-            + memory.context(cid, self.bot_id if chat["kind"] == "group" else None)
+            approvals=approvals.summary(self.bot_id), group=self._group_block(chat), others=self._others(),
+            turn=self._turn_block())}] \
+            + memory.context(cid, self.bot_id if chat["kind"] == "group" else None, me=self.bot_id)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
+        self._turn_dms = 0                # 本轮发出的私信
         shown, thinking, shots = "", "", []
         await self.emit({"type": "stream_start", "sid": sid}, cid)
         try:
@@ -301,6 +370,7 @@ class Router:
             await self.emit({"type": "stream_end", "sid": sid}, cid)
         await self.add("assistant", shown.strip(), cid, reasoning=reasoning, thinking=thinking,
                        thought_s=round(time.time() - started, 1), sid=sid, tasks=self._turn_tasks)
+        return shown.strip()
 
     def _member(self, name: str) -> dict | None:
         """群里按名字找成员（不区分大小写，去掉开头的 @）。"""
@@ -323,11 +393,26 @@ class Router:
                 handoff = {"to": to["id"], "note": args.get("handoff_note") or ""}
                 from . import groups
                 groups.expect(self.chat["id"], to["id"])
-            task = await self.dispatch(args["goal"], args.get("mode", "single"), chat_id=self.chat["id"], handoff=handoff)
+            task = await self.dispatch(args["goal"], args.get("mode", "single"), chat_id=self.chat["id"], handoff=handoff,
+                                       reply=self.turn.get("reply"), depth=self.turn.get("depth", 0))
             self._turn_tasks.append(task.id)
             if handoff:
                 return f"已派发任务 #{task.id}，做完后结果会自动交给 {to['name']}"
+            if task.reply:
+                return f"已派发任务 #{task.id}，做完后结果会自动发给 {dm._name(task.reply['bot'])}"
             return f"已派发任务 #{task.id}"
+        if name == "message_bot":
+            to = bots.by_name(args.get("to", ""))
+            if not to or to["id"] == self.bot_id:
+                others = "、".join(b["name"] for b in bots.list_bots() if b["id"] != self.bot_id)
+                return f"没发：没有叫 {args.get('to')} 的其他 Bot。现有：{others or '无'}"
+            if self.chat["kind"] == "group" and to["id"] in self.chat["bot_ids"]:
+                return f"没发：{to['name']} 就在这个群里，用 handoff 交给它"
+            out = await dm.send(self.bot_id, to, args.get("text", ""), self.chat["id"],
+                                self.turn.get("reply"), self.turn.get("depth", 0))
+            if out.startswith("已私信"):
+                self._turn_dms += 1
+            return out
         if name == "handoff":
             if self.chat["kind"] != "group":
                 return "handoff 只能在群聊里用"
@@ -469,14 +554,17 @@ class Router:
         return "\n".join(lines)
 
     async def dispatch(self, goal: str, mode: str = "single", background: bool = False,
-                       on_done=None, label: str = "", chat_id: int | None = None, handoff: dict | None = None) -> Task:
+                       on_done=None, label: str = "", chat_id: int | None = None, handoff: dict | None = None,
+                       reply: dict | None = None, depth: int = 0) -> Task:
         """派一个后台任务。定时任务也走这里（background=True，确认卡片会过期）。
-        chat_id 是任务卡片和结果出现的对话（默认私聊）；确认卡片总是发到私聊。"""
+        chat_id 是任务卡片和结果出现的对话（默认私聊）；确认卡片总是发到私聊。
+        reply：因私信派的任务，做完把结果作为回信送回去（见 dm.py）。"""
         cid = chat_id or self.chat_id
         tid = await self.add("task", f"[任务已派发] {label + ' ' if label else ''}{goal}", cid, kind="dispatch",
-                             mode=mode, status="running", **({"handoff_to": handoff["to"]} if handoff else {}))
+                             mode=mode, status="running", **({"handoff_to": handoff["to"]} if handoff else {}),
+                             **({"reply_to": reply["bot"]} if reply else {}))
         task = Task(id=tid, goal=goal, mode=mode, bot_id=self.bot_id, chat_id=cid, approval_chat_id=self.chat_id,
-                    background=background, on_done=on_done, handoff=handoff)
+                    background=background, on_done=on_done, handoff=handoff, reply=reply, depth=depth)
         task.handle = asyncio.create_task(self._run(task))
         TASKS[tid] = task
         await self.emit({"type": "task", "task": task.public()}, cid)
@@ -497,10 +585,13 @@ class Router:
             if not task.background:   # 定时任务有自己的运行记录，不记进“做过的事”
                 memories.log_work(self.bot_id, task.id, task.goal)
         except asyncio.CancelledError:
+            asked = task.status == "cancelled"   # cancel() 先标了状态；服务关闭时被取消的不算
             task.status = "cancelled"
             if task.handoff:
                 from . import groups
                 groups.unexpect(task.chat_id, task.handoff["to"])
+            if task.reply and asked:
+                asyncio.create_task(dm.after_task(task))
             await self._done(task)
             return
         except Exception as e:
@@ -513,6 +604,8 @@ class Router:
         if task.handoff:
             from . import groups
             asyncio.create_task(groups.after_task(task))
+        if task.reply:
+            asyncio.create_task(dm.after_task(task))
         await self._done(task)
 
     async def _done(self, task: Task):
@@ -528,7 +621,7 @@ class Router:
             return f"任务 #{tid} 不在运行中"
         approvals.cancel_for_task(tid)
         t.handle.cancel()
-        t.status = "cancelled"
+        t.status, t.result = "cancelled", f"已取消：{reason}"
         memory.update_meta(tid, status="cancelled", elapsed=round(time.time() - t.started), steps=t.steps)
         asyncio.create_task(tasklog.close(t, "cancelled", f"已取消：{reason}"))
         asyncio.create_task(self.add("task", f"[任务 #{tid} 已取消：{reason}]", t.chat_id, kind="cancel", task_id=tid))
