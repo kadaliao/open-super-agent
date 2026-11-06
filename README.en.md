@@ -28,6 +28,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 🔌 **App market**: pick apps from the sidebar's Apps page. Notion, flomo, Tencent Docs, DingTalk, TickTick, Todoist and others connect with one click and an account login; Gmail, QQ Mail, Feishu, WeCom and GitHub take a single password, token or link; Slack takes a small app you create once; any MCP server works too. Mention one in chat with `@app`. Each app is a single manifest file, so [listing a new one](docs/apps.md) takes a PR, no code.
 - ✅ **Approvals & vault**: write operations ask first (allow once / deny / always allow), with rules you manage in Settings; secrets are stored encrypted and never enter the chat.
 - 🧩 **Skills**: reusable procedures invoked with `/name`. Ask a Bot to save what it just did as a skill, or edit skills in the side panel. With **Teach a task**, do it once yourself on the computer and the Bot turns the recording into a draft skill for you to review. Export a skill as a file or share it by link, and others install it by pasting the link; `SKILL.md` files from Claude and similar tools import as is.
+- 🎁 **Bot templates**: start a new Bot from a ready-made template (news digest, inbox helper, GitHub watcher, trip planner) with skills and routines already set up. Turn a Bot you've tuned into a template and share it; [write one](docs/templates.md) (Chinese) and open a PR to make it built in.
 - 🧠 **Memory**: each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots. Just say "remember ...", or view, edit, delete and import (e.g. from ChatGPT) in the side panel. Start a **new topic** to drop old messages from the context while keeping memories.
 - 📚 **Library**: finished reports and web pages are saved as Pages you can pin and share by link; browse, upload and download files on the shared computer, and attach files in chat.
 - ⏰ **Routines**: per-Bot schedules (daily / weekdays, every N minutes, webhook) with pause, resume, test and the last 20 runs. Create one by saying "every day at 9, ...". Webhook events go through keyword filters, then a cheap model decides whether to act.
@@ -72,6 +73,7 @@ The detailed docs are currently in Chinese:
 - [Development](docs/development.md)
 - [Chat apps](docs/channels.md): connecting Telegram, Feishu/Lark, DingTalk, WeCom and Discord
 - [Adding an app to the market](docs/apps.md)
+- [Writing a Bot template](docs/templates.md)
 - [Roadmap](docs/roadmap.md): what comes next ([the Grok Bot parity plan](docs/grok-bot-parity.md) is archived)
 - [Changelog](CHANGELOG.md)
 
@@ -79,7 +81,7 @@ The detailed docs are currently in Chinese:
 
 Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANGELOG.md)). Where it goes next:
 
-- **App ecosystem**: Bot templates (persona, skills, apps and routines in one bundle) you can install in one click. New apps mostly come from community PRs; the project fills gaps in the manifest format and connection methods.
+- **App ecosystem**: new apps and Bot templates mostly come from community PRs; the project fills gaps in the manifest format and connection methods.
 - **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; using the bot in chat-app group chats.
 - **Computers**: several computers running tasks in parallel; Teach a task across the whole desktop, not just the browser; snapshots and rollback.
 - **Bot abilities**: semantic search over memory and the library; voice conversations.

@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, bots, catalog, channels, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
-from . import settings, skills, teach, vault
+from . import settings, skills, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -361,6 +361,82 @@ async def shared_skill_raw(token: str):
     if not s:
         raise HTTPException(404, "链接已失效")
     return _skill_file(s)
+
+
+# ---------- Bot 模板 ----------
+@app.get("/api/templates")
+async def list_templates():
+    return templates.builtin()
+
+
+@app.post("/api/templates/preview")
+async def preview_template(data: dict = Body(...)):
+    """内置的（id）、粘贴的文件内容（text）或链接（url）→ 预览。返回的 text 是检查过的模板，安装时原样交回来。"""
+    try:
+        if data.get("id"):
+            t = templates.parse(templates.builtin_text(data["id"]))
+        elif (data.get("url") or "").strip():
+            t = await templates.fetch(data["url"])
+        else:
+            t = templates.parse(data.get("text") or "")
+    except ValueError as e:
+        _err(e)
+    return templates.preview(t) | {"text": templates.to_text({"osa_template": templates.FORMAT, **t})}
+
+
+@app.post("/api/templates/install")
+async def install_template(data: dict = Body(...)):
+    try:
+        t = templates.parse(data.get("text") or "")
+        b = templates.install(t, bool(data.get("enable_routines", True)), data.get("name") or "")
+    except ValueError as e:
+        _err(e)
+    for ev in ("bots_changed", "skills_changed", "routines_changed"):
+        await broadcast({"type": ev})
+    return b
+
+
+def _template_file(bot_id: int) -> Response:
+    t = templates.from_bot(bot_id)
+    return Response(templates.to_text(t), media_type="application/yaml; charset=utf-8",
+                    headers={"content-disposition": f"attachment; filename*=UTF-8''{quote(t['name'] + '.osabot.yaml')}"})
+
+
+@app.get("/api/bots/{bot_id}/template")
+async def export_template(bot_id: int):
+    _bot_or_404(bot_id)
+    return _template_file(bot_id)
+
+
+@app.get("/api/bots/{bot_id}/template/share")
+async def template_share_state(bot_id: int):
+    _bot_or_404(bot_id)
+    return {"token": templates.token_of(bot_id)}
+
+
+@app.post("/api/bots/{bot_id}/template/share")
+async def share_template(bot_id: int, data: dict = Body(...)):
+    _bot_or_404(bot_id)
+    return {"token": templates.share(bot_id, bool(data.get("on")))}
+
+
+@app.get("/api/shared/templates/{token}")
+async def shared_template(token: str):
+    bid = templates.by_token(token)
+    if not bid:
+        raise HTTPException(404, "链接已失效")
+    t = templates.preview(templates.from_bot(bid))
+    for a in t["apps"]:
+        a.pop("connected", None)   # 那台连没连应用和看的人无关，不说
+    return t
+
+
+@app.get("/api/shared/templates/{token}/raw")
+async def shared_template_raw(token: str):
+    bid = templates.by_token(token)
+    if not bid:
+        raise HTTPException(404, "链接已失效")
+    return _template_file(bid)
 
 
 # ---------- 备份与迁移 ----------

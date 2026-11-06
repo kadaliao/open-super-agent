@@ -510,3 +510,22 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .bk-notes { padding-left: 18px; color: var(--fg2); }
 .bk-notes li { margin: 4px 0; }
 .ok-line { color: var(--good); margin: 8px 0; }
+
+/* Bot 模板 */
+.modal.medium { width: min(680px, 94vw); padding: 22px; gap: 14px; overflow-y: auto; }
+.modal.medium h3 { margin: 0; }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.tpl-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.tpl-card:hover:not(:disabled) { background: var(--bg2); }
+.tpl-card.blank { border-style: dashed; }
+.tpl-plus { width: 36px; height: 36px; display: grid; place-items: center; font-size: 22px; color: var(--fg2); }
+.tpl-meta { font-size: 12px; color: var(--fg2); margin-top: auto; }
+.tpl-pick .field { margin-top: 14px; }
+.tpl-head { display: flex; gap: 14px; align-items: flex-start; }
+.tpl-head > div { flex: 1; }
+.tpl-sec { margin: 10px 0; }
+.tpl-apps { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.tpl-apps .tag { margin-left: 0; }
+.tpl-item { margin: 4px 0; }
+.tpl-pre { white-space: pre-wrap; background: var(--bg2); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; max-height: 260px; overflow: auto; }
+@media (max-width: 700px) { .modal.medium { width: 100vw; max-height: 100dvh; border-radius: 0; } }

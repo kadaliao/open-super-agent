@@ -61,6 +61,7 @@ osa/
     checks.py      添加应用前的检查（邮箱先试登录一次）
   tools.py         内置工具：web_search、fetch_url
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明；导出成文件、分享链接、从文件或链接导入
+  templates.py     Bot 模板：检查、内置模板（templates/*.yaml）、从 Bot 导出、分享、安装
   routines.py      定时任务：触发方式、调度、webhook 过滤、运行记录、旧 triggers 导入
   watchdog.py      任务巡检
   config.py        读取 config.yaml，按角色创建模型客户端
@@ -165,6 +166,14 @@ web/src/
 - 企业微信同一个机器人只能一处连着，被别处顶掉后等 2 分钟再连，免得两边来回抢。
 - 平台都实现 `check / run / send_text / send_card / edit_card`，再在 `PLATFORMS` 里注册，就能加新的聊天软件。
   可选：`typing`（正在输入）、`download`（附件，文件名要下载后才知道的返回 `(内容, 文件名)`）、`pair_link` / `setup_link`（配对页上的按钮）。
+
+### Bot 模板
+- 模板是 YAML：名字、头像、职责、`apps`（只有名字）、技能、定时任务。不带对话、记忆、资料库、密钥。
+- 预览和安装分开：`/api/templates/preview` 检查（内置的、粘贴的、链接）后返回整理过的 `text`，安装时原样交回 `/api/templates/install` 再检查一次。
+  先 `parse` 完整检查（技能名、做法长度、定时任务的技能在不在、触发方式），通过了才建，建的过程中出错就把建了一半的 Bot 删掉。
+- 导出的是 Bot 现在的样子（`from_bot`）：自己的技能，加上定时任务用到的共用技能；`apps` 由职责、技能、定时任务里 `@` 到的应用得出。
+- 分享和技能一样：`bots.template_token`，公开页 `/template/<token>`，公开接口不透露这台连了哪些应用。
+- 装好的技能来源记为 `import`；webhook 类定时任务的名字全局唯一，重名时加 `-2`。
 
 ### 备份与迁移
 - 导出先在事件循环里用 SQLite 的 backup 接口做快照（服务照常运行），解密密钥、压缩、加密放到线程里。

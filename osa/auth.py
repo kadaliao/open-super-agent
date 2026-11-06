@@ -2,7 +2,7 @@
 
 登录后发一个 HttpOnly cookie：<过期时间>.<签名>。签名密钥由 data/session.key 和密码一起派生，
 改密码或删掉 session.key 后，所有设备都要重新登录。
-不用登录就能访问的：登录页、分享页（/s/、/skill/ 和 /api/shared/）、webhook（有自己的 token）、前端静态文件。
+不用登录就能访问的：登录页、分享页（/s/、/skill/、/template/ 和 /api/shared/）、webhook（有自己的 token）、前端静态文件。
 """
 import asyncio
 import hashlib
@@ -24,7 +24,7 @@ FAIL_WINDOW, MAX_FAILS = 600, 5   # 同一个 IP 10 分钟内输错 5 次，暂�
 
 # 前端构建产物里不含数据的文件：登录页和分享页要用
 PUBLIC_FILES = {"/manifest.json", "/sw.js", "/favicon.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"}
-PUBLIC_PREFIXES = ("/assets/", "/hooks/", "/api/shared/", "/s/", "/skill/")
+PUBLIC_PREFIXES = ("/assets/", "/hooks/", "/api/shared/", "/s/", "/skill/", "/template/")
 
 router = APIRouter()
 _fails: dict[str, list[float]] = {}

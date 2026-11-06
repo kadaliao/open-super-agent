@@ -5,36 +5,44 @@ import BotAvatar, { SHAPE_NAMES } from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { RoutinesPanel, SkillsPanel } from './Routines'
 import { MemoryPanel } from './Memories'
+import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } from './Templates'
 
-// 新建 Bot：和 Grok Bot 一样只问名字和头像，职责在第一条消息里交代
+// 新建 Bot：从模板装（带好技能和定时任务），或者空白的：只问名字和头像，职责在第一条消息里交代
 export function NewBotDialog({ onClose }: { onClose: () => void }) {
   const shapes = useStore(s => s.shapes)
   const colors = useStore(s => s.colors)
   const count = useStore(s => s.bots.length)
+  const [mode, setMode] = useState<'pick' | 'blank'>('pick')
+  const [preview, setPreview] = useState<TemplatePreview | null>(null)
   const [name, setName] = useState('')
   const [avatar, setAvatar] = useState<Avatar>({ shape: shapes[count % shapes.length], color: colors[(count + 2) % colors.length] })
   const [err, setErr] = useState('')
+  const done = async (b: Bot) => { await refreshLists(); openChat(b.chat_id); onClose() }
 
   const create = async () => {
-    try {
-      const b: Bot = await api('/api/bots', { method: 'POST', body: { name: name.trim() || '新 Bot', avatar } })
-      await refreshLists()
-      openChat(b.chat_id)
-      onClose()
-    } catch (e: any) { setErr(e.message) }
+    try { await done(await api('/api/bots', { method: 'POST', body: { name: name.trim() || '新 Bot', avatar } })) }
+    catch (e: any) { setErr(e.message) }
   }
 
   return (
     <div className="modal-bg" onMouseDown={onClose}>
-      <div className="modal small" onMouseDown={e => e.stopPropagation()}>
+      <div className={'modal ' + (mode === 'pick' ? 'medium' : 'small')} onMouseDown={e => e.stopPropagation()}>
         <h3>新建 Bot</h3>
-        <div className="new-bot-preview"><BotAvatar avatar={avatar} size={88} /></div>
-        <AvatarPicker avatar={avatar} onChange={setAvatar} />
-        <label className="field">名字<input autoFocus value={name} maxLength={40} placeholder="例如：Scout、研究员、邮件管家"
-          onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} /></label>
-        <p className="muted small">建好之后，在第一条消息里告诉它要做什么工作。</p>
-        {err && <div className="error-line">{err}</div>}
-        <div className="modal-actions"><button className="btn" onClick={onClose}>取消</button><button className="btn primary" onClick={create}>创建</button></div>
+        {preview ? <TemplateInstall p={preview} onBack={() => setPreview(null)} onInstalled={done} />
+          : mode === 'pick' ? <>
+            <p className="muted small">从现成的模板开始（带好技能和定时任务），或者建一个空白的。</p>
+            <TemplatePicker onPreview={setPreview} onBlank={() => setMode('blank')} />
+            <div className="modal-actions"><button className="btn" onClick={onClose}>取消</button></div>
+          </> : <>
+            <div className="new-bot-preview"><BotAvatar avatar={avatar} size={88} /></div>
+            <AvatarPicker avatar={avatar} onChange={setAvatar} />
+            <label className="field">名字<input autoFocus value={name} maxLength={40} placeholder="例如：Scout、研究员、邮件管家"
+              onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} /></label>
+            <p className="muted small">建好之后，在第一条消息里告诉它要做什么工作。</p>
+            {err && <div className="error-line">{err}</div>}
+            <div className="modal-actions"><button className="btn" onClick={() => setMode('pick')}>← 从模板选</button>
+              <span className="grow" /><button className="btn" onClick={onClose}>取消</button><button className="btn primary" onClick={create}>创建</button></div>
+          </>}
       </div>
     </div>
   )
@@ -126,6 +134,7 @@ function BotPanelInner({ bot, tasks, onClose }: { bot: Bot; tasks: any[]; onClos
           ? <button className="btn" onClick={() => api(`/api/bots/${bot.id}/primary`, { method: 'POST' })}>★ 设为主 Bot</button>
           : <div className="muted small">★ 这是主 Bot。</div>}
         {!bot.is_primary && <button className="btn danger" onClick={del}>删除这个 Bot</button>}
+        <ShareTemplate bot={bot} />
       </div>
   )
 }

@@ -12,11 +12,15 @@
 
 不用改代码：写一份清单放进 `osa/catalog/apps/`，在本机试通后提 PR。格式、图标和本机测试方法见 [给应用市场加一个应用](docs/apps.md)。
 
+## 加一个内置的 Bot 模板
+
+也不用改代码：写一个 YAML 放进 `osa/templates/`，本机装一次、让定时任务跑一次，`uv run python -m osa.templates` 检查通过后提 PR。格式和建议见 [写一个 Bot 模板](docs/templates.md)。
+
 ## 提交 PR
 
 1. 从 `main` 新建分支，一个 PR 只做一件事。
 2. 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)：`feat:`、`fix:`、`docs:`、`refactor:`、`chore:` 等。
-3. 确保 CI 通过（Python 能编译和导入、应用清单没有错，前端能构建）。
+3. 确保 CI 通过（Python 能编译和导入、应用清单和内置模板没有错，前端能构建）。
 4. 用户能感知到的改动请写进 `CHANGELOG.md` 的 `[未发布]`。
 5. 改了界面就附截图，改了 Bot 的行为就附一段实际对话。
 

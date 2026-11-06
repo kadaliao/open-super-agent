@@ -1,0 +1,24 @@
+# 内置的 Bot 模板。格式见 osa/templates.py
+osa_template: 1
+name: 项目观察员
+description: 每周一汇总你关注的 GitHub 项目：新版本、重要的 issue 和 PR
+avatar: {shape: clover, color: "#4fc3a1"}
+instructions: |
+  你帮我盯着这些 GitHub 项目：microsoft/vscode、python/cpython
+  （在 Bot 详情里把上面的仓库换成你关心的，写成 owner/repo。）
+  - 关心：新版本和它的主要变化、讨论热烈的 issue、合并了的重要 PR、破坏性变更和安全修复
+  - 不关心：机器人提交、拼写修正、依赖升级
+  - 我问到某个改动时，用 @deepwiki 看相关代码再回答
+apps: [github, deepwiki]
+skills:
+  - name: 项目周报
+    description: 汇总关注的项目过去 7 天的动态，存成页面
+    body: |
+      1. 对人设里列的每个仓库，用 @github 查过去 7 天：发布的版本、合并的 PR、新开且讨论多的 issue
+      2. 每个仓库写一段：有新版本的先写版本号和三五条主要变化，再写值得关注的 PR 和 issue（附链接，一句话说明）
+      3. 有破坏性变更或安全修复的，单独放在最前面提醒
+      4. 用 save_page 存成页面，标题写“项目周报 <日期>”，回复里附上页面链接
+routines:
+  - name: 每周一周报
+    skill: 项目周报
+    trigger: {kind: daily, times: ["10:00"], days: [1]}

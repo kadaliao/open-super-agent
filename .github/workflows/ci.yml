@@ -16,6 +16,8 @@ jobs:
           uv run python -c "import osa.server"
       - name: Check app manifests
         run: uv run python -m osa.catalog
+      - name: Check Bot templates
+        run: uv run python -m osa.templates
 
   frontend:
     runs-on: ubuntu-latest

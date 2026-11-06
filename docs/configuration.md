@@ -200,7 +200,7 @@ uv run python -m osa.backup restore ~/backups/osa-backup-20261106-0835.osabak
 
 设置环境变量 `OSA_PASSWORD` 后，打开页面会先要求输入密码。登录保持 30 天，期间用着会自动续期；设置 → 右上角“退出登录”。
 
-- 不用登录就能访问的只有：登录页、分享链接（页面 `/s/<token>`、技能 `/skill/<token>`）、webhook（`/hooks/*`，用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
+- 不用登录就能访问的只有：登录页、分享链接（页面 `/s/<token>`、技能 `/skill/<token>`、Bot 模板 `/template/<token>`）、webhook（`/hooks/*`，用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
 - 同一个 IP 10 分钟内输错 5 次，之后 10 分钟内不能再登录。
 - 会话签名用的密钥在 `data/session.key`（权限 600）。改密码或删掉这个文件，所有设备都要重新登录。
 - 放在反向代理（Caddy、nginx）后面时，启动 uvicorn 要加 `--proxy-headers --forwarded-allow-ips 127.0.0.1`，
