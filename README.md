@@ -52,6 +52,8 @@ cp .env.example .env     # 可以先填上 DEEPSEEK_API_KEY，也可以打开后
 docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟；打开 http://127.0.0.1:8765
 ```
 
+第一次打开会有引导：接上一个模型服务、认识你的 Bot（或从模板装一个）、连一个常用应用，三步就能开始用。
+
 自动 HTTPS、电脑改用 Instabox、国内镜像源、备份，见 [用 Docker Compose 部署](docs/docker.md)。
 
 <details>

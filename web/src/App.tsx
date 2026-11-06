@@ -5,6 +5,7 @@ import Library from './components/Library'
 import Market from './components/Market'
 import Sidebar from './components/Sidebar'
 import Settings from './components/Settings'
+import Onboarding from './components/Onboarding'
 import { BotPanel, NewBotDialog } from './components/BotEditor'
 import { GroupPanel, NewGroupDialog } from './components/Groups'
 
@@ -15,6 +16,7 @@ export default function App() {
   const [newBot, setNewBot] = useState(false)
   const [newGroup, setNewGroup] = useState(false)
   const [settings, setSettings] = useState<string | false>(false)   // 打开时是哪一页（空字符串：上次看的那页）
+  const [onboard, setOnboard] = useState(false)                     // 第一次打开时的引导
   const [details, setDetails] = useState(() => localStorage.getItem('osa.details') === '1')
   const [side, setSide] = useState(false)   // 手机上的侧栏抽屉
   const [tab, setTab] = useState(() => localStorage.getItem('osa.tab') || 'computer')
@@ -53,11 +55,13 @@ export default function App() {
     return () => navigator.serviceWorker.removeEventListener('message', h)
   }, [])
 
-  // 别处要打开设置的某一页（比如对话里“去配置模型”）
+  // 别处要打开设置的某一页（比如对话里“去配置模型”）；设置里点“新手引导”再看一遍引导
   useEffect(() => {
     const h = (e: Event) => setSettings((e as CustomEvent).detail || '')
+    const g = () => { setSettings(false); setOnboard(true) }
     window.addEventListener('osa-open-settings', h)
-    return () => window.removeEventListener('osa-open-settings', h)
+    window.addEventListener('osa-onboarding', g)
+    return () => { window.removeEventListener('osa-open-settings', h); window.removeEventListener('osa-onboarding', g) }
   }, [])
 
   // 对话里的页面链接（/library/pages/12）：在资料库里打开，不刷新页面
@@ -71,12 +75,14 @@ export default function App() {
     const deep = location.pathname.match(/^\/library(?:\/pages\/(\d+))?\/?$/)
     const apps = /^\/apps\/?$/.test(location.pathname)   // 登录授权在本窗口完成后回到这里
     bootstrap().then(() => {
+      if (getState().onboarding && !deep && !apps) setOnboard(true)
       if (deep) { openLibrary(deep[1] ? Number(deep[1]) : null); history.replaceState(null, '', '/') }
       if (apps) { openApps(); history.replaceState(null, '', '/') }
       connect()
     })
     if ('Notification' in window && Notification.permission === 'default') {
-      const ask = () => { Notification.requestPermission(); window.removeEventListener('click', ask) }
+      // 引导开着的时候先不问，免得一点服务商就弹出浏览器的权限框
+      const ask = () => { if (document.querySelector('.onb')) return; Notification.requestPermission(); window.removeEventListener('click', ask) }
       window.addEventListener('click', ask)
     }
   }, [])
@@ -95,6 +101,7 @@ export default function App() {
       {newBot && <NewBotDialog onClose={() => setNewBot(false)} />}
       {newGroup && <NewGroupDialog onClose={() => setNewGroup(false)} />}
       {settings !== false && <Settings initial={settings || undefined} onClose={() => setSettings(false)} />}
+      {onboard && <Onboarding onClose={() => setOnboard(false)} />}
     </div>
   )
 }

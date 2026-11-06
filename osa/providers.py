@@ -22,22 +22,30 @@ from .memory import conn
 BASE = copy.deepcopy(CFG.get("providers") or {})   # config.yaml 里写的
 MODELS_TTL = 600
 
-# 添加时可以选的服务商。key_url：去哪里拿密钥；embedding：推荐的 embedding 模型（没有就是这家不提供）
+# 添加时可以选的服务商。key_url：去哪里拿密钥；embedding：推荐的 embedding 模型（没有就是这家不提供）；
+# models：推荐的对话模型，前面的优先，第一次打开的引导里默认选服务列出来的第一个（都要能看图，2026-11 抄自 models.dev）
 PRESETS = [
     {"id": "deepseek", "title": "DeepSeek", "base_url": "https://api.deepseek.com", "color": "#4d6bfe",
-     "key_url": "https://platform.deepseek.com/api_keys", "desc": "便宜，中文好；默认配置用它"},
+     "key_url": "https://platform.deepseek.com/api_keys", "models": ["deepseek-flash", "deepseek-v4-flash"],
+     "desc": "便宜，中文好；默认配置用它"},
     {"id": "openai", "title": "OpenAI", "base_url": "https://api.openai.com/v1", "color": "#111111",
-     "key_url": "https://platform.openai.com/api-keys", "embedding": "text-embedding-3-small", "desc": "GPT 系列"},
+     "key_url": "https://platform.openai.com/api-keys", "embedding": "text-embedding-3-small", "models": ["gpt-6.1-terra", "gpt-6-sol", "gpt-5.6-terra"],
+     "desc": "GPT 系列"},
     {"id": "openrouter", "title": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "color": "#6467f2",
-     "key_url": "https://openrouter.ai/settings/keys", "desc": "一个密钥用几百个模型"},
+     "key_url": "https://openrouter.ai/settings/keys", "models": ["deepseek/deepseek-v4.1-flash", "google/gemini-3.8-flash", "openai/gpt-6.1-terra"],
+     "desc": "一个密钥用几百个模型"},
     {"id": "siliconflow", "title": "硅基流动", "base_url": "https://api.siliconflow.cn/v1", "color": "#7c3aed",
-     "key_url": "https://cloud.siliconflow.cn/account/ak", "embedding": "BAAI/bge-m3", "desc": "开源模型多，有免费的 embedding"},
+     "key_url": "https://cloud.siliconflow.cn/account/ak", "embedding": "BAAI/bge-m3", "models": ["zai-org/GLM-5.3-Flash", "Qwen/Qwen3.8-27B", "Pro/moonshotai/Kimi-K2.6"],
+     "desc": "开源模型多，有免费的 embedding"},
     {"id": "dashscope", "title": "阿里云百炼", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "color": "#ff6a00",
-     "key_url": "https://bailian.console.aliyun.com/?apiKey=1", "embedding": "text-embedding-v4", "desc": "通义千问"},
+     "key_url": "https://bailian.console.aliyun.com/?apiKey=1", "embedding": "text-embedding-v4", "models": ["qwen3.8-flash", "qwen3.7-plus", "qwen3.6-flash"],
+     "desc": "通义千问"},
     {"id": "zhipu", "title": "智谱", "base_url": "https://open.bigmodel.cn/api/paas/v4", "color": "#3859ff",
-     "key_url": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys", "embedding": "embedding-3", "desc": "GLM 系列"},
+     "key_url": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys", "embedding": "embedding-3", "models": ["glm-5.3-flash", "glm-5v-turbo", "glm-4.6v"],
+     "desc": "GLM 系列"},
     {"id": "moonshot", "title": "Kimi", "base_url": "https://api.moonshot.cn/v1", "color": "#16191e",
-     "key_url": "https://platform.moonshot.cn/console/api-keys", "desc": "月之暗面"},
+     "key_url": "https://platform.moonshot.cn/console/api-keys", "models": ["kimi-k3", "kimi-k2.6"],
+     "desc": "月之暗面"},
     {"id": "ollama", "title": "Ollama", "base_url": "http://localhost:11434/v1", "color": "#5b5b63", "no_key": True,
      "embedding": "nomic-embed-text", "desc": "本机跑的模型，不用密钥",
      "note": "用 Docker 部署时，地址写 http://host.docker.internal:11434/v1"},

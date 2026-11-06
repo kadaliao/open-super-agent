@@ -28,12 +28,13 @@ type State = {
   teach: Teach | null                // 正在“演示一遍”的录制
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
   auth: boolean                      // 服务端开了登录（设置了 OSA_PASSWORD）
+  onboarding: boolean                // 第一次打开：显示引导
 }
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
   active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
-  view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false,
+  view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false,
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -81,7 +82,7 @@ export async function bootstrap() {
   const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
-        tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], categories: b.categories || [], oauthCallback: b.oauth_callback || '', teach: b.teach || null, auth: !!b.auth, ready: true })
+        tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], categories: b.categories || [], oauthCallback: b.oauth_callback || '', teach: b.teach || null, auth: !!b.auth, onboarding: !!b.onboarding, ready: true })
   if (active) openChat(active)
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, useStore } from '../store'
 import type { Channel, ChannelKind } from '../types'
+import { BrandIcon } from './BrandIcon'
 
 // 设置 → 聊天软件：在 Telegram、飞书、钉钉、企业微信、Discord 里和 Bot 对话
 const STATE: Record<string, [string, string]> = {
@@ -65,8 +66,8 @@ function ChannelCard({ c, onChange }: { c: Channel; onChange: () => void }) {
   return (
     <div className="ch-card">
       <div className="ch-head">
-        <span className={'ch-badge ' + c.kind}>{c.title}</span>
-        <b>{c.name}</b>
+        <BrandIcon brand={c.kind} size={30} title={c.title} />
+        <span className="ch-name"><b>{c.name}</b><span>{c.title}</span></span>
         <span className={'pill ' + cls}>{label}</span>
         <span className="grow" />
         <button className="ghost-btn" onClick={() => patch({ enabled: !c.enabled })}>{c.enabled ? '停用' : '启用'}</button>
@@ -215,9 +216,9 @@ function AddChannel({ first, onAdded }: { first: boolean; onAdded: () => void })
   return (
     <form className="ch-add" onSubmit={submit}>
       <h4>连接聊天软件</h4>
-      <div className="seg">
+      <div className="ch-kinds">
         {ORDER.map(k => <button type="button" key={k} className={kind === k ? 'on' : ''}
-          onClick={() => { setKind(k); setErr('') }}>{KINDS[k].label}</button>)}
+          onClick={() => { setKind(k); setErr('') }}><BrandIcon brand={k} size={22} />{KINDS[k].label}</button>)}
       </div>
       <ol className="m-steps">{meta.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
       {meta.variants && <div className="seg">

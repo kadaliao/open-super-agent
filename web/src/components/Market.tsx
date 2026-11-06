@@ -1,44 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, refreshApps, useStore } from '../store'
 import type { App, CatalogItem } from '../types'
-import { GLYPHS } from '../appIcons'
+import { BrandIcon } from './BrandIcon'
 
 const HOW: Record<string, string> = { oauth: '登录即用', token: '填一个密钥', none: '免配置' }
 // 登录授权的应用也可能要先填几项（比如自己建的 OAuth 客户端），填好再登录
 const needsFields = (c: CatalogItem) => c.fields.some(f => !f.optional)
-const howOf = (c: CatalogItem) => c.how || (c.kind === 'oauth' && needsFields(c) ? '填好后登录' : HOW[c.kind])
+export const howOf = (c: CatalogItem) => c.how || (c.kind === 'oauth' && needsFields(c) ? '填好后登录' : HOW[c.kind])
 const STATE: Record<string, [string, string]> = {
   connected: ['已连接', 'ok'], connecting: ['连接中…', 'busy'], login: ['等你授权…', 'busy'],
   needs_login: ['需要重新登录', 'warn'], off: ['已停用', ''], error: ['没连上', 'bad'],
 }
 const CONFIRM_NAMES: [string, string][] = [['auto', '写操作先问我'], ['all', '每次都问'], ['none', '都不问']]
 
-// ---------- 图标：品牌色底 + 白色（或深色）图形 ----------
-const lum = (hex: string) => {
-  const n = parseInt(hex.replace('#', ''), 16)
-  const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4 })
-  return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]
-}
-
 // 图标写在应用清单里（osa/catalog/apps/*.yaml）：品牌图形 svg，或线条图标 glyph；自定义应用用插头
 export function AppIcon({ item, name, size = 44 }: { item?: CatalogItem; name?: string; size?: number }) {
   const spec = item?.icon
-  const glyph = GLYPHS[spec?.glyph || (item ? '' : 'plug')]
-  const hex = spec?.color || '#5b5b63'
-  const dark = lum(hex) < .02           // 黑色品牌（Notion、GitHub）用白底黑图
-  const bg = dark ? '#fff' : hex
-  const fg = dark ? hex : lum(hex) > .55 ? '#141414' : '#fff'
-  return (
-    <span className="app-icon" style={{ width: size, height: size, background: bg, color: fg, borderRadius: size * .26, fontSize: size * .44 }}>
-      {spec?.svg ? <svg viewBox="0 0 24 24" width={size * .56} height={size * .56}><path d={spec.svg} fill="currentColor" /></svg>
-        : glyph ? <svg viewBox="0 0 24 24" width={size * .56} height={size * .56} fill="none" stroke="currentColor" strokeWidth={2}
-            strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: glyph }} />
-        : (item?.title || name || '?').slice(0, 1).toUpperCase()}
-    </span>
-  )
+  return <BrandIcon color={spec?.color} d={spec?.svg} glyph={spec?.glyph || (item ? '' : 'plug')} letter={item?.title || name} size={size} />
 }
 
-function StateTag({ app }: { app: App }) {
+export function StateTag({ app }: { app: App }) {
   const [label, cls] = STATE[app.state] || STATE.error
   return <span className={'m-state ' + cls}><i />{label}</span>
 }
@@ -155,7 +136,7 @@ export default function Market() {
 }
 
 // ---------- 详情 ----------
-function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; app?: App; initErr: string; onClose: () => void; onEdit: () => void }) {
+export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogItem; app?: App; initErr: string; onClose: () => void; onEdit: () => void }) {
   const name = app?.name || item!.id
   const categories = useStore(s => s.categories)
   const catName = useMemo(() => Object.fromEntries(categories), [categories])

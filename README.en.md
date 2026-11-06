@@ -50,6 +50,8 @@ cp .env.example .env     # optionally fill in DEEPSEEK_API_KEY, or add a key lat
 docker compose up -d     # the first build takes 5–10 minutes; then open http://127.0.0.1:8765
 ```
 
+The first time you open it, a short setup guide walks you through adding a model provider, meeting your Bot (or installing one from a template) and connecting an app.
+
 See [Deploy with Docker Compose](docs/docker.md) (in Chinese) for automatic HTTPS, using Instabox as the computer, and backups.
 
 Without Docker you need Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/) and Node ≥ 20 (plus Docker for the local computer backend):

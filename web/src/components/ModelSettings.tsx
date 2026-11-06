@@ -3,6 +3,8 @@ import { api, setSettings, useStore } from '../store'
 import { Icon } from '../icons'
 import type { ModelItem, ModelList, Preset, Provider, Role, Settings as S } from '../types'
 import { money, PriceTag, Section, useToast } from './settingsKit'
+import { BrandIcon, modelBrand, providerBrand } from './BrandIcon'
+import { BRANDS } from '../brandIcons'
 
 // 设置 → 模型：先加模型服务（地址 + API Key），再给每项工作选模型
 
@@ -17,9 +19,9 @@ export const ROLE_NAMES: Record<string, string> = { ...Object.fromEntries(ROLES.
 
 // ---------- 各个服务的模型列表：打开页面时拉一次，服务端缓存 10 分钟 ----------
 type Lists = Record<string, ModelList | undefined>
-const ListsCtx = createContext<{ lists: Lists; load: (name: string, refresh?: boolean) => Promise<void> }>({ lists: {}, load: async () => {} })
+export const ListsCtx = createContext<{ lists: Lists; load: (name: string, refresh?: boolean) => Promise<void> }>({ lists: {}, load: async () => {} })
 
-function useLists(providers: Provider[]) {
+export function useLists(providers: Provider[]) {
   const [lists, setLists] = useState<Lists>({})
   const loading = useRef(new Set<string>())
   const load = async (name: string, refresh = false) => {
@@ -43,15 +45,20 @@ const usedBy = (s: S, name: string) => [
 ]
 const host = (url: string) => url.replace(/^https?:\/\//, '')
 
-export function ProviderBadge({ preset, title, size = 34 }: { preset?: string; title?: string; size?: number }) {
+// 模型服务的图标：认得出品牌就用品牌图标（自定义的按接口地址认），认不出用服务商的颜色和首字
+export function ProviderBadge({ preset, url, title, size = 34 }: { preset?: string; url?: string; title?: string; size?: number }) {
   const presets = useStore(s => s.settings?.presets) || []
   const p = presets.find(x => x.id === preset)
+  const brand = providerBrand(preset, url)
   const custom = !p || p.id === 'custom'
-  return (
-    <span className="prov-badge" style={{ width: size, height: size, background: p?.color || '#5b5b63', fontSize: size * .44, borderRadius: size * .28 }}>
-      {custom ? <Icon name="server" size={Math.round(size * .5)} /> : (p.title || title || '?').slice(0, 1).toUpperCase()}
-    </span>
-  )
+  return <BrandIcon brand={brand} color={p?.color} icon={custom ? 'server' : undefined} letter={p?.title || title} size={size} title={title} />
+}
+
+// 模型的图标：按名字认是哪家的（DeepSeek、通义千问、Claude……），认不出用模型服务的图标
+export function ModelIcon({ prov, model, size = 20 }: { prov?: Provider; model: string; size?: number }) {
+  const brand = modelBrand(model)
+  return brand ? <BrandIcon brand={brand} size={size} title={BRANDS[brand]?.name} />
+    : <ProviderBadge preset={prov?.preset} url={prov?.base_url} title={prov?.title} size={size} />
 }
 
 export default function ModelSettings() {
@@ -96,7 +103,7 @@ function ProviderRow({ p, onEdit }: { p: Provider; onEdit: () => void }) {
     : [p.needs_key && !p.key_source ? 'warn' : 'bad', l.error]
   return (
     <button className="prov-row" onClick={onEdit}>
-      <ProviderBadge preset={p.preset} title={p.title} />
+      <ProviderBadge preset={p.preset} url={p.base_url} title={p.title} />
       <span className="prov-main">
         <span className="prov-name">{p.title}{p.source === 'config' && <span className="tag" title="在 config.yaml 的 providers 里写的">config.yaml</span>}</span>
         <span className="prov-sub">{host(p.base_url)} · {keyText(p)}{used.length ? ` · ${used.join('、')}在用` : ''}</span>
@@ -109,14 +116,17 @@ function ProviderRow({ p, onEdit }: { p: Provider; onEdit: () => void }) {
 
 type Check = { ok: boolean; models: string[]; error: string; note: string }
 
-function ProviderForm({ name, onDone }: { name: string | null; onDone: (name?: string) => void }) {
+// presetId：已经选好服务商（引导里用）；onBack、backLabel：返回到哪里，不传就是回到设置页的模型
+export function ProviderForm({ name, onDone, presetId, onBack, backLabel }: {
+  name: string | null; onDone: (name?: string) => void; presetId?: string; onBack?: () => void; backLabel?: string
+}) {
   const s = useStore(x => x.settings) as S
   const toast = useToast()
   const old = name ? s.providers.find(p => p.name === name) : undefined
   const custom = s.presets.find(x => x.id === 'custom')!
-  const [preset, setPreset] = useState<Preset | null>(old ? s.presets.find(x => x.id === old.preset) || custom : null)
-  const [title, setTitle] = useState(old?.title || '')
-  const [url, setUrl] = useState(old?.base_url || '')
+  const [preset, setPreset] = useState<Preset | null>(old ? s.presets.find(x => x.id === old.preset) || custom : s.presets.find(x => x.id === presetId) || null)
+  const [title, setTitle] = useState(old?.title || (preset && preset.id !== 'custom' ? preset.title : ''))
+  const [url, setUrl] = useState(old?.base_url || preset?.base_url || '')
   const [key, setKey] = useState('')
   const [check, setCheck] = useState<Check | null>(null)
   const [busy, setBusy] = useState('')
@@ -164,9 +174,9 @@ function ProviderForm({ name, onDone }: { name: string | null; onDone: (name?: s
     : preset.no_key ? '本机的一般不用填' : 'sk-…'
   return (
     <div className="prov-form">
-      <button className="back-link" onClick={() => (name ? onDone() : setPreset(null))}><Icon name="left" size={14} />{name ? '模型' : '换一个服务商'}</button>
+      <button className="back-link" onClick={() => (onBack ? onBack() : name ? onDone() : setPreset(null))}><Icon name="left" size={14} />{backLabel || (name ? '模型' : '换一个服务商')}</button>
       <div className="prov-form-head">
-        <ProviderBadge preset={preset.id} title={preset.title} size={44} />
+        <ProviderBadge preset={preset.id} url={url} title={title || preset.title} size={44} />
         <div><h3>{name ? old?.title : `添加 ${preset.title}`}</h3><span className="muted small">{preset.desc}</span></div>
       </div>
       <label className="field">名字<input value={title} placeholder={preset.id === 'custom' ? '比如：公司的 vLLM' : preset.title} onChange={e => setTitle(e.target.value)} /></label>
@@ -202,7 +212,7 @@ function ProviderForm({ name, onDone }: { name: string | null; onDone: (name?: s
 // ---------- 每项工作用哪个模型 ----------
 type TestResult = { ok: boolean; error?: string; ms?: number; vision?: 'yes' | 'no' | 'unsure'; vision_error?: string; dim?: number }
 
-function useTest(body: () => object, deps: unknown[]) {
+export function useTest(body: () => object, deps: unknown[]) {
   const [res, setRes] = useState<TestResult | null>(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => setRes(null), deps)
@@ -252,7 +262,7 @@ function RoleCard({ role }: { role: RoleDef }) {
   )
 }
 
-function TestButton({ t }: { t: ReturnType<typeof useTest> }) {
+export function TestButton({ t }: { t: ReturnType<typeof useTest> }) {
   return <>
     {t.res?.ok && <span className="test-ok"><Icon name="check" size={14} />能用 · {((t.res.ms || 0) / 1000).toFixed(1)} 秒{t.res.dim ? ` · ${t.res.dim} 维` : ''}</span>}
     <button className="btn tiny" disabled={t.busy} onClick={t.run}><Icon name="zap" size={13} />{t.busy ? '测试中…' : '测试'}</button>
@@ -293,8 +303,9 @@ function EmbeddingCard() {
 }
 
 // ---------- 选模型：按服务分组，可以搜，也可以直接填名字 ----------
-function ModelPicker({ kind, value, onChange, allowNone }: {
+export function ModelPicker({ kind, value, onChange, allowNone, only }: {
   kind: 'chat' | 'embedding'; value: { provider: string; model: string }; onChange: (provider: string, model: string) => void; allowNone?: boolean
+  only?: string   // 只列这个服务的模型
 }) {
   const s = useStore(x => x.settings) as S
   const cur = s.prices.currency
@@ -308,7 +319,7 @@ function ModelPicker({ kind, value, onChange, allowNone }: {
   useLayoutEffect(() => {
     if (!open || !box.current) return
     const r = box.current.getBoundingClientRect()
-    const width = Math.min(460, innerWidth - 16)
+    const width = Math.min(Math.max(460, r.width), innerWidth - 16)   // 按钮比弹出框宽时（引导里）和按钮一样宽
     const below = innerHeight - r.bottom - 12, above = r.top - 12
     const up = below < 320 && above > below
     setPos({ position: 'fixed', width, left: Math.max(8, Math.min(r.right - width, innerWidth - width - 8)), maxHeight: Math.min(480, up ? above : below),
@@ -327,7 +338,7 @@ function ModelPicker({ kind, value, onChange, allowNone }: {
   const query = q.trim()
   const lq = query.toLowerCase()
   const fits = (m: ModelItem) => (kind === 'embedding' ? m.kind === 'embedding' : m.kind === 'chat')
-  const groups = s.providers.map(p => {
+  const groups = s.providers.filter(p => !only || p.name === only).map(p => {
     const l = lists[p.name]
     const items = (l?.items || []).filter(m => (fits(m) || (p.name === value.provider && m.id === value.model)) && (!lq || m.id.toLowerCase().includes(lq)))
     return { p, l, items, exact: (l?.items || []).some(m => m.id === query) }
@@ -341,10 +352,10 @@ function ModelPicker({ kind, value, onChange, allowNone }: {
   return (
     <div className="mp" ref={box}>
       <button className={'mp-btn' + (open ? ' on' : '')} onClick={() => setOpen(!open)}>
-        {value.provider ? <>
-          <ProviderBadge preset={prov?.preset} title={prov?.title} size={20} />
+        {value.provider && value.model ? <>
+          <ModelIcon prov={prov} model={value.model} size={22} />
           <span className="mp-label"><span className="mp-prov">{prov?.title || value.provider}</span><span className="mp-model">{value.model}</span></span>
-        </> : <span className="mp-label muted">不用（只按关键词找）</span>}
+        </> : <span className="mp-label muted">{allowNone ? '不用（只按关键词找）' : '选一个模型'}</span>}
         <Icon name="chevron" size={14} />
       </button>
       {open && (
@@ -363,7 +374,7 @@ function ModelPicker({ kind, value, onChange, allowNone }: {
             {groups.map(({ p, l, items, exact }) => (
               <div key={p.name} className="mp-group">
                 <div className="mp-group-head">
-                  <ProviderBadge preset={p.preset} title={p.title} size={16} /><span>{p.title}</span>
+                  <ProviderBadge preset={p.preset} url={p.base_url} title={p.title} size={18} /><span>{p.title}</span>
                   <span className="grow" />
                   {l && !l.ok && <span className="mp-err" title={l.error}>{l.error}</span>}
                   <button className="mp-refresh" title="重新拉模型列表" onClick={() => load(p.name, true)}><Icon name="refresh" size={12} /></button>
@@ -373,6 +384,7 @@ function ModelPicker({ kind, value, onChange, allowNone }: {
                   const on = p.name === value.provider && m.id === value.model
                   return (
                     <button key={m.id} className={'mp-item' + (on ? ' on' : '')} onClick={() => choose(p.name, m.id)}>
+                      <ModelIcon prov={p} model={m.id} size={18} />
                       <span className="mp-id">{m.id}</span>
                       {kind === 'chat' && m.vision && <span title="能看图"><Icon name="eye" size={13} className="mp-vision" /></span>}
                       <span className="mp-price">{price(m)}</span>
@@ -381,7 +393,7 @@ function ModelPicker({ kind, value, onChange, allowNone }: {
                 })}
                 {l?.ok && !items.length && !lq && <div className="mp-empty">{kind === 'embedding' ? '没认出 embedding 模型，可以在上面直接填名字' : '没有列出模型，可以在上面直接填名字'}</div>}
                 {query && !exact && <button className="mp-item mp-custom" onClick={() => choose(p.name, query)}>
-                  <span className="mp-id">在 {p.title} 用 “{query}”</span></button>}
+                  <ModelIcon prov={p} model={query} size={18} /><span className="mp-id">在 {p.title} 用 “{query}”</span></button>}
               </div>
             ))}
           </div>

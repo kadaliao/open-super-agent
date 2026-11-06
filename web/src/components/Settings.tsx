@@ -51,6 +51,7 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
                   <button key={k} className={'set-item' + (title === k ? ' on' : '')} onClick={() => setTab(k)}><Icon name={icon} />{v}</button>))}
               </div>))}
             <span className="grow" />
+            <button className="set-item" onClick={() => window.dispatchEvent(new CustomEvent('osa-onboarding'))}><Icon name="sparkles" />新手引导</button>
             {auth && <form method="post" action="/logout"><button className="set-item" type="submit"><Icon name="logout" />退出登录</button></form>}
           </nav>
           <div className="set-main">

@@ -90,7 +90,7 @@ async def bootstrap(request: Request):
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
-            **_apps_out(request), "teach": teach.public(), "auth": auth.enabled()}
+            **_apps_out(request), "teach": teach.public(), "auth": auth.enabled(), "onboarding": settings.onboarding()}
 
 
 @app.post("/api/bots")
@@ -1205,6 +1205,13 @@ async def put_settings(data: dict = Body(...)):
         return settings.save(data)
     except ValueError as e:
         _err(e)
+
+
+@app.post("/api/onboarding/done")
+async def onboarding_done():
+    """第一次打开时的引导走完或跳过了，以后不再自动弹出。"""
+    settings.finish_onboarding()
+    return {"ok": True}
 
 
 # ---------- 模型服务 ----------

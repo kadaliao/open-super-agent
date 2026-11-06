@@ -13,7 +13,8 @@ export type TemplatePreview = {
   skills: { name: string; description: string; body: string }[]; routines: Routine[]; text?: string
 }
 
-export function TemplatePicker({ onPreview, onBlank }: { onPreview: (p: TemplatePreview) => void; onBlank: () => void }) {
+// compact：只列内置模板，不要“空白 Bot”和从链接、文件装（第一次打开的引导里用）
+export function TemplatePicker({ onPreview, onBlank, compact }: { onPreview: (p: TemplatePreview) => void; onBlank?: () => void; compact?: boolean }) {
   const [list, setList] = useState<TemplateCard[] | null>(null)
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState('')
@@ -33,9 +34,9 @@ export function TemplatePicker({ onPreview, onBlank }: { onPreview: (p: Template
   return (
     <div className="tpl-pick">
       <div className="tpl-grid">
-        <button className="tpl-card blank" onClick={onBlank}>
+        {!compact && <button className="tpl-card blank" onClick={onBlank}>
           <div className="tpl-plus">＋</div><b>空白 Bot</b><div className="muted small">起个名字，在对话里交代它做什么</div>
-        </button>
+        </button>}
         {(list || []).map(t => (
           <button key={t.id} className="tpl-card" disabled={!!busy} onClick={() => open({ id: t.id }, t.id)}>
             <BotAvatar avatar={t.avatar} size={36} />
@@ -45,7 +46,7 @@ export function TemplatePicker({ onPreview, onBlank }: { onPreview: (p: Template
           </button>
         ))}
       </div>
-      <label className="field">从别人分享的模板装
+      {!compact && <label className="field">从别人分享的模板装
         <div className="env-row">
           <input value={url} placeholder="粘贴 …/template/… 链接，或 GitHub 上的 .osabot.yaml" onChange={e => setUrl(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && url.trim() && open({ url }, 'url')} />
@@ -53,7 +54,7 @@ export function TemplatePicker({ onPreview, onBlank }: { onPreview: (p: Template
           <button className="btn" disabled={!!busy} onClick={() => file.current?.click()}>选择文件…</button>
           <input ref={file} type="file" accept=".yaml,.yml" hidden onChange={e => { pick(e.target.files?.[0]); e.target.value = '' }} />
         </div>
-      </label>
+      </label>}
       {err && <div className="error-line">{err}</div>}
     </div>
   )

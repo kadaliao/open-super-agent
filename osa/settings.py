@@ -1,5 +1,6 @@
 """界面上可修改的设置，存在数据库里，覆盖 config.yaml 的同名项。模型服务（地址、密钥）在 providers.py。"""
 import json
+import time
 from . import prices, providers
 from .config import CFG
 from .memory import conn
@@ -37,6 +38,18 @@ def problem() -> str:
         if not providers.usable(name):
             return f"{providers.describe(name)['title']} 还没填 API Key"
     return ""
+
+
+def onboarding() -> bool:
+    """要不要显示第一次打开时的引导：没走完、没跳过，而且还没跟 Bot 说过话（老用户升级上来不打扰）。"""
+    if conn.execute("select 1 from settings where key='onboarding'").fetchone():
+        return False
+    return not conn.execute("select 1 from messages where role='user' limit 1").fetchone()
+
+
+def finish_onboarding():
+    conn.execute("insert or replace into settings values('onboarding', ?)", (json.dumps({"done": time.time()}),))
+    conn.commit()
 
 
 def public() -> dict:
