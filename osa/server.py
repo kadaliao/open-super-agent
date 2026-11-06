@@ -5,6 +5,7 @@ import mimetypes
 import os
 import posixpath
 import shutil
+import signal
 import tempfile
 import time
 from contextlib import asynccontextmanager
@@ -56,6 +57,22 @@ async def _pages_changed():
 worker_mod.PAGES_CHANGED = _pages_changed
 
 
+async def parent_watch(pid: int, every: float = 2):
+    """桌面版：启动服务的 App 异常退出、没来得及停服务时，服务自己退出，免得留下一个没人管的进程占着端口。"""
+    if os.name == "nt":   # Windows 上 os.kill(pid, 0) 会直接结束那个进程，做 Windows 版时换别的办法
+        return
+    while True:
+        await asyncio.sleep(every)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            print("启动服务的 App 已经退出，服务跟着停止", flush=True)
+            os.kill(os.getpid(), signal.SIGTERM)   # 和 Ctrl-C 一样正常退出：停掉聊天软件和应用
+            return
+        except PermissionError:   # 进程还在，只是不归这个用户
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app):
     if not auth.enabled():
@@ -69,6 +86,8 @@ async def lifespan(app):
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
           asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop()),
           asyncio.create_task(prices.loop()), asyncio.create_task(tasklog.prune_loop())]
+    if os.environ.get("OSA_PARENT_PID", "").isdigit():
+        bg.append(asyncio.create_task(parent_watch(int(os.environ["OSA_PARENT_PID"]))))
     search.sync()   # 补上旧数据的索引；配了 embedding 的话后台开始算向量
     yield
     for t in bg:

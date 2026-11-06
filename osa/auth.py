@@ -15,19 +15,22 @@ import html
 import ipaddress
 import json
 import os
+import re
 import secrets
 import time
 from urllib.parse import parse_qs, quote, urlsplit
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from . import i18n
 from .config import CFG
 from .memory import db_path
 
-COOKIE = "osa_session"
+# 同一台机器上跑两个服务（比如桌面版和开发用的）时用 OSA_COOKIE 分开起名：cookie 不分端口，同名会互相把登录顶掉
+COOKIE = os.environ.get("OSA_COOKIE", "") if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", os.environ.get("OSA_COOKIE", "")) else "osa_session"
 MAX_AGE = 30 * 86400          # 登录保持 30 天
 RENEW_BELOW = 15 * 86400      # 剩不到 15 天时，下一次请求自动续期
 FAIL_WINDOW, MAX_FAILS = 600, 5   # 同一个 IP 10 分钟内输错 5 次，暂停登录到窗口结束
+TICKET_TTL = 30              # 桌面 App 自动登录用的票，30 秒内有效，只能用一次
 
 # 前端构建产物里不含数据的文件：登录页和分享页要用
 PUBLIC_FILES = {"/manifest.json", "/sw.js", "/favicon.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"}
@@ -37,6 +40,7 @@ LOCAL_SUFFIXES = (".localhost", ".local", ".ts.net")
 
 router = APIRouter()
 _fails: dict[str, list[float]] = {}
+_tickets: dict[str, float] = {}
 _key: bytes | None = None
 
 
@@ -136,7 +140,7 @@ def host_ok(host: str | None) -> bool:
 def _public(path: str) -> bool:
     if ".." in path:   # 不让 /s/../ 这种路径借公开前缀绕过
         return False
-    return path in PUBLIC_FILES or path in ("/login", "/logout") or path.startswith(PUBLIC_PREFIXES)
+    return path in PUBLIC_FILES or path in ("/login", "/logout", "/login/ticket") or path.startswith(PUBLIC_PREFIXES)
 
 
 def _safe_next(n: str | None) -> str:
@@ -280,6 +284,40 @@ async def login(request: Request):
         return _page(request, nxt, i18n.t("密码不对", in_lang=_lang(request)), 401)
     _fails.pop(ip, None)
     r = RedirectResponse(nxt, 303)
+    r.headers.append("set-cookie", _cookie_header(new_token(), MAX_AGE, request.url.scheme == "https"))
+    return r
+
+
+@router.post("/login/ticket")
+async def login_ticket(request: Request):
+    """桌面 App 自动登录：带上密码（Authorization: Bearer）换一张票，再让窗口打开 GET /login/ticket?t=票，
+    种上普通的登录 cookie。密码不经过网页，页面里的脚本拿不到。浏览器跨站发不来（来源检查），输错和登录页一样限速。"""
+    if not enabled():
+        raise HTTPException(400, i18n.t("没有开登录"))
+    ip = request.client.host if request.client else "?"
+    if _blocked(ip):
+        raise HTTPException(429, i18n.t("输错次数太多，请 10 分钟后再试"))
+    if not check_password(request.headers.get("authorization", "").removeprefix("Bearer ").strip()):
+        _fails.setdefault(ip, []).append(time.time())
+        await asyncio.sleep(1)
+        raise HTTPException(401, i18n.t("密码不对"))
+    _fails.pop(ip, None)
+    now = time.time()
+    for k in [k for k, exp in _tickets.items() if exp < now]:
+        del _tickets[k]
+    ticket = secrets.token_urlsafe(32)
+    _tickets[ticket] = now + TICKET_TTL
+    return {"ticket": ticket, "expires_in": TICKET_TTL}
+
+
+@router.get("/login/ticket")
+async def use_ticket(request: Request):
+    nxt = _safe_next(request.query_params.get("next"))
+    if not enabled():
+        return RedirectResponse(nxt, 303)
+    if _tickets.pop(request.query_params.get("t", ""), 0) < time.time():   # 用过、过期或不存在：去登录页
+        return RedirectResponse("/login" + ("" if nxt == "/" else "?next=" + quote(nxt, safe="")), 303)
+    r = RedirectResponse(nxt, 303, headers={"cache-control": "no-store"})
     r.headers.append("set-cookie", _cookie_header(new_token(), MAX_AGE, request.url.scheme == "https"))
     return r
 

@@ -315,6 +315,7 @@
   "没有命中关键词": "Didn't match any keyword",
   "没有完成授权": "Authorization not completed",
   "没有应用 {name}": "No app named {name}",
+  "没有开登录": "Login isn't enabled",
   "没有开通需要的意图": "The required intents aren't enabled",
   "没有待确认的请求 #{id}": "No pending request #{id}",
   "没有技能 /{skill}": "No skill /{skill}",

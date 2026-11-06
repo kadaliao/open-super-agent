@@ -127,3 +127,18 @@ def find(chat_id: int, **want) -> list[dict]:
             continue
         out.append(m)
     return out
+
+
+@pytest.fixture
+def no_password(monkeypatch):
+    """没开登录（默认）。"""
+    monkeypatch.delenv("OSA_PASSWORD", raising=False)
+    monkeypatch.delenv("OSA_WEBHOOK_TOKEN", raising=False)
+    monkeypatch.delenv("OSA_ALLOWED_HOSTS", raising=False)
+
+
+@pytest.fixture
+def password(monkeypatch):
+    """开了登录，密码是 test-password。"""
+    monkeypatch.setenv("OSA_PASSWORD", "test-password")
+    monkeypatch.delenv("OSA_WEBHOOK_TOKEN", raising=False)

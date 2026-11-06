@@ -6,13 +6,14 @@ from osa import auth, config, server
 LOCAL = "127.0.0.1:8765"
 
 
-def _scope(kind="http", method="GET", path="/api/me", host=LOCAL, origin=None, cookie=None) -> dict:
+def _scope(kind="http", method="GET", path="/api/me", host=LOCAL, origin=None, cookie=None, query="", extra=()) -> dict:
     headers = [(b"host", host.encode())] if host else []
     if origin:
         headers.append((b"origin", origin.encode()))
     if cookie:
         headers.append((b"cookie", cookie.encode()))
-    scope = {"type": kind, "path": path, "raw_path": path.encode(), "headers": headers, "query_string": b"",
+    headers += [(k.encode(), v.encode()) for k, v in extra]
+    scope = {"type": kind, "path": path, "raw_path": path.encode(), "headers": headers, "query_string": query.encode(),
              "scheme": "ws" if kind == "websocket" else "http", "root_path": "", "http_version": "1.1",
              "client": ("127.0.0.1", 50000), "server": ("127.0.0.1", 8765)}
     if kind == "http":
@@ -48,19 +49,6 @@ APP = auth.AuthMiddleware(_reach)
 async def outcome(**kw):
     first = (await _call(APP, _scope(**kw)))[0]
     return {"websocket.accept": "accept", "websocket.close": "close"}.get(first["type"]) or first["status"]
-
-
-@pytest.fixture
-def no_password(monkeypatch):
-    monkeypatch.delenv("OSA_PASSWORD", raising=False)
-    monkeypatch.delenv("OSA_WEBHOOK_TOKEN", raising=False)
-    monkeypatch.delenv("OSA_ALLOWED_HOSTS", raising=False)
-
-
-@pytest.fixture
-def password(monkeypatch):
-    monkeypatch.setenv("OSA_PASSWORD", "test-password")
-    monkeypatch.delenv("OSA_WEBHOOK_TOKEN", raising=False)
 
 
 async def test_other_sites_cannot_use_the_websocket(no_password):

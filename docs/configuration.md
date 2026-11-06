@@ -13,6 +13,8 @@
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
 | `OSA_ALLOWED_HOSTS` | 否 | 没设 `OSA_PASSWORD` 时，额外放行的访问地址，逗号分隔，和 `server.allowed_hosts` 一样（见 [登录](#登录)） |
 | `OSA_CONFIG` | 否 | 配置文件路径，默认 `config.yaml` |
+| `OSA_COOKIE` | 否 | 登录 cookie 的名字，默认 `osa_session`。同一台机器上跑两个服务时起不同的名字，免得互相把登录顶掉（cookie 不分端口） |
+| `OSA_PARENT_PID` | 否 | 桌面版用：这个进程退出后服务跟着退出 |
 | `OSA_DATA_DIR` | 否 | 数据目录，默认仓库里的 `data/`。数据库、密钥、自己加的应用清单、工作目录都放在这里；设了以后，相对路径的 `memory.db` 只取文件名放进这个目录（绝对路径照旧） |
 | `HTTPS_PROXY` | 否 | 服务器在国内、要用 Telegram 或 Discord 时设置，见 [聊天软件](channels.md) |
 | `OSA_BACKUP_PASSPHRASE` | 否 | 命令行备份、恢复时用的口令，定时备份用，见 [备份与迁移](#备份与迁移) |
@@ -278,6 +280,7 @@ uv run python -m osa.backup restore ~/backups/osa-backup-20261106-0835.osabak
 
 - 不用登录就能访问的只有：登录页、分享链接（页面 `/s/<token>`、技能 `/skill/<token>`、Bot 模板 `/template/<token>`）、webhook（`/hooks/*`，用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
 - 同一个 IP 10 分钟内输错 5 次，之后 10 分钟内不能再登录。
+- 桌面 App 自动登录用一次性的票：`POST /login/ticket` 带上 `Authorization: Bearer <密码>`，换一张 30 秒内有效、只能用一次的票，再打开 `/login/ticket?t=<票>&next=/` 就登录了。输错和登录页一起限速。
 - 不管开没开登录，别的网站发来的 WebSocket 和写请求（包括 webhook）都会被拒绝：浏览器会带上那个网站的地址（Origin），所以你在浏览器里打开的网页没法替你给 Bot 发消息、点确认。curl、脚本和 webhook 服务发来的请求不带这个，不受影响。
 - **没设密码时，只接受用这些地址访问**：`localhost`、IP 地址（`127.0.0.1`、`192.168.x.x`、Tailscale 的 `100.x.x.x`）、`*.local`、`*.ts.net`。用别的名字访问（比如局域网里的机器名、自己的域名）会看到“没有放行这个地址”，在 `config.yaml` 的 `server.allowed_hosts` 里加上它（支持 `*.example.com`），或者用环境变量 `OSA_ALLOWED_HOSTS`；更好的办法是设 `OSA_PASSWORD`，设了密码就不检查这一项。这一条是为了防 DNS rebinding：别人把自己的域名解析到 127.0.0.1，你一打开他的网页，他就能借你的浏览器读写本机的服务。设了 `OSA_WEBHOOK_TOKEN` 时，webhook 不受这一条限制。
 - 会话签名用的密钥在 `data/session.key`（权限 600）。改密码或删掉这个文件，所有设备都要重新登录。
