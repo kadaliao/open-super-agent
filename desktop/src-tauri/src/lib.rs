@@ -483,7 +483,8 @@ pub fn run() {
         .expect("启动 Open Super Agent 失败");
 
     app.run(|app, event| match event {
-        RunEvent::ExitRequested { .. } => state(app).server.stop(),
+        // 菜单栏里点“退出”走 ExitRequested；⌘Q 和系统的“退出”直接走 Exit。两种都先停服务（重复调用没关系）
+        RunEvent::ExitRequested { .. } | RunEvent::Exit => state(app).server.stop(),
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => show_main(app),
         _ => {}

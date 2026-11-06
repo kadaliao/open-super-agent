@@ -56,9 +56,9 @@ fn random_secret() -> String {
 }
 
 /// 本机服务的登录密码：第一次用时随机生成。发布版存在钥匙串里；
-/// 开发版每次编译签名都会变，钥匙串会反复弹窗问，所以存在数据目录的文件里（权限 600）。
+/// 开发版每次编译签名都会变，钥匙串会反复弹窗问，所以存在数据目录的文件里（权限 600）。测试目录（OSA_DESKTOP_HOME）也一样
 pub fn secret() -> String {
-    if !cfg!(debug_assertions) {
+    if !cfg!(debug_assertions) && std::env::var_os("OSA_DESKTOP_HOME").is_none() {
         if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_USER) {
             if let Ok(s) = entry.get_password() {
                 return s;

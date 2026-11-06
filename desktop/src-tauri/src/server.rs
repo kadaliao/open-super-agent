@@ -131,6 +131,8 @@ pub fn launch(resources: Option<PathBuf>, port: u16, secret: &str) -> Result<Lau
         ("OSA_COOKIE".into(), "osa_desktop".into()), // 和本机别的服务（比如开发用的 8765）分开，免得互相顶掉登录
         ("OSA_PARENT_PID".into(), std::process::id().to_string()),
         ("PYTHONNOUSERSITE".into(), "1".into()),
+        // 签名后的 App 里不能写文件：.pyc 写到数据目录旁边，只有第一次启动慢一些
+        ("PYTHONPYCACHEPREFIX".into(), store::home().join("pycache").display().to_string()),
     ];
     let args = |prefix: &[&str]| -> Vec<String> {
         let port = port.to_string();
