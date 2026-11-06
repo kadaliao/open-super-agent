@@ -4,6 +4,7 @@ import type { SearchHit, Avatar, FileEntry, FileListing, Page } from '../types'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { locale, t, tc } from '../i18n'
+import { ask } from './Dialog'
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 export const size = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`
@@ -111,7 +112,7 @@ function PageView({ id }: { id: number }) {
   }
   const copy = (token: string) => { navigator.clipboard?.writeText(shareUrl(token)); setCopied(true); setTimeout(() => setCopied(false), 1500) }
   const del = async () => {
-    if (!confirm(t('删除页面「{title}」？分享链接也会失效。', { title: p!.title }))) return
+    if (!(await ask(t('删除页面「{title}」？分享链接也会失效。', { title: p!.title }), { ok: t('删除'), danger: true }))) return
     await api(`/api/pages/${id}`, { method: 'DELETE' }); openLibrary()
   }
   return (
@@ -200,7 +201,7 @@ function Files() {
     setBusy(''); load()
   }
   const del = async (e: FileEntry) => {
-    if (!confirm(e.dir ? t('删除文件夹「{name}」？里面的东西会一起删掉。', { name: e.name }) : t('删除文件「{name}」？', { name: e.name }))) return
+    if (!(await ask(e.dir ? t('删除文件夹「{name}」？里面的东西会一起删掉。', { name: e.name }) : t('删除文件「{name}」？', { name: e.name }), { ok: t('删除'), danger: true }))) return
     try { await api(`/api/files?path=${encodeURIComponent(e.path)}`, { method: 'DELETE' }); load() } catch (x: any) { setErr(x.message) }
   }
   const pin = async (e: FileEntry, on: boolean) => { await api('/api/files/pin', { method: 'POST', body: { path: e.path, on } }); load() }

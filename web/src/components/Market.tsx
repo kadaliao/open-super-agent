@@ -3,6 +3,7 @@ import { api, refreshApps, useStore } from '../store'
 import type { App, CatalogItem } from '../types'
 import { BrandIcon } from './BrandIcon'
 import { t, tc, tn } from '../i18n'
+import { ask } from './Dialog'
 
 const HOW: Record<string, string> = { oauth: t('登录即用'), token: t('填一个密钥'), none: t('免配置') }
 // 登录授权的应用也可能要先填几项（比如自己建的 OAuth 客户端），填好再登录
@@ -166,7 +167,7 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
       await api(`/api/market/${item!.id}`, { method: 'POST', body: { values } })
     }))
   }
-  const remove = () => confirm(t('断开 {name}？保存的密钥和授权会一起删掉。', { name: item?.title || name })) &&
+  const remove = async () => await ask(t('断开 {name}？保存的密钥和授权会一起删掉。', { name: item?.title || name }), { ok: t('断开'), danger: true }) &&
     run('remove', () => api(`/api/apps/${name}`, { method: 'DELETE' }))
   const showForm = !app || rekey
   return (
@@ -359,7 +360,7 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
     } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
   const remove = async () => {
-    if (!app || !confirm(t('删除应用 @{name}？', { name: app.name }))) return
+    if (!app || !(await ask(t('删除应用 @{name}？', { name: app.name }), { ok: t('删除'), danger: true }))) return
     await api(`/api/apps/${app.name}`, { method: 'DELETE' }); await refreshApps(); onDone()
   }
   return (

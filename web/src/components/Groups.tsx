@@ -5,6 +5,7 @@ import { lang, t, tc } from '../i18n'
 import BotAvatar from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { TasksPanel } from './Tasks'
+import { ask } from './Dialog'
 
 const MIN = 2, MAX = 6
 const SEP = lang === 'en' ? ', ' : '、'
@@ -96,7 +97,7 @@ function GroupSettings({ chat, onClose }: { chat: Chat; onClose: () => void }) {
     try { await api(`/api/chats/${chat.id}`, { method: 'PATCH', body }); await refreshLists() } catch (e: any) { setErr(e.message) }
   }
   const del = async () => {
-    if (!confirm(t('删除群聊「{name}」？群里的消息会一起删除，Bot 和它们的私聊不受影响。', { name: chat.title }))) return
+    if (!(await ask(t('删除群聊「{name}」？群里的消息会一起删除，Bot 和它们的私聊不受影响。', { name: chat.title }), { ok: t('删除'), danger: true }))) return
     await api(`/api/chats/${chat.id}`, { method: 'DELETE' }); await refreshLists(); onClose()
     const first = bots[0]; if (first) openChat(first.chat_id)
   }

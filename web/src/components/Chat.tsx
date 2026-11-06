@@ -5,6 +5,7 @@ import BotAvatar from './BotAvatar'
 import Composer from './Composer'
 import Markdown from './Markdown'
 import { locale, t, tn } from '../i18n'
+import { ask } from './Dialog'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -302,8 +303,8 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
           {group ? <span className="muted small">{t('{n} 个 Bot', { n: members.length })}</span> : bot!.is_primary && <span className="star" title={t('主 Bot')}>★</span>}
         </button>
         <div className="head-actions">
-          <button className="ghost-btn" title={t('之前的对话不再带进上下文，省 token；长期记忆还在')} onClick={() => {
-            if (confirm(group ? t('开始新话题？群里的 Bot 不再参考之前的对话（记录还在，长期记忆也还在）。') : t('开始新话题？{name} 不再参考之前的对话（记录还在，长期记忆也还在）。', { name: bot!.name }))) api(`/api/chats/${active}/reset`, { method: 'POST' })
+          <button className="ghost-btn" title={t('之前的对话不再带进上下文，省 token；长期记忆还在')} onClick={async () => {
+            if (await ask(group ? t('开始新话题？群里的 Bot 不再参考之前的对话（记录还在，长期记忆也还在）。') : t('开始新话题？{name} 不再参考之前的对话（记录还在，长期记忆也还在）。', { name: bot!.name }), { ok: t('新话题') })) api(`/api/chats/${active}/reset`, { method: 'POST' })
           }}>{t('新话题')}</button>
           <button className="icon-btn" onClick={onToggleDetails} title={t('详情')}>☰</button>
         </div>

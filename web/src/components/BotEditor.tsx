@@ -8,6 +8,7 @@ import { RoutinesPanel, SkillsPanel } from './Routines'
 import { MemoryPanel } from './Memories'
 import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } from './Templates'
 import { TasksPanel } from './Tasks'
+import { ask } from './Dialog'
 
 // 新建 Bot：从模板装（带好技能和定时任务），或者空白的：只问名字和头像，职责在第一条消息里交代
 export function NewBotDialog({ onClose }: { onClose: () => void }) {
@@ -111,7 +112,7 @@ function BotPanelInner({ bot, tasks, onClose }: { bot: Bot; tasks: any[]; onClos
     setMsg(t('已保存')); setEditAvatar(false); setTimeout(() => setMsg(''), 1500)
   }
   const del = async () => {
-    if (!confirm(t('删除「{name}」？它的对话记录也会一起删除，无法恢复。', { name: bot.name }))) return
+    if (!(await ask(t('删除「{name}」？它的对话记录也会一起删除，无法恢复。', { name: bot.name }), { ok: t('删除'), danger: true }))) return
     try { await api(`/api/bots/${bot.id}`, { method: 'DELETE' }); onClose() } catch (e: any) { setMsg(e.message) }
   }
 

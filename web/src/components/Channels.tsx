@@ -3,6 +3,7 @@ import { api, useStore } from '../store'
 import { locale, t, tc, tn } from '../i18n'
 import type { Channel, ChannelKind } from '../types'
 import { BrandIcon } from './BrandIcon'
+import { ask } from './Dialog'
 
 // 设置 → 聊天软件：在 Telegram、飞书、钉钉、企业微信、Discord 里和 Bot 对话
 const STATE: Record<string, [string, string]> = {
@@ -71,7 +72,7 @@ function ChannelCard({ c, onChange }: { c: Channel; onChange: () => void }) {
         <span className={'pill ' + cls}>{label}</span>
         <span className="grow" />
         <button className="ghost-btn" onClick={() => patch({ enabled: !c.enabled })}>{c.enabled ? t('停用') : t('启用')}</button>
-        <button className="ghost-btn" onClick={() => confirm(t('删除 {app} 连接 {name}？聊天软件里的机器人账号本身不会被删除。', { app: c.title, name: c.name })) &&
+        <button className="ghost-btn" onClick={async () => await ask(t('删除 {app} 连接 {name}？聊天软件里的机器人账号本身不会被删除。', { app: c.title, name: c.name }), { ok: t('删除'), danger: true }) &&
           act(() => api(`/api/channels/${c.id}`, { method: 'DELETE' }))}>{t('删除')}</button>
       </div>
       {c.error && <div className="error-line">{c.error}</div>}
@@ -84,7 +85,7 @@ function ChannelCard({ c, onChange }: { c: Channel; onChange: () => void }) {
       {c.paired ? (
         <div className="ch-pair-done muted small">
           {c.peer_name ? t('已和「{peer}」配对，只有这个私聊能使用它。', { peer: c.peer_name }) : t('已和你的账号配对，只有这个私聊能使用它。')}
-          <button className="link-btn" onClick={() => confirm(t('重新配对后，原来的私聊就不能再用了。继续？')) &&
+          <button className="link-btn" onClick={async () => await ask(t('重新配对后，原来的私聊就不能再用了。继续？'), { ok: t('重新配对') }) &&
             act(() => api(`/api/channels/${c.id}/pair`, { method: 'POST' }))}>{t('重新配对')}</button>
         </div>
       ) : c.pair_code ? (

@@ -4,6 +4,7 @@ import { api, useStore, setComputer, setTeachDraft } from '../store'
 import type { ComputerState, Teach } from '../types'
 import { lang, t } from '../i18n'
 import BotAvatar from './BotAvatar'
+import { ask, notice } from './Dialog'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
@@ -16,12 +17,12 @@ function TeachBar({ teach }: { teach: Teach }) {
   const bot = useStore(s => s.bots.find(b => b.id === teach.bot_id))
   useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i) }, [])
   const act = async (a: 'stop' | 'cancel') => {
-    if (a === 'cancel' && !confirm(t('放弃这段录制？录到的操作不会保存。'))) return
+    if (a === 'cancel' && !(await ask(t('放弃这段录制？录到的操作不会保存。'), { ok: t('放弃'), danger: true }))) return
     setBusy(a)
     try {
       const r = await api(`/api/teach/${a}`, { method: 'POST' })
       if (a === 'stop') setTeachDraft({ bot_id: r.bot_id, draft: r.draft, steps: r.steps })
-    } catch (e: any) { alert(e.message) }
+    } catch (e: any) { notice(e.message) }
     setBusy('')
   }
   const left = Math.max(0, teach.max_s - (now / 1000 - teach.started))
@@ -39,7 +40,7 @@ function TeachBar({ teach }: { teach: Teach }) {
 /** 接手时在手机上输入：点画面弹不出键盘，就在这里打字再发给电脑。 */
 function TypeBar({ botId }: { botId: number }) {
   const [text, setText] = useState('')
-  const send = (body: any) => api(`/api/bots/${botId}/computer/type`, { method: 'POST', body }).catch((e: any) => alert(e.message))
+  const send = (body: any) => api(`/api/bots/${botId}/computer/type`, { method: 'POST', body }).catch((e: any) => notice(e.message))
   return (
     <div className="type-bar">
       <input value={text} placeholder={t('输入文字发到电脑（先在画面上点一下输入框）')} onChange={e => setText(e.target.value)}
@@ -99,7 +100,7 @@ function Users({ st }: { st: ComputerState }) {
   const users = st.users || []
   if (!users.length && !st.waiting?.length) return null
   const watch = (key: string | null) =>
-    api<ComputerState>('/api/computer/watch', { method: 'POST', body: { key } }).then(setComputer).catch((e: any) => alert(e.message))
+    api<ComputerState>('/api/computer/watch', { method: 'POST', body: { key } }).then(setComputer).catch((e: any) => notice(e.message))
   return (
     <div className="pc-users">
       <span className="muted small">{users.length > 1 ? t('{n} 个任务同时在用', { n: users.length }) : t('在用')}</span>

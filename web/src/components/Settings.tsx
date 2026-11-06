@@ -7,6 +7,7 @@ import Backup from './Backup'
 import Channels from './Channels'
 import ModelSettings, { ROLE_NAMES } from './ModelSettings'
 import { priceSource, priceText, ToastHost, useToast } from './settingsKit'
+import { ask } from './Dialog'
 
 // 设置：左边按类分组的导航，右边是这一页
 const GROUPS: { name: string; items: [string, string, string][] }[] = [
@@ -309,7 +310,7 @@ function Vault() {
         ref: <code>{t('vault:名字')}</code>, env: <code>OSA_VAULT_KEY</code>, file: <code>data/vault.key</code> })}</p>
       {items.map(v => (
         <div className="kv" key={v.name}><span><code>{v.name}</code> {!v.ok && <span className="pill bad">{t('主密钥变了，解不开')}</span>}</span>
-          <button className="ghost-btn" onClick={async () => { if (confirm(t('删除密钥 {name}？', { name: v.name }))) { await api(`/api/vault/${v.name}`, { method: 'DELETE' }); load() } }}>{t('删除')}</button></div>))}
+          <button className="ghost-btn" onClick={async () => { if (await ask(t('删除密钥 {name}？', { name: v.name }), { ok: t('删除'), danger: true })) { await api(`/api/vault/${v.name}`, { method: 'DELETE' }); load() } }}>{t('删除')}</button></div>))}
       {!items.length && <div className="muted small">{t('还没有密钥')}</div>}
       <h4>{t('添加 / 覆盖')}</h4>
       <div className="env-row">

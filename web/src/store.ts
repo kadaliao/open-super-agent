@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
 import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft } from './types'
+import { notice } from './components/Dialog'
 
 type State = {
   ready: boolean
@@ -292,7 +293,7 @@ function handle(d: any) {
       break
     case 'teach':   // 录制开始 / 结束；到时自动结束时会带上草稿
       set({ teach: d.teach || null, ...(d.draft ? { teachDraft: { bot_id: d.bot_id, draft: d.draft, steps: d.steps || [] } } : {}) })
-      if (d.error) alert(d.error)
+      if (d.error) notice(d.error)
       break
   }
 }

@@ -6,6 +6,7 @@ import type { ModelItem, ModelList, Preset, Provider, Role, Settings as S } from
 import { money, PriceTag, Section, useToast } from './settingsKit'
 import { BrandIcon, modelBrand, providerBrand } from './BrandIcon'
 import { BRANDS } from '../brandIcons'
+import { ask } from './Dialog'
 
 // 设置 → 模型：先加模型服务（地址 + API Key），再给每项工作选模型
 
@@ -166,7 +167,7 @@ export function ProviderForm({ name, onDone, presetId, onBack, backLabel }: {
     } catch (e: any) { setErr(e.message); setBusy('') }
   }
   const remove = async () => {
-    if (!confirm(t('删除模型服务“{name}”？它的 API Key 也一起删掉。', { name: old!.title }))) return
+    if (!(await ask(t('删除模型服务“{name}”？它的 API Key 也一起删掉。', { name: old!.title }), { ok: t('删除'), danger: true }))) return
     try { const r = await api(`/api/providers/${name}`, { method: 'DELETE' }); setSettings(r.settings); toast(t('已删除')); onDone() }
     catch (e: any) { setErr(e.message) }
   }

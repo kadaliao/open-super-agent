@@ -4,6 +4,7 @@ import type { Avatar, Bot, Routine, RoutineRun, Skill, SkillDraft, Trigger } fro
 import { lang, locale, t, tc, tn } from '../i18n'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
+import { ask } from './Dialog'
 
 // 英文：Nov 6, 9:05 AM；中文保持 11/06 09:05
 const when = (ts: number | null) => ts ? new Date(ts * 1000).toLocaleString(locale, lang === 'en'
@@ -165,7 +166,7 @@ function SkillEditor({ bot, skill: initial, steps, onDone }: { bot: Bot; skill: 
     } catch (e: any) { setErr(e.message) }
   }
   const del = async () => {
-    if (!confirm(t('删除技能 /{name}？', { name: skill.name || '' }))) return
+    if (!(await ask(t('删除技能 /{name}？', { name: skill.name || '' }), { ok: t('删除'), danger: true }))) return
     await api(`/api/skills/${skill.id}`, { method: 'DELETE' }); onDone()
   }
   return (
@@ -190,7 +191,7 @@ function SkillEditor({ bot, skill: initial, steps, onDone }: { bot: Bot; skill: 
       {err && <div className="error-line">{err}</div>}
       <div className="row-actions">
         <button className="btn primary" onClick={save}>{t('保存')}</button>
-        <button className="btn" onClick={() => (!(fromTeach || draft) || confirm(t('不保存这个草稿？'))) && onDone()}>{fromTeach || draft ? t('不要了') : t('返回')}</button>
+        <button className="btn" onClick={async () => (!(fromTeach || draft) || await ask(t('不保存这个草稿？'), { ok: t('不要了'), danger: true })) && onDone()}>{fromTeach || draft ? t('不要了') : t('返回')}</button>
         {skill.id && <button className="btn danger" onClick={del}>{t('删除')}</button>}
       </div>
       {skill.id && <ShareSkill skill={skill} onChange={s => setSkill({ ...skill, share_token: s.share_token })} />}
@@ -330,7 +331,7 @@ function RoutineEditor({ bot, routine, onDone }: { bot: Bot; routine: Partial<Ro
     } catch (e: any) { setErr(e.message) }
   }
   const del = async () => {
-    if (!confirm(t('删除定时任务「{name}」？运行记录也会删除。', { name: routine.name || '' }))) return
+    if (!(await ask(t('删除定时任务「{name}」？运行记录也会删除。', { name: routine.name || '' }), { ok: t('删除'), danger: true }))) return
     await api(`/api/routines/${routine.id}`, { method: 'DELETE' }); onDone()
   }
   return (

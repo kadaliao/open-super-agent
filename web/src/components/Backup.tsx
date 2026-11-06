@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../store'
 import { lang, locale, t, tc, tn } from '../i18n'
+import { ask } from './Dialog'
 
 // 设置 → 备份与迁移：导出一个加密的备份文件；在新机器上上传它恢复
 type Info = { counts: Record<string, number>; secrets: number; started: number; version: string; staged: Staged | null }
@@ -91,7 +92,7 @@ function Restore({ info, onChange }: { info: Info; onChange: () => void }) {
   }
   const cancel = async () => { await api('/api/backup/restore', { method: 'DELETE' }); onChange() }
   const confirm_ = async () => {
-    if (!confirm(t('用这个备份替换这台的全部数据？正在做的任务会被打断。原来的数据库会在服务器上留一份。'))) return
+    if (!(await ask(t('用这个备份替换这台的全部数据？正在做的任务会被打断。原来的数据库会在服务器上留一份。'), { ok: t('恢复并重启'), danger: true }))) return
     setBusy(t('正在重启…')); setErr('')
     try {
       await api('/api/backup/restore/confirm', { method: 'POST' })
