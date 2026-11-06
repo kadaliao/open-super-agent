@@ -1,8 +1,11 @@
 import asyncio
+import base64
 import json
 import mimetypes
 import os
 import posixpath
+import shutil
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,6 +13,9 @@ from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
+from . import backup
+backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, bots, catalog, channels, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
 from . import settings, skills, teach, vault
 from . import worker as worker_mod
@@ -63,6 +69,8 @@ async def lifespan(app):
         t.cancel()
     await channels.stop()
     await mcp_hub.stop()
+    if backup.RESTART:   # 网页上确认了恢复：用同样的命令行重新启动，启动时换上备份
+        backup.restart()
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(auth.AuthMiddleware)
@@ -353,6 +361,76 @@ async def shared_skill_raw(token: str):
     if not s:
         raise HTTPException(404, "链接已失效")
     return _skill_file(s)
+
+
+# ---------- 备份与迁移 ----------
+STARTED = time.time()
+MAX_BACKUP = 4 << 30
+
+
+@app.get("/api/backup")
+async def backup_info():
+    return {"counts": backup.counts(memory.conn), "secrets": len(vault.names()), "staged": backup.staged(),
+            "started": STARTED, "version": backup.version()}
+
+
+@app.post("/api/backup/export")
+async def backup_export(data: dict = Body(...)):
+    try:
+        backup.check_passphrase(data.get("passphrase") or "")
+        snap = backup.snapshot()   # 快照在这里做（用的是服务的数据库连接），压缩、加密放到线程里
+        path, meta = await asyncio.to_thread(backup.export, data["passphrase"], snap)
+    except backup.BackupError as e:
+        _err(e)
+    return FileResponse(path, media_type="application/octet-stream", filename=path.name,
+                        headers={"x-backup-secrets": str(meta["secrets"]), "x-backup-unreadable": str(len(meta["unreadable"]))},
+                        background=BackgroundTask(shutil.rmtree, path.parent, True))
+
+
+@app.put("/api/backup/restore")
+async def backup_upload(request: Request):
+    """上传备份文件（请求体就是文件，口令放在 x-passphrase 头里，base64 编码）：解密、检查，返回摘要等确认。"""
+    if backup.RESTART:
+        raise HTTPException(409, "正在重启，稍后再试")
+    try:
+        passphrase = base64.b64decode(request.headers.get("x-passphrase", "")).decode()
+    except ValueError:
+        passphrase = ""
+    if not passphrase:
+        raise HTTPException(400, "请填备份时设的口令")
+    fd, tmp = tempfile.mkstemp(suffix=".osabak")
+    try:
+        size = 0
+        with os.fdopen(fd, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_BACKUP:
+                    raise HTTPException(413, "文件太大了")
+                f.write(chunk)
+        if not size:
+            raise HTTPException(400, "没有收到文件")
+        return await asyncio.to_thread(backup.stage, Path(tmp), passphrase)
+    except backup.BackupError as e:
+        _err(e)
+    finally:
+        os.unlink(tmp)
+
+
+@app.post("/api/backup/restore/confirm")
+async def backup_confirm():
+    try:
+        backup.confirm()
+    except backup.BackupError as e:
+        _err(e)
+    await broadcast({"type": "restarting"})
+    backup.request_restart()
+    return {"restarting": True}
+
+
+@app.delete("/api/backup/restore")
+async def backup_cancel():
+    backup.cancel()
+    return {"ok": True}
 
 
 # ---------- 长期记忆 ----------

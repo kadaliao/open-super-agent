@@ -502,3 +502,11 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .skill-share { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
 .skill-desc { font-size: 15px; color: var(--fg2); }
 .skill-howto { border: 1px solid var(--line); border-radius: 12px; padding: 4px 14px 12px; margin: 14px 0 20px; }
+
+/* 设置 → 备份与迁移 */
+.bk-box { border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px 12px; margin: 14px 0; }
+.bk-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.bk-row input { flex: 1; min-width: 160px; }
+.bk-notes { padding-left: 18px; color: var(--fg2); }
+.bk-notes li { margin: 4px 0; }
+.ok-line { color: var(--good); margin: 8px 0; }

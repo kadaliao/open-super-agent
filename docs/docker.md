@@ -32,13 +32,20 @@ docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟
 | 电脑里的文件和浏览器登录状态（电脑里的 `/data`） | 命名卷 `osa-computer-data` |
 | npx / uvx 下载的应用 | 命名卷 `osa_cache`，删了只是重新下载 |
 
-备份：先 `docker compose down`，复制 `data/`；电脑里的文件可以这样打包出来：
+备份：设置 → **备份与迁移** 导出一个加密文件，或者用命令行（口令也可以放在 `.env` 的 `OSA_BACKUP_PASSPHRASE` 里）：
+
+```bash
+docker compose exec osa python -m osa.backup export -o /app/data    # 备份文件出现在宿主机的 data/ 里
+```
+
+恢复在网页上传文件就行，服务会自动重启（`restart: unless-stopped`）。说明见 [备份与迁移](configuration.md#备份与迁移)。
+备份文件不含电脑里的文件；电脑里的文件可以这样打包出来：
 
 ```bash
 docker run --rm -v osa-computer-data:/data -v "$PWD":/backup osa-computer:1 tar czf /backup/computer-data.tgz -C /data .
 ```
 
-`data/` 里的 `vault.key` 和 `session.key` 是密钥，备份要放在安全的地方。
+直接复制 `data/` 也行（先 `docker compose down`）。`data/` 里的 `vault.key` 和 `session.key` 是密钥，要放在安全的地方。
 
 ## 部署到公网（自动 HTTPS）
 

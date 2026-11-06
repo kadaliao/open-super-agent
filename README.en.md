@@ -34,6 +34,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - 💬 **Chat apps**: talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, in the same conversation as the web UI. Approval requests arrive as buttons, and you can send files (and voice messages on DingTalk and WeCom). No public address needed ([setup guide](docs/channels.md), Chinese).
 - 📱 **Mobile**: install it to your home screen as an app, dictate messages by voice, and get push notifications for approvals and finished tasks when no page is open. Watch the screen, take over and type, and handle approvals from your phone.
 - 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
+- 📦 **Backup and migration**: export all data, secrets included, as one encrypted file and upload it on the new machine to carry on. Servers can also back up on a schedule from the command line.
 - 🔄 **Any model**: any OpenAI-compatible API (DeepSeek, OpenRouter, Ollama, vLLM), configurable per role.
 
 The architecture follows DeepSeek's Super-agent design: a Router that converses, Workers that execute, and a Watchdog that supervises.
@@ -82,7 +83,7 @@ Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANG
 - **More clients**: macOS and Windows desktop apps (menu bar, hotkeys, system notifications, and letting a Bot use your own computer); native iOS and Android apps; using the bot in chat-app group chats.
 - **Computers**: several computers running tasks in parallel; Teach a task across the whole desktop, not just the browser; snapshots and rollback.
 - **Bot abilities**: semantic search over memory and the library; voice conversations.
-- **Easier to deploy and use**: data backup and migration; an English UI.
+- **Easier to deploy and use**: an English UI.
 
 The reasoning and priorities are in [docs/roadmap.md](docs/roadmap.md) (Chinese). Feature requests are welcome as issues.
 

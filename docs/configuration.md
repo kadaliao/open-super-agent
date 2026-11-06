@@ -13,6 +13,7 @@
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
 | `OSA_CONFIG` | 否 | 配置文件路径，默认 `config.yaml` |
 | `HTTPS_PROXY` | 否 | 服务器在国内、要用 Telegram 或 Discord 时设置，见 [聊天软件](channels.md) |
+| `OSA_BACKUP_PASSPHRASE` | 否 | 命令行备份、恢复时用的口令，定时备份用，见 [备份与迁移](#备份与迁移) |
 
 密钥只放在环境变量里，`config.yaml` 只写变量名。
 
@@ -164,11 +165,42 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 “从其他助手导入”用 `filter` 角色的模型把粘贴的内容拆成条目，费用记在这个角色下。
 `memory.inline_messages` 仍然控制对话里留在上下文的消息条数；点“新话题”之后从零算起。
 
+## 备份与迁移
+
+设置 → **备份与迁移**。换机器、从本机搬到服务器、升级前留一份，都用它。
+
+- **导出**：设一个口令（至少 8 个字符），下载一个 `.osabak` 文件。里面有 Bot、对话、记忆、技能、定时任务、资料库页面、应用配置、
+  确认规则、聊天软件连接、费用记录、保险库里的密钥，以及 `data/apps/` 里本机的应用清单。
+  文件用口令加密（scrypt + AES-256-GCM），口令忘了就打不开，请另外记好。
+- **恢复**：在新的那台上传文件、输口令，先解密检查，给你看里面有什么；点“恢复并重启”后服务自动重启，换上备份里的数据。
+  - 原来的数据库留在 `data/osa.db.before-restore-<时间>`，恢复错了可以停掉服务换回去。
+  - 密钥用新机器自己的主密钥重新加密，两台的 `OSA_VAULT_KEY`（或 `data/vault.key`）不一样也没关系。
+  - 聊天软件连接会先停用：确认原来那台停掉以后，在 设置 → 聊天软件 里启用，不然两边抢同一个机器人。原来那台还开着的话，定时任务也会跑两遍。
+  - 网页地址（设置 → 聊天软件 最下面）是原来那台的，换了域名记得改。
+- **不在备份里**：电脑（共用电脑里的文件、浏览器的登录状态），新机器按自己的设置开电脑；登录用的 `session.key`；日志。
+- 服务没有自己的守护进程时（直接 `uv run uvicorn`），重启是重新执行同样的命令；`--reload` 开发模式下要手动重启。
+
+命令行（服务开着也能导出；恢复在下次启动时生效）：
+
+```bash
+uv run python -m osa.backup export -o ~/backups          # 会问口令；或者设 OSA_BACKUP_PASSPHRASE
+uv run python -m osa.backup restore ~/backups/osa-backup-20261106-0835.osabak
+```
+
+命令行要和服务用同样的环境变量（`OSA_CONFIG`、`OSA_VAULT_KEY`），主密钥对不上时会拒绝，免得备份里带不上密钥。
+每天定时备份，可以在 crontab 里写：
+
+```bash
+0 3 * * * cd /opt/osa/app && OSA_BACKUP_PASSPHRASE=… .venv/bin/python -m osa.backup export -o /opt/osa/backups
+```
+
+放在 nginx 后面时，网页上传的备份受 `client_max_body_size` 限制；备份比它大，就调大它，或者用命令行恢复。
+
 ## 登录
 
 设置环境变量 `OSA_PASSWORD` 后，打开页面会先要求输入密码。登录保持 30 天，期间用着会自动续期；设置 → 右上角“退出登录”。
 
-- 不用登录就能访问的只有：登录页、分享链接（`/s/<token>`）、webhook（`/hooks/*`，用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
+- 不用登录就能访问的只有：登录页、分享链接（页面 `/s/<token>`、技能 `/skill/<token>`）、webhook（`/hooks/*`，用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
 - 同一个 IP 10 分钟内输错 5 次，之后 10 分钟内不能再登录。
 - 会话签名用的密钥在 `data/session.key`（权限 600）。改密码或删掉这个文件，所有设备都要重新登录。
 - 放在反向代理（Caddy、nginx）后面时，启动 uvicorn 要加 `--proxy-headers --forwarded-allow-ips 127.0.0.1`，

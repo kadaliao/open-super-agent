@@ -53,6 +53,7 @@ osa/
   library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
   bots.py          Bot 和对话的增删改查、旧数据迁移
   settings.py      界面里改的设置（覆盖 config.yaml）
+  backup.py        备份与迁移：加密的备份文件、恢复前检查、启动时换上、命令行
   approvals.py     确认卡片：写操作确认（approval）、请你帮忙（help）
   mcp_hub.py       MCP 连接（本机命令 / 远程地址）、OAuth 登录授权与令牌刷新、工具命名（<server>__<tool>）、deny / confirm 规则
   catalog/         应用市场的目录：读取和检查清单，按模板生成连接配置（python -m osa.catalog 检查所有清单）
@@ -164,6 +165,17 @@ web/src/
 - 企业微信同一个机器人只能一处连着，被别处顶掉后等 2 分钟再连，免得两边来回抢。
 - 平台都实现 `check / run / send_text / send_card / edit_card`，再在 `PLATFORMS` 里注册，就能加新的聊天软件。
   可选：`typing`（正在输入）、`download`（附件，文件名要下载后才知道的返回 `(内容, 文件名)`）、`pair_link` / `setup_link`（配对页上的按钮）。
+
+### 备份与迁移
+- 导出先在事件循环里用 SQLite 的 backup 接口做快照（服务照常运行），解密密钥、压缩、加密放到线程里。
+  快照里的 `vault` 表清空，密钥明文放进同一个加密包；恢复时用这台的主密钥重新加密，所以主密钥不用跟着走。
+- 文件格式：`OSABAK1` + 一行 JSON 头（scrypt 参数、salt、nonce 前缀），后面是 zip 按 1 MiB 分块的 AES-256-GCM 密文。
+  nonce 里有块号和“是不是最后一块”，头作为附加数据，所以口令不对、截短、改过都解不开。分块是为了大备份也不占内存（服务器 MemoryMax 600M）。
+- 恢复不在运行中换数据库：`stage` 解密、`integrity_check`、重加密密钥、清掉 `computers`、停用聊天软件，放到 `data/restore/`；
+  确认后写上 `ready`，向自己发 SIGTERM。uvicorn 正常关闭，lifespan 收尾的最后 `os.execv(sys.executable, sys.orig_argv)` 用同样的命令行重新执行，
+  `server.py` 在导入任何会打开数据库的模块之前调用 `backup.apply_pending()` 换上新库（旧库连同 `-wal`、`-shm` 改名留着）。
+  systemd、Docker（`python -m uvicorn`）、直接运行都能这样重启；`--reload` 的子进程重新执行不了，只能退出等手动重启。
+- 命令行和服务各自打开数据库；命令行先检查主密钥能不能解开保险库里的值，对不上（没带 `OSA_VAULT_KEY`）就拒绝。
 
 ### 推送与 PWA
 - 推送按 RFC 8291（aes128gcm）加密、RFC 8292（VAPID）签名，只用 `cryptography` 和 `httpx`。推送服务只看得到密文。
