@@ -23,6 +23,11 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 
 本地电脑是共用的（容器 `osa-computer`），测试和正式实例会操作同一台电脑，不要同时跑。用 Docker Compose 跑的实例也用这个容器。
 
+`computer.backend` 默认是 `auto`：环境里有 `INSTABOX_API_KEY` 就用 Instabox。本机设了这个变量时，测试实例和直接调 `osa.computer.get()` 的脚本
+都会操作 Instabox 上那台（可能正是服务器上正式在用的）电脑。测试时在复制的配置里写 `backend: local`，或者 `env -u INSTABOX_API_KEY` 启动。
+复制的数据库里有聊天软件连接和定时任务的话，先停掉（`update channels set enabled=0`、`update routines set enabled=0`），
+免得测试实例去抢正式机器人的消息、跑定时任务。
+
 ## Docker 镜像
 
 改了 `Dockerfile`、`compose.yaml` 或依赖后，在一份**不含 `data/` 的副本**里验证（compose 会把当前目录的 `data/` 挂进去）：
@@ -36,7 +41,14 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 
 - **对话**：通过 WebSocket 发送 `{"type":"send","chat_id":1,"text":"..."}`，观察 `message`、`task`、`stream_*` 事件。
 - **界面**：用 Playwright 驱动系统 Chrome（`channel="chrome"`）截图检查，这样不用另外下载浏览器。
-- **电脑**：在 Python 里调用 `osa.computer.get()`，可以直接测试 `start / open_url / screenshot / shell`；浏览器工具用 `await c.browser("open", url=...)`、`c.browser("snapshot")` 等。
+- **电脑**：在 Python 里调用 `osa.computer.get()`，可以直接测试 `start / screenshot / shell`；浏览器工具不给 `key` 时用最前面的标签页：
+  `await c.browser("open", url=...)`、`c.browser("snapshot")`。
+- **几个任务同时用电脑**：用 `computer.tools.call` 模拟任务——先 `CLAIM.set("201:")`，再 `await call(SimpleNamespace(id=201, bot_id=1, chat_id=1), "browser_open", {...}, progress)`；
+  两个任务用 `asyncio.gather` 同时开不同的网页，应该各自在自己的窗口里（`c.users[key]["window"]` 不同），用时和一个差不多。
+  测试页可以在电脑里起：`docker exec -d osa-computer python3 -m http.server 8999 --bind 127.0.0.1`，页面里放输入框、文件框、
+  `target=_blank` 链接和 `window.open` 弹窗，分别测 `computer_click`（坐标对不对）、`computer_key ctrl+a`、`browser_upload`、新标签页和弹出窗口。
+  把 `CFG["computer"]["parallel"]` 改成 2 再开第三个，应该排队并收到“排队等电脑”。
+  端到端：让 Bot“调用 dispatch 两次”派两个开网页的任务，右栏电脑上方应该同时列出两个任务；再派一个会 `ask_human` 的，接手期间另一个任务停住，交还后都做完。
 - **应用**：`POST /api/market/filesystem` 从市场添加文件夹应用，再在对话里让 Bot 写文件，验证确认卡片和“总是允许”。
   登录授权的流程可以用 SDK 自带的授权服务器在本机测：写一个 `MCPServer(auth_server_provider=…)`，`authorize` 里直接带着授权码跳回 `redirect_uri`，
   再用自定义应用连它的地址，依次请求 `/oauth/start/名字` 和返回的跳转地址就能走完整个流程，不需要真实账号。

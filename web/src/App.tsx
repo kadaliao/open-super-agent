@@ -24,9 +24,9 @@ export default function App() {
   // 对话里点“接手电脑”：打开右栏的电脑标签并接手
   useEffect(() => {
     const h = (e: Event) => {
-      const { botId, takeover } = (e as CustomEvent).detail
+      const { botId, takeover, taskId } = (e as CustomEvent).detail
       setDetails(true); setTab('computer')
-      if (takeover) setTimeout(() => window.dispatchEvent(new CustomEvent('osa-takeover', { detail: botId })), 300)
+      if (takeover) setTimeout(() => window.dispatchEvent(new CustomEvent('osa-takeover', { detail: { botId, taskId } })), 300)
     }
     window.addEventListener('osa-open-computer', h)
     return () => window.removeEventListener('osa-open-computer', h)

@@ -87,10 +87,11 @@ mcp_servers: {}
 # push:
 #   subject: "mailto:you@example.com"
 
-# 电脑：所有 Bot 共用一台（浏览器 + 终端），任务排队独占；用户能实时观看、接手
+# 电脑：所有 Bot 共用一台（浏览器 + 终端）；用户能实时观看、接手
 computer:
   enabled: true
   backend: auto              # auto：有 INSTABOX_API_KEY 用 Instabox，否则本地 Docker；也可以写 instabox / local
+  parallel: 3                # 几个任务可以同时用电脑，每个一个浏览器窗口（登录状态共用），多了排队；电脑内存小就调小
   width: 1280
   height: 800
   idle_pause_s: 900          # 闲置 15 分钟自动暂停（暂停时保留内存，恢复很快）

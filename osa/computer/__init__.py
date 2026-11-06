@@ -1,5 +1,5 @@
-"""所有 Bot 共用一台电脑（和 Grok Bot 一样）。后端由 config.yaml 的 computer.backend 决定：
-auto（有 INSTABOX_API_KEY 用 Instabox，否则本地 Docker）/ instabox / local。
+"""所有 Bot 共用一台电脑（和 Grok Bot 一样），几个任务可以同时用，各自一个浏览器窗口（见 base.py）。
+后端由 config.yaml 的 computer.backend 决定：auto（有 INSTABOX_API_KEY 用 Instabox，否则本地 Docker）/ instabox / local。
 """
 import asyncio
 import os
@@ -13,6 +13,35 @@ conn.commit()
 
 _computers: dict[int, Computer] = {}
 SHARED = 0   # 共用电脑的编号；接口里仍保留 bot_id 参数，方便以后改回每个 Bot 一台
+notify = None   # 由 server 设置：async (event) -> None
+_queued = False
+
+
+def _changed():
+    """谁在用电脑变了：告诉前端（几件事前后脚发生时只发一次）。"""
+    global _queued
+    if notify and not _queued:
+        _queued = True
+
+        async def go():
+            global _queued
+            await asyncio.sleep(0.2)
+            _queued = False
+            try:
+                await notify({"type": "computer", "computer": await public_state()})
+            except Exception:
+                pass
+        background(go())
+
+
+_tasks: set = set()
+
+
+def background(coro):
+    """在后台跑，留着引用，免得还没跑完就被回收。"""
+    t = asyncio.create_task(coro)
+    _tasks.add(t)
+    t.add_done_callback(_tasks.discard)
 
 
 def backend_name() -> str:
@@ -35,15 +64,20 @@ def get(bot_id: int = SHARED) -> Computer:
             from .local import LocalComputer
             c = LocalComputer(bot_id)
         c.width, c.height = cfg.get("width", 1280), cfg.get("height", 800)
+        c.on_change = _changed
+        c.background = background
         _computers[bot_id] = c
     return c
 
 
 async def public_state(bot_id: int = SHARED) -> dict:
-    """给前端的电脑状态。"""
+    """给前端的电脑状态。users 是正在用电脑的任务（各有一个浏览器窗口），waiting 是排队的。"""
     c = get(bot_id)
-    return {"bot_id": bot_id, "backend": c.backend, "controller": c.controller,
-            "width": c.width, "height": c.height, **(await c.status())}
+    users = [{"key": k, "label": u["label"], "task_id": u.get("task_id"), "bot_id": u.get("bot_id"),
+              "window": bool(u.get("window"))} for k, u in c.users.items()]
+    return {"bot_id": bot_id, "backend": c.backend, "controller": c.controller, "width": c.width, "height": c.height,
+            "parallel": c.slots(), "users": users, "waiting": list(c.waiting.values()), "watch": c.watch,
+            "exclusive": c.exclusive_label, **(await c.status())}
 
 
 async def idle_pauser():

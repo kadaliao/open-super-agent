@@ -203,6 +203,12 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .pc-overlay { position: absolute; inset: 0; display: grid; place-items: center; color: #aaa; font-size: 13px; background: rgba(0,0,0,.5); }
 .pc-empty { border: 1px dashed var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .pc-actions { display: flex; align-items: center; gap: 8px; }
+.pc-users { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pc-user { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 12.5px; }
+.pc-user:hover:not(:disabled) { border-color: var(--line); color: var(--fg); }
+.pc-user:disabled { cursor: default; opacity: .7; }
+.pc-user.on { border-color: var(--link); color: var(--fg); background: color-mix(in srgb, var(--link) 12%, var(--bg)); }
+.pc-user .pin { color: var(--link); }
 .pc-actions .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-you { color: var(--good); font-weight: 600; font-size: 14px; flex: 1; }
 .pc-big { width: min(1400px, 96vw); background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }

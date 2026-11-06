@@ -25,6 +25,8 @@ def apply():
             CFG["limits"][k] = v
     if "heavy_workers" in o:
         CFG["heavy"]["workers"] = o["heavy_workers"]
+    if "computer_parallel" in o:
+        CFG.setdefault("computer", {})["parallel"] = o["computer_parallel"]
     if "embedding" in o:
         CFG["embedding"] = o["embedding"]
 
@@ -63,6 +65,7 @@ def public() -> dict:
         "roles": CFG["roles"],
         "limits": {k: CFG["limits"].get(k) for k in EDITABLE_LIMITS},
         "heavy_workers": CFG["heavy"]["workers"],
+        "computer_parallel": (CFG.get("computer") or {}).get("parallel", 3),
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
         "model_info": {f"{p}/{m}": prices.lookup(p, m) for p, m in used},
         "prices": prices.info(),
@@ -89,6 +92,8 @@ def save(data: dict) -> dict:
         o.setdefault("limits", {}).update({k: int(v) for k, v in data["limits"].items() if k in EDITABLE_LIMITS})
     if "heavy_workers" in data:
         o["heavy_workers"] = max(1, min(8, int(data["heavy_workers"])))
+    if "computer_parallel" in data:
+        o["computer_parallel"] = max(1, min(8, int(data["computer_parallel"])))
     if "embedding" in data:
         e = data["embedding"] or {}
         provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:200]

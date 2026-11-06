@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
 import { api, useStore, setComputer, setTeachDraft } from '../store'
 import type { ComputerState, Teach } from '../types'
+import BotAvatar from './BotAvatar'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
@@ -89,6 +90,34 @@ export function ComputerView({ botId, interactive }: { botId: number; interactiv
   )
 }
 
+/** 正在用电脑的任务：每个在自己的浏览器窗口里做。点一下把画面固定在它的窗口上，再点一下取消（画面跟着最近的操作走）。 */
+function Users({ st }: { st: ComputerState }) {
+  const bots = useStore(s => s.bots)
+  const tasks = useStore(s => s.tasks)
+  const users = st.users || []
+  if (!users.length && !st.waiting?.length) return null
+  const watch = (key: string | null) =>
+    api<ComputerState>('/api/computer/watch', { method: 'POST', body: { key } }).then(setComputer).catch((e: any) => alert(e.message))
+  return (
+    <div className="pc-users">
+      <span className="muted small">{users.length > 1 ? `${users.length} 个任务同时在用` : '在用'}</span>
+      {users.map(u => {
+        const bot = bots.find(b => b.id === u.bot_id)
+        const on = st.watch === u.key
+        const last = u.task_id ? tasks[u.task_id]?.last_action : ''
+        return (
+          <button key={u.key} className={'chip pc-user' + (on ? ' on' : '')} disabled={!u.window}
+            title={(last ? last + '\n' : '') + (!u.window ? '还没打开浏览器' : on ? '画面固定在这个任务的窗口上，再点一下取消' : '在画面上看这个任务')}
+            onClick={() => watch(on ? null : u.key)}>
+            {bot && <BotAvatar avatar={bot.avatar} size={14} />}{u.label}{on && <span className="pin">· 正在看</span>}
+          </button>
+        )
+      })}
+      {!!st.waiting?.length && <span className="muted small" title={st.waiting.join('、')}>{st.waiting.length} 个在排队</span>}
+    </div>
+  )
+}
+
 type Machine = { id: string; name: string; state: string; template: string; created: string; ours: boolean; current: boolean }
 
 /** Instabox：列出账号下已有的机器，选一台当共用电脑（免费版只能有一台，不用再新建）。 */
@@ -140,7 +169,13 @@ export function ComputerPanel({ botId }: { botId: number }) {
     setBusy('')
   }
   useEffect(() => {
-    const h = (e: Event) => { if ((e as CustomEvent).detail === botId) { act('takeover'); setBig(true) } }
+    const h = async (e: Event) => {
+      const d = (e as CustomEvent).detail
+      if (d.botId !== botId) return
+      setBusy('takeover'); setErr('')   // 从“请你帮忙”卡片接手：先把那个任务的窗口放到前面
+      try { setComputer(await api(`/api/bots/${botId}/computer/takeover`, { method: 'POST', body: { task_id: d.taskId } })) } catch (e: any) { setErr(e.message) }
+      setBusy(''); setBig(true)
+    }
     window.addEventListener('osa-takeover', h)
     return () => window.removeEventListener('osa-takeover', h)
   }, [botId])
@@ -157,9 +192,11 @@ export function ComputerPanel({ botId }: { botId: number }) {
         <span className="grow" />
         {running && <button className="ghost-btn" onClick={() => setBig(true)} title="放大">⤢ 放大</button>}
       </div>
+      {running && <Users st={st} />}
       {running ? <ComputerView botId={botId} interactive={human} /> : (
         <div className="pc-empty">
-          <p className="muted small">所有 Bot 共用一台电脑（浏览器 + 终端），同一时间只有一个任务在用，其他排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。</p>
+          <p className="muted small">所有 Bot 共用一台电脑（浏览器 + 终端）。几个任务可以同时用，每个任务一个浏览器窗口，登录状态和文件共用；
+            最多同时 {st.parallel || 3} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。</p>
           {st.backend === 'instabox' && <MachinePicker key={st.detail} botId={botId} onErr={setErr} />}
           <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? '启动中…（首次需要一会儿）' : st.state === 'paused' ? '恢复' : st.state === 'none' ? '新建并启动电脑' : '启动电脑'}</button>
         </div>
@@ -191,6 +228,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
               <button className="icon-btn" onClick={() => setBig(false)}>✕</button>
             </div>
             {teach && <TeachBar t={teach} />}
+            <Users st={st} />
             <ComputerView botId={botId} interactive={human} />
             {human && touch && <TypeBar botId={botId} />}
           </div>

@@ -3,8 +3,14 @@
 服务端把它写进电脑，然后每个动作执行一次：stdin 传 JSON {"op": ..., ...}，stdout 返回 JSON。
 只用 Python 标准库（电脑里不一定能装包），自带一个最小的 WebSocket 客户端。
 DevTools 端口只监听电脑内部的 127.0.0.1，不对外暴露。
+
+几个任务同时用电脑时，每个任务在自己的浏览器窗口里做（stdin 里的 "win"，见 Ctx），登录状态是同一份。
+截图、点击、按键都经 CDP 发给自己窗口里的页面，不动真实的鼠标键盘，所以互不干扰。
 """
+from __future__ import annotations   # 电脑里的 Python 可能比较旧
+
 import base64
+import fcntl
 import json
 import os
 import shutil
@@ -13,10 +19,14 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 
 PORT = 9222
+# 窗口被别的窗口挡住时，浏览器默认把它当成隐藏的：动画帧停掉、定时器降到每秒一次，网页会加载不全。几个任务并行时必须关掉
+FLAGS = ["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling"]
+LOCK = "/tmp/osa-cdp.lock"
 SNAPSHOT_JS = r"""
 (() => {
   document.querySelectorAll('[data-osa-ref]').forEach(e => e.removeAttribute('data-osa-ref'));
@@ -143,6 +153,7 @@ class WS:
         if b" 101 " not in head.split(b"\r\n")[0]:
             raise ConnectionError("DevTools 拒绝连接：" + head.split(b"\r\n")[0].decode(errors="replace"))
         self.n = 0
+        self.events: list[dict] = []   # 等回复时顺便收到的事件
 
     def send(self, text: str):
         data = text.encode()
@@ -202,32 +213,57 @@ class WS:
                 if "error" in m:
                     raise RuntimeError(f"{method}: {m['error'].get('message')}")
                 return m.get("result", {})
+            if "method" in m:
+                self.events = (self.events + [m])[-50:]
         raise TimeoutError(method)
+
+    def wait_event(self, method: str, timeout: float = 5) -> dict | None:
+        import select
+        end = time.time() + timeout
+        while True:
+            for m in self.events:
+                if m["method"] == method:
+                    self.events.remove(m)
+                    return m.get("params") or {}
+            left = end - time.time()
+            if left <= 0:
+                return None
+            if self.buf or select.select([self.sock], [], [], left)[0]:
+                m = json.loads(self.recv())
+                if "method" in m:
+                    self.events.append(m)
 
 
 # ---------- 浏览器 ----------
-def _targets():
-    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list", timeout=2) as r:
+def _targets(timeout: float = 2):
+    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list", timeout=timeout) as r:
         return [t for t in json.load(r) if t.get("type") == "page" and not t["url"].startswith("devtools://")]
 
 
-def ensure_browser():
-    """确保 Chromium 开着 DevTools 端口。旧的浏览器进程没开端口时重启它（登录状态在配置目录里，不会丢）。"""
-    try:
-        return _targets()
-    except Exception:
-        pass
-    b = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
-    if not b:
-        raise RuntimeError("电脑里没有浏览器")
-    if subprocess.run(["pgrep", "-f", "chrom"], capture_output=True).returncode == 0:
-        subprocess.run(["pkill", "-f", "chrom"], capture_output=True)
-        time.sleep(1.5)
+def _browser_proc() -> tuple[int | None, list[str]]:
+    """开着 DevTools 端口的浏览器主进程：(pid, 命令行)。"""
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            args = [x.decode(errors="replace") for x in open(f"/proc/{d}/cmdline", "rb").read().split(b"\0") if x]
+        except OSError:
+            continue
+        if any(x.startswith(f"--remote-debugging-port={PORT}") for x in args) and not any(x.startswith("--type=") for x in args):
+            return int(d), args
+    return None, []
+
+
+def _launch(argv: list[str] | None = None) -> list:
+    if not argv:
+        b = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+        if not b:
+            raise RuntimeError("电脑里没有浏览器")
+        argv = [b, f"--remote-debugging-port={PORT}", "--remote-debugging-address=127.0.0.1", "--remote-allow-origins=*",
+                "--no-first-run", "--no-default-browser-check", "--password-store=basic", "about:blank"]
+    argv = argv[:1] + [f for f in FLAGS if f not in argv] + argv[1:]
     env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":1")}
-    subprocess.Popen([b, f"--remote-debugging-port={PORT}", "--remote-debugging-address=127.0.0.1",
-                      "--remote-allow-origins=*", "--no-first-run", "--no-default-browser-check",
-                      "--password-store=basic", "about:blank"],
-                     env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True)
     for _ in range(60):
         time.sleep(0.25)
@@ -240,6 +276,89 @@ def ensure_browser():
     raise RuntimeError("浏览器没有在 15 秒内开启 DevTools 端口")
 
 
+def _profile_dir(pid: int) -> str | None:
+    """浏览器正在用的配置目录（登录状态在里面）：从它打开的文件里找。"""
+    try:
+        fds = os.listdir(f"/proc/{pid}/fd")
+    except OSError:
+        return None
+    for fd in fds:   # 缓存目录（~/.cache/chromium/Default/…）里也有 /Default/，有 Local State 的才是配置目录
+        try:
+            t = os.readlink(f"/proc/{pid}/fd/{fd}")
+        except OSError:
+            continue
+        if "/Default/" in t and os.path.isfile(os.path.join(t[:t.index("/Default/")], "Local State")):
+            return t[:t.index("/Default/")]
+    return None
+
+
+def _upgrade(ts: list) -> list:
+    """老浏览器没带 FLAGS：按原来的命令行加上参数重开一次。配置目录写明是原来那个，登录状态不会丢。
+    拿不准的（别的用户开的、找不到配置目录、关不掉）就不动它，只是被挡住的窗口会慢一些。"""
+    pid, args = _browser_proc()
+    if not pid or all(f in args for f in FLAGS):
+        return ts
+    try:
+        if os.stat(f"/proc/{pid}").st_uid != os.getuid():
+            return ts
+    except OSError:
+        return ts
+    if not any(a.startswith("--user-data-dir=") for a in args):
+        d = _profile_dir(pid)
+        if not d:
+            return ts
+        args = args[:1] + [f"--user-data-dir={d}"] + args[1:]
+    try:
+        os.kill(pid, 15)   # 正常退出，cookie 会存好
+    except OSError:
+        return ts
+    for _ in range(80):
+        time.sleep(0.25)
+        if not _alive(pid):
+            break
+    else:
+        return ts   # 没退出：不去硬杀，下次再说
+    return _launch(args)
+
+
+def _alive(pid: int) -> bool:
+    """进程还在跑。退出了但没人回收的（容器里 1 号进程不管子进程时）算已经退出。"""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] not in ("Z", "X")
+    except (OSError, IndexError):
+        return False
+
+
+def ensure_browser(restart_ok: bool = False):
+    """确保 Chromium 开着 DevTools 端口。旧的浏览器进程没开端口时重启它（登录状态在配置目录里，不会丢）。
+    restart_ok：没有别人在用时，顺便把没带 FLAGS 的旧浏览器重开一次（_upgrade）。"""
+    try:
+        ts = _targets()
+        if not restart_ok or all(f in _browser_proc()[1] for f in FLAGS):
+            return ts
+    except Exception:
+        pass
+    with open(LOCK, "w") as lock:   # 几个动作同时发现要开浏览器时，只开一次
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            ts = _targets()
+        except Exception:
+            ts = None
+        if ts is not None:
+            return _upgrade(ts) if restart_ok else ts
+        pid, _ = _browser_proc()
+        if pid and _alive(pid):   # 开着端口的浏览器还在：可能只是忙（几个任务同时加载网页），多等一会儿，别杀掉
+            try:
+                return _targets(10)
+            except Exception:
+                pass
+        if subprocess.run(["pgrep", "-f", "chrom"], capture_output=True).returncode == 0:
+            subprocess.run(["pkill", "-f", "chrom"], capture_output=True)
+            time.sleep(1.5)
+        return _launch()
+
+
 def page() -> WS:
     ts = ensure_browser()
     if not ts:   # 所有标签页都关了：新开一个
@@ -249,6 +368,134 @@ def page() -> WS:
     ws = WS(t["webSocketDebuggerUrl"])
     ws.call("Page.bringToFront")
     return ws
+
+
+BROWSER_ID = ""   # 这次开着的浏览器的标识：浏览器重开过，窗口编号可能和以前的撞上
+
+
+def _browser_ws() -> WS:
+    global BROWSER_ID
+    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/version", timeout=5) as r:
+        url = json.load(r)["webSocketDebuggerUrl"]
+    BROWSER_ID = url.rsplit("/", 1)[-1]
+    return WS(url)
+
+
+class Ctx:
+    """这次操作在哪个窗口、哪个标签页。
+
+    win 没给时沿用老办法：最前面的标签页（演示录制用）。给了时（{"id", "avoid", "front", "keep_front", "router", "restart_ok"}）：
+    - 任务带着自己窗口的 id 来；窗口没了报 WINDOW_GONE，由服务端重新挑。第一次（id 为空）挑一个没人用的窗口
+      （不在 avoid 里，最近用过的优先），都有人用就新开一个，大小、位置和现在最前面的窗口一样。
+    - 对话里的直接操作（router）没有自己的窗口时，用屏幕上最前面的那个；那个窗口正被任务用着就报 FRONT_BUSY，
+      打开网页（open）例外，换一个空窗口或新开一个。
+    - front：放到最前面。keep_front：用户固定在看的窗口，这次操作把别的窗口顶到前面时（点击会让窗口到前面）再放回去。
+    """
+
+    def __init__(self, a: dict):
+        self.win, self.op = a.get("win"), a["op"]
+        self.window = None
+        if self.win is None:
+            self.ws = page()
+            return
+        w = self.win
+        ts = ensure_browser(bool(w.get("restart_ok")))
+        self.b = _browser_ws()
+        tw = self.windows(ts)
+        avoid = set(w.get("avoid") or [])
+        front = tw[0][1] if tw else None
+        t, self.window, created = None, w.get("id"), False
+        if self.window and w.get("browser") and w["browser"] != BROWSER_ID:
+            raise RuntimeError(f"WINDOW_GONE {self.window}")   # 浏览器重开过，原来的窗口已经没了
+        if self.window:
+            t = next((t for t, x in tw if x == self.window), None)
+            if t is None:
+                raise RuntimeError(f"WINDOW_GONE {self.window}")
+        elif w.get("router") and front is not None and front not in avoid:
+            t, self.window = tw[0]
+        elif w.get("router") and w.get("op", self.op) != "open":
+            raise RuntimeError(f"FRONT_BUSY {front}")
+        else:
+            t, self.window = next(((t, x) for t, x in tw if x not in avoid), (None, None))
+            if t is None:
+                t, self.window = self.new_window(front)
+                created = True
+        self.ws = WS(t["webSocketDebuggerUrl"])
+        if w.get("front"):
+            self.ws.call("Page.bringToFront")
+        elif created and front is not None:   # 新窗口会抢到最前面：不该它在前面时把原来的放回去
+            self.to_front(front)
+        self.seen = {o["id"] for o, _ in tw} | {t["id"]}                            # 动作之前所有的标签页
+        self.before = {o["id"] for o, x in tw if x == self.window} | {t["id"]}     # 其中自己窗口里的
+
+    def windows(self, ts: list) -> list[tuple[dict, int]]:
+        """每个标签页和它所在的窗口，按最近激活排序（每个窗口里排在最前的就是它正显示的标签页）。"""
+        out = []
+        for t in ts:
+            try:
+                out.append((t, self.b.call("Browser.getWindowForTarget", {"targetId": t["id"]})["windowId"]))
+            except Exception:
+                pass   # 刚关掉的标签页
+        return out
+
+    def new_window(self, like: int | None) -> tuple[dict, int]:
+        tid = self.b.call("Target.createTarget", {"url": "about:blank", "newWindow": True})["targetId"]
+        w = self.b.call("Browser.getWindowForTarget", {"targetId": tid})["windowId"]
+        if like is not None:   # 和已有的窗口一样大、一样位置，屏幕上看起来像同一个浏览器
+            try:
+                bd = self.b.call("Browser.getWindowBounds", {"windowId": like})["bounds"]
+                st = bd.get("windowState", "normal")
+                self.b.call("Browser.setWindowBounds", {"windowId": w, "bounds": {k: bd[k] for k in ("left", "top", "width", "height")}
+                                                        if st == "normal" else {"windowState": st}})
+            except Exception:
+                pass
+        for _ in range(20):
+            t = next((t for t in _targets() if t["id"] == tid), None)
+            if t:
+                return t, w
+            time.sleep(0.1)
+        raise RuntimeError("新窗口没有打开")
+
+    def to_front(self, window: int):
+        t = next((t for t, x in self.windows(_targets()) if x == window), None)
+        if t:
+            WS(t["webSocketDebuggerUrl"]).call("Page.bringToFront")
+
+    def again(self) -> WS:
+        """动作之后重新找这个窗口正显示的标签页：点链接可能新开了标签页，或者弹出了新窗口（登录窗口这类）。"""
+        if self.win is None:
+            return page()
+        tw = self.windows(_targets())
+        avoid = set(self.win.get("avoid") or [])
+        for t, x in tw:   # 这次动作弹出的新窗口：是从自己窗口里的页面打开的就跟过去（别的任务弹出的不管）
+            if t["id"] not in self.seen and x != self.window and x not in avoid:
+                try:
+                    opener = self.b.call("Target.getTargetInfo", {"targetId": t["id"]})["targetInfo"].get("openerId")
+                except Exception:
+                    opener = None
+                if opener in self.before:
+                    self.window = x
+                    break
+        t = next((t for t, x in tw if x == self.window), None)
+        if t is None:
+            # 动作做完窗口自己关了（登录弹窗提交后关掉这类）：回到一个没人用的窗口（一般就是打开它的那个）。
+            # 不能报 WINDOW_GONE，否则服务端会把刚做过的动作在别的页面上再做一遍
+            t, self.window = next(((t, x) for t, x in tw if x not in avoid), (None, None))
+            if t is None:
+                raise RuntimeError("WINDOW_CLOSED 窗口在操作之后被页面关掉了，用 browser_open 重新打开要用的网页")
+        self.seen = {o["id"] for o, _ in tw}
+        self.before = {o["id"] for o, x in tw if x == self.window}
+        self.ws = WS(t["webSocketDebuggerUrl"])
+        return self.ws
+
+    def done(self):
+        """用户固定在看别的窗口时，把它放回最前面（点击会让操作的窗口跑到前面）。"""
+        k = (self.win or {}).get("keep_front")
+        if k and k != self.window and self.op in ("open", "click", "type", "click_xy", "upload"):
+            try:
+                self.to_front(k)
+            except Exception:
+                pass
 
 
 def js(ws: WS, expr: str):
@@ -299,6 +546,49 @@ def key(ws: WS, name: str):
         raise RuntimeError(f"不支持的按键 {name}；组合键请用 computer_key")
     base = {"key": k[0], "code": k[0] if len(k[0]) > 1 else "Space", "windowsVirtualKeyCode": k[1]}
     ws.call("Input.dispatchKeyEvent", {"type": "keyDown", **base, **({"text": k[2]} if k[2] else {})})
+    ws.call("Input.dispatchKeyEvent", {"type": "keyUp", **base})
+
+
+MODS = {"alt": 1, "ctrl": 2, "control": 2, "meta": 4, "cmd": 4, "super": 4, "win": 4, "shift": 8}
+
+
+def press(ws: WS, combo: str):
+    """按键或组合键（ctrl+a、shift+Tab、Enter、F5），发给页面。浏览器自己的快捷键（新标签页、地址栏）不起作用。"""
+    combo = combo.replace(" ", "")
+    parts = [x for x in combo.split("+") if x]
+    if combo.endswith("++") or combo == "+":
+        parts.append("+")
+    if not parts:
+        raise RuntimeError("没有按键")
+    mods = 0
+    for m in parts[:-1]:
+        if m.lower() not in MODS:
+            raise RuntimeError(f"不认识的修饰键 {m}")
+        mods |= MODS[m.lower()]
+    k = parts[-1]
+    low = k.lower()
+    if low in KEYS:
+        name, vk, text = KEYS[low]
+        code = name if len(name) > 1 else "Space"
+    elif low in ("return",):
+        name, vk, text, code = "Enter", 13, "\r", "Enter"
+    elif low == "del":
+        name, vk, text, code = "Delete", 46, "", "Delete"
+    elif low[:1] == "f" and low[1:].isdigit() and 1 <= int(low[1:]) <= 12:
+        name, vk, text, code = k.upper(), 111 + int(low[1:]), "", k.upper()
+    elif len(k) == 1:
+        name = k.upper() if mods & 8 and k.isalpha() else k
+        vk = ord(k.upper()) if k.isalnum() and k.isascii() else 0
+        code = ("Key" + k.upper()) if k.isalpha() and k.isascii() else ("Digit" + k) if k.isdigit() else ""
+        text = name
+    elif low in MODS:
+        name, vk, text, code = {1: "Alt", 2: "Control", 4: "Meta", 8: "Shift"}[MODS[low]], 0, "", ""
+    else:
+        raise RuntimeError(f"不认识的按键 {k}")
+    if mods & 7:
+        text = ""   # 带 ctrl / alt 的组合键不输入字符
+    base = {"key": name, "code": code, "windowsVirtualKeyCode": vk, "modifiers": mods}
+    ws.call("Input.dispatchKeyEvent", {"type": "keyDown" if text else "rawKeyDown", **base, **({"text": text} if text else {})})
     ws.call("Input.dispatchKeyEvent", {"type": "keyUp", **base})
 
 
@@ -399,23 +689,74 @@ def rec_stop(path: str, keep: bool = True) -> dict:
     return {"events": events}
 
 
+def close_window(a: dict) -> dict:
+    """任务做完后，窗口多于 keep 个就关掉它的窗口。"""
+    try:
+        ts = _targets()
+    except Exception:
+        return {"closed": False}
+    c = Ctx.__new__(Ctx)
+    c.b = _browser_ws()
+    if a.get("browser") and a["browser"] != BROWSER_ID:
+        return {"closed": False}   # 浏览器重开过，这个编号已经不是那个窗口了
+    tw = c.windows(ts)
+    if a["window"] not in {x for _, x in tw} or len({x for _, x in tw}) <= int(a.get("keep") or 1):
+        return {"closed": False}
+    for t, x in tw:
+        if x == a["window"]:
+            c.b.call("Target.closeTarget", {"targetId": t["id"]})
+    return {"closed": True}
+
+
+def click_at(ws: WS, x: float, y: float, button: str = "left", count: int = 1):
+    ws.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+    for n in range(1, count + 1):
+        for t in ("mousePressed", "mouseReleased"):
+            ws.call("Input.dispatchMouseEvent", {"type": t, "x": x, "y": y, "button": button, "clickCount": n})
+
+
+def upload(ws: WS, ref, files: list[str]):
+    """点一下上传按钮或文件输入框，把电脑里的文件交给弹出的文件选择框（不会真的弹出来）。"""
+    for f in files:
+        if not os.path.isfile(f):
+            raise RuntimeError(f"文件不存在：{f}")
+    ws.call("Page.enable")
+    ws.call("Page.setInterceptFileChooserDialog", {"enabled": True})
+    click_at(ws, *center(ws, ref))
+    ev = ws.wait_event("Page.fileChooserOpened", 5)
+    if not ev:
+        raise RuntimeError(f"点了 [{ref}] 没有弹出选择文件；找页面上的“上传 / 选择文件”按钮或文件输入框再试")
+    if len(files) > 1 and ev.get("mode") != "selectMultiple":
+        raise RuntimeError("这里一次只能选一个文件")
+    ws.call("DOM.setFileInputFiles", {"files": files, "backendNodeId": ev["backendNodeId"]})
+    ws.call("Page.setInterceptFileChooserDialog", {"enabled": False})
+
+
 def run(a: dict) -> dict:
     op = a["op"]
     if op == "rec_start":
         return rec_start(a["file"], float(a.get("max_s") or 600))
     if op == "rec_stop":
         return rec_stop(a["file"])
-    ws = page()
-    if op == "open":
+    if op == "close_window":
+        return close_window(a)
+    ctx = Ctx(a)
+    ws = ctx.ws
+    out = None
+    if op == "front":
+        ws.call("Page.bringToFront")
+        out = {"ok": True}
+    elif op == "window":   # 只挑窗口
+        out = {"ok": True}
+    elif op == "open":
         ws.call("Page.enable")
         ws.call("Page.navigate", {"url": a["url"]})
         settle(ws)
     elif op == "click":
         x, y = center(ws, a["ref"])
-        for t in ("mouseMoved", "mousePressed", "mouseReleased"):
-            ws.call("Input.dispatchMouseEvent", {"type": t, "x": x, "y": y, "button": "left", "clickCount": 1})
+        click_at(ws, x, y)
         settle(ws, 8)
-        ws = page()   # 点链接可能新开了标签页
+        ws = ctx.again()   # 点链接可能新开了标签页
     elif op == "type":
         if a.get("ref") is not None:
             x, y = center(ws, a["ref"])
@@ -429,32 +770,66 @@ def run(a: dict) -> dict:
         if a.get("submit"):
             key(ws, "enter")
             settle(ws, 10)
-            ws = page()
+            ws = ctx.again()
         else:
             time.sleep(0.4)
+        if a.get("ref") is None:   # computer_type：只是在焦点处输入
+            out = {"ok": True}
     elif op == "key":
         key(ws, a["key"])
         settle(ws, 8)
+    elif op == "upload":
+        upload(ws, a["ref"], [str(f) for f in (a.get("files") or [])])
+        time.sleep(0.8)
     elif op == "scroll":
         d = {"down": "0, innerHeight * 0.8", "up": "0, -innerHeight * 0.8"}.get(a.get("direction", "down"), "0, innerHeight * 0.8")
         js(ws, f"window.scrollBy({d})")
         time.sleep(0.5)
     elif op == "back":
-        if js(ws, "history.length") <= 1 and len(_targets()) > 1:
+        tabs = len(_targets()) if ctx.win is None else sum(1 for _, x in ctx.windows(_targets()) if x == ctx.window)
+        if js(ws, "history.length") <= 1 and tabs > 1:
             ws.call("Page.close")    # 点链接新开的标签页没有历史：关掉它，回到原来的标签页
             time.sleep(0.5)
-            ws = page()
+            ws = ctx.again()
         else:
             js(ws, "history.back()")
             settle(ws, 10)
     elif op == "read":
         start = int(a.get("offset") or 0)
         text = js(ws, "document.body ? document.body.innerText : ''") or ""
-        return {"url": js(ws, "location.href"), "title": js(ws, "document.title"), "total": len(text),
-                "offset": start, "text": text[start:start + 12000]}
+        out = {"url": js(ws, "location.href"), "title": js(ws, "document.title"), "total": len(text),
+               "offset": start, "text": text[start:start + 12000]}
+    # 下面几个是 computer_* 工具：按截图上的像素坐标操作页面
+    elif op == "screenshot":
+        data = base64.b64decode(ws.call("Page.captureScreenshot", {"format": "png"})["data"])
+        path = f"/tmp/osa-shot-{time.time_ns()}.png"
+        with open(path, "wb") as f:
+            f.write(data)
+        out = {"path": path}
+    elif op == "click_xy":
+        click_at(ws, float(a["x"]), float(a["y"]), a.get("button") or "left", 2 if a.get("double") else 1)
+        settle(ws, 8)
+        ws = ctx.again()
+        out = {"ok": True}
+    elif op == "press":
+        press(ws, str(a["keys"]))
+        settle(ws, 8)
+        ws = ctx.again()
+        out = {"ok": True}
+    elif op == "wheel":
+        w, h = js(ws, "[innerWidth, innerHeight]")
+        n = max(1, min(100, int(a.get("amount") or 3))) * 100
+        dx, dy = {"down": (0, n), "up": (0, -n), "left": (-n, 0), "right": (n, 0)}.get(a.get("direction") or "down", (0, n))
+        ws.call("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": w / 2, "y": h / 2, "deltaX": dx, "deltaY": dy})
+        time.sleep(0.5)
+        out = {"ok": True}
     elif op != "snapshot":
         raise RuntimeError(f"未知操作 {op}")
-    return snapshot(ws)
+    ctx.done()
+    out = snapshot(ws) if out is None else out
+    out["window"] = ctx.window
+    out["browser"] = BROWSER_ID
+    return out
 
 
 if __name__ == "__main__":

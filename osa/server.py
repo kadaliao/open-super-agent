@@ -45,6 +45,7 @@ routines.notify = broadcast
 groups.notify = broadcast
 dm.notify = broadcast
 teach.notify = broadcast
+computer.notify = broadcast
 channels.notify = broadcast
 tasklog.notify = broadcast
 
@@ -877,7 +878,7 @@ async def pc_type(bot_id: int, data: dict = Body(...)):
 
 
 @app.post("/api/bots/{bot_id}/computer/{action}")
-async def pc_action(bot_id: int, action: str):
+async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
     c = _pc(bot_id)
     try:
         if action == "start":
@@ -886,6 +887,11 @@ async def pc_action(bot_id: int, action: str):
             await c.pause()
         elif action == "takeover":
             await c.start()
+            # 从“请你帮忙”卡片接手：先把请你帮忙的那个任务（Heavy 里是那个研究员）的窗口放到最前面
+            tid = (data or {}).get("task_id")
+            key = c.asking.get(tid) or next((k for k, u in c.users.items() if tid and u.get("task_id") == tid), None)
+            if key in c.users and c.users[key].get("window"):
+                await c.front(key)
             c.takeover()
         elif action == "handback":
             return await handback(bot_id)
@@ -927,8 +933,8 @@ async def pc_use(data: dict = Body(...)):
     mid = (data.get("machine_id") or "").strip()
     if not hasattr(c, "use_machine") or not mid:
         raise HTTPException(400, "只有 Instabox 后端能选已有的机器")
-    if c.owner:
-        raise HTTPException(400, f"电脑正被{c.owner_label}使用，等它用完再换")
+    if c.users or c.exclusive:
+        raise HTTPException(400, f"电脑正在被用着（{c.busy()}），等用完再换")
     try:
         if mid not in {m["id"] for m in await c.list_machines()}:
             raise HTTPException(404, "账号下没有这台机器")
@@ -936,6 +942,25 @@ async def pc_use(data: dict = Body(...)):
     except computer.ComputerError as e:
         _err(e)
     state = await _pc_state(int(data.get("bot_id") or bots.primary()["id"]))
+    await broadcast({"type": "computer", "computer": state})
+    return state
+
+
+@app.post("/api/computer/watch")
+async def pc_watch(data: dict = Body(...)):
+    """画面固定在某个任务的窗口上（key 为空就取消固定，画面跟着最近的操作走）。"""
+    c = computer.get()
+    key = data.get("key") or None
+    try:
+        if key:
+            if not (c.users.get(key) or {}).get("window"):
+                raise HTTPException(404, "这个任务已经不用电脑了，或者还没打开浏览器")
+            await c.front(key)
+        else:
+            c.watch = None
+    except computer.ComputerError as e:
+        _err(e)
+    state = await computer.public_state()
     await broadcast({"type": "computer", "computer": state})
     return state
 
@@ -1231,9 +1256,13 @@ async def get_settings():
 @app.put("/api/settings")
 async def put_settings(data: dict = Body(...)):
     try:
-        return settings.save(data)
+        out = settings.save(data)
     except ValueError as e:
         _err(e)
+    if "computer_parallel" in data:   # 并行数改大了，排队的任务马上能开始
+        await computer.get().recheck()
+        await broadcast({"type": "computer", "computer": await computer.public_state()})
+    return out
 
 
 @app.post("/api/onboarding/done")

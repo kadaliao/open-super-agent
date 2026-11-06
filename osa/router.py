@@ -157,8 +157,8 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
     {"type": "function", "function": {"name": "recall", "description": "按 id 取回早先消息原文",
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
     {"type": "function", "function": {"name": "look_at_screen",
-        "description": "看一眼共用电脑现在的屏幕（截图 + 当前窗口标题）。用户问屏幕上有什么、某个任务做到哪了、"
-                       "或者你要判断下一步该派什么任务时用。只看不操作；要操作就派任务。",
+        "description": "看一眼共用电脑现在的屏幕（截图 + 当前窗口标题），就是用户在右栏看到的画面。用户问屏幕上有什么、"
+                       "或者你要判断下一步该派什么任务时用。几个任务同时在做时屏幕上只显示其中一个窗口，问任务进度用 list_tasks。只看不操作。",
         "parameters": {"type": "object", "properties": {}}}},
 ]
 
@@ -353,12 +353,13 @@ class Router:
                     except json.JSONDecodeError:
                         args = {}
                     out = await self._tool(c["name"], args)
-                    if isinstance(out, tuple):          # look_at_screen：文字 + 截图
+                    if isinstance(out, tuple):          # look_at_screen、computer_*：文字 + 截图
                         out, png = out
-                        shots.append(png)
+                        shots.append((png, c["name"] == "look_at_screen"))
                     msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out})
                 if shots:   # 图片要放在所有 tool 消息之后；只在本轮用，不存进记录
-                    msgs.append(ctools.image_message(shots[-1], "共用电脑的当前屏幕"))
+                    png, whole = shots[-1]
+                    msgs.append(ctools.image_message(png, "电脑的整个屏幕" if whole else "当前页面截图", coords=not whole))
                     shots = []
                 if shown and not shown.endswith("\n"):
                     shown += "\n\n"
@@ -497,25 +498,20 @@ class Router:
         return f"已记住 #{m['id']}（{'所有 Bot 共享' if m['shared'] else '只有你知道'}）：{m['text']}"
 
     async def _direct(self, name: str, args: dict):
-        """Router 自己动手做简单的电脑操作；电脑被任务占着就不等，让模型决定要不要先取消任务。"""
+        """Router 自己动手做简单的电脑操作：在屏幕上看到的那个窗口里做，不占任务的位置。
+        那个窗口正被任务用着时不等，让模型决定要不要先取消任务（打开网页例外，会换一个窗口）。"""
         from types import SimpleNamespace
         from . import computer
         c = computer.get()
-        key = f"chat-{self.bot_id}"
-        if c.owner and c.owner != key:
-            return f"电脑正被{c.owner_label}占用。如果用户的新指令取代了那个任务，先 cancel_task 再操作；否则告诉用户在排队。"
+        if c.exclusive:
+            return f"电脑正在{c.exclusive_label}，先别操作。"
         if c.controller == "human":
             return "用户正在接手电脑，先别操作。"
         if (await c.status())["state"] != "running":
             await c.start()
-        token = ctools.CLAIM.set(key)
-        try:
-            fake = SimpleNamespace(id=f"对话·{self.bot['name']}", bot_id=self.bot_id, chat_id=self.chat_id)
-            async def noop(_): pass
-            text, png = await ctools.call(fake, name, args, noop)
-            await c.release(key)   # 一步一放，不挡后台任务
-        finally:
-            ctools.CLAIM.reset(token)
+        fake = SimpleNamespace(id=f"对话·{self.bot['name']}", bot_id=self.bot_id, chat_id=self.chat_id)
+        async def noop(_): pass
+        text, png = await ctools.call(fake, name, args, noop, key=f"chat-{self.bot_id}")
         return (text, png) if png else text
 
     async def _look(self):
@@ -528,7 +524,8 @@ class Router:
             title = (await c.exec("DISPLAY=:1 xdotool getactivewindow getwindowname 2>/dev/null", timeout=10)).stdout.strip()
         except Exception as e:
             return f"看不了屏幕：{e}"
-        who = f"正在被{c.owner_label}使用" if c.owner else "空闲"
+        who = f"正在{c.exclusive_label}" if c.exclusive else f"有 {len(c.users)} 个任务在用（{c.busy()}），屏幕上只显示其中一个窗口" \
+            if c.users else "空闲"
         if c.controller == "human":
             who = "用户正在接手操作"
         return (f"截图见下一条消息。当前窗口：{title or '无'}；电脑{who}。", png)
@@ -538,7 +535,8 @@ class Router:
         lines = [f"- {n}：{d}" for n, (_, d, _) in tools.TOOLS.items()]
         if (CFG.get("computer") or {}).get("enabled", True):
             lines.append("- 电脑：每个后台任务都能用所有 Bot 共用的一台电脑（Linux 桌面 + Chromium 浏览器 + 终端），"
-                         "可以打开网页、点击、输入、登录后操作、下载文件、运行脚本。用户能在右栏实时看到屏幕。"
+                         "可以打开网页、点击、输入、登录后操作、上传下载文件、运行脚本。几个任务可以同时用，各自一个浏览器窗口，"
+                         "登录状态和文件共用；同时用的任务多了才排队。用户能在右栏实时看到屏幕。"
                          "遇到登录、验证码、付款这类必须用户本人做的步骤，Worker 会在任务中途暂停，"
                          "在对话里请用户「接手电脑」，用户交还后同一个任务接着做完。所以这类事情派一个任务就够，"
                          "不要拆成两个任务，也不要让用户做完后再来找你。"

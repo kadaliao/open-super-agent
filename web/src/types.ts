@@ -28,8 +28,11 @@ export type TaskInfo = {
   started?: number; waiting_approval?: number | null; last_action?: string
   result?: string; finished?: number; cost?: number; tokens?: number; currency?: string
 }
+// 正在用电脑的任务：每个占一个浏览器窗口（window：已经开了窗口）
+export type ComputerUser = { key: string; label: string; task_id: number | null; bot_id: number | null; window: boolean }
 export type ComputerState = {
   bot_id: number; backend: string; controller: 'bot' | 'human'; state: string; detail: string; width: number; height: number
+  parallel?: number; users?: ComputerUser[]; waiting?: string[]; watch?: string | null; exclusive?: string
 }
 export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
@@ -59,6 +62,7 @@ export type Settings = {
   roles: Record<string, Role>
   limits: Record<string, number>
   heavy_workers: number
+  computer_parallel: number
   embedding: { provider: string; model: string }
   model_info: Record<string, ModelInfo>   // 键是 服务/模型
   prices: { source: string; updated: number; error: string; rate: number; currency: string; models: number }

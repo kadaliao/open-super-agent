@@ -144,7 +144,7 @@ function HelpCard({ a }: { a: Approval }) {
       <div className="approval-actions">
         <button className="btn" onClick={() => approve(a.id, false, '用户表示处理不了')}>我处理不了</button>
         <span className="grow" />
-        <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-computer', { detail: { botId: a.bot_id, takeover: true } }))}>接手电脑</button>
+        <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-computer', { detail: { botId: a.bot_id, takeover: true, taskId: a.task_id } }))}>接手电脑</button>
         <button className="btn primary" onClick={() => api(`/api/bots/${a.bot_id}/computer/handback`, { method: 'POST' })}>处理完了，交还</button>
       </div>
     </div>

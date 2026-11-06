@@ -82,6 +82,7 @@ function Limits() {
   const toast = useToast()
   const [lim, setLim] = useState(s.limits)
   const [heavy, setHeavy] = useState(s.heavy_workers)
+  const [pcs, setPcs] = useState(s.computer_parallel)
   const save = async (body: object) => {
     try { setSettings(await api('/api/settings', { method: 'PUT', body })); toast('已保存，马上生效') }
     catch (e: any) { toast(e.message, true) }
@@ -98,6 +99,11 @@ function Limits() {
         <span><b>Heavy 模式同时跑几个任务</b><span>同一个问题交给几个后台任务分头做，再汇总。越多越全面，也越贵（1–8）</span></span>
         <input type="number" min={1} max={8} value={heavy} onChange={e => setHeavy(Number(e.target.value))}
           onBlur={() => { if (heavy && heavy !== s.heavy_workers) save({ heavy_workers: heavy }) }} />
+      </label>
+      <label className="set-row">
+        <span><b>同时用电脑的任务</b><span>几个后台任务可以同时用电脑，每个开一个浏览器窗口，登录状态共用；多了排队。电脑内存小就调小（1–8）</span></span>
+        <input type="number" min={1} max={8} value={pcs} onChange={e => setPcs(Number(e.target.value))}
+          onBlur={() => { if (pcs && pcs !== s.computer_parallel) save({ computer_parallel: pcs }) }} />
       </label>
     </div>
   )

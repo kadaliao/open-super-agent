@@ -1,6 +1,8 @@
 """电脑接口。所有 Bot 共用一台电脑；后端只需实现执行命令、读写文件、启动/暂停和 VNC 连接。
 
-桌面操作（截图、点击、输入……）统一在电脑里用 xdotool / scrot 完成，和 Instabox SDK 的做法一致。
+几个任务可以同时用：每个任务在自己的浏览器窗口里做（登录状态、文件共用），操作都经 CDP 发给自己窗口里的页面（cdp_helper.py），
+不动真实的鼠标键盘。同时用的任务最多 computer.parallel 个，多了排队。
+真实的屏幕只给你看和接手：截全屏、你接手时从网页打字用 xdotool / scrot。
 """
 import asyncio
 import base64
@@ -10,13 +12,12 @@ import shlex
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from ..config import CFG
 
 _HELPER = (Path(__file__).parent / "cdp_helper.py").read_bytes()
 HELPER_PATH = f"/tmp/osa-cdp-{hashlib.sha1(_HELPER).hexdigest()[:8]}.py"
 
 DISPLAY = ":1"
-BUTTONS = {"left": 1, "middle": 2, "right": 3}
-WHEEL = {"up": 4, "down": 5, "left": 6, "right": 7}
 KEYS = {"enter": "Return", "return": "Return", "esc": "Escape", "escape": "Escape", "tab": "Tab", "space": "space",
         "backspace": "BackSpace", "delete": "Delete", "del": "Delete", "home": "Home", "end": "End",
         "pageup": "Prior", "pagedown": "Next", "up": "Up", "down": "Down", "left": "Left", "right": "Right",
@@ -54,41 +55,102 @@ def keysym(key: str) -> str:
     return key
 
 
-def _coord(v) -> int:
-    v = int(v)
-    if not 0 <= v <= 16384:
-        raise ComputerError(f"坐标超出范围：{v}")
-    return v
+CHAT_KEEP = 600   # 对话里直接操作过的窗口，这么多秒内不分给任务
 
 
 class Computer:
     backend = "base"
+    on_change = None   # 谁在用电脑变了：() -> None，由 computer/__init__.py 设置，用来通知前端
+    background = staticmethod(asyncio.ensure_future)   # 在后台跑一个协程（computer/__init__.py 换成会留引用的）
 
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
-        self.controller = "bot"          # bot | human：你接手期间，Bot 的桌面操作会等待
+        self.controller = "bot"          # bot | human：你接手期间，Bot 的操作都会等待
         self._handback = asyncio.Event()
         self._handback.set()
         self.last_used = time.time()
-        self.lock = asyncio.Lock()        # 一台电脑同一时间只执行一个桌面动作
+        self.lock = asyncio.Lock()        # 真实的鼠标键盘同一时间只做一件事
         self.width, self.height = 1280, 800
-        # 所有 Bot 共用这台电脑：一个任务从第一次用电脑起独占到结束，其他任务排队
-        self.owner: str | None = None
-        self.owner_label = ""
+        # 谁在用：任务从第一次用浏览器起占一个窗口，到结束为止。key 是任务的标识（Heavy 的几个研究员各不相同）
+        self.users: dict[str, dict] = {}         # key -> {"label", "task_id", "bot_id", "window", "browser", "since"}
+        self.waiting: dict[str, str] = {}        # 排队的 key -> label
+        self.exclusive, self.exclusive_label = "", ""   # 演示录制独占整台电脑
+        self.watch: str | None = None            # 你点了“看这个”的任务：画面固定在它的窗口上
+        self.chat_windows: dict[str, dict] = {}  # 对话里直接操作用的窗口：chat-<Bot id> -> {"window", "browser", "at"}
+        self.asking: dict = {}                   # 正在“请你帮忙”的任务 id -> key（Heavy 的几个研究员共用一个任务 id）
         self._free = asyncio.Condition()
+        self._assign = asyncio.Lock()            # 一次只给一个任务挑窗口，免得两个挑中同一个空窗口
+        self._helper = asyncio.Lock()
+        self._helper_ok = False
 
-    async def claim(self, key: str, label: str, on_wait=None):
+    @staticmethod
+    def slots() -> int:
+        return max(1, int((CFG.get("computer") or {}).get("parallel", 3)))
+
+    def busy(self) -> str:
+        """谁在用电脑，给排队提示和 Bot 看。"""
+        return self.exclusive_label or "、".join(u["label"] for u in self.users.values())
+
+    def changed(self):
+        if self.on_change:
+            self.on_change()
+
+    async def claim(self, key: str, label: str, on_wait=None, info: dict | None = None):
+        """占一个位置；满了（或者在演示录制）就排队。同一个 key 重复占没关系。"""
+        ok = lambda: key in self.users or (not self.exclusive and len(self.users) < self.slots())   # noqa: E731
         async with self._free:
-            if self.owner not in (None, key) and on_wait:
-                await on_wait(f"排队等电脑（{self.owner_label} 正在用）")
-            await self._free.wait_for(lambda: self.owner in (None, key))
-            self.owner, self.owner_label = key, label
+            if key in self.users:
+                return
+            if not ok():
+                self.waiting[key] = label
+                self.changed()
+                try:
+                    if on_wait:
+                        await on_wait(f"排队等电脑（{self.busy()} 正在用）")
+                    await self._free.wait_for(ok)
+                finally:   # 排队时被取消也要从队里拿掉
+                    self.waiting.pop(key, None)
+                    self.changed()
+            self.users[key] = {"label": label, "since": time.time(), "window": None, **(info or {})}
+        self.changed()
+
+    async def claim_exclusive(self, key: str, label: str):
+        """演示录制：没有任务在用时才能开始，录制期间任务都排队。"""
+        async with self._free:
+            if self.exclusive or self.users:
+                raise ComputerError(f"电脑正在被用着（{self.busy()}）")
+            self.exclusive, self.exclusive_label = key, label
+        self.changed()
 
     async def release(self, key: str):
         async with self._free:
-            if self.owner == key:
-                self.owner, self.owner_label = None, ""
-                self._free.notify_all()
+            u = self.users.pop(key, None)
+            if self.exclusive == key:
+                self.exclusive, self.exclusive_label = "", ""
+            elif u is None:
+                return
+            if self.watch == key:
+                self.watch = None
+            self._free.notify_all()
+        if u and u.get("window"):
+            self.background(self._close(u["window"], u.get("browser")))
+        self.changed()
+
+    async def recheck(self):
+        """并行数改大了：叫醒排队的。"""
+        async with self._free:
+            self._free.notify_all()
+
+    async def _close(self, window: int, browser: str | None):
+        """任务做完了：窗口比并行数多就关掉它的窗口，不多就留着（画面上还能看到它最后的样子）。"""
+        try:
+            async with self._assign:
+                taken = [u.get("window") for u in self.users.values()] + [c.get("window") for c in self.chat_windows.values()]
+                if window in taken:   # 排在前面的已经把它分给别人了
+                    return
+                await self._helper_run({"op": "close_window", "window": window, "browser": browser, "keep": self.slots()})
+        except Exception:
+            pass   # 电脑暂停了之类，下次再说
 
     # ---------- 后端需要实现 ----------
     async def status(self) -> dict:
@@ -139,7 +201,7 @@ class Computer:
         if not self._handback.is_set():
             await asyncio.wait_for(self._handback.wait(), timeout)
 
-    # ---------- 桌面操作（公共实现） ----------
+    # ---------- 真实的屏幕（截全屏给对话里看、你接手时从网页打字） ----------
     async def _desktop(self, cmd: str, stdin: str | None = None, timeout: int = 60, as_human: bool = False) -> ExecResult:
         if not as_human:
             await self.wait_for_control()   # 用户接手期间，Bot 的动作等用户交还
@@ -152,32 +214,13 @@ class Computer:
         return r
 
     async def screenshot(self) -> bytes:
+        """截整个屏幕（你在画面上看到的）。只是看，你接手时也不用等。"""
         path = f"/tmp/osa-shot-{time.time_ns()}.png"
-        await self._desktop(f"scrot -o {path} 2>/dev/null || import -window root png:{path}")
+        await self._desktop(f"scrot -o {path} 2>/dev/null || import -window root png:{path}", as_human=True)
         try:
             return await self.read_bytes(path)
         finally:
             await self.exec(f"rm -f {path}", 10)
-
-    async def click(self, x, y, button: str = "left", double: bool = False):
-        b = BUTTONS.get(button)
-        if not b:
-            raise ComputerError("button 只能是 left / right / middle")
-        rep = " --repeat 2 --delay 80" if double else ""
-        await self._desktop(f"xdotool mousemove {_coord(x)} {_coord(y)} click{rep} {b}")
-
-    async def move(self, x, y):
-        await self._desktop(f"xdotool mousemove {_coord(x)} {_coord(y)}")
-
-    async def drag(self, x1, y1, x2, y2):
-        await self._desktop(f"xdotool mousemove {_coord(x1)} {_coord(y1)} mousedown 1 sleep 0.1 "
-                            f"mousemove {_coord(x2)} {_coord(y2)} sleep 0.1 mouseup 1")
-
-    async def scroll(self, direction: str = "down", amount: int = 3):
-        w = WHEEL.get(direction)
-        if not w:
-            raise ComputerError("direction 只能是 up / down / left / right")
-        await self._desktop(f"xdotool click --repeat {max(1, min(100, int(amount)))} --delay 30 {w}")
 
     async def type(self, text: str, as_human: bool = False):
         if not text:
@@ -195,37 +238,107 @@ class Computer:
             raise ComputerError("没有按键")
         await self._desktop(f"xdotool key -- {shlex.quote('+'.join(keysym(k) for k in ks))}", as_human=as_human)
 
-    async def browser(self, op: str, *, as_human: bool = False, **args) -> dict:
-        """用 CDP 操作浏览器（见 cdp_helper.py）。脚本第一次用时写进电脑；电脑重建过就重新写。
-        as_human=True 是用户自己发起的操作（比如开始 / 结束演示录制），用户接手时也照常执行。"""
-        stdin = json.dumps({"op": op, **args}, ensure_ascii=False)
+    # ---------- 浏览器（CDP） ----------
+    async def _helper_run(self, payload: dict) -> dict:
+        """在电脑里跑一次浏览器控制脚本。脚本第一次用时写进电脑；电脑重建过就重新写。"""
+        stdin = json.dumps(payload, ensure_ascii=False)
         for attempt in (0, 1):
-            r = await self.exec(f"test -f {HELPER_PATH}", 10) if attempt == 0 else None
-            if r is None or r.exit_code:
-                await self.write_bytes(HELPER_PATH, _HELPER)
-            try:
-                out = await self._desktop(f"python3 {HELPER_PATH}", stdin=stdin, timeout=90, as_human=as_human)
-                return json.loads(out.stdout.strip().splitlines()[-1])
-            except ComputerError as e:
-                if attempt == 0 and ("No such file" in str(e) or "can't open file" in str(e)):
-                    continue
-                raise
+            if not self._helper_ok:
+                async with self._helper:
+                    if not self._helper_ok:
+                        if (await self.exec(f"test -f {HELPER_PATH}", 10)).exit_code:
+                            await self.write_bytes(HELPER_PATH, _HELPER)
+                        self._helper_ok = True
+            r = await self.exec(f"export DISPLAY={DISPLAY}; python3 {HELPER_PATH}", 90, stdin)
+            if r.exit_code == 0:
+                return json.loads(r.stdout.strip().splitlines()[-1])
+            err = (r.stderr or r.stdout or f"退出码 {r.exit_code}").strip()
+            if attempt == 0 and ("No such file" in err or "can't open file" in err):
+                self._helper_ok = False
+                continue
+            raise ComputerError(err.splitlines()[-1].removeprefix("RuntimeError: ")[:500])
         raise ComputerError("浏览器控制脚本运行失败")
 
-    async def open_url(self, url: str):
-        if not url.startswith(("http://", "https://")):
-            raise ComputerError("只能打开 http / https 网址")
+    def _win(self, key: str, op: str = "") -> dict:
+        """告诉脚本这次在哪个窗口做（见 cdp_helper.Ctx）。op 是要做的动作：对话里打开网页时可以换窗口。"""
+        now = time.time()
+        tasks = {k: u["window"] for k, u in self.users.items() if u.get("window")}
+        chats = {k: c["window"] for k, c in self.chat_windows.items() if c.get("window") and now - c["at"] < CHAT_KEEP}
+        avoid = [w for k, w in {**tasks, **chats}.items() if k != key]
+        # 老浏览器没带防降速参数时可以借这次重开一次：电脑上只有这一个、你没在操作、不是要在已经打开的页面上做事
+        alone = self.controller == "bot" and not chats and op != "front"
+        if key in self.users:
+            u = self.users[key]
+            first = not u.get("window")
+            watched = (self.users.get(self.watch) or {}).get("window") if self.watch != key else None
+            return {"id": u.get("window"), "browser": u.get("browser"), "avoid": avoid, "keep_front": watched,
+                    "front": first and not watched and self.controller == "bot",
+                    "restart_ok": first and alone and len(self.users) == 1}
+        c = self.chat_windows.get(key) or {}
+        mine = c.get("window") if c.get("window") not in tasks.values() else None
+        return {"id": mine, "browser": c.get("browser") if mine else None, "avoid": avoid, "front": True, "router": True,
+                "op": op, "restart_ok": alone and op == "open" and not self.users}
+
+    def _set_window(self, key: str, window, browser: str | None = None):
+        if key in self.users:
+            self.users[key].update(window=window, browser=browser)
+        elif key.startswith("chat-"):
+            self.chat_windows[key] = {"window": window, "browser": browser, "at": time.time()}
+
+    async def browser(self, op: str, *, key: str | None = None, as_human: bool = False, **args) -> dict:
+        """用 CDP 操作浏览器（见 cdp_helper.py）。key 是谁在操作：任务（claim 过的）在自己的窗口里做；
+        对话里直接操作的（chat-<Bot id>）在屏幕上看到的那个窗口里做。不给 key 是老办法：最前面的标签页（演示录制）。
+        as_human=True 是用户自己发起的操作（开始 / 结束演示录制、点“看这个”），用户接手时也照常执行。"""
+        if not as_human:
+            await self.wait_for_control()   # 用户接手期间，Bot 的动作等用户交还
+        await self.start()
+        self.last_used = time.time()
+        if key is None:
+            return await self._helper_run({"op": op, **args})
+        if key not in self.users and not key.startswith("chat-"):
+            raise ComputerError("这个任务已经不占用电脑了")
+        if key.startswith("chat-") and self.watch:
+            self.watch = None   # 你在对话里让 Bot 操作：画面跟着它，不再固定在某个任务上
+            self.changed()
+        for attempt in (0, 1):
+            try:
+                if self._win(key, op)["id"] is None:   # 要挑窗口：一次只挑一个（免得两个挑中同一个空窗口），挑好了再做动作
+                    async with self._assign:
+                        if (win := self._win(key, op))["id"] is None:
+                            got = await self._helper_run({"op": "window", "win": win})
+                            self._set_window(key, got["window"], got.get("browser"))
+                            self.changed()
+                out = await self._helper_run({"op": op, **args, "win": self._win(key, op)})
+            except ComputerError as e:
+                if str(e).startswith("WINDOW_GONE") and attempt == 0:   # 动作之前发现窗口没了（页面自己关的、浏览器重开过）：重新挑
+                    self._set_window(key, None)
+                    continue
+                if str(e).startswith("WINDOW_CLOSED"):   # 动作做完窗口才没的：不能重做，下次再挑
+                    self._set_window(key, None)
+                    raise ComputerError(str(e).removeprefix("WINDOW_CLOSED ")) from None
+                if str(e).startswith("FRONT_BUSY"):
+                    w = str(e).split()[-1]
+                    who = next((f"{u['label']} " for u in self.users.values() if str(u.get("window")) == w), "别的 Bot 在对话里用")
+                    raise ComputerError(f"屏幕上现在是{who}的窗口，它还在用。要在那个页面上操作就先 cancel_task 停掉它；"
+                                        "只是打开网页的话直接 browser_open，会换一个窗口。") from None
+                raise
+            self._set_window(key, out.get("window"), out.get("browser"))   # 点链接弹出的新窗口，脚本会跟过去
+            return out
+        raise ComputerError("找不到浏览器窗口")
+
+    async def page_shot(self, key: str) -> bytes:
+        """截取 key 自己窗口里的页面（不含浏览器边框），点击坐标以它为准。"""
+        r = await self.browser("screenshot", key=key)
         try:
-            await self.browser("open", url=url)
-            return
-        except ComputerError:
-            pass   # CDP 不可用时退回老办法：命令行打开新标签页
-        await self._desktop(
-            "b=$(command -v chromium || command -v chromium-browser || command -v google-chrome) || "
-            "{ echo '电脑里没有浏览器' >&2; exit 127; }; "
-            f"setsid nohup \"$b\" --no-first-run --no-default-browser-check --password-store=basic "
-            f"{shlex.quote(url)} >/dev/null 2>&1 </dev/null &")
-        await asyncio.sleep(2.5)   # 给页面一点加载时间
+            return await self.read_bytes(r["path"])
+        finally:
+            await self.exec(f"rm -f {shlex.quote(r['path'])}", 10)
+
+    async def front(self, key: str):
+        """把任务的窗口放到屏幕最前面，并固定看它（别的任务点击时会把它放回前面）。"""
+        await self.browser("front", key=key, as_human=True)
+        self.watch = key
+        self.changed()
 
     async def shell(self, cmd: str, timeout: int = 120) -> ExecResult:
         """Bot 在电脑里执行终端命令（不需要桌面）。"""

@@ -1,6 +1,6 @@
 """演示一遍（Teach a task）：用户在共用电脑上做一遍，Bot 把录到的操作整理成技能草稿，用户审核后保存。
 
-- 开始：电脑没被任务占着时，先占住（任务会排队），在电脑里启动录制进程（cdp_helper.py 的 record），再把控制权交给用户。
+- 开始：没有任务在用电脑时，独占整台电脑（任务都排队），在电脑里启动录制进程（cdp_helper.py 的 record），再把控制权交给用户。
 - 录制只记浏览器里的操作：打开的网址、点击的元素、输入的内容（密码类只记 ******）、选择、回车。
 - 结束：停掉录制，交还控制权，把操作排成文字交给模型，生成技能草稿（名字、说明、做法）；不自动保存。
 - 最长 MAX_S 秒，到时自动结束并生成草稿，通过 teach 事件推给前端。
@@ -36,10 +36,13 @@ async def start(bot_id: int, note: str = "") -> dict:
     if state:
         raise ValueError("已经在录制了，先结束上一段")
     c = computer.get()
-    if c.owner:
-        raise ValueError(f"电脑正被{c.owner_label}占用，等它做完或者先停掉再录")
+    if c.users or c.exclusive:
+        raise ValueError(f"电脑正在被用着（{c.busy()}），等它做完或者先停掉再录")
     await c.start()
-    await c.claim(KEY, "演示录制")
+    try:
+        await c.claim_exclusive(KEY, "演示录制")
+    except computer.ComputerError as e:
+        raise ValueError(f"{e}，等它做完或者先停掉再录") from None
     path = f"/tmp/osa-rec-{int(time.time())}.jsonl"
     try:
         await c.browser("rec_start", as_human=True, file=path, max_s=MAX_S + 30)

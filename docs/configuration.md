@@ -83,6 +83,7 @@ pricing:
 computer:
   enabled: true
   backend: auto          # auto：有 INSTABOX_API_KEY 就用 Instabox，否则用本地 Docker；也可以指定 instabox / local
+  parallel: 3            # 几个任务可以同时用电脑，多了排队；设置 → 限制与预算 里也能改
   width: 1280
   height: 800
   idle_pause_s: 900      # 闲置多少秒后自动暂停
@@ -94,6 +95,15 @@ computer:
 |---|---|
 | Instabox | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
 | 本地 Docker | 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
+
+**几个任务同时用电脑**：所有 Bot 共用一台电脑，但后台任务不用一个个排队。每个任务在自己的浏览器窗口里做，
+截图、点击、输入都只作用在自己的窗口里，互不干扰；登录状态、电脑里的文件大家共用。同时用的任务最多 `parallel` 个，多了排队，
+任务卡片上会显示“排队等电脑”。终端命令和读写文件不算在里面。
+
+- 画面上一次只显示一个窗口，跟着最近的操作切换。右栏电脑上方列着正在用电脑的任务，点一下画面就固定在它的窗口上，再点一下取消。
+- 你接手电脑时，所有任务的浏览器操作都先停下，交还后接着做。“请你帮忙”的任务会先把自己的窗口放到最前面。
+- 每多一个窗口，电脑大概多用 100–300 MB 内存。Instabox 免费版或者内存小的电脑，可以把 `parallel` 调成 2，或者 1（和以前一样一个个来）。
+- 第一次升级到这个版本时，电脑里已经开着的浏览器会重开一次（加上防止后台窗口降速的参数），登录状态不受影响。
 
 ## 应用（MCP）
 
