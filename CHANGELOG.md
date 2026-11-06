@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+### 新增
+- 环境变量 `OSA_DATA_DIR`：数据库、密钥、自己加的应用清单和工作目录都放到这个目录，代码目录可以是只读的（桌面版要用）
 
 ## [0.6.1] - 2026-11-07
 ### 安全

@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 from .. import i18n
-from ..config import CFG, ROOT
+from ..config import CFG, DATA
 from .base import Computer, ComputerError, ExecResult
 
 IMAGE = "osa-computer:1"
@@ -80,7 +80,7 @@ class LocalComputer(Computer):
     def __init__(self, bot_id: int):
         super().__init__(bot_id)
         self.name = "osa-computer"
-        self.data = os.environ.get("OSA_COMPUTER_DATA") or str(ROOT / "data" / "computers" / "shared")
+        self.data = os.environ.get("OSA_COMPUTER_DATA") or str(DATA / "computers" / "shared")
         self._starting = asyncio.Lock()
 
     async def status(self) -> dict:

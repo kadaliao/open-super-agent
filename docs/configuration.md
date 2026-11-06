@@ -13,6 +13,7 @@
 | `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
 | `OSA_ALLOWED_HOSTS` | 否 | 没设 `OSA_PASSWORD` 时，额外放行的访问地址，逗号分隔，和 `server.allowed_hosts` 一样（见 [登录](#登录)） |
 | `OSA_CONFIG` | 否 | 配置文件路径，默认 `config.yaml` |
+| `OSA_DATA_DIR` | 否 | 数据目录，默认仓库里的 `data/`。数据库、密钥、自己加的应用清单、工作目录都放在这里；设了以后，相对路径的 `memory.db` 只取文件名放进这个目录（绝对路径照旧） |
 | `HTTPS_PROXY` | 否 | 服务器在国内、要用 Telegram 或 Discord 时设置，见 [聊天软件](channels.md) |
 | `OSA_BACKUP_PASSPHRASE` | 否 | 命令行备份、恢复时用的口令，定时备份用，见 [备份与迁移](#备份与迁移) |
 

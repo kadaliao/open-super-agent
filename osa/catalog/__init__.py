@@ -19,15 +19,15 @@ import re
 from pathlib import Path
 import yaml
 from .. import i18n
-from ..config import ROOT
+from ..config import DATA, ROOT
 from . import checks
 
 log = logging.getLogger(__name__)
 
 BUILTIN = Path(__file__).parent / "apps"
-LOCAL = ROOT / "data" / "apps"
+LOCAL = DATA / "apps"
 # 和 mcp_hub.WORKSPACE 是同一个目录。不从那边导入：导入 mcp_hub 会打开数据库，检查清单用不着
-WORKSPACE = ROOT / "data" / "workspace"
+WORKSPACE = DATA / "workspace"
 
 # 分类按这个顺序显示。要加新分类，改这里
 CATEGORIES = {"notes": i18n.N_("笔记与文档"), "mail": i18n.N_("邮件与日历"), "files": i18n.N_("文件"),

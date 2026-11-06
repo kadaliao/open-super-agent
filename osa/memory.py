@@ -7,9 +7,9 @@ import json
 import re
 import sqlite3
 import time
-from .config import CFG, ROOT
+from .config import CFG, DB_PATH
 
-db_path = ROOT / CFG["memory"]["db"]
+db_path = DB_PATH
 db_path.parent.mkdir(parents=True, exist_ok=True)
 conn = sqlite3.connect(db_path, check_same_thread=False)
 conn.execute("""create table if not exists messages(

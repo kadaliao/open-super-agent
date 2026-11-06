@@ -32,7 +32,7 @@ from mcp.shared._httpx_utils import create_mcp_http_client
 from mcp.shared.auth import AuthorizationCodeResult, OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 from mcp.shared.exceptions import MCPError
 from mcp_types import CONNECTION_CLOSED
-from .config import CFG, ROOT
+from .config import CFG, DATA
 from .memory import conn
 from . import i18n, vault
 
@@ -49,7 +49,7 @@ _reconnected: dict[str, float] = {}
 notify = None                    # 由 server 设置：async (event) -> None
 
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
-WORKSPACE = ROOT / "data" / "workspace"
+WORKSPACE = DATA / "workspace"
 KEYS = ("catalog", "type", "command", "args", "env", "url", "headers", "oauth", "oauth_redirect",
         "deny", "confirm", "owned")
 LOGIN_WAIT_S = 600               # 等用户在弹窗里登录授权的时限

@@ -32,14 +32,14 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from . import i18n   # 只读 locales/en.json，不碰数据库（这个模块在打开数据库之前就要导入）
-from .config import CFG, ROOT
+from .config import DATA, DB_PATH, ROOT
 
 MAGIC = b"OSABAK1\n"
 CHUNK = 1 << 20
 FORMAT = 1
-DB = ROOT / CFG["memory"]["db"]
+DB = DB_PATH
 STAGE = DB.parent / "restore"
-APPS = ROOT / "data" / "apps"
+APPS = DATA / "apps"
 MIN_PASS = 8
 MAX_UNZIPPED = 8 << 30
 NEED_TABLES = {"bots", "chats", "messages"}
