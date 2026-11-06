@@ -57,6 +57,9 @@ def keysym(key: str) -> str:
 
 
 CHAT_KEEP = 600   # 对话里直接操作过的窗口，这么多秒内不分给任务
+# 依赖“刚才看到的页面”的动作：用户接手过就不照原样做（见 browser）
+STALE_OPS = {"click", "type", "key", "upload", "scroll", "back", "click_xy", "press", "wheel"}
+STALE = "用户刚接手过电脑，页面可能已经变了，这一步没有执行。先看一下页面（browser_snapshot 或 computer_screenshot）再继续"
 
 
 class Computer:
@@ -198,14 +201,17 @@ class Computer:
         self.controller = "bot"
         self._handback.set()
 
-    async def wait_for_control(self, timeout: float = 1800):
-        if not self._handback.is_set():
-            await asyncio.wait_for(self._handback.wait(), timeout)
+    async def wait_for_control(self, timeout: float = 1800) -> bool:
+        """用户接手期间等用户交还。返回这次是不是真的等过。"""
+        if self._handback.is_set():
+            return False
+        await asyncio.wait_for(self._handback.wait(), timeout)
+        return True
 
     # ---------- 真实的屏幕（截全屏给对话里看、你接手时从网页打字） ----------
     async def _desktop(self, cmd: str, stdin: str | None = None, timeout: int = 60, as_human: bool = False) -> ExecResult:
-        if not as_human:
-            await self.wait_for_control()   # 用户接手期间，Bot 的动作等用户交还
+        if not as_human and await self.wait_for_control():   # 用户接手期间，Bot 的动作等用户交还
+            raise ComputerError(STALE)
         await self.start()
         async with self.lock:
             self.last_used = time.time()
@@ -290,8 +296,10 @@ class Computer:
         """用 CDP 操作浏览器（见 cdp_helper.py）。key 是谁在操作：任务（claim 过的）在自己的窗口里做；
         对话里直接操作的（chat-<Bot id>）在屏幕上看到的那个窗口里做。不给 key 是老办法：最前面的标签页（演示录制）。
         as_human=True 是用户自己发起的操作（开始 / 结束演示录制、点“看这个”），用户接手时也照常执行。"""
-        if not as_human:
-            await self.wait_for_control()   # 用户接手期间，Bot 的动作等用户交还
+        # 用户接手期间，Bot 的动作等用户交还。交还后不照原样做：用户可能换了页面、动了页面，
+        # 按接手前看到的元素编号或坐标点下去会点错地方（打开网址、读页面、截图不看当前页面，照常做）
+        if not as_human and await self.wait_for_control() and op in STALE_OPS:
+            raise ComputerError(STALE)
         await self.start()
         self.last_used = time.time()
         if key is None:
