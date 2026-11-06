@@ -44,6 +44,16 @@ Grok Bot 的体验很好，但价格高，模型也换不了。open-super-agent 
 - 🔄 **模型自选**：在设置里添加模型服务（DeepSeek、OpenAI、OpenRouter、硅基流动、阿里云百炼、智谱、Kimi、Ollama，或任何兼容 OpenAI 的接口），填 API Key、点一下测试就能用；对话、后台任务等各自选模型，单价自动获取。
 - 🌐 **中文 / English**：界面、通知和聊天软件里的消息都有中英文两种，设置里一键切换；英文界面下 Bot 默认用英文回复。
 
+## 适合谁
+
+- **放在服务器上一直开着**：一条 `docker compose up` 就能跑在 VPS 或家里的机器上，在网页、手机和聊天软件里随时用。聊天软件走长连接，服务器不需要公网地址。
+- **用 API 按 token 付费，模型随便换**：DeepSeek、Kimi、智谱、阿里云百炼，或者本机的 Ollama 都行，对话和后台任务可以用不同的模型。每天花了多少钱看得到，可以设每日预算。
+- **在国内用**：飞书、钉钉、企业微信、腾讯文档、flomo、滴答清单这些国内的应用和聊天软件都接好了，默认的配置不需要任何国外的付费服务。
+- **几个 Bot 共用一台电脑**：在电脑上登录一次，所有 Bot 都能用这个登录状态。
+- **默认先问再做**：写操作先弹卡片等你确认；密钥加密存在保险库里，不进聊天记录。
+
+[OpenMausBot](https://github.com/milind-soni/OpenMausBot) 也是开源的 Grok Bot 替代品，做法不太一样：它主打桌面 App（macOS、Windows、Ubuntu），Bot 跑在你本机的 `claude`、`codex`、`grok` 命令行上，用你已有的 Claude、ChatGPT 订阅；每个 Bot 各有一台电脑（云电脑、本地虚拟机，或者借用你自己的电脑），应用通过 Composio 接入。想用桌面 App、想用现成的订阅、想让 Bot 直接操作你自己的电脑，选它更合适。
+
 ## 快速开始
 
 用 Docker Compose，只需要装 Docker：

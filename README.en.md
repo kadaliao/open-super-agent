@@ -42,6 +42,16 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 The architecture follows DeepSeek's Super-agent design: a Router that converses, Workers that execute, and a Watchdog that supervises.
 
+## Who it's for
+
+- **Always on, on a server**: one `docker compose up` on a VPS or a machine at home, then use it from the browser, your phone or a chat app. Chat apps use long-lived outbound connections, so the server needs no public address.
+- **Pay per token, with any model**: DeepSeek, OpenAI, OpenRouter, Kimi, Zhipu, or Ollama on your own machine, with different models for chat and background tasks. Spending is tracked per day, and you can set a daily budget.
+- **Works in mainland China**: Feishu/Lark, DingTalk, WeCom, Tencent Docs, flomo and TickTick are ready to connect, and the default setup needs no paid third-party service.
+- **One computer shared by all Bots**: sign in to a site once on the computer and every Bot can use that login.
+- **Asks before acting**: write operations wait for your approval; secrets are encrypted in a vault and never enter the chat.
+
+[OpenMausBot](https://github.com/milind-soni/OpenMausBot) is another open-source Grok Bot alternative with a different approach: it focuses on desktop apps (macOS, Windows, Ubuntu), runs Bots on the `claude`, `codex` and `grok` CLIs on your machine using the subscriptions you already have, gives each Bot its own computer (a cloud desktop, a local VM, or your own computer), and connects apps through Composio. If you want a desktop app, want to use an existing Claude or ChatGPT subscription, or want Bots to work on your own computer, it is the better fit.
+
 ## Quick start
 
 With Docker Compose you only need Docker:
