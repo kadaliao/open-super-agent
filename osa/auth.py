@@ -1,13 +1,18 @@
 """登录鉴权。设置了环境变量 OSA_PASSWORD 才生效；不设置时和以前一样不用登录（只适合本机或内网）。
 
+不管开没开登录，别的网站发来的 WebSocket 和写请求都拒绝（浏览器会带上它的 Origin）；没开登录时还只认本机、IP、
+Tailscale 这类地址，免得别人把自己的域名解析到 127.0.0.1，借你的浏览器读写本机的服务（DNS rebinding）。
+
 登录后发一个 HttpOnly cookie：<过期时间>.<签名>。签名密钥由 data/session.key 和密码一起派生，
 改密码或删掉 session.key 后，所有设备都要重新登录。
 不用登录就能访问的：登录页、分享页（/s/、/skill/、/template/ 和 /api/shared/）、webhook（有自己的 token）、前端静态文件。
 """
 import asyncio
+import fnmatch
 import hashlib
 import hmac
 import html
+import ipaddress
 import json
 import os
 import secrets
@@ -16,6 +21,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from . import i18n
+from .config import CFG
 from .memory import db_path
 
 COOKIE = "osa_session"
@@ -26,6 +32,8 @@ FAIL_WINDOW, MAX_FAILS = 600, 5   # 同一个 IP 10 分钟内输错 5 次，暂�
 # 前端构建产物里不含数据的文件：登录页和分享页要用
 PUBLIC_FILES = {"/manifest.json", "/sw.js", "/favicon.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"}
 PUBLIC_PREFIXES = ("/assets/", "/hooks/", "/api/shared/", "/s/", "/skill/", "/template/")
+# 没开登录时，Host 是这些名字才接受：别人没法让这些名字解析到你的 127.0.0.1
+LOCAL_SUFFIXES = (".localhost", ".local", ".ts.net")
 
 router = APIRouter()
 _fails: dict[str, list[float]] = {}
@@ -95,6 +103,36 @@ def _same_origin(headers: dict) -> bool:
     return origin != "null" and urlsplit(origin).netloc == headers.get("host")
 
 
+def _allowed_hosts() -> list[str]:
+    extra = os.environ.get("OSA_ALLOWED_HOSTS", "").split(",")
+    names = [*((CFG.get("server") or {}).get("allowed_hosts") or []), *extra]
+    return [str(h).strip().lower() for h in names if str(h).strip()]
+
+
+def host_name(host: str | None) -> str:
+    try:
+        return (urlsplit("//" + (host or "")).hostname or "").rstrip(".")
+    except ValueError:
+        return ""
+
+
+def host_ok(host: str | None) -> bool:
+    """没开登录时看 Host：本机、IP 地址、*.local、*.ts.net 和 server.allowed_hosts 里的才接受。没有 Host 的不是浏览器发的，放行。"""
+    if not host:
+        return True
+    name = host_name(host)
+    if not name:
+        return False
+    if name == "localhost" or name.endswith(LOCAL_SUFFIXES):
+        return True
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    return any(fnmatch.fnmatch(name, p) for p in _allowed_hosts())
+
+
 def _public(path: str) -> bool:
     if ".." in path:   # 不让 /s/../ 这种路径借公开前缀绕过
         return False
@@ -115,13 +153,22 @@ class AuthMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] not in ("http", "websocket") or not enabled():
+        if scope["type"] not in ("http", "websocket"):
             return await self.app(scope, receive, send)
         headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope["headers"]}
         path, method = scope["path"], scope.get("method", "GET")
-        if (scope["type"] == "websocket" or method not in ("GET", "HEAD", "OPTIONS")) \
-                and not path.startswith("/hooks/") and not _same_origin(headers):
+        # 开没开登录都查：任何网页都能让浏览器连 ws://127.0.0.1 或往这里 POST，带的是它自己的 Origin。
+        # webhook 也查：真正的 webhook 不是浏览器发的，不带 Origin
+        if (scope["type"] == "websocket" or method not in ("GET", "HEAD", "OPTIONS")) and not _same_origin(headers):
             return await _deny(scope, send, 403, i18n.t("跨站请求被拒绝"))
+        if not enabled():
+            # 设了 webhook token 的，token 本身就挡住了浏览器（自定义请求头跨站发不出来），外面的地址可以照常调
+            if not (path.startswith("/hooks/") and os.environ.get("OSA_WEBHOOK_TOKEN")) and not host_ok(headers.get("host")):
+                return await _deny(scope, send, 403, i18n.t(
+                    "没有放行这个地址（{host}）：没设登录密码时，只接受本机、IP 地址和 Tailscale 的地址。要用这个地址访问，"
+                    "请设置 OSA_PASSWORD 打开登录，或者把它加进 config.yaml 的 server.allowed_hosts",
+                    host=host_name(headers.get("host"))), text=not path.startswith("/api/"))
+            return await self.app(scope, receive, send)
         if _public(path):
             return await self.app(scope, receive, send)
         exp = check_token(_cookies(headers).get(COOKIE))
@@ -144,12 +191,15 @@ class AuthMiddleware:
         return await self.app(scope, receive, send)
 
 
-async def _deny(scope, send, status: int, detail: str):
+async def _deny(scope, send, status: int, detail: str, text: bool = False):
     if scope["type"] == "websocket":
         return await send({"type": "websocket.close", "code": 1008})
-    body = json.dumps({"detail": detail}, ensure_ascii=False).encode()
+    if text:   # 浏览器里直接打开的页面：给人看的文字
+        body, kind = detail.encode(), b"text/plain; charset=utf-8"
+    else:
+        body, kind = json.dumps({"detail": detail}, ensure_ascii=False).encode(), b"application/json; charset=utf-8"
     await send({"type": "http.response.start", "status": status,
-                "headers": [(b"content-type", b"application/json; charset=utf-8"), (b"content-length", str(len(body)).encode())]})
+                "headers": [(b"content-type", kind), (b"content-length", str(len(body)).encode())]})
     await send({"type": "http.response.body", "body": body})
 
 

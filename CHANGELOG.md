@@ -3,6 +3,9 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+### 安全
+- **没设登录密码时，你在浏览器里打开的任何网页都能连上本机的服务**，替你给 Bot 发消息、批准确认卡片（来源检查只在开了登录时才做）。现在不管开没开登录，别的网站发来的 WebSocket 和写请求都会被拒绝；webhook 也一样，真正的 webhook 服务不带来源，不受影响
+- 没设登录密码时，只接受用本机、IP 地址、`*.local`、`*.ts.net` 访问，防止别人把自己的域名解析到 127.0.0.1 来读写本机的服务（DNS rebinding）。用局域网里的机器名或自己的域名访问的，在 `config.yaml` 的 `server.allowed_hosts` 里加上（或者用 `OSA_ALLOWED_HOSTS`），更好的办法是设 `OSA_PASSWORD`
 
 ## [0.6.0] - 2026-11-07
 ### 新增

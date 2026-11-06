@@ -5,8 +5,9 @@
 - **登录鉴权要自己打开。** 设置环境变量 `OSA_PASSWORD` 后，除登录页、分享链接、webhook 和前端静态文件外，页面、接口和 WebSocket 都要先登录；
   只有一个密码，没有多用户和权限区分。**不设置时不用登录**，能访问到这个端口的人就能和你的 Bot 对话、操作电脑、使用你接入的应用，
   这时请只在本机或内网（例如 Tailscale）使用。部署到公网时务必设置一个足够长的随机密码，并通过 HTTPS 访问。
-- 登录状态是一个签了名的 HttpOnly cookie（SameSite=Lax，HTTPS 下带 Secure），签名密钥在 `data/session.key`。开启登录后，
-  来源（Origin）和本站不一致的写请求与 WebSocket 会被拒绝。同一个 IP 10 分钟内输错 5 次会暂停登录。
+- 登录状态是一个签了名的 HttpOnly cookie（SameSite=Lax，HTTPS 下带 Secure），签名密钥在 `data/session.key`。同一个 IP 10 分钟内输错 5 次会暂停登录。
+- 来源（Origin）和本站不一致的写请求与 WebSocket 一律拒绝，不管开没开登录，webhook 也一样。所以你在浏览器里打开的网页，没法连上本机的服务替你发消息、处理确认卡片。
+- 没开登录时，只接受用 `localhost`、IP 地址、`*.local`、`*.ts.net` 和 `server.allowed_hosts` 里的名字访问，防 DNS rebinding（别人把自己的域名解析到 127.0.0.1，借你的浏览器读写本机的服务）。
 - 本地电脑的 VNC 没有密码，只监听电脑容器里的 127.0.0.1，不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。电脑里 Chromium 的 DevTools 端口（9222）只监听电脑内部，也不做端口映射。
 - 用 Docker Compose 部署时，服务的容器挂了宿主机的 `docker.sock`（本地电脑要用），等于有宿主机的 root 权限；服务里运行的第三方应用（MCP）也在这个容器里，请只添加信得过的应用。电脑用 Instabox 时可以去掉这个挂载。
 - 模型提供方的密钥只从环境变量读取。应用密钥可以存进保险库：用 Fernet 加密写进数据库，主密钥来自 `OSA_VAULT_KEY` 或 `data/vault.key`（权限 600）。两样都要妥善保管，`data/` 不进 git。

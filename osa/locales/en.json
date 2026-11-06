@@ -320,6 +320,7 @@
   "没有技能 /{skill}": "No skill /{skill}",
   "没有按键": "No keys given",
   "没有收到文件": "No file received",
+  "没有放行这个地址（{host}）：没设登录密码时，只接受本机、IP 地址和 Tailscale 的地址。要用这个地址访问，请设置 OSA_PASSWORD 打开登录，或者把它加进 config.yaml 的 server.allowed_hosts": "This address ({host}) isn't allowed: without a login password, only localhost, IP addresses and Tailscale addresses are accepted. To use this address, set OSA_PASSWORD to turn on login, or add it to server.allowed_hosts in config.yaml",
   "没有新内容": "Nothing new",
   "没有权限": "Not allowed",
   "没有权限（403）：可能没开通这个模型，或者账户欠费。{detail}": "No permission (403). The model may not be enabled, or the account is out of credit. {detail}",

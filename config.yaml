@@ -24,6 +24,11 @@ search:
 tools:
   fetch_private: false       # fetch_url 默认不抓本机和内网地址（防网页里的提示注入让 Bot 去读内网服务、云服务器的元数据）；要抓内网页面改成 true
 
+server:
+  # 没设 OSA_PASSWORD 时，只接受用本机、IP 地址、*.local、*.ts.net 访问；用别的域名访问（比如局域网里的机器名）要加在这里，
+  # 支持 *.example.com 这种写法。设了密码就不用管这一项。也可以用环境变量 OSA_ALLOWED_HOSTS，逗号分隔
+  allowed_hosts: []
+
 limits:
   worker_max_steps: 30        # 电脑操作一步一个动作，步数要多一些
   task_timeout_s: 600
