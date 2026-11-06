@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, Settings, Skill, Stream, Task, Teach, TeachDraft } from './types'
+import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft } from './types'
 
 type State = {
   ready: boolean
@@ -14,6 +14,8 @@ type State = {
   hasMore: Record<number, boolean>
   streams: Record<number, Stream | undefined>
   tasks: Record<number, Task>
+  taskSteps: Record<number, TaskStep[]>   // 打开着的任务详情的过程，边做边更新
+  openTask: number | null            // 右栏“任务”里打开的是哪个任务
   approvals: Record<number, Approval>
   unread: Record<number, number>
   errors: Record<number, string | undefined>
@@ -33,7 +35,7 @@ type State = {
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
+  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
   view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false,
 }
 const subs = new Set<() => void>()
@@ -119,6 +121,49 @@ async function loadChat(chatId: number) {
   }
 }
 
+// ---------- 任务过程 ----------
+// 加载过程的请求还没回来时，收到的过程事件先排着，回来以后按顺序补上，不丢也不重复
+const stepQueue = new Map<number, any[]>()
+
+function applyStep(list: TaskStep[], d: any): TaskStep[] {
+  if (d.step) {
+    const i = list.findIndex(x => x.id === d.step.id)
+    if (i >= 0) return list.map((x, j) => (j === i ? d.step : x))
+    return [...list, d.step].sort((a, b) => a.id - b.id)
+  }
+  if (d.append) return list.map(x => {
+    // at：这段从第几个字开始。已经有的部分跳过；中间缺了一段就先不接，这一步写完时会整段补上
+    if (x.id !== d.id || d.at > x.body.length) return x
+    return { ...x, body: x.body + d.append.slice(x.body.length - d.at) }
+  })
+  return list
+}
+
+// 拉任务详情和全部过程；之后过程靠事件更新。同一个任务同时只拉一次
+export async function loadTask(id: number): Promise<TaskInfo | undefined> {
+  if (stepQueue.has(id)) return
+  stepQueue.set(id, [])
+  try {
+    const r = await api(`/api/tasks/${id}`)
+    const queued = stepQueue.get(id) || []
+    set(s => ({ taskSteps: { ...s.taskSteps, [id]: queued.reduce(applyStep, r.steps as TaskStep[]) } }))
+    return r.task
+  } finally { stepQueue.delete(id) }
+}
+
+// 只要任务详情（状态、结果、花费），过程不动
+export const fetchTask = async (id: number): Promise<TaskInfo> => (await api(`/api/tasks/${id}`)).task
+
+export function dropTask(id: number) {
+  set(s => { const t = { ...s.taskSteps }; delete t[id]; return { taskSteps: t } })
+}
+
+// 在右栏打开某个任务的过程（任务卡片、结果、定时任务的运行记录里点“过程”）
+export function showTask(id: number | null) {
+  set({ openTask: id })
+  if (id) window.dispatchEvent(new CustomEvent('osa-open-task'))
+}
+
 export function openLibrary(pageId: number | null = null) {
   set({ view: 'library', libraryPage: pageId })
 }
@@ -164,6 +209,7 @@ async function resync() {
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   set({ messages: {}, streams: {}, tasks, teach: b.teach || null })
   if (state.active) loadChat(state.active)
+  Object.keys(state.taskSteps).forEach(id => loadTask(Number(id)))   // 断线期间漏掉的过程
 }
 
 export function send(chatId: number, text: string) {
@@ -204,6 +250,12 @@ function handle(d: any) {
     case 'task':
       set(s => ({ tasks: { ...s.tasks, [d.task.id]: d.task } }))
       break
+    case 'task_step': {
+      const q = stepQueue.get(d.task_id)
+      if (q) q.push(d)
+      else if (state.taskSteps[d.task_id]) set(s => ({ taskSteps: { ...s.taskSteps, [d.task_id]: applyStep(s.taskSteps[d.task_id], d) } }))
+      break
+    }
     case 'approval':
       set(s => ({ approvals: { ...s.approvals, [d.id]: { ...(s.approvals[d.id] || {}), ...d } } }))
       if (d.status === 'pending' && document.hidden) notifyOS(cid, null, '有一个操作需要你确认')

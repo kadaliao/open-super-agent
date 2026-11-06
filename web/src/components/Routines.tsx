@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, loadSkills, setTeachDraft, useStore } from '../store'
+import { api, loadSkills, setTeachDraft, showTask, useStore } from '../store'
 import type { Avatar, Bot, Routine, RoutineRun, Skill, SkillDraft, Trigger } from '../types'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
@@ -280,7 +280,7 @@ function Runs({ id }: { id: number }) {
     <div className="runs">
       {runs.map(x => (
         <div key={x.id} className="kv" title={x.detail}>
-          <span>{when(x.ts)} · {SOURCE[x.source] || x.source}{x.task_id ? ` · #${x.task_id}` : ''}{x.detail && ` · ${x.detail.slice(0, 40)}`}</span>
+          <span>{when(x.ts)} · {SOURCE[x.source] || x.source}{x.task_id ? <> · <button className="link-btn" title="看这次运行每一步做了什么" onClick={() => showTask(x.task_id!)}>#{x.task_id}</button></> : ''}{x.detail && ` · ${x.detail.slice(0, 40)}`}</span>
           <span className={'muted run-' + x.status}>{STATUS[x.status] || x.status}</span>
         </div>
       ))}

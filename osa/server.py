@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, bots, catalog, channels, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
-from . import prices, providers, search, settings, skills, teach, templates, vault
+from . import prices, providers, search, settings, skills, tasklog, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -45,6 +45,7 @@ routines.notify = broadcast
 groups.notify = broadcast
 teach.notify = broadcast
 channels.notify = broadcast
+tasklog.notify = broadcast
 
 
 async def _pages_changed():
@@ -58,13 +59,14 @@ async def lifespan(app):
     if not auth.enabled():
         print("未设置 OSA_PASSWORD：网页不用登录就能访问，只能在本机或内网使用", flush=True)
     bots.ensure_default()
+    tasklog.startup()   # 上次没做完的任务标成“已中断”，清掉太旧的任务过程
     settings.apply()
     routines.import_legacy(bots.primary()["id"])
     await mcp_hub.start()
     await channels.start()
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
           asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop()),
-          asyncio.create_task(prices.loop())]
+          asyncio.create_task(prices.loop()), asyncio.create_task(tasklog.prune_loop())]
     search.sync()   # 补上旧数据的索引；配了 embedding 的话后台开始算向量
     yield
     for t in bg:
@@ -200,6 +202,32 @@ async def reset_chat(chat: dict | int) -> int:
     await broadcast({"type": "message", "chat_id": chat_id, "bot_id": bot_id, "message": {
         "id": mid, "ts": time.time(), "role": "task", "content": "[新话题]", "meta": {"kind": "reset"}, "bot_id": bot_id}})
     return mid
+
+
+# 正在跑的任务：数据库里的记录盖上内存里的实时状态
+LIVE_KEYS = ("status", "steps", "started", "elapsed", "waiting_approval", "last_action")
+
+
+def _live(t: dict) -> dict:
+    if (live := rt.TASKS.get(t["id"])) and live.status == "running":
+        p = live.public()
+        t |= {k: p[k] for k in LIVE_KEYS}
+    return t
+
+
+@app.get("/api/tasks")
+async def list_tasks(bot_id: int | None = None, chat_id: int | None = None, before: int | None = None, limit: int = 30):
+    """任务列表：某个 Bot 做的（含在群里做的），或者某个对话里派的。新的在前。"""
+    return [_live(t) for t in tasklog.list_tasks(bot_id, chat_id, before, max(1, min(limit, 100)))]
+
+
+@app.get("/api/tasks/{task_id}")
+async def task_detail(task_id: int):
+    """一个任务的详情和过程（每一步想了什么、调了什么工具、拿到了什么）。"""
+    t = tasklog.detail(task_id)
+    if not t:
+        raise HTTPException(404, "没有这个任务")
+    return {"task": _live(t), "steps": tasklog.steps(task_id)}
 
 
 @app.post("/api/tasks/{task_id}/cancel")

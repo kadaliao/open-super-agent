@@ -31,6 +31,12 @@ export default function App() {
     window.addEventListener('osa-open-computer', h)
     return () => window.removeEventListener('osa-open-computer', h)
   }, [])
+  // 点了任务卡片上的“过程”：打开右栏的任务标签
+  useEffect(() => {
+    const h = () => { setDetails(true); setTab('tasks') }
+    window.addEventListener('osa-open-task', h)
+    return () => window.removeEventListener('osa-open-task', h)
+  }, [])
 
   // 演示一遍：开始录制时打开这个 Bot 的电脑画面；录完有草稿时打开它的技能面板
   const teach = useStore(s => s.teach)
@@ -90,7 +96,7 @@ export default function App() {
 
   if (!ready) return <div className="loading">◆</div>
   return (
-    <div className={'app' + (details && view === 'chat' ? ' with-panel' : '') + (details && tab === 'computer' ? ' wide-panel' : '') + (side ? ' side-open' : '')}>
+    <div className={'app' + (details && view === 'chat' ? ' with-panel' : '') + (details && tab === 'computer' ? ' wide-panel' : details && tab === 'tasks' ? ' mid-panel' : '') + (side ? ' side-open' : '')}>
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
       <div className="side-mask" onClick={() => setSide(false)} />
       <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings('')} onClose={() => setSide(false)} />

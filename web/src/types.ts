@@ -15,6 +15,19 @@ export type Task = {
   id: number; goal: string; mode: string; status: string; steps: number
   bot_id: number; chat_id: number; started: number; waiting_approval: number | null; elapsed: number; last_action?: string
 }
+// 任务过程的一步。kind：think 思考、text 正在写、say 调工具前说的话、tool 工具调用（detail 参数、body 返回）、
+// answer 写出的结果（Heavy 里研究员的草稿也是）、note 过程提示。worker：Heavy 里的研究员 h0、h1……，汇总是 review
+export type TaskStep = {
+  id: number; task_id: number; ts: number; worker: string; kind: 'think' | 'text' | 'say' | 'tool' | 'answer' | 'note'
+  title: string; body: string; status: string; dur: number; detail: string
+}
+// 任务列表、任务详情里的一项：数据库里的记录，正在跑的盖上实时状态
+export type TaskInfo = {
+  id: number; ts: number; goal: string; mode: string; status: string; chat_id: number; bot_id: number
+  elapsed?: number | null; steps?: number | null; handoff_to?: number | null
+  started?: number; waiting_approval?: number | null; last_action?: string
+  result?: string; finished?: number; cost?: number; tokens?: number; currency?: string
+}
 export type ComputerState = {
   bot_id: number; backend: string; controller: 'bot' | 'human'; state: string; detail: string; width: number; height: number
 }

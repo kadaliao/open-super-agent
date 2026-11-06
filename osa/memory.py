@@ -26,6 +26,12 @@ if "chat_id" not in _cols:
 conn.execute("create index if not exists messages_chat on messages(chat_id, id)")
 conn.execute("""create table if not exists llm_usage(ts real, role text, model text, task_id integer,
   cache_hit integer, cache_miss integer, output integer, cost real)""")
+conn.execute("create index if not exists llm_usage_task on llm_usage(task_id)")
+# 后台任务的过程（每一步想了什么、调了什么工具、拿到什么），读写在 tasklog.py
+conn.execute("""create table if not exists task_steps(
+  id integer primary key, task_id integer, ts real, worker text default '', kind text, title text default '',
+  body text default '', status text default 'done', dur real default 0, detail text default '')""")
+conn.execute("create index if not exists task_steps_task on task_steps(task_id, id)")
 conn.commit()
 
 

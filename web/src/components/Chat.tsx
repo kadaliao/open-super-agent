@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, chatById, loadOlder, openChat, openLibrary, useStore } from '../store'
+import { api, approve, chatById, loadOlder, openChat, openLibrary, showTask, useStore } from '../store'
 import type { Approval, Bot, Message, Task } from '../types'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
@@ -68,13 +68,14 @@ function TaskCard({ m, task, owner, handoffTo }: { m: Message; task?: Task; owne
     return () => clearInterval(t)
   }, [status])
   const goal = m.content.replace(/^\[任务已派发\]\s*/, '')
-  const label: Record<string, string> = { running: task?.waiting_approval ? '等你确认' : '进行中', done: '已完成', failed: '失败', cancelled: '已取消' }
+  const label: Record<string, string> = { running: task?.waiting_approval ? '等你确认' : '进行中', done: '已完成', failed: '失败', cancelled: '已取消', interrupted: '已中断' }
   return (
     <div className={`task-card ${status}${task?.waiting_approval ? ' waiting' : ''}`}>
       <div className="task-top">
         <span className="dot" />
         <b>{owner ? `${owner.name} 的` : ''}{m.meta.mode === 'heavy' ? 'Heavy 任务' : '后台任务'} #{m.id}</b>
         <span className="muted">{label[status] || status}{status === 'running' && task ? ` · ${secs((now / 1000) - task.started)}` : ''}{task?.steps ? ` · ${task.steps} 步` : ''}</span>
+        <button className="ghost-btn" title="看这个任务每一步做了什么" onClick={() => showTask(m.id)}>过程</button>
         {status === 'running' && <button className="ghost-btn" onClick={() => api(`/api/tasks/${m.id}/cancel`, { method: 'POST' })}>停止</button>}
       </div>
       <div className="task-goal">{goal}</div>
@@ -116,7 +117,8 @@ function ResultMessage({ bot, m, goal, showName }: { bot?: Bot; m: Message; goal
         <div className={open ? '' : 'clamp'}><Markdown text={text} /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>展开全文</button>}
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} />
-          {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}</div>
+          {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}
+          {taskKind(m).taskId && <button className="ghost-btn" onClick={() => showTask(taskKind(m).taskId!)}>查看过程</button>}</div>
       </div>
     </div>
   )

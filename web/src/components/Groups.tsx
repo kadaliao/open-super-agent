@@ -3,6 +3,7 @@ import { api, openChat, refreshLists, useStore } from '../store'
 import type { Bot, Chat } from '../types'
 import BotAvatar from './BotAvatar'
 import { ComputerPanel } from './Computer'
+import { TasksPanel } from './Tasks'
 
 const MIN = 2, MAX = 6
 
@@ -62,19 +63,20 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
 }
 
 export function GroupPanel({ chat, onClose, tab, setTab }: { chat: Chat; onClose: () => void; tab: string; setTab: (t: string) => void }) {
-  const t = tab === 'computer' ? 'computer' : 'group'
+  const t = tab === 'computer' || tab === 'tasks' ? tab : 'group'
   return (
     <aside className="panel">
       <div className="panel-head">
         <div className="panel-tabs">
           <button className={t === 'group' ? 'on' : ''} onClick={() => setTab('group')}>群聊</button>
+          <button className={t === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>任务</button>
           <button className={t === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>电脑</button>
         </div>
         <button className="icon-btn" onClick={onClose}>✕</button>
       </div>
-      <div className="panel-body">
+      {t === 'tasks' ? <TasksPanel key={chat.id} chatId={chat.id} /> : <div className="panel-body">
         {t === 'computer' ? <ComputerPanel key={chat.id} botId={chat.lead ?? chat.bot_ids[0]} /> : <GroupSettings key={chat.id} chat={chat} onClose={onClose} />}
-      </div>
+      </div>}
     </aside>
   )
 }

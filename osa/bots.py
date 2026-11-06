@@ -72,6 +72,7 @@ def delete(bot_id: int):
         return
     if b["is_primary"]:
         raise ValueError("主 Bot 不能删除，先把别的 Bot 设为主 Bot")
+    conn.execute("delete from task_steps where task_id in (select id from messages where chat_id=?)", (b["chat_id"],))
     conn.execute("delete from messages where chat_id=?", (b["chat_id"],))
     conn.execute("delete from chats where id=?", (b["chat_id"],))
     conn.execute("delete from bots where id=?", (bot_id,))
@@ -147,6 +148,7 @@ def update_group(chat_id: int, title: str | None = None, bot_ids=None, lead=None
 
 
 def delete_group(chat_id: int):
+    conn.execute("delete from task_steps where task_id in (select id from messages where chat_id=?)", (chat_id,))
     conn.execute("delete from messages where chat_id=?", (chat_id,))
     conn.execute("delete from chats where id=? and kind='group'", (chat_id,))
     conn.commit()

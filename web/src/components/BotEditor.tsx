@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { api, openChat, refreshLists, useStore } from '../store'
+import { api, openChat, refreshLists, showTask, useStore } from '../store'
 import type { Avatar, Bot } from '../types'
 import BotAvatar, { SHAPE_NAMES } from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { RoutinesPanel, SkillsPanel } from './Routines'
 import { MemoryPanel } from './Memories'
 import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } from './Templates'
+import { TasksPanel } from './Tasks'
 
 // 新建 Bot：从模板装（带好技能和定时任务），或者空白的：只问名字和头像，职责在第一条消息里交代
 export function NewBotDialog({ onClose }: { onClose: () => void }) {
@@ -76,6 +77,7 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
       <div className="panel-head">
         <div className="panel-tabs">
           <button className={tab === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>电脑</button>
+          <button className={tab === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>任务</button>
           <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>技能</button>
           <button className={tab === 'routines' ? 'on' : ''} onClick={() => setTab('routines')}>定时</button>
           <button className={tab === 'memory' ? 'on' : ''} onClick={() => setTab('memory')}>记忆</button>
@@ -85,6 +87,7 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
       </div>
       {tab === 'computer'
         ? <div className="panel-body"><ComputerPanel key={bot.id} botId={bot.id} /></div>
+        : tab === 'tasks' ? <TasksPanel key={bot.id} botId={bot.id} />
         : tab === 'skills' ? <div className="panel-body"><SkillsPanel key={bot.id} bot={bot} /></div>
         : tab === 'routines' ? <div className="panel-body"><RoutinesPanel key={bot.id} bot={bot} /></div>
         : tab === 'memory' ? <div className="panel-body"><MemoryPanel key={bot.id} bot={bot} /></div>
@@ -126,7 +129,7 @@ function BotPanelInner({ bot, tasks, onClose }: { bot: Bot; tasks: any[]; onClos
 
         <h4>正在进行</h4>
         {running.length ? running.map(t => (
-          <div key={t.id} className="mini-task"><span className="dot" />#{t.id} {t.goal.slice(0, 60)}</div>
+          <button key={t.id} className="mini-task" onClick={() => showTask(t.id)}><span className="dot" />#{t.id} {t.goal.slice(0, 60)}</button>
         )) : <div className="muted small">没有正在进行的任务</div>}
 
         <h4>管理</h4>

@@ -27,7 +27,9 @@
 3. 模型要么直接回答，要么调用工具：
    - `dispatch`：创建一个 Task，在后台运行 Worker，Router 马上回复。
    - `browser_*` / `computer_*` / `look_at_screen`：Router 自己做一步电脑操作，看页面文字或截图后回答。
-4. Worker 每走一步都推送一个 `task` 事件，前端的任务卡片随之更新。结束时写入一条 `kind=result` 的消息，以结果卡片显示。
+4. Worker 流式调用模型，每走一步都推送一个 `task` 事件，前端的任务卡片随之更新；同时把这一步记进任务过程（`tasklog.py`）：
+   思考、调工具前说的话、每次工具调用的参数和返回、写出的结果，以 `task_step` 事件推给前端（流式文字最多每 0.3 秒一段，带起始位置 `at` 去重）。
+   右栏“任务”列出 Bot 做过的任务，点开实时看过程，做完也能回看。结束时写入一条 `kind=result` 的消息，以结果卡片显示。
 5. Watchdog 每隔 `watchdog_interval_s` 秒巡检一次，取消超时、没有进展、死循环或超预算的任务。
 
 ## 代码目录
@@ -48,6 +50,7 @@ osa/
     discord.py     Discord：Gateway（心跳、Resume）、embed 卡片和按钮
     fmt.py         Markdown 转各家能显示的格式、按长度切消息
   worker.py        后台任务：Task、ReAct 循环、Heavy 模式
+  tasklog.py       任务过程：每一步的记录、实时推送、任务列表和详情、重启后标记“已中断”、按天数清理
   memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
   library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
@@ -79,7 +82,7 @@ web/public/         PWA：manifest.json、sw.js（推送和离线提示页）、
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
   components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、
-                   Memories（记忆面板）、Library（资料库和分享页）、Groups（新建群聊和群聊面板）、Markdown
+                   Memories（记忆面板）、Library（资料库和分享页）、Groups（新建群聊和群聊面板）、Tasks（任务列表和过程）、Markdown
 ```
 
 ## 数据
@@ -91,6 +94,7 @@ web/src/
 | `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等 |
 | `llm_usage` | 每次模型调用的 token 数和费用 |
+| `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；只留最近 `memory.task_log_days` 天 |
 | `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |

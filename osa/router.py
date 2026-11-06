@@ -6,7 +6,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, library, memories, memory, routines, search, skills
+from . import approvals, bots, library, memories, memory, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -505,7 +505,8 @@ class Router:
             return
         except Exception as e:
             task.status, task.result = "failed", f"任务失败：{e}"
-        memory.update_meta(task.id, status=task.status)
+        await tasklog.close(task, task.status, task.result if task.status == "failed" else "")
+        memory.update_meta(task.id, status=task.status, elapsed=round(time.time() - task.started), steps=task.steps)
         await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", task.chat_id, kind="result", task_id=task.id,
                        status=task.status, elapsed=round(time.time() - task.started))
         await self.emit({"type": "task", "task": task.public()}, task.chat_id)
@@ -528,7 +529,8 @@ class Router:
         approvals.cancel_for_task(tid)
         t.handle.cancel()
         t.status = "cancelled"
-        memory.update_meta(tid, status="cancelled")
+        memory.update_meta(tid, status="cancelled", elapsed=round(time.time() - t.started), steps=t.steps)
+        asyncio.create_task(tasklog.close(t, "cancelled", f"已取消：{reason}"))
         asyncio.create_task(self.add("task", f"[任务 #{tid} 已取消：{reason}]", t.chat_id, kind="cancel", task_id=tid))
         asyncio.create_task(self.emit({"type": "task", "task": t.public()}, t.chat_id))
         return f"已取消 #{tid}"
