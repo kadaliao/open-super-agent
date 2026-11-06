@@ -720,6 +720,7 @@
   "没有处理": "Not handled",
   "没有完成授权": "Authorization not completed",
   "没有找到“{q}”。可以添加自定义应用。": "Nothing found for \"{q}\". You can add a custom app.",
+  "没有新内容": "Nothing new",
   "没有正在进行的任务": "No tasks in progress",
   "没有通知权限，请在浏览器或系统设置里允许这个网站发通知": "No permission to notify. Allow this site to send notifications in your browser or system settings",
   "没有麦克风权限，请在浏览器设置里允许": "No microphone permission. Allow it in your browser settings",

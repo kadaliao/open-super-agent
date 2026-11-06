@@ -26,6 +26,12 @@ conn.commit()
 MAX_PER_BOT = 50
 KEEP_RUNS = 20
 KINDS = ("daily", "every", "webhook")
+LAST_CHARS = 2000   # 带上上次结果的长度
+# 这次没有值得告诉用户的新内容：结果只写这个，就不发消息、不推送（见 is_quiet、router._run）
+QUIET = "[无新内容]"
+QUIET_HINT = (f"这次没有值得告诉用户的新内容时（比如没有新邮件、和上次一样、事件不需要处理），结果只写 {QUIET} 这几个字，"
+              "不写别的，用户就不会被打扰。")
+_QUIET_RE = re.compile(r"^\s*[\[【]?\s*(无新内容|没有新内容|nothing new)\s*[\]】]?\s*[。.!！]?\s*$", re.I)
 RUNNING: dict[int, int] = {}      # routine_id -> 正在跑的 run id
 notify = None                     # 由 server 设置
 DAYS = (i18n.N_("周一"), i18n.N_("周二"), i18n.N_("周三"), i18n.N_("周四"), i18n.N_("周五"), i18n.N_("周六"), i18n.N_("周日"))
@@ -250,6 +256,31 @@ def goal_for(r: dict, event: str = "") -> str:
     return "\n\n".join(parts)
 
 
+def worker_notes(r: dict, event: str = "") -> str:
+    """只给 Worker 看的补充说明：不显示在任务卡片上，也不存进对话（存进去 Router 每轮都要多读一遍）。"""
+    parts = []
+    if not event and (prev := last_result(r["id"])):   # 按时间触发的：和上次比，只说新的（webhook 每次的事件都不一样，不带）
+        parts.append(f"上次运行的结果（用来对比，已经告诉过用户的不用再说一遍）：\n{prev}")
+    parts.append(QUIET_HINT)
+    return "\n\n" + "\n\n".join(parts)
+
+
+def is_quiet(result: str) -> bool:
+    """任务结果是不是只有“无新内容”（模型可能写成【无新内容】、没有新内容、nothing new）。"""
+    return bool(_QUIET_RE.match(result or ""))
+
+
+def last_result(rid: int) -> str:
+    """上一次有内容的运行结果（“无新内容”的不算），最多 LAST_CHARS 字。"""
+    row = conn.execute("select task_id from routine_runs where routine_id=? and status='done' and task_id is not null "
+                       "order by id desc limit 1", (rid,)).fetchone()
+    if not row:
+        return ""
+    m = conn.execute("select content from messages where role='task' and json_extract(meta, '$.kind')='result' "
+                     "and json_extract(meta, '$.task_id')=?", (row[0],)).fetchone()
+    return re.sub(r"^\[任务 #\d+ 结果\]\n?", "", m[0])[:LAST_CHARS] if m else ""
+
+
 async def fire(r: dict, source: str, event: str = "") -> dict:
     """运行一次。source：schedule / webhook / test。返回是否受理。"""
     from . import bots, router
@@ -273,16 +304,20 @@ async def fire(r: dict, source: str, event: str = "") -> dict:
         return {"accepted": False, "reason": i18n.t("Bot 不存在")}
     run_id = _record(rid, source, "running")
     RUNNING[rid] = run_id
+    quiet = source != "test"   # 你点“测试”是想看它会写出什么：照常发结果，不和上次比
     rt = router.runtime(r["bot_id"])
 
     async def done(task):
         RUNNING.pop(rid, None)
-        _finish(run_id, task.status, task.result[:300])
+        if task.quiet:
+            _finish(run_id, "quiet", i18n.t("没有新内容"))
+        else:
+            _finish(run_id, task.status, task.result[:300])
         await _changed(r)
 
     try:
         task = await rt.dispatch(goal_for(r, event), background=True, on_done=done,
-                                 label=f"[定时任务 {r['name']}]")
+                                 label=f"[定时任务 {r['name']}]", quiet_ok=quiet, notes=worker_notes(r, event) if quiet else "")
     except Exception as e:
         RUNNING.pop(rid, None)
         _finish(run_id, "failed", str(e))

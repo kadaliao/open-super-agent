@@ -334,7 +334,8 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
                 {(m.meta.tasks || []).map(task)}
               </BotMessage>) : null
             const k = taskKind(m)
-            if (k.kind === 'dispatch') return attached.has(m.id) ? null : task(m.id)
+            // 没有新内容的定时任务（跑完才知道）不显示，运行记录在右栏“定时”里
+            if (k.kind === 'dispatch') return attached.has(m.id) || m.meta.quiet || tasks[m.id]?.quiet ? null : task(m.id)
             if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group}
               goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />   // i18n-ignore：存在消息里的标记
             if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />

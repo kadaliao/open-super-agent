@@ -320,6 +320,7 @@
   "没有技能 /{skill}": "No skill /{skill}",
   "没有按键": "No keys given",
   "没有收到文件": "No file received",
+  "没有新内容": "Nothing new",
   "没有权限": "Not allowed",
   "没有权限（403）：可能没开通这个模型，或者账户欠费。{detail}": "No permission (403). The model may not be enabled, or the account is out of credit. {detail}",
   "没有等待恢复的备份，请重新上传": "No backup is waiting to be restored. Upload it again",

@@ -43,12 +43,16 @@ class Task:
     handoff: dict | None = None            # 群聊：做完后把结果交给谁 {"to": bot_id, "note": str}
     reply: dict | None = None              # 因私信派的任务：做完把结果作为回信送给谁（见 dm.py）
     depth: int = 0                         # 派任务那一轮的私信深度，交接、回信沿用
+    quiet_ok: bool = False                 # 定时任务：结果只有“无新内容”时不发结果消息（见 routines.QUIET）
+    quiet: bool = False                    # 这次确实没有新内容
+    notes: str = ""                        # 只给 Worker 看的补充说明，不显示、不存进对话（定时任务：上次的结果、“无新内容”的约定）
 
 
 def _public(self) -> dict:
     return {"id": self.id, "goal": self.goal, "mode": self.mode, "status": self.status, "steps": self.steps,
             "bot_id": self.bot_id, "chat_id": self.chat_id, "started": self.started,
-            "waiting_approval": self.waiting_approval, "last_action": self.last_action, "elapsed": round(time.time() - self.started)}
+            "waiting_approval": self.waiting_approval, "last_action": self.last_action, "elapsed": round(time.time() - self.started),
+            "quiet": self.quiet}
 
 
 Task.public = _public
@@ -198,8 +202,9 @@ async def run_heavy(task: Task) -> str:
     n = CFG["heavy"]["workers"]
     angles = ["从最直接的角度", "从反面/质疑的角度核查", "从数据和一手来源角度", "从实践/落地角度"]
     await tasklog.Log(task).note(i18n.t("{n} 个研究员分头做，做完汇总", n=n))
+    goal = task.goal + task.notes
     drafts = await asyncio.gather(*[
-        run_worker(task, f"{task.goal}\n\n（你是第 {i+1} 个独立研究员，请{angles[i % len(angles)]}回答）", f"h{i}")
+        run_worker(task, f"{goal}\n\n（你是第 {i+1} 个独立研究员，请{angles[i % len(angles)]}回答）", f"h{i}")
         for i in range(n)], return_exceptions=True)
     for i, d in enumerate(drafts):
         if isinstance(d, Exception):
@@ -211,5 +216,5 @@ async def run_heavy(task: Task) -> str:
     m = await _reply(task, tasklog.Log(task, "review"), "reviewer", client, model, [
         {"role": "system", "content": "你是审稿人。比较几份独立答案，找出矛盾和错误，合成一份最可靠的最终答案，保留来源链接。"
                                       + i18n.model_hint()},
-        {"role": "user", "content": f"问题：{task.goal}\n\n{joined}"}])
+        {"role": "user", "content": f"问题：{goal}\n\n{joined}"}])
     return m.get("content") or ""

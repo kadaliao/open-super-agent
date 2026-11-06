@@ -14,6 +14,7 @@ export type Message = {
 export type Task = {
   id: number; goal: string; mode: string; status: string; steps: number
   bot_id: number; chat_id: number; started: number; waiting_approval: number | null; elapsed: number; last_action?: string
+  quiet?: boolean   // 定时任务这次没有新内容：对话里不显示
 }
 // 任务过程的一步。kind：think 思考、text 正在写、say 调工具前说的话、tool 工具调用（detail 参数、body 返回）、
 // answer 写出的结果（Heavy 里研究员的草稿也是）、note 过程提示。worker：Heavy 里的研究员 h0、h1……，汇总是 review

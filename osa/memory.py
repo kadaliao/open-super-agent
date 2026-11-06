@@ -89,8 +89,9 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> l
     它自己的回复保持 assistant；别的 Bot 的发言、任务和交接都换成带名字的通知。私聊时 viewer 为空。
     me 是正在发言的 Bot（私聊也给），Bot 之间的私信按它的角度写成“谁私信了你 / 你回了谁”。"""
     n = CFG["memory"]["inline_messages"]
-    rows = conn.execute("select id, role, content, meta, bot_id from messages where chat_id=? and id > ? order by id",
-                        (chat_id, topic_start(chat_id))).fetchall()
+    # 没有新内容的定时任务（meta.quiet）不带进上下文
+    rows = conn.execute("select id, role, content, meta, bot_id from messages where chat_id=? and id > ? "
+                        "and json_extract(meta, '$.quiet') is null order by id", (chat_id, topic_start(chat_id))).fetchall()
     names = dict(conn.execute("select id, name from bots"))
     me = viewer if viewer is not None else me
     name = lambda b: names.get(b, "已删除的 Bot")

@@ -578,16 +578,18 @@ class Router:
 
     async def dispatch(self, goal: str, mode: str = "single", background: bool = False,
                        on_done=None, label: str = "", chat_id: int | None = None, handoff: dict | None = None,
-                       reply: dict | None = None, depth: int = 0) -> Task:
+                       reply: dict | None = None, depth: int = 0, quiet_ok: bool = False, notes: str = "") -> Task:
         """派一个后台任务。定时任务也走这里（background=True，确认卡片会过期）。
         chat_id 是任务卡片和结果出现的对话（默认私聊）；确认卡片总是发到私聊。
-        reply：因私信派的任务，做完把结果作为回信送回去（见 dm.py）。"""
+        reply：因私信派的任务，做完把结果作为回信送回去（见 dm.py）。
+        quiet_ok：定时任务用，结果只有“无新内容”时不发结果消息、对话里也不显示这个任务（见 routines.QUIET）。
+        notes：只给 Worker 看的补充说明，接在 goal 后面，不显示也不存进对话。"""
         cid = chat_id or self.chat_id
         tid = await self.add("task", f"[任务已派发] {label + ' ' if label else ''}{goal}", cid, kind="dispatch",
                              mode=mode, status="running", **({"handoff_to": handoff["to"]} if handoff else {}),
                              **({"reply_to": reply["bot"]} if reply else {}))
         task = Task(id=tid, goal=goal, mode=mode, bot_id=self.bot_id, chat_id=cid, approval_chat_id=self.chat_id,
-                    background=background, on_done=on_done, handoff=handoff, reply=reply, depth=depth)
+                    background=background, on_done=on_done, handoff=handoff, reply=reply, depth=depth, quiet_ok=quiet_ok, notes=notes)
         task.handle = asyncio.create_task(self._run(task))
         TASKS[tid] = task
         await self.emit({"type": "task", "task": task.public()}, cid)
@@ -603,7 +605,7 @@ class Router:
 
     async def _run(self, task: Task):
         try:
-            task.result = await (run_heavy(task) if task.mode == "heavy" else run_worker(task, task.goal))
+            task.result = await (run_heavy(task) if task.mode == "heavy" else run_worker(task, task.goal + task.notes))
             task.status = "done"
             if not task.background:   # 定时任务有自己的运行记录，不记进“做过的事”
                 memories.log_work(self.bot_id, task.id, task.goal)
@@ -620,6 +622,13 @@ class Router:
         except Exception as e:
             task.status, task.result = "failed", i18n.t("任务失败：{error}", error=e)
         await tasklog.close(task, task.status, task.result if task.status == "failed" else "")
+        if task.status == "done" and task.quiet_ok and routines.is_quiet(task.result):
+            # 定时任务这次没有新内容：不发结果（也就不推送、不发到聊天软件），派发的那条在对话里和上下文里都不再出现
+            task.quiet = True
+            memory.update_meta(task.id, status="done", quiet=True, elapsed=round(time.time() - task.started), steps=task.steps)
+            await self.emit({"type": "task", "task": task.public()}, task.chat_id)
+            await self._done(task)
+            return
         memory.update_meta(task.id, status=task.status, elapsed=round(time.time() - task.started), steps=task.steps)
         await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", task.chat_id, kind="result", task_id=task.id,
                        status=task.status, elapsed=round(time.time() - task.started))

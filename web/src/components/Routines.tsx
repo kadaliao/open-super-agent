@@ -14,6 +14,7 @@ const DAYS = [tc('weekday', '一'), tc('weekday', '二'), tc('weekday', '三'), 
 const LIST = lang === 'en' ? ', ' : '、'   // 列举用的分隔符
 const STATUS: Record<string, string> = {
   running: t('运行中'), done: t('完成'), failed: t('失败'), cancelled: t('已取消'), skipped: t('跳过'), filtered: t('被过滤'),
+  quiet: t('没有新内容'),
 }
 const SOURCE: Record<string, string> = { schedule: tc('source', '定时'), webhook: 'webhook', test: t('测试') }
 
