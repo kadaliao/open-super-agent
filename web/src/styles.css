@@ -495,3 +495,10 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .ch-add { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 4px; margin-top: 8px; }
 .ch-add h4 { margin-bottom: 0; }
 .ch-add .m-steps { font-size: 13.5px; color: var(--fg2); }
+
+/* 技能：导入审核、分享 */
+.skill-import-note { border: 1px solid var(--line); border-radius: 10px; padding: 4px 12px; margin: 8px 0; background: var(--bg2); }
+.skill-import-note .warn, .tag.warn { color: #d97706; }
+.skill-share { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.skill-desc { font-size: 15px; color: var(--fg2); }
+.skill-howto { border: 1px solid var(--line); border-radius: 12px; padding: 4px 14px 12px; margin: 14px 0 20px; }

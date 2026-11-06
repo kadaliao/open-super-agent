@@ -52,7 +52,9 @@ export type CatalogItem = {
 export type Rule = { id: number; pattern: string; action: 'allow' | 'ask'; note: string; created: number }
 export type Skill = {
   id: number; bot_id: number | null; name: string; description: string; body: string; source: string; created: number; updated: number
+  share_token: string | null
 }
+export type SkillDraft = { name: string; description: string; body: string; apps: { name: string; title: string; connected: boolean }[]; exists: boolean }
 export type Trigger =
   | { kind: 'daily'; times: string[]; days: number[] }
   | { kind: 'every'; minutes: number }

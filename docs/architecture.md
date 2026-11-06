@@ -59,7 +59,7 @@ osa/
     apps/          每个应用一份清单（<名字>.yaml），格式见 docs/apps.md；本机还会读 data/apps/
     checks.py      添加应用前的检查（邮箱先试登录一次）
   tools.py         内置工具：web_search、fetch_url
-  skills.py        技能：增删改、/名字 解析、展开成给模型的说明
+  skills.py        技能：增删改、/名字 解析、展开成给模型的说明；导出成文件、分享链接、从文件或链接导入
   routines.py      定时任务：触发方式、调度、webhook 过滤、运行记录、旧 triggers 导入
   watchdog.py      任务巡检
   config.py        读取 config.yaml，按角色创建模型客户端
@@ -132,6 +132,16 @@ web/src/
 - **确认卡片只进私聊**：任务带 `approval_chat_id`（Bot 的私聊），确认请求的 `chat_id` 是私聊，`origin_chat_id` 是任务所在的群；
   前端在群里只显示“去处理”的提示。
 - 群聊里不解析 `/技能`；技能、定时任务、记忆都属于单个 Bot，在它的私聊和右栏里管理。
+
+### 技能文件与分享
+- 一个技能一个 Markdown 文件：开头的 YAML 写 `name`、`description`，导出时加上 `apps`（做法里 `@` 到的应用），后面是做法。
+  和 Claude 等用的 `SKILL.md` 一样，导入别处的技能时不认识的键直接忽略；名字里的空格、点换成 `-`。
+- 分享和页面一样：生成不可猜的 `share_token`，公开页是 `/skill/<token>`（前端只渲染这一页），原文件是 `/api/shared/skills/<token>/raw`。
+  这两个前缀不用登录；取消分享就把 token 清掉。
+- 导入（`POST /api/bots/<id>/skills/parse`）只解析不保存，结果交给技能编辑器给用户审核：技能就是 Bot 照着做的指令，
+  来路不明的可能让 Bot 把资料发到别处。粘贴链接时由服务器去取：别人的 `/skill/<token>` 换成原文件地址，
+  GitHub 的文件、文件夹链接换成 raw.githubusercontent.com（文件夹取里面的 `SKILL.md`，名字用文件夹名）；网页、超过 200 KB 的都拒绝。
+- 做法最长 2 万字（别处的 SKILL.md 常有几千字），只在 `/名字` 调用时才放进提示词。
 
 ### 演示一遍
 - 录制在电脑里跑：`cdp_helper.py --record` 是一个后台进程，用浏览器级的 DevTools 连接 `Target.setAutoAttach` 附加到所有标签页（包括之后新开的），

@@ -216,7 +216,7 @@ async def create_skill(bot_id: int, data: dict = Body(...)):
     _bot_or_404(bot_id)
     try:
         s = skills.save(None if data.get("shared") else bot_id, data.get("name", ""), data.get("body", ""),
-                        data.get("description", ""), "teach" if data.get("source") == "teach" else "manual")
+                        data.get("description", ""), data["source"] if data.get("source") in ("teach", "import") else "manual")
     except ValueError as e:
         _err(e)
     await broadcast({"type": "skills_changed"})
@@ -295,6 +295,64 @@ async def delete_skill(sid: int):
     skills.delete(sid)
     await broadcast({"type": "skills_changed"})
     return {"ok": True}
+
+
+def _skill_file(s: dict) -> Response:
+    return Response(skills.to_file(s), media_type="text/markdown; charset=utf-8",
+                    headers={"content-disposition": f"attachment; filename*=UTF-8''{quote(s['name'] + '.md')}"})
+
+
+@app.get("/api/skills/{sid}/export")
+async def export_skill(sid: int):
+    s = skills.get(sid)
+    if not s:
+        raise HTTPException(404, "没有这个技能")
+    return _skill_file(s)
+
+
+@app.post("/api/skills/{sid}/share")
+async def share_skill(sid: int, data: dict = Body(...)):
+    try:
+        s = skills.share(sid, bool(data.get("on")))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    await broadcast({"type": "skills_changed"})
+    return s
+
+
+@app.post("/api/bots/{bot_id}/skills/parse")
+async def parse_skill(bot_id: int, data: dict = Body(...)):
+    """导入前先解析：粘贴的文件内容或者一个链接 → 技能草稿，交给编辑器给用户审核，不保存。"""
+    _bot_or_404(bot_id)
+    try:
+        if (data.get("url") or "").strip():
+            d = await skills.fetch(data["url"])
+        else:
+            d = skills.from_file(data.get("text") or "", data.get("filename") or "")
+    except ValueError as e:
+        _err(e)
+    apps = mcp_hub.all_apps()
+    d["apps"] = [{"name": a, "title": catalog.title(a), "connected": a in apps} for a in skills.apps_in(d["body"])]
+    d["exists"] = bool(skills.find(bot_id, d["name"]))
+    return d
+
+
+@app.get("/api/shared/skills/{token}")
+async def shared_skill(token: str):
+    s = skills.by_token(token)
+    if not s:
+        raise HTTPException(404, "链接已失效")
+    b = bots.get(s["bot_id"]) if s["bot_id"] else None
+    return {k: s[k] for k in ("name", "description", "body", "updated")} | {"apps": skills.apps_in(s["body"])} | (
+        {"bot": {"name": b["name"], "avatar": b["avatar"]}} if b else {})
+
+
+@app.get("/api/shared/skills/{token}/raw")
+async def shared_skill_raw(token: str):
+    s = skills.by_token(token)
+    if not s:
+        raise HTTPException(404, "链接已失效")
+    return _skill_file(s)
 
 
 # ---------- 长期记忆 ----------
