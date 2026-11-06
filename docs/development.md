@@ -33,6 +33,24 @@ uv run uvicorn osa.server:app --reload --port 8765
 - 英文界面在本机看：设置左下角点 English。也可以在浏览器的控制台里 `localStorage.setItem('osa.lang', 'en')` 再刷新，
   但页面加载后会跟服务端的设置对齐。
 
+## 自动化测试
+
+```bash
+uv run pytest -q
+```
+
+测试只测框架，不调真的模型，也不碰真的电脑（`tests/conftest.py`）：
+
+- 每次运行用一个新的临时数据目录和配置（电脑关掉、没有应用、没有旧版触发器），碰不到 `data/` 里的真实数据。
+- `llm` 换掉模型客户端：请求经 `httpx.MockTransport` 交给 `tests/fakellm.py` 里的假模型，按剧本流式返回文字或工具调用，
+  并记下每次收到的请求。剧本按角色排：`llm.script("router:Scout", Call("dispatch", {"goal": "…"}), "派出去了")`、
+  `llm.script("worker", "结果")`；`llm.bodies("router", "Scout")` 取它收到的请求，用来检查提示词和上下文。
+- `events` 冒充一个打开着的网页，收下 `broadcast` 发出的所有事件；`make_bot()` 建一个名字不重复的 Bot。
+- `until(lambda: …)` 等到条件成立；`settle()` 等后台的轮次和任务都跑完；`find(chat_id, kind=…, text=…)` 查对话里的消息。
+- 所有测试共用一个事件循环（Router、群聊的锁是常驻的）。
+
+改了 Router、群聊、私信、确认、电脑分配这些有约定的地方，加一个测试把约定写下来（见 `tests/test_smoke.py`）。
+
 ## 不要用真实数据测试
 
 复制一份数据库，在另一个端口启动：

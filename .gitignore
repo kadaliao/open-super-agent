@@ -6,3 +6,4 @@ osa/static/dist/
 *.db
 .DS_Store
 .env
+.pytest_cache/

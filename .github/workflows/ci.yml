@@ -20,6 +20,8 @@ jobs:
         run: uv run python -m osa.templates
       - name: Check translations
         run: uv run python -m osa.i18n
+      - name: Tests
+        run: uv run pytest -q
 
   frontend:
     runs-on: ubuntu-latest
