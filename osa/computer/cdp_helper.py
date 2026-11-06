@@ -240,13 +240,20 @@ def _targets(timeout: float = 2):
         return [t for t in json.load(r) if t.get("type") == "page" and not t["url"].startswith("devtools://")]
 
 
+def _cmdline(raw: bytes) -> list[str]:
+    """/proc/<pid>/cmdline 拆成参数。有的 Chromium 会把自己的命令行改写成用空格连起来的一整串，那就按空格拆。"""
+    args = [x.decode(errors="replace") for x in raw.split(b"\0") if x]
+    return args[0].split() if len(args) == 1 and " --" in args[0] else args
+
+
 def _browser_proc() -> tuple[int | None, list[str]]:
     """开着 DevTools 端口的浏览器主进程：(pid, 命令行)。"""
     for d in os.listdir("/proc"):
         if not d.isdigit():
             continue
         try:
-            args = [x.decode(errors="replace") for x in open(f"/proc/{d}/cmdline", "rb").read().split(b"\0") if x]
+            with open(f"/proc/{d}/cmdline", "rb") as f:
+                args = _cmdline(f.read())
         except OSError:
             continue
         if any(x.startswith(f"--remote-debugging-port={PORT}") for x in args) and not any(x.startswith("--type=") for x in args):
