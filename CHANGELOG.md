@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.6.0] - 2026-11-07
 ### 新增
 - **定时任务没有新内容就不打扰**：到点运行时，Bot 判断这次没有值得告诉你的新东西（比如没有新邮件、和上次一样），就不发结果、不推送、不发到聊天软件，
   对话里也不显示这次任务，运行记录里记“没有新内容”。每 15 分钟查一次邮件这类定时任务不会再刷屏
@@ -238,7 +240,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.5.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/kadaliao/open-super-agent/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kadaliao/open-super-agent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kadaliao/open-super-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kadaliao/open-super-agent/compare/v0.2.0...v0.3.0
