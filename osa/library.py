@@ -5,6 +5,7 @@ html 页面只通过带 CSP 的 /raw 地址在沙箱 iframe 里显示：脚本�
 文件直接读写电脑里的目录，两个电脑后端都走 exec，所以要先开机。
 """
 import posixpath
+import re
 import secrets
 import shlex
 import time
@@ -117,6 +118,24 @@ SAVE_PAGE = {"type": "function", "function": {
         "format": {"type": "string", "enum": list(FORMATS)},
         "page_id": {"type": "integer", "description": "可选：要更新的页面编号"}},
         "required": ["title", "content"]}}}
+
+
+READ_PAGE = {"type": "function", "function": {
+    "name": "read_page",
+    "description": "读资料库里一个页面的全文（html 页面只给文字）。页面编号可以用 search_memory 查到",
+    "parameters": {"type": "object", "properties": {"page_id": {"type": "integer"}}, "required": ["page_id"]}}}
+
+
+def tool_read_page(args: dict, limit: int = 12000) -> str:
+    from . import search
+    p = get_page(args.get("page_id")) if isinstance(args.get("page_id"), int) else None
+    if not p:
+        return f"没有页面 #{args.get('page_id')}"
+    text = search._plain(p["content"] or "", p["format"])
+    if p["format"] == "html":
+        text = re.sub(r"[ \t]+", " ", re.sub(r"\n\s*\n+", "\n\n", text)).strip()
+    more = f"\n…（还有 {len(text) - limit} 字没显示）" if len(text) > limit else ""
+    return f"《{p['title']}》{link(p['id'])}，{time.strftime('%Y-%m-%d', time.localtime(p['updated']))} 更新\n\n{text[:limit]}{more}"
 
 
 def tool_save_page(bot_id: int, args: dict, task_id: int | None = None) -> str:

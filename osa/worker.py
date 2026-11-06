@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import approvals, library, memories, memory, mcp_hub, tools
+from . import approvals, library, memories, memory, mcp_hub, search, tools
 from .computer import tools as ctools
 
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
@@ -67,7 +67,8 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     if known := memories.worker_block(task.bot_id):
         system += f"\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}"
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": goal}]
-    schemas = tools.schemas() + ([library.SAVE_PAGE] if pages else []) + (ctools.SCHEMAS if use_pc else [])
+    schemas = tools.schemas() + ([library.SAVE_PAGE] if pages else []) + [library.READ_PAGE, search.SEARCH_TOOL] \
+        + (ctools.SCHEMAS if use_pc else [])
 
     async def progress(text: str):
         task.last_action = text
@@ -98,6 +99,12 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
                         shots.append(shot)
                     msgs.append({"role": "tool", "tool_call_id": call.id, "content": out[:8000]})
                     task.last_progress = time.time()
+                    continue
+                if call.function.name in ("search_memory", "read_page"):
+                    await progress(("查记忆和资料库：" + str(args.get("query", ""))[:40]) if call.function.name == "search_memory"
+                                   else f"读页面 #{args.get('page_id')}")
+                    out = await search.tool(task.bot_id, args) if call.function.name == "search_memory" else library.tool_read_page(args)
+                    msgs.append({"role": "tool", "tool_call_id": call.id, "content": out})
                     continue
                 if call.function.name == "save_page" and pages:
                     await progress("保存页面：" + str(args.get("title", ""))[:40])

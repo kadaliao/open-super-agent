@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, bots, catalog, channels, computer, groups, library, mcp_hub, memories, memory, push, router as rt, routines
-from . import settings, skills, teach, templates, vault
+from . import search, settings, skills, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -63,7 +63,8 @@ async def lifespan(app):
     await mcp_hub.start()
     await channels.start()
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
-          asyncio.create_task(computer.idle_pauser())]
+          asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop())]
+    search.sync()   # 补上旧数据的索引；配了 embedding 的话后台开始算向量
     yield
     for t in bg:
         t.cancel()
@@ -361,6 +362,19 @@ async def shared_skill_raw(token: str):
     if not s:
         raise HTTPException(404, "链接已失效")
     return _skill_file(s)
+
+
+# ---------- 检索 ----------
+@app.get("/api/search")
+async def search_all(q: str = "", kind: str = "all", bot_id: int | None = None):
+    kinds = {"page": ("page",), "memory": ("memory",)}.get(kind, ("memory", "page"))
+    return {"hits": await search.search(q, bot_id, kinds, 20), "info": search.info()}
+
+
+@app.get("/api/search/info")
+async def search_info():
+    search.sync()
+    return search.info()
 
 
 # ---------- Bot 模板 ----------

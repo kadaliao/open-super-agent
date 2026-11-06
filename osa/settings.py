@@ -22,6 +22,8 @@ def apply():
             CFG["limits"][k] = v
     if "heavy_workers" in o:
         CFG["heavy"]["workers"] = o["heavy_workers"]
+    if "embedding" in o:
+        CFG["embedding"] = o["embedding"]
 
 
 def public() -> dict:
@@ -32,6 +34,7 @@ def public() -> dict:
         "limits": {k: CFG["limits"].get(k) for k in EDITABLE_LIMITS},
         "heavy_workers": CFG["heavy"]["workers"],
         "known_models": sorted(CFG["pricing"]["models"]),
+        "embedding": {"provider": (CFG.get("embedding") or {}).get("provider") or "", "model": (CFG.get("embedding") or {}).get("model") or ""},
     }
 
 
@@ -49,7 +52,18 @@ def save(data: dict) -> dict:
         o.setdefault("limits", {}).update({k: int(v) for k, v in data["limits"].items() if k in EDITABLE_LIMITS})
     if "heavy_workers" in data:
         o["heavy_workers"] = max(1, min(8, int(data["heavy_workers"])))
+    if "embedding" in data:
+        e = data["embedding"] or {}
+        provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:100]
+        if provider and provider not in CFG["providers"]:
+            raise ValueError(f"没有这个模型提供方：{provider}")
+        if provider and not model:
+            raise ValueError("选了提供方就要填 embedding 模型的名字")
+        o["embedding"] = {"provider": provider, "model": model}
     conn.execute("insert or replace into settings values('overrides', ?)", (json.dumps(o),))
     conn.commit()
     apply()
+    if "embedding" in data:
+        from . import search
+        search._wake.set()   # 换了模型：后台重新算向量
     return public()

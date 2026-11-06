@@ -31,6 +31,13 @@ memory:
   db: data/osa.db
   inline_messages: 20        # 最近 N 条留在上下文，更早的移出（Inline & Spill）
 
+# 可选：按意思检索记忆和资料库。provider 填上面 providers 里的名字，任何兼容 OpenAI /embeddings 接口的都行
+# （OpenAI 的 text-embedding-3-small、硅基流动的 BAAI/bge-m3、Ollama 的 nomic-embed-text……）。
+# 不填也能用：按关键词找（中文按两个字一组）。界面上 设置 → 模型 里也能改
+embedding:
+  provider: ""
+  model: ""
+
 # 单价：元 / 百万 tokens（2026-11-04 抄自 DeepSeek 官网，变价时改这里）
 # peak 为高峰价；工作日 peak_hours 内按 peak 计，其余时段按 offpeak 计
 pricing:

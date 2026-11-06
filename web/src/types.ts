@@ -29,7 +29,9 @@ export type Settings = {
   limits: Record<string, number>
   heavy_workers: number
   known_models: string[]
+  embedding: { provider: string; model: string }
 }
+export type SearchHit = { kind: 'memory' | 'page'; ref: number; title: string; snippet: string; bot_id: number | null; sub: string; score: number }
 export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'
 export type App = {
   name: string; catalog: string; type: 'stdio' | 'http' | 'sse'

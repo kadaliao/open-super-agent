@@ -62,6 +62,7 @@ osa/
   tools.py         内置工具：web_search、fetch_url
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明；导出成文件、分享链接、从文件或链接导入
   templates.py     Bot 模板：检查、内置模板（templates/*.yaml）、从 Bot 导出、分享、安装
+  search.py        按意思检索记忆和页面：中文两字一组的 FTS5、可选的 embedding、排名融合、search_memory 工具
   routines.py      定时任务：触发方式、调度、webhook 过滤、运行记录、旧 triggers 导入
   watchdog.py      任务巡检
   config.py        读取 config.yaml，按角色创建模型客户端
@@ -166,6 +167,14 @@ web/src/
 - 企业微信同一个机器人只能一处连着，被别处顶掉后等 2 分钟再连，免得两边来回抢。
 - 平台都实现 `check / run / send_text / send_card / edit_card`，再在 `PLATFORMS` 里注册，就能加新的聊天软件。
   可选：`typing`（正在输入）、`download`（附件，文件名要下载后才知道的返回 `(内容, 文件名)`）、`pair_link` / `setup_link`（配对页上的按钮）。
+
+### 检索
+- 两路：FTS5 关键词（中文切成相邻两个字一组，英文、数字按词，BM25）和可选的向量（OpenAI 兼容 `/embeddings`，归一化后点积，
+  `math.sumprod` 算，几千段以内几十毫秒）。两路的排名用 RRF（1/(60+名次)）合并，同一个页面只取最相关的一段。
+- 不在写入处埋钩子：`search.sync()` 每次检索前比较 `memories`、`pages` 的 `(id, updated)` 和索引里记的，
+  变了的重新切块、分词，删了的去掉。备份恢复、删 Bot 这类绕开模块的改动也不会漏。
+- 向量在后台算（`embed_loop`，每批 32 段），按 `model` 区分，换了模型就重算。还没算出向量、或者一分钟内刚失败过时，查询不去调向量服务。
+- 记忆超过 80 条时，Router 每一轮用用户最新一条消息找出相关的更早记忆，和最近 60 条一起写进提示词；其余的让它用 `search_memory` 查。
 
 ### Bot 模板
 - 模板是 YAML：名字、头像、职责、`apps`（只有名字）、技能、定时任务。不带对话、记忆、资料库、密钥。

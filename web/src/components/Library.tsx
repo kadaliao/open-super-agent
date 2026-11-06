@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, openLibrary, useStore } from '../store'
-import type { Avatar, FileEntry, FileListing, Page } from '../types'
+import type { SearchHit, Avatar, FileEntry, FileListing, Page } from '../types'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 
@@ -40,8 +40,22 @@ function BotTag({ id }: { id: number | null }) {
 }
 
 // ---------- 页面 ----------
+// 按意思找：记忆面板和资料库共用
+export function useSearch(kind: 'page' | 'memory', botId?: number) {
+  const [q, setQ] = useState('')
+  const [hits, setHits] = useState<SearchHit[] | null>(null)
+  useEffect(() => {
+    if (!q.trim()) { setHits(null); return }
+    const t = setTimeout(() => api(`/api/search?kind=${kind}&q=${encodeURIComponent(q)}${botId ? `&bot_id=${botId}` : ''}`)
+      .then(r => setHits(r.hits)).catch(() => setHits([])), 250)
+    return () => clearTimeout(t)
+  }, [q, kind, botId])
+  return { q, setQ, hits }
+}
+
 function Pages() {
   const [list, setList] = useState<Page[] | null>(null)
+  const { q, setQ, hits } = useSearch('page')
   const load = () => api('/api/pages').then(setList)
   useEffect(() => {
     load()
@@ -57,7 +71,14 @@ function Pages() {
   )
   return (
     <div className="lib-list">
-      {list.map(p => (
+      <input className="lib-search" value={q} placeholder="按意思找页面，比如“上次做的竞品对比”" onChange={e => setQ(e.target.value)} />
+      {hits && (hits.length ? hits.map(h => (
+        <button key={h.ref} className="lib-row" onClick={() => openLibrary(h.ref)}>
+          <span className="lib-icon">▤</span>
+          <span className="lib-main"><b>{h.title}</b><span className="lib-meta">{h.snippet}</span></span>
+        </button>
+      )) : <div className="muted small">没找到相关的页面</div>)}
+      {!hits && list.map(p => (
         <button key={p.id} className="lib-row" onClick={() => openLibrary(p.id)}>
           <span className="lib-icon">{p.format === 'html' ? '◧' : '▤'}</span>
           <span className="lib-main">

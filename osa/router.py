@@ -6,7 +6,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, library, memories, memory, routines, skills
+from . import approvals, bots, library, memories, memory, routines, search, skills
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -27,6 +27,7 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 用户要求定期 / 每天 / 每隔一段时间做某事，或收到外部事件时做某事，用 create_routine 建定时任务；
   建好后告诉用户什么时候运行、可以在右栏“定时”里暂停或修改。
 - 用户问进度用 list_tasks；要取消用 cancel_task；需要早先对话原文用 recall。
+- 用户提到以前说过的事、以前做过的报告或页面，而提示词里没有时，用 search_memory 按意思查记忆和资料库；要看页面全文用 read_page。
 - 标有“系统通知”的消息是后台任务的状态，不是用户说的话；不要模仿它的格式。
 - 开头标着“（来自 Telegram）”“（来自钉钉）”这类的消息，是用户在手机上的聊天软件里发的：他看不到网页的右栏和设置页，
   别让他去那里点，回复尽量简短。任务结果和确认卡片会自动发到那边。
@@ -114,6 +115,8 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
     {"type": "function", "function": {"name": "forget", "description": "删除一条长期记忆",
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
     library.SAVE_PAGE,
+    library.READ_PAGE,
+    search.SEARCH_TOOL,
     {"type": "function", "function": {"name": "list_tasks", "description": "查看任务状态",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "cancel_task", "description": "取消任务",
@@ -251,10 +254,13 @@ class Router:
         b = self.bot
         self.chat = chat
         cid = chat["id"]
+        last = memory.conn.execute("select content from messages where chat_id=? and role='user' order by id desc limit 1",
+                                   (cid,)).fetchone()
+        related = await memories.related(self.bot_id, last[0] if last else "")
         msgs = [{"role": "system", "content": ROUTER_PROMPT.format(
             name=b["name"], instructions=b["instructions"] or "你的具体职责以用户在对话里交代的为准。",
             date=time.strftime("%Y-%m-%d"), tasks=self._task_list(), skills=skills.summary(self.bot_id),
-            routines=self._routine_list(), capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id),
+            routines=self._routine_list(), capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id, related),
             approvals=approvals.summary(self.bot_id), group=self._group_block(chat))}] \
             + memory.context(cid, self.bot_id if chat["kind"] == "group" else None)
         sid, started = f"s{time.time_ns()}", time.time()
@@ -375,6 +381,10 @@ class Router:
             return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")))
         if name == "recall":
             return memory.recall(args["id"], self.chat["id"])
+        if name == "search_memory":
+            return await search.tool(self.bot_id, args)
+        if name == "read_page":
+            return library.tool_read_page(args)
         if name == "look_at_screen":
             return await self._look()
         if name in DIRECT_PC:

@@ -58,6 +58,7 @@ function Models() {
   const s = useStore(x => x.settings) as S
   const [roles, setRoles] = useState(s.roles)
   const [heavy, setHeavy] = useState(s.heavy_workers)
+  const [emb, setEmb] = useState(s.embedding || { provider: '', model: '' })
   const { msg, save } = useSave()
   const upd = (r: string, k: string, v: any) => setRoles({ ...roles, [r]: { ...roles[r], [k]: v } })
   return (
@@ -82,7 +83,36 @@ function Models() {
         </tbody>
       </table>
       <label className="field inline">Heavy 模式并行数<input type="number" min={1} max={8} value={heavy} onChange={e => setHeavy(Number(e.target.value))} /></label>
-      <div className="row-actions"><button className="btn primary" onClick={() => save({ roles, heavy_workers: heavy })}>保存</button><span className="muted small">{msg}</span></div>
+      <Embedding emb={emb} setEmb={setEmb} />
+      <div className="row-actions"><button className="btn primary" onClick={() => save({ roles, heavy_workers: heavy, embedding: emb })}>保存</button><span className="muted small">{msg}</span></div>
+    </div>
+  )
+}
+
+// 按意思检索记忆和资料库：选一个 embedding 服务；不选也能按关键词找
+function Embedding({ emb, setEmb }: { emb: S['embedding']; setEmb: (e: S['embedding']) => void }) {
+  const s = useStore(x => x.settings) as S
+  const [info, setInfo] = useState<any>(null)
+  useEffect(() => {
+    const f = () => api('/api/search/info').then(setInfo).catch(() => {})
+    f(); const t = setInterval(f, 4000); return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="emb-box">
+      <h4>按意思检索记忆和资料库</h4>
+      <p className="muted small">Bot 找以前的记忆和页面时用。不选也能用：按关键词找（中文按两个字一组）。选一个 embedding 服务后，说法不同、意思相近的也能找到。
+        任何兼容 OpenAI <code>/embeddings</code> 接口的都行，比如 OpenAI 的 text-embedding-3-small、硅基流动的 BAAI/bge-m3、Ollama 的 nomic-embed-text。</p>
+      <div className="bk-row">
+        <select value={emb.provider} onChange={e => setEmb({ ...emb, provider: e.target.value })}>
+          <option value="">不用（只按关键词）</option>
+          {s.providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+        </select>
+        <input value={emb.model} disabled={!emb.provider} placeholder="embedding 模型的名字" onChange={e => setEmb({ ...emb, model: e.target.value })} />
+      </div>
+      {info && <div className="muted small">
+        已索引 {info.chunks} 段{info.embedding ? `，算好向量 ${info.embedded} 段${info.embedded < info.chunks && !info.error ? '（后台在算）' : ''}` : ''}
+        {info.error && <span className="error-line"> 向量服务出错了，先只按关键词找：{info.error}</span>}
+      </div>}
     </div>
   )
 }

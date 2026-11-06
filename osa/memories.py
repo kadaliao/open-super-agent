@@ -24,6 +24,8 @@ MAX_NOTES = 200        # 每个 Bot 自己的记忆
 MAX_SHARED = 50        # 共享的用户事实
 KEEP_WORK = 20
 PROMPT_NOTES = 80      # 写进提示词的条数上限（最近更新的优先）
+PROMPT_RECENT = 60     # 超过上限时：最近的 60 条，加上和这次对话相关的更早记忆
+PROMPT_RELATED = 20
 PROMPT_WORK = 10
 
 _COLS = "id, bot_id, kind, text, source, created, updated"
@@ -133,12 +135,33 @@ def _lines(items: list[dict]) -> str:
     return "\n".join(f"- #{m['id']} {m['text']}" for m in items)
 
 
-def prompt_block(bot_id: int) -> str:
-    """写进 Router 系统提示词的记忆。"""
-    shared, own = _list(None, "note", PROMPT_NOTES), _list(bot_id, "note", PROMPT_NOTES)
+def _count(bot_id: int | None) -> int:
+    return conn.execute("select count(*) from memories where bot_id is ? and kind='note'", (bot_id,)).fetchone()[0]
+
+
+async def related(bot_id: int, text: str) -> list[int]:
+    """记忆多到放不下时，按这次对话的内容找出相关的更早记忆（编号）。放得下就不用找。"""
+    if not text or max(_count(None), _count(bot_id)) <= PROMPT_NOTES:
+        return []
+    from . import search
+    hits = await search.search(text, bot_id, ("memory",), PROMPT_RELATED * 2, subs=("note",))
+    return [h["ref"] for h in hits]
+
+
+def prompt_block(bot_id: int, related_ids: list[int] = ()) -> str:
+    """写进 Router 系统提示词的记忆。related_ids：和这次对话相关的更早记忆。"""
+    full = max(_count(None), _count(bot_id)) <= PROMPT_NOTES
+    n = PROMPT_NOTES if full else PROMPT_RECENT
+    shared, own = _list(None, "note", n), _list(bot_id, "note", n)
     work = _list(bot_id, "work", PROMPT_WORK)
     parts = [f"关于用户（所有 Bot 共享）：\n{_lines(shared) or '（暂无）'}",
              f"你自己记得的：\n{_lines(own) or '（暂无）'}"]
+    shown = {m["id"] for m in shared + own}
+    extra = [m for i in related_ids if i not in shown and (m := get(i)) and m["kind"] == "note"][:PROMPT_RELATED]
+    if extra:
+        parts.append(f"和这次对话可能相关的更早记忆：\n{_lines(extra)}")
+    if not full:
+        parts.append("（记忆比较多，这里只放了最近的和可能相关的；其余的用 search_memory 查。）")
     if work:
         parts.append(f"最近做过的事（自动记录）：\n{_lines(work)}")
     return "\n".join(parts)

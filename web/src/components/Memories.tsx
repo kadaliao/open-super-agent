@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../store'
 import type { Bot, Memory, MemoryList } from '../types'
+import { useSearch } from './Library'
 
 const day = (ts: number) => new Date(ts * 1000).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 const SOURCE: Record<string, string> = { chat: '对话里记下', manual: '手动添加', import: '导入', task: '自动' }
@@ -12,6 +13,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   const [importing, setImporting] = useState(false)
   const [showWork, setShowWork] = useState(false)
   const [err, setErr] = useState('')
+  const { q, setQ, hits } = useSearch('memory', bot.id)
   const load = () => api(`/api/bots/${bot.id}/memories`).then(setList).catch((e: any) => setErr(e.message))
   useEffect(() => {
     load()
@@ -26,7 +28,11 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
       <div className="section-head"><h4>记忆</h4><button className="btn" onClick={() => setAdding(true)}>＋ 添加</button></div>
       <p className="muted small">{bot.name} 每次对话都带着这些。在对话里说“记住……”也能添加；点一条可以修改。</p>
       {err && <div className="error-line">{err}</div>}
-      {!list ? <div className="muted">加载中…</div> : <>
+      <input className="lib-search" value={q} placeholder="按意思找记忆" onChange={e => setQ(e.target.value)} />
+      {hits ? (hits.length ? hits.map(h => <div key={h.ref} className="mem-hit">
+        <span className="tag">{h.bot_id === null ? '共享' : h.sub === 'work' ? '做过的事' : '自己的'}</span> {h.snippet}</div>)
+        : <div className="muted small">没找到相关的记忆</div>)
+      : !list ? <div className="muted">加载中…</div> : <>
         <div className="mem-group">关于你 <span className="muted small">所有 Bot 共享</span></div>
         {list.shared.length ? list.shared.map(m => <MemoryItem key={m.id} m={m} bot={bot} onChange={load} />)
           : <div className="muted small">还没有。比如你的名字、时区、所在城市。</div>}
