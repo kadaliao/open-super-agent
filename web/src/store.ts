@@ -247,7 +247,7 @@ function handle(d: any) {
         const streams = m.role === 'assistant' ? { ...s.streams, [cid]: undefined } : s.streams
         return { chats, unread, streams, messages: list ? { ...s.messages, [cid]: [...list, m] } : s.messages }
       })
-      if (m.role !== 'user' && cid !== state.active) notifyOS(cid, m)
+      if (m.role !== 'user' && (cid !== state.active || desktop)) notifyOS(cid, m)   // 桌面 App 里窗口藏起来时，当前对话的回复也要通知
       break
     }
     case 'stream_start':
@@ -316,12 +316,12 @@ function notifyOS(chatId: number, m: Message | null, text?: string) {
   n.onclick = () => { window.focus(); openChat(chatId) }
 }
 
-// 桌面 App 用系统通知：Bot 的回复、任务结果、等你确认的操作，和服务端推送的规则一样。正看着这个对话时不打扰
+// 桌面 App 用系统通知：Bot 的回复、任务结果、等你确认的操作，和服务端推送的规则一样。
+// 窗口在不在前台由外壳判断（WebKit 的 hasFocus 在 App 里不准）：正看着这个对话时不打扰
 function notifyDesktop(chatId: number, m: Message | null, text?: string) {
   if (m && m.role !== 'assistant' && m.meta?.kind !== 'result') return
-  if (!document.hidden && document.hasFocus() && chatId === state.active) return
   const chat = state.chats.find(c => c.id === chatId)
-  desktop!.notify(chat?.title || 'Open Super Agent', text || (m?.content || '').replace(/[#*`>_~\[\]]/g, '').slice(0, 120), chatId)
+  desktop!.notify(chat?.title || 'Open Super Agent', text || (m?.content || '').replace(/[#*`>_~\[\]]/g, '').slice(0, 120), chatId, chatId === state.active)
 }
 
 export const botById = (id: number | null | undefined) => state.bots.find(b => b.id === id)

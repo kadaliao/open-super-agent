@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "setup",
+  "description": "App 自带的启动页：选用法、看启动状态。服务器的页面另外在运行时授权（只有通知、待确认数、打开外部链接）",
+  "windows": ["main"],
+  "local": true,
+  "permissions": ["allow-setup-state", "allow-choose-local", "allow-choose-remote", "allow-open-logs"]
+}

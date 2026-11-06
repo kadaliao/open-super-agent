@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Open Super Agent</title>
+<style>
+:root{--bg:#0d0d0e;--bg2:#151517;--line:#26262a;--fg:#ececec;--fg2:#a8a8ad;--fg3:#6e6e74;--acc:#ececec;--acc-fg:#0d0d0e;--bad:#ef6b6b;color-scheme:dark}
+@media (prefers-color-scheme:light){:root{--bg:#fbfbfa;--bg2:#f2f2f0;--line:#e2e2df;--fg:#18181a;--fg2:#57575c;--fg3:#8d8d92;--acc:#18181a;--acc-fg:#fbfbfa;color-scheme:light}}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{display:grid;place-items:center;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none}
+main{width:min(560px,92vw);display:flex;flex-direction:column;gap:18px}
+.logo{font-size:30px;text-align:center;line-height:1}h1{margin:0;font-size:20px;text-align:center;font-weight:600}
+.sub{margin:-8px 0 0;text-align:center;color:var(--fg2)}
+.card{border:1px solid var(--line);background:var(--bg2);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.card h2{margin:0;font-size:16px;font-weight:600}.card p{margin:0;color:var(--fg2);font-size:14px}
+.row{display:flex;gap:8px}
+input{flex:1;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;outline:none;-webkit-user-select:text;user-select:text}
+input:focus{border-color:var(--fg3)}
+button{font:inherit;padding:8px 16px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer;white-space:nowrap}
+button.primary{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}button:hover{opacity:.88}button:disabled{opacity:.5;cursor:default}
+.err{color:var(--bad);font-size:13px;margin:0}
+pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all;font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--fg2);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;-webkit-user-select:text;user-select:text}
+.center{text-align:center;color:var(--fg2)}
+.spin{width:22px;height:22px;margin:0 auto 10px;border:2px solid var(--line);border-top-color:var(--fg);border-radius:50%;animation:s 0.9s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.links{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">◆</div>
+  <h1>Open Super Agent</h1>
+
+  <section id="choose" hidden>
+    <p class="sub" data-t="choose"></p>
+    <div style="height:14px"></div>
+    <div class="card">
+      <h2 data-t="localTitle"></h2>
+      <p data-t="localDesc"></p>
+      <div class="row"><button class="primary" id="local" data-t="localBtn"></button></div>
+    </div>
+    <div style="height:12px"></div>
+    <div class="card">
+      <h2 data-t="remoteTitle"></h2>
+      <p data-t="remoteDesc"></p>
+      <form class="row" id="remote">
+        <input id="url" type="text" placeholder="https://osa.example.com" autocomplete="url" spellcheck="false">
+        <button class="primary" type="submit" data-t="remoteBtn"></button>
+      </form>
+      <p class="err" id="remoteErr" hidden></p>
+    </div>
+    <div style="height:12px"></div>
+    <div class="links"><button id="back" hidden data-t="back"></button></div>
+  </section>
+
+  <section id="starting" class="center" hidden>
+    <div class="spin"></div>
+    <div data-t="starting"></div>
+  </section>
+
+  <section id="failed" hidden>
+    <p class="err" data-t="failed" style="text-align:center;font-size:15px"></p>
+    <div style="height:10px"></div>
+    <pre id="message"></pre>
+    <div style="height:14px"></div>
+    <div class="links">
+      <button class="primary" id="retry" data-t="retry"></button>
+      <button id="other" data-t="other"></button>
+      <button id="logs" data-t="logs"></button>
+    </div>
+  </section>
+</main>
+<script src="setup.js"></script>
+</body>
+</html>

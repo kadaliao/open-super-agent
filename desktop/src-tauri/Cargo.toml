@@ -1,0 +1,30 @@
+[package]
+name = "open-super-agent"
+version = "0.6.1"
+description = "Open Super Agent desktop app"
+edition = "2021"
+publish = false
+
+[lib]
+name = "osa_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+keyring = { version = "3", features = ["apple-native"] }
+getrandom = "0.2"
+libc = "0.2"
+url = "2"
+dirs = "5"
+sys-locale = "0.3"
