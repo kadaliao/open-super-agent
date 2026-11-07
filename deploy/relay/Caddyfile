@@ -1,0 +1,12 @@
+# 推送中转的站点，加进服务器的 Caddyfile；改完先 caddy validate 再 systemctl reload caddy
+push.cclsp.top {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	request_body {
+		max_size 8KB
+	}
+	reverse_proxy 127.0.0.1:8790   # 这个站点不加 log：不记访问日志
+}

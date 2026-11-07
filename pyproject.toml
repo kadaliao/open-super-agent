@@ -22,6 +22,10 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
 ]
+# 手机 App 的推送中转（osa/relay.py）连苹果要 HTTP/2；只在跑中转的机器上装：uv sync --group relay
+relay = [
+    "h2>=4",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,19 @@
+# 手机 App 的推送中转（osa/relay.py）。和服务共用 /opt/osa/app 的代码和虚拟环境，要先 `uv sync --frozen --no-dev --group relay` 装上 h2。
+# /opt/osa/relay/env（权限 600）里写：OSA_RELAY_ORIGIN、OSA_RELAY_DB、APNS_KEY_FILE、APNS_KEY_ID、APNS_TEAM_ID、APNS_TOPIC。
+# 不写访问日志：日志里会有每个手机的推送地址。
+[Unit]
+Description=open-super-agent push relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/osa/app
+EnvironmentFile=/opt/osa/relay/env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/osa/app/.venv/bin/uvicorn osa.relay:app --host 127.0.0.1 --port 8790 --workers 1 --no-access-log --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=3
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

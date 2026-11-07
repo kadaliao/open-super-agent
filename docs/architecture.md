@@ -43,6 +43,7 @@ osa/
   dm.py            Bot 之间的私信：message_bot 发信、回信自动送回发信的对话、深度上限、排队中的一轮合并
   teach.py         演示一遍：开始 / 结束录制、把录到的事件排成步骤、让模型写技能草稿
   push.py          手机推送：VAPID 密钥、RFC 8291 加密、订阅、哪些事件要推
+  relay.py         手机 App 的推送中转（单独运行，不是服务的一部分）：对服务器来说是网页推送服务，验 VAPID 签名后把密文转给苹果推送，见 docs/mobile.md
   channels/        聊天软件：连接和配对、界面事件转成聊天软件里的消息和卡片、收消息走和网页一样的入口
     telegram.py    Telegram Bot API：长轮询、内联按钮
     feishu.py      飞书 / Lark：长连接（手写的 protobuf 帧编解码）、富文本和消息卡片
