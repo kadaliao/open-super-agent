@@ -36,9 +36,9 @@ See [Features](docs/features.en.md) for the full list.
 
 | Client | What you get |
 |---|---|
-| 💻 **macOS desktop app** (preview) | Download the dmg and open it: about 42 MB with its own runtime, no Docker or Python; Bots use the Chrome on your computer. It keeps running in the menu bar after you close the window, and can also connect to your server. See [Desktop app](docs/desktop.md) (Chinese) |
+| 💻 **macOS desktop app** | Download the dmg and open it: about 43 MB with its own runtime, no Docker or Python; Bots use the Chrome on your computer. It keeps running in the menu bar after you close the window, and can also connect to your server. See [Desktop app](docs/desktop.md) (Chinese) |
 | 🖥️ **Server** | One `docker compose up` on a VPS or a machine at home keeps it always on; connect from a browser, the desktop app, your phone or a chat app. See [Deploy with Docker Compose](docs/docker.md) (Chinese) |
-| 📱 **iPhone app** (in development) | Scan a QR code on your computer with the Camera to connect; approvals and finished tasks are pushed to your phone, encrypted, and readable on the lock screen. See [iPhone app](docs/mobile.md) (Chinese) |
+| 📱 **iPhone app** (TestFlight) | Scan a QR code on your computer with the Camera to connect; approvals and finished tasks are pushed to your phone, encrypted, and readable on the lock screen. See [iPhone app](docs/mobile.md) (Chinese) |
 | 💬 **Chat apps** | Talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, with approvals as message buttons. See [Chat apps](docs/channels.md) (Chinese) |
 
 <p align="center">
@@ -50,13 +50,13 @@ See [Features](docs/features.en.md) for the full list.
   <img src="docs/images/ios-approval.png" width="200" alt="iPhone app: an approval card with allow once, always allow and deny">
   <img src="docs/images/ios-computer.png" width="200" alt="iPhone app: watching the Bot's computer live">
 </p>
-<p align="center"><sub>Top: the macOS desktop app. Bottom: the iPhone app (in development): chat · background task · approval · the Bot's computer. Screenshots show the Chinese UI.</sub></p>
+<p align="center"><sub>Top: the macOS desktop app. Bottom: the iPhone app (TestFlight): chat · background task · approval · the Bot's computer. Screenshots show the Chinese UI.</sub></p>
 
 OpenMausBot, a similar project, makes different trade-offs; see [Compared with OpenMausBot](docs/comparison.en.md).
 
 ## Quick start
 
-On a Mac, the quickest way is the **desktop app** (preview): download the dmg for your chip from the [releases page](https://github.com/kadaliao/open-super-agent/releases), open it and choose "Run on this computer".
+On a Mac, the quickest way is the **desktop app**: download the dmg for your chip from the [releases page](https://github.com/kadaliao/open-super-agent/releases), open it and choose "Run on this computer".
 
 To keep it always on a server, use Docker Compose; you only need Docker:
 
@@ -91,8 +91,8 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 
 - [Deploy with Docker Compose](docs/docker.md)
 - [Configuration](docs/configuration.md): models, limits and prices, the computer, apps, approvals and the vault, routines, push, remote access
-- [Desktop app (preview)](docs/desktop.md): running on your computer or connecting to your server
-- [iPhone app (in development)](docs/mobile.md): QR pairing, how pushes reach the phone, what the push relay can see, development
+- [Desktop app](docs/desktop.md): running on your computer or connecting to your server
+- [iPhone app (TestFlight)](docs/mobile.md): QR pairing, how pushes reach the phone, what the push relay can see, development
 - [Chat apps](docs/channels.md): connecting Telegram, Feishu/Lark, DingTalk, WeCom and Discord
 - [Adding an app to the market](docs/apps.md)
 - [Writing a Bot template](docs/templates.md)
@@ -104,7 +104,7 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 
 ## Roadmap
 
-- **Clients**: a stable macOS desktop app; the iPhone app on TestFlight first; then Windows and Android; using the bot in chat-app group chats.
+- **Clients**: a public iPhone beta, then the App Store; then Windows and Android; using the bot in chat-app group chats.
 - **Computers**: whole-desktop control (not just the browser); letting Bots on a server borrow the browser on your computer; snapshots and rollback.
 - **App ecosystem**: new apps and Bot templates mostly come from community PRs; the project fills gaps in the manifest format and connection methods.
 - **Bot abilities**: voice conversations.

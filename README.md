@@ -36,7 +36,7 @@
 
 | 用法 | 说明 |
 |---|---|
-| 💻 **macOS 桌面 App** | 下载 dmg 打开就能用：约 42 MB，自带运行环境，不用装 Docker 和 Python，Bot 直接用你电脑上的 Chrome。关掉窗口后在菜单栏接着跑，也能连到你的服务器。见 [桌面 App](docs/desktop.md) |
+| 💻 **macOS 桌面 App** | 下载 dmg 打开就能用：约 43 MB，自带运行环境，不用装 Docker 和 Python，Bot 直接用你电脑上的 Chrome。关掉窗口后在菜单栏接着跑，也能连到你的服务器。见 [桌面 App](docs/desktop.md) |
 | 🖥️ **服务器** | 一条 `docker compose up` 放到 VPS 或家里的机器上，一直开着；浏览器、桌面 App、手机、聊天软件都能连。见 [用 Docker Compose 部署](docs/docker.md) |
 | 📱 **iPhone App**（TestFlight 内测） | 用相机扫电脑上的二维码就连上；要你确认的事、做完的任务推送到手机，内容加密，锁屏上就能看。见 [iPhone App](docs/mobile.md) |
 | 💬 **聊天软件** | 在 Telegram、飞书、钉钉、企业微信、Discord 里直接和 Bot 说话，要你确认的操作变成消息里的按钮。见 [聊天软件](docs/channels.md) |
@@ -112,7 +112,7 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 
 ## 路线图
 
-- **客户端**：macOS 桌面 App 正式版；iPhone App 先发 TestFlight；之后是 Windows 和 Android；在聊天软件的群里使用机器人。
+- **客户端**：iPhone App 公开测试、上架 App Store；之后是 Windows 和 Android；在聊天软件的群里使用机器人。
 - **电脑**：让 Bot 控制整个桌面（不只是浏览器）；服务器上的 Bot 借用你电脑上的浏览器；快照与回滚。
 - **应用生态**：应用和 Bot 模板主要靠社区提 PR 收录，项目补齐清单格式和连接方式上缺的能力。
 - **Bot 能力**：语音对话。

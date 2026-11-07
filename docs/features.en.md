@@ -75,11 +75,11 @@ The README lists the highlights; this is the full list. For setup see [Configura
 ## Where you use it
 
 - **Web**: any browser, desktop or phone. On a phone you can also watch the screen, take over and type, handle approvals, and dictate messages.
-- **macOS desktop app** (preview):
-  - About a 42 MB download with its own runtime, no Docker or Python; Bots use the Chrome on your computer.
+- **macOS desktop app**:
+  - About a 43 MB download with its own runtime, no Docker or Python; Bots use the Chrome on your computer.
   - Keeps running in the menu bar after you close the window, with system notifications for approvals and finished tasks.
   - Can also act as a client for your server. See [Desktop app](desktop.md) (Chinese).
-- **iPhone app** (in development): connect by scanning a QR code on your computer with the Camera; pushes go through an encrypted relay, show their content on the lock screen, and open the right conversation when tapped. See [iPhone app](mobile.md) (Chinese).
+- **iPhone app** (TestFlight): connect by scanning a QR code on your computer with the Camera; pushes go through an encrypted relay, arrive even when the app is closed, show their content on the lock screen, and open the right conversation when tapped. See [iPhone app](mobile.md) (Chinese).
 - **Chat apps**: talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, in the same conversation as the web UI.
   - Approval requests arrive as buttons, and you can send files (and voice messages on DingTalk and WeCom).
   - No public address needed ([setup guide](channels.md), Chinese).
