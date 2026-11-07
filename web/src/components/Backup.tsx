@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../store'
 import { lang, locale, t, tc, tn } from '../i18n'
 import { ask } from './Dialog'
+import { isEnter } from '../keys'
 
 // 设置 → 备份与迁移：导出一个加密的备份文件；在新机器上上传它恢复
 type Info = { counts: Record<string, number>; secrets: number; started: number; version: string; staged: Staged | null }
@@ -61,7 +62,7 @@ function Export({ info }: { info: Info }) {
       <div className="bk-row">
         <input type="password" autoComplete="new-password" placeholder={t('口令（至少 8 个字符）')} value={p1} onChange={e => setP1(e.target.value)} />
         <input type="password" autoComplete="new-password" placeholder={t('再输一遍')} value={p2} onChange={e => setP2(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && ok && go()} />
+          onKeyDown={e => isEnter(e) && ok && go()} />
         <button className="btn primary" disabled={!ok || busy} onClick={go}>{busy ? t('打包中…') : t('下载备份')}</button>
       </div>
       {p2 && p1 !== p2 && <div className="muted small">{t('两次输入的不一样')}</div>}
@@ -133,7 +134,7 @@ function Restore({ info, onChange }: { info: Info; onChange: () => void }) {
           <button className="btn" onClick={() => input.current?.click()}>{file ? file.name : t('选择备份文件…')}</button>
           <input ref={input} type="file" accept=".osabak" hidden onChange={e => { setFile(e.target.files?.[0] || null); e.target.value = '' }} />
           <input type="password" autoComplete="off" placeholder={t('备份时设的口令')} value={pass} onChange={e => setPass(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && file && pass && upload()} />
+            onKeyDown={e => isEnter(e) && file && pass && upload()} />
           <button className="btn primary" disabled={!file || !pass || !!busy} onClick={upload}>{busy || t('检查备份')}</button>
         </div>
         {err && <div className="error-line">{err}</div>}

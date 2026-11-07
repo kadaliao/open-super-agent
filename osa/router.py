@@ -7,7 +7,7 @@ import time
 import openai
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, dm, i18n, images, library, media, memories, memory, providers, routines, search, skills, tasklog
+from . import approvals, bots, dm, i18n, images, library, media, memories, memory, newbot, providers, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -48,7 +48,7 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 别的 Bot 更适合做的事（用户点名要某个 Bot 做，或者按下面“其他 Bot”的职责明显归它管），用 message_bot 私信它，
   把要它做的事写完整（它看不到这里的对话）；然后简短告诉用户交给了谁，不要自己再派任务重复做。
   它的回信会自动回到这个对话，到时你会接着说一轮。私信不用拉群，私聊和群聊里都能用。
-- 用户的新指令和正在跑的任务冲突（比如换了要做的事）时，先 cancel_task 把旧任务停掉再做。
+{bot_rule}- 用户的新指令和正在跑的任务冲突（比如换了要做的事）时，先 cancel_task 把旧任务停掉再做。
 今天是 {date}。
 
 后台 Worker 当前能用的工具（判断能不能做时以此为准）：
@@ -102,6 +102,14 @@ DM_TURN = """
 这一轮是因为 {name} 私信了你（见最近的消息），不是用户直接说的；用户能在你的私聊里看到。
 你这一轮的回复会自动作为回信发给 {name}，写给它看：能直接答就直接答；要查证、多步的就 dispatch，任务结果会自动发给 {name}，
 不用你再回来；做不了就说明原因。不要再用 message_bot 回复 {name}。"""
+
+# 新建 Bot：只有主 Bot 有 create_bot（每次都弹卡片请用户确认），别的 Bot 要新 Bot 时找主 Bot
+PRIMARY_RULE = ("- 你是主 Bot，只有你能新建 Bot：用户要一个新 Bot，或者别的 Bot 私信你说需要一个新 Bot 时，用 create_bot 建"
+                "（会先弹卡片请用户确认）。先看“其他 Bot”里有没有已经能做这件事的，有就别重复建；"
+                "职责写完整，专门的做法作为 skills 一起交给它，不要存成你自己的技能。\n")
+OTHER_RULE = ("- 新建 Bot 只有主 Bot「{primary}」能做：用户要你建一个 Bot，或者你觉得该有个专门的 Bot 时，"
+              "用 message_bot 私信它（它就在这个群里的话用 handoff），把名字、职责和做法写完整，由它请用户确认后新建。"
+              "不要让用户自己去设置里建。\n")
 
 REPLY_TURN = """
 
@@ -284,7 +292,7 @@ class Router:
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
         tools = ROUTER_TOOLS + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
-            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else [])
+            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + ([newbot.CREATE_BOT] if self.bot["is_primary"] else [])
         cid = self.chat["id"]
         def create():
             return client.chat.completions.create(
@@ -372,6 +380,7 @@ class Router:
             date=time.strftime("%Y-%m-%d"), skills=skills.summary(self.bot_id), routines=self._routine_list(),
             capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id),
             group=self._group_block(chat), others=self._others(),
+            bot_rule=PRIMARY_RULE if b["is_primary"] else OTHER_RULE.format(primary=p) if (p := bots.primary_name()) else "",
             attach_rule=ATTACH_SEE if see else ATTACH_BLIND) + i18n.model_hint()
         recent = memories.turn_block(self.bot_id, related)
         state = STATE_PROMPT.format(tasks=self._task_list(), approvals=approvals.summary(self.bot_id),
@@ -539,6 +548,8 @@ class Router:
             return media.sent_text(att)
         if name == "generate_image":
             return await images.generate(self.bot, self.chat["id"], self.chat_id, str(args.get("prompt") or ""), self.add)
+        if name == "create_bot":
+            return await newbot.create(self.bot, self.chat["id"], self.chat_id, args, self.add, self.emit)
         if name == "look_at_screen":
             return await self._look()
         if name in DIRECT_PC:

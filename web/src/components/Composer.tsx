@@ -4,6 +4,7 @@ import type { Attachment, Bot } from '../types'
 import { locale, t, tc } from '../i18n'
 import { desktop } from '../desktop'
 import { shrinkImage, uploadMedia } from './Media'
+import { isEnter } from '../keys'
 
 type Pending = Attachment & { key: string; busy: boolean; preview?: string }   // 输入框上面还没发出去的附件
 
@@ -210,9 +211,9 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault(); setPick((pick + (e.key === 'ArrowDown' ? 1 : matches.length - 1)) % matches.length); return
               }
-              if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); choose(matches[pick % matches.length].key); return }
+              if (isEnter(e) || e.key === 'Tab') { e.preventDefault(); choose(matches[pick % matches.length].key); return }
             }
-            if (e.key === 'Enter' && !e.shiftKey && !composing.current && !e.nativeEvent.isComposing) { e.preventDefault(); submit() }
+            if (isEnter(e) && !e.shiftKey && !composing.current) { e.preventDefault(); submit() }
           }} />
         {Speech && <button className={'mic' + (listening ? ' on' : '')} onClick={toggleMic} title={listening ? t('停止语音输入') : t('语音输入')}
           aria-label={t('语音输入')}>{listening ? '■' : '🎙'}</button>}

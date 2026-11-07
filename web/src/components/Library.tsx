@@ -5,6 +5,7 @@ import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { locale, t, tc } from '../i18n'
 import { ask } from './Dialog'
+import { isEnter } from '../keys'
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 export const size = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`
@@ -122,7 +123,7 @@ function PageView({ id }: { id: number }) {
         {p && (rename !== null
           ? <input className="page-title-input" autoFocus value={rename} onChange={e => setRename(e.target.value)}
               onBlur={() => { patch({ title: rename }); setRename(null) }}
-              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRename(null) }} />
+              onKeyDown={e => { if (isEnter(e)) (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRename(null) }} />
           : <span className="head-name page-title" title={t('点击改名')} onClick={() => setRename(p.title)}>{p.title}</span>)}
         <span className="grow" />
         {p && <div className="page-actions">

@@ -112,6 +112,29 @@ def test_auto_backend(monkeypatch):
     assert computer.backend_name() == "local"
 
 
+async def test_chrome_without_permission(tmp_path, monkeypatch):
+    """Chrome 在外接硬盘上、App 没权限看：算找到了，状态里说清楚去哪给权限，而不是“没找到 Chrome”。"""
+    chrome = "/Volumes/Ext/Google Chrome.app/Contents/MacOS/Google Chrome"
+    monkeypatch.setattr(host, "DATA", tmp_path / "data")
+    monkeypatch.setitem(CFG.setdefault("computer", {}), "chrome_path", chrome)
+    real = os.stat
+
+    def stat(p, *a, **k):
+        if str(p) == chrome:
+            raise PermissionError(1, "Operation not permitted")
+        return real(p, *a, **k)
+    monkeypatch.setattr(host.os, "stat", stat)
+    assert host.chrome_path() == chrome
+    assert computer.available()[0] == {"id": "host", "ok": True}
+    c = host.HostComputer(0)
+    st = await c.status()
+    assert st["state"] == "error" and "可移除的宗卷" in st["detail"]
+    with pytest.raises(ComputerError, match="可移除的宗卷"):
+        await c.start()
+    monkeypatch.setitem(CFG["computer"], "chrome_path", str(tmp_path / "nope"))   # 真没有
+    assert host.chrome_path() is None
+
+
 def test_default_rules():
     assert approvals.decide("browser_upload", "host")[0]
     assert approvals.decide("browser_submit", "host")[0]

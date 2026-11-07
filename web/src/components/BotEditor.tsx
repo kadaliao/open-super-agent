@@ -10,6 +10,7 @@ import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } 
 import { TasksPanel } from './Tasks'
 import { ask } from './Dialog'
 import { AvatarImageTools, botPrompt } from './AvatarTools'
+import { isEnter } from '../keys'
 
 // 新建 Bot：从模板装（带好技能和定时任务），或者空白的：只问名字和头像，职责在第一条消息里交代
 export function NewBotDialog({ onClose }: { onClose: () => void }) {
@@ -41,7 +42,7 @@ export function NewBotDialog({ onClose }: { onClose: () => void }) {
             <div className="new-bot-preview"><BotAvatar avatar={avatar} size={88} /></div>
             <AvatarPicker avatar={avatar} onChange={setAvatar} prompt={botPrompt(name)} />
             <label className="field">{t('名字')}<input autoFocus value={name} maxLength={40} placeholder={t('例如：Scout、研究员、邮件管家')}
-              onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} /></label>
+              onChange={e => setName(e.target.value)} onKeyDown={e => isEnter(e) && create()} /></label>
             <p className="muted small">{t('建好之后，在第一条消息里告诉它要做什么工作。')}</p>
             {err && <div className="error-line">{err}</div>}
             <div className="modal-actions"><button className="btn" onClick={() => setMode('pick')}>← {t('从模板选')}</button>

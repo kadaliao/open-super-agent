@@ -8,6 +8,7 @@ import { BrandIcon, modelBrand, providerBrand } from './BrandIcon'
 import { BRANDS } from '../brandIcons'
 import { ask } from './Dialog'
 import { imagePrice, type ImageModel } from './AvatarTools'
+import { isEnter } from '../keys'
 
 // 设置 → 模型：先加模型服务（地址 + API Key），再给每项工作选模型
 
@@ -409,7 +410,7 @@ export function ModelPicker({ kind, value, onChange, allowNone, only }: {
             <input autoFocus value={q} placeholder={t('搜索，或者直接填模型名字')} onChange={e => setQ(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
-                if (e.key === 'Enter' && first) choose(first.p.name, first.items[0].id)
+                if (isEnter(e) && first) choose(first.p.name, first.items[0].id)
               }} />
           </div>
           <div className="mp-list">

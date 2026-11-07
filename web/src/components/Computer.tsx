@@ -5,6 +5,8 @@ import type { ComputerState, Settings, Teach } from '../types'
 import { lang, t } from '../i18n'
 import BotAvatar from './BotAvatar'
 import { ask, notice } from './Dialog'
+import { isEnter } from '../keys'
+import { desktop, phone } from '../desktop'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
@@ -44,7 +46,7 @@ function TypeBar({ botId }: { botId: number }) {
   return (
     <div className="type-bar">
       <input value={text} placeholder={t('输入文字发到电脑（先在画面上点一下输入框）')} onChange={e => setText(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && text) { send({ text }); setText('') } }} />
+        onKeyDown={e => { if (isEnter(e) && text) { send({ text }); setText('') } }} />
       <button className="btn" disabled={!text} onClick={() => { send({ text }); setText('') }}>{t('发送')}</button>
       <button className="btn" onClick={() => send({ key: 'Return' })}>{t('回车')}</button>
       <button className="btn" onClick={() => send({ key: 'BackSpace' })}>⌫</button>
@@ -57,22 +59,27 @@ const STATE: Record<string, string> = {
 }
 const BACKEND: Record<string, string> = { host: t('本机 Chrome'), local: t('本地 Docker'), instabox: t('Instabox 云端') }
 const MISSING: Record<string, string> = { host: t('没找到 Chrome'), local: t('没装 Docker'), instabox: t('没设 INSTABOX_API_KEY') }
+// “本机”是服务所在的那台机器。桌面 App 连着服务器（或者在浏览器里用服务器）时，那是服务器，不是你面前这台
+const ON_SERVER: Record<string, string> = { host: t('服务器上的 Chrome'), local: t('服务器上的 Docker') }
+const onServer = (id: string, s: Settings | null) => s?.computer_on_desktop === false && !!ON_SERVER[id]
+const backendName = (id: string, s: Settings | null) => (onServer(id, s) ? ON_SERVER[id] : BACKEND[id]) || id
 
 /** 用哪台电脑：本机的 Chrome、本地 Docker、Instabox。有任务在用时不能换。 */
 function BackendPicker({ st }: { st: ComputerState }) {
   const s = useStore(x => x.settings)
-  if (!s?.computer_backends) return <span className="muted small">· {BACKEND[st.backend] || st.backend}</span>
+  if (!s?.computer_backends) return <span className="muted small">· {backendName(st.backend, s)}</span>
   const busy = !!(st.users?.length || st.exclusive)
   const change = async (v: string) => {
     try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_backend: v } })) }
     catch (e: any) { notice(e.message) }
   }
   return (
-    <select className="pc-backend" value={s.computer_backend || 'auto'} disabled={busy} title={busy ? t('有任务在用电脑，用完再换') : t('用哪台电脑')}
+    <select className="pc-backend" value={s.computer_backend || 'auto'} disabled={busy}
+      title={busy ? t('有任务在用电脑，用完再换') : desktop && !phone && s.computer_on_desktop === false ? t('App 连着服务器，Bot 用的是服务器上的电脑。要让 Bot 用这台电脑上的 Chrome：菜单栏 → 切换服务器… → 在这台电脑上运行') : t('用哪台电脑')}
       onChange={e => change(e.target.value)}>
-      <option value="auto">{t('自动（{name}）', { name: BACKEND[s.computer_backend === 'auto' ? st.backend : ''] || t('按环境选') })}</option>
+      <option value="auto">{t('自动（{name}）', { name: s.computer_backend === 'auto' ? backendName(st.backend, s) : t('按环境选') })}</option>
       {s.computer_backends.map(b => <option key={b.id} value={b.id} disabled={!b.ok && b.id !== s.computer_backend}>
-        {BACKEND[b.id] || b.id}{b.ok ? '' : `（${MISSING[b.id]}）`}</option>)}
+        {backendName(b.id, s)}{b.ok ? '' : `（${onServer(b.id, s) ? t('没装') : MISSING[b.id]}）`}</option>)}
     </select>
   )
 }

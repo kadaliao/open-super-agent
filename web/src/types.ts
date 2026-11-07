@@ -79,6 +79,7 @@ export type Settings = {
   computer_parallel: number
   computer_backend: string                              // auto / host / local / instabox
   computer_backends: { id: string; ok: boolean }[]      // 这台机器上能用哪些
+  computer_on_desktop: boolean                          // 服务是桌面 App 自带的（本地模式）；否则“本机”指服务器那台机器
   computer_host_shell: boolean
   embedding: { provider: string; model: string }
   image_model: { provider: string; model: string }   // 画图用哪个模型（对话里画图、生成头像共用），空的是用排在最前面的

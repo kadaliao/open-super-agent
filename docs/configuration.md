@@ -120,6 +120,9 @@ computer:
 | 本机 Chrome（host） | 用服务所在电脑上装的 Chrome，不用 Docker，桌面 App 默认用它。见下面。 |
 
 **本机 Chrome（host）**：适合在自己的电脑上跑（桌面 App，或者直接 `uv run`）。服务器上没有屏幕，用不了。
+“本机”是服务所在的那台机器：桌面 App 连着服务器、或者在浏览器里用服务器时，电脑面板上写的是“服务器上的 Chrome”。
+Chrome 装在外接硬盘上（`/Applications` 里只是个链接）时，macOS 要先允许 App 访问“可移除的宗卷”（系统设置 → 隐私与安全性 → 文件与文件夹），
+没允许时电脑面板会提示。
 
 - 浏览器：开一个单独的 Chrome 配置目录 `data/computers/host/chrome`，和你日常用的 Chrome 分开。第一次在电脑面板点“打开 Chrome”，
   在打开的窗口里登录要 Bot 用的网站，所有 Bot 共用。调试端口由 Chrome 随机选、只听 127.0.0.1，网页连不上。

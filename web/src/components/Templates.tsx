@@ -4,6 +4,7 @@ import type { Avatar, Bot } from '../types'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { t, tn } from '../i18n'
+import { isEnter } from '../keys'
 
 // Bot 模板：新建 Bot 时从模板装；Bot 详情里导出、分享；/template/<token> 是分享出去的公开页
 export type TemplateCard = { id: string; name: string; description: string; avatar: Avatar; apps: string[]; skills: number; routines: number }
@@ -50,7 +51,7 @@ export function TemplatePicker({ onPreview, onBlank, compact }: { onPreview: (p:
       {!compact && <label className="field">{t('从别人分享的模板装')}
         <div className="env-row">
           <input value={url} placeholder={t('粘贴 …/template/… 链接，或 GitHub 上的 .osabot.yaml')} onChange={e => setUrl(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && url.trim() && open({ url }, 'url')} />
+            onKeyDown={e => isEnter(e) && url.trim() && open({ url }, 'url')} />
           <button className="btn" disabled={!url.trim() || !!busy} onClick={() => open({ url }, 'url')}>{busy === 'url' ? t('读取中…') : t('读取')}</button>
           <button className="btn" disabled={!!busy} onClick={() => file.current?.click()}>{t('选择文件…')}</button>
           <input ref={file} type="file" accept=".yaml,.yml" hidden onChange={e => { pick(e.target.files?.[0]); e.target.value = '' }} />

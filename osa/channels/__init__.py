@@ -329,6 +329,15 @@ def card_for(ev: dict) -> dict:
             i18n.t("价格：{price}", price=d.get("价格", "")) + origin
         return {"id": ev["id"], "kind": "approval", "title": i18n.t("🎨 {name} 想画一张图", name=who), "body": body,
                 "buttons": buttons + [(i18n.t("总是允许"), "always", "")], "link": None, "done": ""}
+    if tool == "create_bot":   # 主 Bot 要新建 Bot：名字、职责、技能；只能一次一次地允许
+        try:
+            d = json.loads(ev.get("args") or "{}")
+        except ValueError:
+            d = {}
+        skills = "\n".join(d.get("技能") or [])
+        body = f"**{d.get('名字', '')}**\n{(d.get('职责') or args)[:600]}" + (f"\n\n{skills[:400]}" if skills else "") + origin
+        return {"id": ev["id"], "kind": "approval", "title": i18n.t("🤖 {name} 想新建一个 Bot", name=who), "body": body,
+                "buttons": buttons, "link": None, "done": ""}
     if tool == "ask_approval":   # Worker 自己要求确认的一步：直接写要做的事；“总是允许”对它没有意义
         try:
             what = json.loads(args).get("操作") or args

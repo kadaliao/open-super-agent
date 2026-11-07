@@ -18,6 +18,8 @@ macOS 的桌面 App，Apple 芯片和 Intel 都有。Windows 版以后再做。
   Bot 的电脑默认用这台电脑上装的 Chrome（开一个单独的配置目录，和你日常用的分开），不用 Docker，
   说明见 [配置 → 本机 Chrome](configuration.md#电脑)。没装 Chrome 的话先装一个；也可以在电脑面板上方换成本地 Docker 或 Instabox。
 - **连接到我的服务器**：填地址（比如 `https://osa.example.com`），在 App 里登录。App 只是一个客户端，服务和数据都在服务器上。
+  Bot 用的电脑也在服务器那边（电脑面板写着“服务器上的 Chrome / Docker”或 Instabox），用不了这台 Mac 上的 Chrome；
+  要用它，从菜单栏 → 切换服务器… 改成“在这台电脑上运行”。
 
 ## 和网页比多了什么
 

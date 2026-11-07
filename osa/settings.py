@@ -1,5 +1,6 @@
 """界面上可修改的设置，存在数据库里，覆盖 config.yaml 的同名项。模型服务（地址、密钥）在 providers.py。"""
 import json
+import os
 import time
 from . import avatars, computer, i18n, prices, providers
 from .config import CFG
@@ -82,6 +83,7 @@ def public() -> dict:
         "computer_parallel": (CFG.get("computer") or {}).get("parallel", 3),
         "computer_backend": (CFG.get("computer") or {}).get("backend", "auto"),
         "computer_backends": computer.available(),
+        "computer_on_desktop": bool(os.environ.get("OSA_DESKTOP")),   # 服务是桌面 App 自带的：“本机”就是用户面前这台电脑
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
         "image_model": avatars.choice(),   # 画图用哪个模型（对话里画图、生成头像共用），没选过是空的

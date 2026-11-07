@@ -55,6 +55,12 @@ def primary() -> dict:
     return get(r[0])
 
 
+def primary_name() -> str:
+    """主 Bot 的名字；没有主 Bot（只在测试里）是空的。"""
+    r = conn.execute("select name from bots where is_primary=1").fetchone()
+    return r[0] if r else ""
+
+
 def clean_avatar(avatar, n: int = 0) -> dict:
     """头像：形状加颜色，可以再加一张图片（image，/avatars/…）。有图片时显示图片，形状和颜色留着：
     导出成模板、图片被清掉时用。不认识的形状、颜色换成默认的。"""

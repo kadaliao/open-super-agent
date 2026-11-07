@@ -537,5 +537,13 @@
   "{who} 画好了一张图": "{who} made an image",
   "🎨 {name} 想画一张图": "🎨 {name} wants to make an image",
   "价格：{price}": "Price: {price}",
-  "模型：{model}": "Model: {model}"
+  "模型：{model}": "Model: {model}",
+  "🤖 {name} 想新建一个 Bot": "🤖 {name} wants to create a new bot",
+  "[已新建 Bot「{name}」]": "[Created bot \"{name}\"]",
+  "新建 Bot": "Create a bot",
+  "[没新建 Bot「{name}」：{note}]": "[Didn't create bot \"{name}\": {note}]",
+  "[没新建 Bot「{name}」]": "[Didn't create bot \"{name}\"]",
+  "[没建成 Bot「{name}」：{error}]": "[Couldn't create bot \"{name}\": {error}]",
+  "{who} 想新建一个 Bot": "{who} wants to create a new bot",
+  "没权限打开 Chrome（{path}），它可能在外接硬盘上。到 系统设置 → 隐私与安全性 → 文件与文件夹，给 Open Super Agent 打开“可移除的宗卷”，再重新打开 App": "No permission to open Chrome ({path}); it may be on an external drive. In System Settings → Privacy & Security → Files and Folders, turn on \"Removable Volumes\" for Open Super Agent, then reopen the app"
 }

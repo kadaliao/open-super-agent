@@ -2,6 +2,16 @@
 
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+### 新增
+- **主 Bot 能新建 Bot**：跟主 Bot 说要一个什么样的 Bot，它写好名字、职责和技能，弹卡片请你确认，你点“新建”才建，建好在侧栏出现。
+  只有主 Bot 能建；别的 Bot 需要新 Bot 时私信主 Bot，同样要你确认。卡片也会发到聊天软件，不能“总是允许”
+### 修复
+- macOS / iPhone App 和 Safari 里，用拼音输入法按回车选字（或把拼音原样上屏）会把消息直接发出去。所有按回车提交的输入框都改了
+- 桌面 App 连着服务器时，电脑面板写“本机 Chrome（没找到 Chrome）”，看着像是这台 Mac 没装 Chrome。现在写“服务器上的 Chrome / Docker”，
+  鼠标停在上面说明怎么改用这台电脑上的 Chrome
+- Chrome 装在外接硬盘上、App 没有访问权限时，不再说“没找到 Chrome”，而是说明去哪里给权限
+
 ## [0.7.0] - 2026-11-07
 ### 新增
 - **对话里的图片和文件**：

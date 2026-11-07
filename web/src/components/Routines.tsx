@@ -5,6 +5,7 @@ import { lang, locale, t, tc, tn } from '../i18n'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { ask } from './Dialog'
+import { isEnter } from '../keys'
 
 // 英文：Nov 6, 9:05 AM；中文保持 11/06 09:05
 const when = (ts: number | null) => ts ? new Date(ts * 1000).toLocaleString(locale, lang === 'en'
@@ -68,7 +69,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
         <div className="teach-start">
           <label className="field">{t('要演示什么？（可选，帮 {name} 理解）', { name: bot.name })}
             <input value={note} maxLength={200} autoFocus placeholder={t('例如：在 GitHub 上给仓库提一个 issue')} onChange={e => setNote(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && startTeach()} /></label>
+              onKeyDown={e => isEnter(e) && startTeach()} /></label>
           <p className="muted small">{t('开始后电脑交给你操作：在浏览器里完整做一遍，做完点“完成，生成技能”。最长 10 分钟。')} {t('只记浏览器里的点击、输入和打开的网址，密码不会记录。录制期间后台任务会排队等电脑。')}</p>
           {err && <div className="error-line">{err}</div>}
           <div className="row-actions"><button className="btn primary" onClick={startTeach}>{t('开始录制')}</button><button className="btn" onClick={() => setTeaching(false)}>{t('取消')}</button></div>
@@ -112,7 +113,7 @@ function ImportSkill({ bot, onDraft, onCancel }: { bot: Bot; onDraft: (d: SkillD
     <div className="teach-start">
       <label className="field">{t('技能链接')}
         <input value={url} autoFocus placeholder={t('别人分享的 …/skill/… 链接，或 GitHub 上的 SKILL.md')} onChange={e => setUrl(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && url.trim() && parse({ url })} /></label>
+          onKeyDown={e => isEnter(e) && url.trim() && parse({ url })} /></label>
       <p className="muted small">{t('技能是一个 Markdown 文件（开头写 name 和 description），和 Claude 等用的 SKILL.md 一样。导入后先给你看一遍，保存了才生效。')}</p>
       {err && <div className="error-line">{err}</div>}
       <div className="row-actions">

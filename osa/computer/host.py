@@ -45,15 +45,27 @@ SECRET = re.compile(r"KEY|TOKEN|SECRET|PASSW|CREDENTIAL|^OSA_", re.I)
 XDO = {"return": "enter", "backspace": "backspace"}   # 网页上的输入条发的是 xdotool 的键名
 
 
+def _probe(path: str) -> bool | None:
+    """是个文件：True；不存在或不是文件：False；有但没权限看：None。
+    macOS 上 /Applications 里的 Chrome 可能只是个链接，真身在外接硬盘上，App 没拿到“可移除的宗卷”权限时就看不了。"""
+    try:
+        return stat.S_ISREG(os.stat(path).st_mode)
+    except PermissionError:
+        return None
+    except OSError:
+        return False
+
+
 def chrome_path() -> str | None:
-    """Bot 用的浏览器：config.yaml 的 computer.chrome_path，否则按常见位置找 Chrome（Chromium、Edge、Brave 也行）。"""
+    """Bot 用的浏览器：config.yaml 的 computer.chrome_path，否则按常见位置找 Chrome（Chromium、Edge、Brave 也行）。
+    没权限看的也算找到了，status() 会说明要去哪里给权限。"""
     forced = (CFG.get("computer") or {}).get("chrome_path")
     if forced:
         forced = os.path.expanduser(forced)
-        return forced if os.path.isfile(forced) else None
+        return forced if _probe(forced) is not False else None
     for c in CHROMES.get(sys.platform, []):
         c = os.path.expandvars(os.path.expanduser(c))
-        if os.path.isfile(c):
+        if _probe(c) is not False:
             return c
     for n in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"):
         if w := shutil.which(n):
@@ -111,8 +123,12 @@ class HostComputer(Computer):
             return 0
 
     async def status(self) -> dict:
-        if not chrome_path():
+        path = chrome_path()
+        if not path:
             return {"state": "error", "detail": i18n.t("没找到 Chrome：先安装 Google Chrome，或者在 config.yaml 的 computer.chrome_path 写上它的路径")}
+        if _probe(path) is None:
+            return {"state": "error", "detail": i18n.t("没权限打开 Chrome（{path}），它可能在外接硬盘上。到 系统设置 → 隐私与安全性 → 文件与文件夹，"
+                                                       "给 Open Super Agent 打开“可移除的宗卷”，再重新打开 App", path=path)}
         if port := self._port():
             try:
                 async with httpx.AsyncClient(timeout=2) as h:
@@ -123,8 +139,9 @@ class HostComputer(Computer):
         return {"state": "stopped", "detail": ""}
 
     async def start(self):
-        if not chrome_path():
-            raise ComputerError((await self.status())["detail"])
+        st = await self.status()
+        if st["state"] == "error":
+            raise ComputerError(st["detail"])
         async with self._starting:
             if (await self.status())["state"] != "running":
                 self.profile.mkdir(parents=True, exist_ok=True)

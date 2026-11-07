@@ -8,6 +8,7 @@ import { TasksPanel } from './Tasks'
 import { ask } from './Dialog'
 import { GroupFace } from './Chat'
 import { AvatarImageTools, groupPrompt } from './AvatarTools'
+import { isEnter } from '../keys'
 
 const MIN = 2, MAX = 6
 const SEP = lang === 'en' ? ', ' : '、'
@@ -114,7 +115,7 @@ function GroupSettings({ chat, onClose }: { chat: Chat; onClose: () => void }) {
         {chat.image && <button className="ghost-btn" onClick={() => { patch({ image: '' }); setEditAvatar(false) }}>{t('不用图片，用成员的头像拼')}</button>}
       </div>}
       <label className="field">{t('群名')}<input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}
-        onBlur={() => title !== chat.title && patch({ title })} onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} /></label>
+        onBlur={() => title !== chat.title && patch({ title })} onKeyDown={e => isEnter(e) && (e.target as HTMLInputElement).blur()} /></label>
       <div className="section-head"><h4>{t('成员（{n}/{max}）', { n: members.length, max: MAX })}</h4>
         {members.length < MAX && others.length > 0 && <button className="btn" onClick={() => setAdding(!adding)}>{adding ? tc('add', '收起') : '＋ ' + t('添加')}</button>}
       </div>

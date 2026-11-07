@@ -1088,5 +1088,17 @@
   "二维码 5 分钟内有效，只能用一次，相当于一次登录，别发给别人。": "The QR code works once, within 5 minutes. It signs you in, so don't share it.",
   "这台服务器没开登录，扫码直接连上。": "This server has no password, so scanning connects right away.",
   "配对二维码": "Pairing QR code",
-  "换一张": "New code"
+  "换一张": "New code",
+  "已同意新建 Bot「{name}」": "Approved creating bot \"{name}\"",
+  "没新建 Bot「{name}」": "Didn't create bot \"{name}\"",
+  "{name} 想新建一个 Bot：{bot}": "{name} wants to create a new bot: {bot}",
+  "一起带上的技能：": "Skills it comes with: ",
+  "建好后在它私聊的右栏里能改名字、头像和职责": "After it's created, change its name, avatar and role in the right panel of its chat",
+  "不建了": "Don't create",
+  "去和它聊": "Chat with it",
+  "{name} 想新建一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to create a new bot. Confirm on the card in its direct chat",
+  "服务器上的 Chrome": "Chrome on the server",
+  "服务器上的 Docker": "Docker on the server",
+  "App 连着服务器，Bot 用的是服务器上的电脑。要让 Bot 用这台电脑上的 Chrome：菜单栏 → 切换服务器… → 在这台电脑上运行": "The app is connected to a server, so bots use the server's computer. To let bots use Chrome on this computer: menu bar → Switch server… → Run on this computer",
+  "没装": "not installed"
 }

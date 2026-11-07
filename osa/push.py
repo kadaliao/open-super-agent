@@ -162,6 +162,12 @@ def message_for(event: dict) -> tuple[str, str, str, str] | None:
         who = _bot_name(event.get("bot_id"))
         if event.get("kind") == "help":
             return i18n.t("{who} 需要你帮忙", who=who), i18n.t("任务暂停了，等你接手电脑处理"), url, f"approval-{event['id']}"
+        if event.get("tool") == "create_bot":
+            try:
+                name = json.loads(event.get("args") or "{}").get("名字", "")
+            except ValueError:
+                name = ""
+            return i18n.t("{who} 想新建一个 Bot", who=who), name, url, f"approval-{event['id']}"
         return i18n.t("{who} 需要你确认", who=who), i18n.t("{tool}：{goal}", tool=event.get("tool", ""), goal=event.get("goal", "")), \
             url, f"approval-{event['id']}"
     if t == "message":
