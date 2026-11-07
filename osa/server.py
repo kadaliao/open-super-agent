@@ -1597,12 +1597,17 @@ if (DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
 
+# 首页和 Service Worker 每次都向服务器确认有没有新版（没变时只回 304）：不然浏览器和 App 里的 WebKit 会按经验缓存，
+# 服务器升级后还显示旧界面。/assets 里的文件名带哈希，可以照常缓存
+NO_CACHE = {"cache-control": "no-cache"}
+
+
 @app.get("/{path:path}")
 async def spa(path: str):
     f = (DIST / path).resolve()
     if path and f.is_relative_to(DIST.resolve()) and f.is_file():   # 不让 ../ 读到 dist 外面的文件
-        return FileResponse(f)
+        return FileResponse(f, headers=NO_CACHE if f.name in ("index.html", "sw.js") else None)
     index = DIST / "index.html"
     if not index.exists():
-        return FileResponse(Path(__file__).parent / "static" / "index.html")  # 还没构建前端时的旧页面
-    return FileResponse(index)
+        return FileResponse(Path(__file__).parent / "static" / "index.html", headers=NO_CACHE)  # 还没构建前端时的旧页面
+    return FileResponse(index, headers=NO_CACHE)

@@ -127,3 +127,11 @@ async def test_approval_push_counts_pending(device, monkeypatch):
     await until(lambda: calls, what="推送")
     (args, kw), = calls
     assert args[3] == "approval-8" and kw == {"urgency": "high", "badge": 2}
+
+
+# ---------- 升级后不显示旧界面 ----------
+async def test_index_is_revalidated(no_password):
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=server.app), base_url="http://127.0.0.1:8765") as c:
+        for path in ("/", "/library/pages/3"):
+            r = await c.get(path)
+            assert r.status_code == 200 and r.headers.get("cache-control") == "no-cache", path
