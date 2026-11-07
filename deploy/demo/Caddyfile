@@ -1,0 +1,6 @@
+# 演示服务器的站点，加进服务器的 Caddyfile；改完先 caddy validate 再 systemctl reload caddy
+demo.cclsp.top {
+	reverse_proxy 127.0.0.1:8766 {
+		flush_interval -1   # 回复是流式输出的，不要缓冲
+	}
+}
