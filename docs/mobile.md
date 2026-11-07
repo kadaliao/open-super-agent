@@ -66,7 +66,11 @@ cd src-tauri && cargo test --lib                      # 地址、配对链接、
   别再跑 `tauri ios init`，它会把通知扩展、权限、文案这些改动冲掉。
 - 网页和 App 之间的接口是 `window.osaDesktop`（`web/src/desktop.ts`），手机版多了 `platform: 'ios'`、`push`、`openSheet`、
   `switchServer`、`takePendingOpen`。只有服务器的网页界面（`/`、`/apps`、`/library`）能调，Bot 生成的报告页调不到。
-- 模拟器上没法点屏幕，调试版留了自动测试的通道（正式版里没有）：
+- 要在模拟器上点系统界面（通知权限框的“允许”、锁屏、点一条通知），用 `mobile/uitest/run.sh <设备 UDID> <步骤> [文字]`，
+  它是一个 XCUITest，步骤见脚本开头。真实推送的完整测法：本机起带密码的服务，App 配对后开推送（`AllowNotifications` 点掉权限框），
+  `Lock` 锁屏，服务器发推送（`/api/push/test`，或者在“没在看”的页面里给 Bot 发消息），看 `last-push.json` 和截图，
+  再 `TapNotification <标题>` 点横幅，确认打开了对应的对话。模拟器锁屏上点通知还要上滑解锁，不会转给 App，这一步只能在真机上试。
+- 调试版留了自动测试的通道（正式版里没有）：
   - 启动参数 `--osa-open <链接>`：当成打开了这个链接，比如 `opensuperagent://pair?u=…&t=…`；
   - 启动参数 `-OSAAutotest YES`：开推送时用不弹窗的临时授权；`-OSARelay http://127.0.0.1:8790` 换成本机的推送中转；
   - 往 App 的 `Documents/autotest.js` 里写 JS，App 会在页面里执行它（`xcrun simctl get_app_container <设备> com.kadaliao.opensuperagent data`）；

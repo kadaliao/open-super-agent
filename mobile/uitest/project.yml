@@ -1,0 +1,26 @@
+name: UIDriver
+options:
+  deploymentTarget: { iOS: "17.0" }
+settings:
+  base:
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    SWIFT_VERSION: "5.0"
+targets:
+  Host:
+    type: application
+    platform: iOS
+    sources: [Host]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: local.uidriver.host, INFOPLIST_KEY_UILaunchScreen_Generation: YES } }
+  Driver:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Driver]
+    dependencies: [{ target: Host }]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: local.uidriver.driver, TEST_TARGET_NAME: Host } }
+schemes:
+  Driver:
+    build: { targets: { Host: all, Driver: [test] } }
+    test: { targets: [Driver] }
