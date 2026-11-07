@@ -94,6 +94,7 @@ async def lifespan(app):
         t.cancel()
     await channels.stop()
     await mcp_hub.stop()
+    await computer.shutdown()
     if backup.RESTART:   # 网页上确认了恢复：用同样的命令行重新启动，启动时换上备份
         backup.restart()
 
@@ -734,14 +735,14 @@ async def list_files(path: str = "", start: bool = False):
         _err(e)
     c = await _files_pc(start)
     if not c:
-        return {"running": False, "state": (await computer.get().status())["state"], "path": p, "root": library.WORKSPACE}
+        return {"running": False, "state": (await computer.get().status())["state"], "path": p, "root": library.root()}
     try:
         entries = await library.list_dir(c, p)
         pinned = library.pins()
         stats = await library.stat_many(c, pinned)
     except (ValueError, computer.ComputerError) as e:
         _err(e)
-    return {"running": True, "path": p, "root": library.WORKSPACE, "entries": entries,
+    return {"running": True, "path": p, "root": library.root(), "entries": entries,
             "pins": [stats.get(x) or {"name": posixpath.basename(x), "path": x, "missing": True} for x in pinned]}
 
 
@@ -882,6 +883,17 @@ async def pc_status(bot_id: int):
     return await _pc_state(bot_id)
 
 
+@app.get("/api/bots/{bot_id}/computer/shot")
+async def pc_shot(bot_id: int):
+    """本机电脑的画面：Bot 正在用的那个窗口的截图，网页上每隔一两秒取一次（没有 VNC）。"""
+    c = _pc(bot_id)
+    try:
+        data = await c.peek("jpeg")
+    except computer.ComputerError as e:
+        raise HTTPException(409, str(e))
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/bots/{bot_id}/computer/type")   # 要放在 /computer/{action} 前面，否则会被它先匹配
 async def pc_type(bot_id: int, data: dict = Body(...)):
     """你接手电脑时从网页输入文字或按键（手机上点画面弹不出键盘，用这个）。"""
@@ -913,7 +925,11 @@ async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
             key = c.asking.get(tid) or next((k for k, u in c.users.items() if tid and u.get("task_id") == tid), None)
             if key in c.users and c.users[key].get("window"):
                 await c.front(key)
+            elif c.backend == "host":   # 浏览器窗口就在你屏幕上：放到最前面，接手就是直接在里面操作
+                await c.show()
             c.takeover()
+        elif action == "show" and c.backend == "host":
+            await c.show()
         elif action == "handback":
             return await handback(bot_id)
         else:
@@ -1282,6 +1298,7 @@ async def put_settings(data: dict = Body(...)):
         _err(e)
     if "computer_parallel" in data:   # 并行数改大了，排队的任务马上能开始
         await computer.get().recheck()
+    if {"computer_parallel", "computer_backend", "computer_host_shell"} & data.keys():
         await broadcast({"type": "computer", "computer": await computer.public_state()})
     return out
 

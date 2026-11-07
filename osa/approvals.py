@@ -1,6 +1,8 @@
 """写操作前的人工确认，以及确认规则。
 
 判断顺序：命中“先问我”规则 → 要确认；否则命中“自动允许”规则 → 直接执行；否则按应用的默认策略。
+电脑工具也按规则走（见 computer/tools.py）：本机电脑默认上传文件、写文件、提交（browser_submit）都先问，
+终端每条命令都问、不能“总是允许”；Docker、Instabox 的电脑默认不问，靠 Worker 自己用 ask_approval。
 确认卡片上点“总是允许”会生成一条针对这个工具的“自动允许”规则。
 后台任务（定时、webhook 触发的）的卡片超时按拒绝处理；对话里派的任务一直等用户。
 卡片总是出现在 Bot 的私聊里；群聊里派的任务，群里只显示一条提示（origin_chat_id 是任务所在的对话）。
@@ -73,8 +75,14 @@ def delete_rule(rid: int):
     conn.commit()
 
 
-def decide(tool: str) -> tuple[bool, str]:
-    """返回 (是否要确认, 原因)。规则用通配符匹配工具全名，例如 filesystem__* 。"""
+PC_ASK = {"browser_upload", "computer_write_file", "browser_submit"}   # 本机电脑默认先问的电脑工具
+PC_TOOLS = PC_ASK | {"computer_shell"}
+
+
+def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
+    """返回 (是否要确认, 原因)。规则用通配符匹配工具全名，例如 filesystem__* 。backend：电脑工具在哪种电脑上用。"""
+    if tool == "computer_shell" and backend == "host":
+        return True, "本机电脑的终端每条命令都要确认"
     rs = rules()
     for r in rs:
         if r["action"] == "ask" and fnmatch.fnmatchcase(tool, r["pattern"]):
@@ -82,13 +90,15 @@ def decide(tool: str) -> tuple[bool, str]:
     for r in rs:
         if r["action"] == "allow" and fnmatch.fnmatchcase(tool, r["pattern"]):
             return False, f"规则「{r['pattern']}」自动允许"
+    if tool in PC_TOOLS:
+        return backend == "host" and tool in PC_ASK, "默认策略"
     from . import mcp_hub
     return (tool in mcp_hub.CONFIRM), "默认策略"
 
 
 # ---------- 确认请求 ----------
-async def request(task, tool: str, args: dict, kind: str = "approval") -> tuple[bool, str]:
-    """创建确认请求并等待用户决定。返回 (是否允许, 用户附言)。"""
+async def request(task, tool: str, args: dict, kind: str = "approval", once: bool = False) -> tuple[bool, str]:
+    """创建确认请求并等待用户决定。返回 (是否允许, 用户附言)。once：只能一次一次地允许（卡片上没有“总是允许”）。"""
     aid = next(_ids)
     fut = asyncio.get_running_loop().create_future()
     background = bool(getattr(task, "background", False))
@@ -97,7 +107,7 @@ async def request(task, tool: str, args: dict, kind: str = "approval") -> tuple[
     item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": chat_id,
             "origin_chat_id": task.chat_id, "tool": tool,
             "goal": task.goal[:80], "args": json.dumps(args, ensure_ascii=False, indent=1)[:3000], "ts": time.time(),
-            "expires": time.time() + timeout if timeout else None, "future": fut}
+            "expires": time.time() + timeout if timeout else None, "future": fut, **({"once": True} if once else {})}
     pending[aid] = item
     task.waiting_approval = aid
     t0 = time.time()
@@ -122,14 +132,15 @@ def resolve(aid: int, ok: bool, note: str = "", always: bool = False) -> str:
     item = pending.get(aid)
     if not item or item["future"].done():
         return i18n.t("没有待确认的请求 #{id}", id=aid)
-    if ok and always and item["kind"] == "approval":
+    always = ok and always and item["kind"] == "approval" and not item.get("once")
+    if always:
         add_rule(item["tool"], "allow", i18n.N_("在确认卡片上点了总是允许"))
     item["future"].set_result((ok, note))
     if notify:
         asyncio.create_task(notify({"type": "approval", "id": aid, "chat_id": item["chat_id"],
-                                    "status": "approved" if ok else "rejected", "always": ok and always}))
+                                    "status": "approved" if ok else "rejected", "always": always}))
     return (i18n.t("已允许请求 #{id}", id=aid) if ok else i18n.t("已拒绝请求 #{id}", id=aid)) \
-        + (i18n.t("，以后同类操作自动允许") if ok and always else "")
+        + (i18n.t("，以后同类操作自动允许") if always else "")
 
 
 def cancel_for_task(task_id: int):

@@ -1,9 +1,12 @@
 """Worker 的电脑工具。所有 Bot 共用一台电脑，几个任务同时用时各自一个浏览器窗口，满了排队；
-computer_* 截的是自己窗口里的页面、按页面坐标点击，动作之后自动附上新截图，模型马上能看到结果。"""
+computer_* 截的是自己窗口里的页面、按页面坐标点击，动作之后自动附上新截图，模型马上能看到结果。
+本机电脑（host.py）的工具说明和提示词不一样：文件只在工作文件夹里，终端默认没有；
+上传文件、写文件、提交、终端命令按确认规则先问用户（_confirm，规则见 approvals.decide）。"""
 import contextvars
 import base64
 from .. import i18n
 from . import ComputerError, get
+from .host import shell_on
 
 AUTO_SHOT = {"computer_click", "computer_type", "computer_key", "computer_scroll"}
 
@@ -64,16 +67,75 @@ SCHEMAS = [
 ]
 NAMES = {s["function"]["name"] for s in SCHEMAS}
 
-SYSTEM_HINT = """你有一台电脑（Linux + Chromium 浏览器 + 终端，和其他 Bot 共用）。你的任务有自己的浏览器窗口，
-别的任务同时在别的窗口里做、互不干扰；登录状态和文件是大家共用的。用 browser_* / computer_* 工具操作：
+_HOST_FILES = {
+    "computer_read_file": "读取工作文件夹里的文本文件（路径可以写相对工作文件夹的）",
+    "computer_write_file": "在工作文件夹里写入文本文件（会覆盖；路径可以写相对工作文件夹的）",
+    "browser_upload": "把工作文件夹里的文件传到网页上：ref 是“上传 / 选择文件”按钮或文件输入框的编号，paths 是文件路径",
+}
+
+
+def schemas(c=None) -> list[dict]:
+    """给 Worker 的电脑工具。本机电脑：文件工具说明换成工作文件夹，终端没打开就不给 computer_shell。"""
+    c = c or get()
+    if c.backend != "host":
+        return SCHEMAS
+    out = []
+    for s in SCHEMAS:
+        f = s["function"]
+        if f["name"] == "computer_shell":
+            if not shell_on():
+                continue
+            s = _fn("computer_shell", f"在用户这台电脑上执行 shell 命令（工作目录是工作文件夹 {c.workspace}）。每条命令都要用户确认。",
+                    {"cmd": S, "timeout": I}, ["cmd"])
+        elif f["name"] in _HOST_FILES:
+            s = {"type": "function", "function": {**f, "description": _HOST_FILES[f["name"]]}}
+        out.append(s)
+    return out
+
+
+def _intro(c) -> str:
+    if c.backend != "host":
+        return """你有一台电脑（Linux + Chromium 浏览器 + 终端，和其他 Bot 共用）。你的任务有自己的浏览器窗口，
+别的任务同时在别的窗口里做、互不干扰；登录状态和文件是大家共用的。用 browser_* / computer_* 工具操作："""
+    shell = ("- 终端：computer_shell 在用户这台电脑上执行命令（工作目录是工作文件夹）。每条命令都要用户确认，只在必要时用，几步合成一条。"
+             if shell_on() else "- 没有终端（用户没有打开）。下载文件用浏览器，读写文件用 computer_read_file / computer_write_file。")
+    return f"""你有一台电脑：用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己日常用的 Chrome 分开，所有 Bot 共用，
+用户在里面登录过的网站你都能直接用）。你的任务有自己的浏览器窗口，别的任务同时在别的窗口里做、互不干扰。用 browser_* / computer_* 工具操作：
+- 文件只能放在工作文件夹 {c.workspace} 里：computer_read_file / computer_write_file 只能读写这里面的文件（可以写相对路径），
+  浏览器下载的文件在它的 downloads 子文件夹，browser_upload 也只能传这里面的文件。
+{shell}
+- 上传文件、写文件、点“发送 / 发布 / 提交 / 付款”这类按钮时，系统会自动弹确认卡片问用户，这些不用再调用 ask_approval；
+  用户拒绝了就别再试，换个做法或者在结果里说明。"""
+
+
+def system_hint(c=None) -> str:
+    c = c or get()
+    shell = "" if c.backend == "host" else "\n- 下载文件、处理数据、跑脚本用 computer_shell。"
+    return _intro(c) + _BODY.replace("{shell}", shell)
+
+
+def capability(c=None) -> str:
+    """Router 的能力清单里那一句：电脑是什么、能做什么。"""
+    c = c or get()
+    if c.backend == "host":
+        return ("每个后台任务都能用用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己的 Chrome 分开，所有 Bot 共用），"
+                "可以打开网页、点击、输入、登录后操作、上传下载文件（文件放在工作文件夹）"
+                + ("、在终端执行命令（每条都要用户确认）" if shell_on() else "") + "。几个任务可以同时用，各自一个浏览器窗口，"
+                "登录状态共用；同时用的任务多了才排队。浏览器窗口就在用户的屏幕上，右栏也能看到画面。"
+                "上传文件、写文件、点“发送 / 发布 / 付款”这类按钮时会自动弹确认卡片。")
+    return ("每个后台任务都能用所有 Bot 共用的一台电脑（Linux 桌面 + Chromium 浏览器 + 终端），"
+            "可以打开网页、点击、输入、登录后操作、上传下载文件、运行脚本。几个任务可以同时用，各自一个浏览器窗口，"
+            "登录状态和文件共用；同时用的任务多了才排队。用户能在右栏实时看到屏幕。")
+
+
+_BODY = """
 - 操作网页优先用 browser_* 工具（直接控制浏览器，又快又准，不用看图估坐标）：
   browser_open 打开 → 返回的元素列表里找编号 → browser_click / browser_type（submit=true 回车提交）→ 结果里有新的元素列表。
   要看完整内容用 browser_read。元素编号每次返回都会刷新，用最新的。要往网页上传文件用 browser_upload。
 - 需要看页面长什么样（图表、图片、布局、验证码、确认操作是否成功）时用 computer_screenshot（截的是你窗口里的页面）；
   browser_* 搞不定的（画布类页面、没有编号的元素、组合键）用 computer_click / computer_type / computer_key 按截图坐标操作，
   这些操作后会自动附上新截图。
-- 只是查资料时，优先用 web_search / fetch_url，更快更省；需要登录、交互、看页面实际效果时才用浏览器。
-- 下载文件、处理数据、跑脚本用 computer_shell。
+- 只是查资料时，优先用 web_search / fetch_url，更快更省；需要登录、交互、看页面实际效果时才用浏览器。{shell}
 - 看到验证码（滑块拼图、点选文字、图形验证、"环境异常"/"安全验证"页）、扫码登录、输密码登录、短信验证、
   人机校验时：**立刻**调用 ask_human，一次都不要自己尝试拖动或识别——这些就是为了拦自动程序设计的，试了只会失败、
   还可能让账号或 IP 被风控。ask_human 的 reason 写清楚要用户做什么（例如“拖动滑块完成拼图验证”）。
@@ -131,6 +193,39 @@ def _progress_label(name: str, args: dict) -> str:
     return name
 
 
+ENTER = {"enter", "return"}
+
+
+async def _confirm(task, c, name: str, args: dict, key: str) -> str | None:
+    """按确认规则先问用户：上传文件、写文件、终端命令，以及“提交”（点发送 / 发布 / 付款这类按钮、在发消息的输入框里回车，
+    动作之前让浏览器看一眼要点的元素，见 cdp_helper.INSPECT_JS）。返回 None 表示可以做，否则是给模型的话。"""
+    from .. import approvals
+    if name == "browser_upload":
+        tool, shown = name, {"要上传的文件": args.get("paths"), "上传到": f"[{args.get('ref')}]"}
+    elif name == "computer_write_file":
+        tool, shown = name, {"文件": args.get("path"), "内容开头": str(args.get("content") or "")[:500]}
+    elif name == "computer_shell":
+        tool, shown = name, {"命令": args.get("cmd")}
+    else:
+        mode = "click" if name in ("browser_click", "computer_click") else None
+        if name == "browser_type" and args.get("submit") or name == "browser_key" and str(args.get("key") or "").lower() in ENTER \
+                or name == "computer_key" and str(args.get("keys") or "").replace(" ", "").lower().rpartition("+")[2] in ENTER:
+            mode = "enter"
+        if not mode or not approvals.decide("browser_submit", c.backend)[0]:
+            return None
+        try:
+            info = await c.browser("inspect", key=key, mode=mode, ref=args.get("ref"), x=args.get("x"), y=args.get("y"))
+        except ComputerError:
+            return None   # 看不了就照常做：元素找不到的话，动作本身会报错
+        if not info.get("submit"):
+            return None
+        tool, shown = "browser_submit", {"操作": info.get("what"), "页面": f"{info.get('title') or ''} | {info.get('url') or ''}"}
+    if not approvals.decide(tool, c.backend)[0]:
+        return None
+    ok, note = await approvals.request(task, tool, shown, once=tool == "computer_shell" and c.backend == "host")
+    return None if ok else f"用户拒绝了这个操作，没有执行。{note}".strip()
+
+
 async def call(task, name: str, args: dict, notify_progress, key: str = "") -> tuple[str, bytes | None]:
     """执行一个电脑工具，返回 (给模型的文字, 可选截图)。key 是谁在用：任务的 CLAIM，对话里直接操作的是 chat-<Bot id>。"""
     from .. import approvals
@@ -141,13 +236,16 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
                       {"task_id": task.id if isinstance(task.id, int) else None, "bot_id": task.bot_id})
     await notify_progress(_progress_label(name, args))
     try:
-        if name == "browser_upload":
-            paths = args.get("paths") or []
-            if isinstance(paths, str):
-                paths = [paths]
+        if name == "browser_upload" and isinstance(args.get("paths"), str):
+            args = {**args, "paths": [args["paths"]]}
+        if name == "browser_upload":   # 先查文件在不在（本机电脑：在不在工作文件夹里），再问用户
+            paths = c.upload_paths([str(x) for x in args.get("paths") or []][:10])
             if not paths:
                 return "没有给要上传的文件路径", None
-            await c.browser("upload", key=key, ref=args.get("ref"), files=[str(x) for x in paths][:10])
+        if refused := await _confirm(task, c, name, args, key):
+            return refused, None
+        if name == "browser_upload":
+            await c.browser("upload", key=key, ref=args.get("ref"), files=paths)
             return page_text(await c.browser("snapshot", key=key)), None
         if name in BROWSER:
             op = name.removeprefix("browser_")
@@ -186,7 +284,9 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
             return f"已写入 {args['path']}（{len(args['content'])} 字）", None
         elif name == "ask_human":
             await c.start()
-            if c.controller == "bot":   # 把这个任务的窗口放到最前面，用户一接手就看到；用户正在帮别的任务时不打扰，等他点这张卡片的“接手”
+            # 把这个任务的窗口放到最前面，用户一接手就看到；用户正在帮别的任务时不打扰，等他点这张卡片的“接手”。
+            # 本机电脑不抢：你可能正在用别的程序，点卡片上的“接手电脑”时才放到前面
+            if c.controller == "bot" and c.backend != "host":
                 try:
                     await c.front(key)
                 except ComputerError:

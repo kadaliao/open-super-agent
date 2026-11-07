@@ -86,19 +86,39 @@ pricing:
 ```yaml
 computer:
   enabled: true
-  backend: auto          # auto：有 INSTABOX_API_KEY 就用 Instabox，否则用本地 Docker；也可以指定 instabox / local
+  backend: auto          # auto：桌面 App 里用 host，否则有 INSTABOX_API_KEY 就用 Instabox、没有用本地 Docker；也可以指定 host / local / instabox
   parallel: 3            # 几个任务可以同时用电脑，多了排队；设置 → 限制与预算 里也能改
   width: 1280
   height: 800
   idle_pause_s: 900      # 闲置多少秒后自动暂停
   instabox_template: agent-browser
   instabox_machine: ""   # 使用已有的 Instabox 机器（免费版只能有一台）
+  chrome_path: ""        # host 用的浏览器，留空按常见位置找
+  host_shell: false      # host 的终端，默认关
 ```
+
+电脑面板上方可以换用哪台电脑（存在设置里，盖过 `backend`；有任务在用时不能换）。
 
 | 后端 | 说明 |
 |---|---|
 | Instabox | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
 | 本地 Docker | 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
+| 本机 Chrome（host） | 用服务所在电脑上装的 Chrome，不用 Docker，桌面 App 默认用它。见下面。 |
+
+**本机 Chrome（host）**：适合在自己的电脑上跑（桌面 App，或者直接 `uv run`）。服务器上没有屏幕，用不了。
+
+- 浏览器：开一个单独的 Chrome 配置目录 `data/computers/host/chrome`，和你日常用的 Chrome 分开。第一次在电脑面板点“打开 Chrome”，
+  在打开的窗口里登录要 Bot 用的网站，所有 Bot 共用。调试端口由 Chrome 随机选、只听 127.0.0.1，网页连不上。
+  Bot 的窗口不会抢到最前面；要看就点“显示窗口”，或者看面板上的画面（每一两秒一张截图，手机上也能看）。
+  “接手”就是让 Bot 暂停，你直接在 Chrome 窗口里操作，完了点“交还”。服务停止时这个 Chrome 跟着关掉，闲置时不自动关。
+- 文件：只放在工作文件夹 `data/workspace`（和“文件系统”应用是同一个目录）。Bot 读写文件、往网页上传文件都限定在里面，
+  浏览器下载的文件存到 `data/workspace/downloads`。技能里写的 `/data/workspace/…` 会自动换成这个目录。
+- 终端：默认没有。在电脑面板勾上“允许 Bot 用终端”（或 `host_shell: true`）后，Bot 能在这台电脑上执行命令，
+  工作目录是工作文件夹，但命令能访问你能访问的所有文件，所以**每条命令都要你确认**，不能“总是允许”。命令拿不到名字里带
+  KEY、TOKEN、SECRET、PASSWORD 的环境变量。
+- 先问你：往网页上传文件（`browser_upload`）、写文件（`computer_write_file`）、提交（`browser_submit`：点“发送 / 发布 / 提交 / 付款 / 删除”这类按钮、
+  POST 表单的提交按钮，或者在发消息的多行输入框、POST 表单里回车；真链接和搜索框不算）都先弹确认卡片。点“总是允许”以后同类操作不再问，
+  可以在 设置 → 确认规则 里撤销。用 Docker、Instabox 时这些默认不问，想问也可以在确认规则里加“先问我”。
 
 **几个任务同时用电脑**：所有 Bot 共用一台电脑，但后台任务不用一个个排队。每个任务在自己的浏览器窗口里做，
 截图、点击、输入都只作用在自己的窗口里，互不干扰；登录状态、电脑里的文件大家共用。同时用的任务最多 `parallel` 个，多了排队，
@@ -225,7 +245,7 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 | 共享的用户事实 | 50 条 |
 | 做过的事 | 每个 Bot 保留最近 20 条，提示词里带最近 10 条 |
 | 页面 | 共 1000 个，每个 50 万字 |
-| 上传文件 | 每个 20 MB，存到电脑的 `/data/workspace`（附件在 `uploads/` 下） |
+| 上传文件 | 每个 20 MB，存到电脑的工作文件夹（Docker / Instabox 是 `/data/workspace`，本机 Chrome 是 `data/workspace`；附件在 `uploads/` 下） |
 
 “从其他助手导入”用 `filter` 角色的模型把粘贴的内容拆成条目，费用记在这个角色下。
 

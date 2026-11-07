@@ -50,6 +50,11 @@ async def start(bot_id: int, note: str = "") -> dict:
         await c.release(KEY)
         raise
     c.takeover()
+    if c.backend == "host":   # 本机电脑：在 Chrome 窗口里直接演示，把它放到前面
+        try:
+            await c.show()
+        except computer.ComputerError:
+            pass
     state = {"bot_id": bot_id, "started": time.time(), "note": (note or "").strip()[:500], "file": path}
     _timer = asyncio.create_task(_auto_stop(state["started"]))
     await _changed(pc=bot_id)

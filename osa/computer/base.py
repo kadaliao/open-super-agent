@@ -8,6 +8,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import posixpath
 import shlex
 import time
 from dataclasses import dataclass
@@ -64,6 +65,8 @@ STALE = "用户刚接手过电脑，页面可能已经变了，这一步没有�
 
 class Computer:
     backend = "base"
+    workspace = "/data/workspace"   # 文件放在这里：资料库、上传的附件、Bot 下载的东西
+    auto_pause = True               # 闲置一段时间自动暂停（本机电脑不暂停：你可能正在那个 Chrome 里登录）
     on_change = None   # 谁在用电脑变了：() -> None，由 computer/__init__.py 设置，用来通知前端
     background = staticmethod(asyncio.ensure_future)   # 在后台跑一个协程（computer/__init__.py 换成会留引用的）
 
@@ -86,6 +89,7 @@ class Computer:
         self._assign = asyncio.Lock()            # 一次只给一个任务挑窗口，免得两个挑中同一个空窗口
         self._helper = asyncio.Lock()
         self._helper_ok = False
+        self.recent: tuple = (None, None)       # 最近一次操作的 (窗口, 浏览器)：本机电脑的画面看它
 
     @staticmethod
     def slots() -> int:
@@ -192,6 +196,46 @@ class Computer:
         """返回一个双向通道 (recv, send, close)，传的是 VNC（RFB）字节流，给网页上的实时画面用。"""
         raise NotImplementedError
 
+    # ---------- 文件（资料库用）。Docker / Instabox 走终端命令，本机电脑直接读写（host.py） ----------
+    async def ls(self, path: str) -> list[dict]:
+        q = shlex.quote(path)
+        r = await self.exec(f"[ -d {q} ] || exit 3; find {q} -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%T@\\t%f\\n' | head -n 1000", 30)
+        if r.exit_code == 3:
+            raise ValueError(i18n.t("目录不存在"))
+        if r.exit_code:
+            raise ValueError((r.stderr or i18n.t("读取目录失败")).strip()[:200])
+        out = []
+        for line in r.stdout.splitlines():
+            parts = line.split("\t", 3)
+            if len(parts) != 4:
+                continue
+            kind, size, mtime, name = parts
+            out.append({"name": name, "path": posixpath.join(path, name), "dir": kind == "d",
+                        "size": int(size) if size.isdigit() else 0, "mtime": float(mtime or 0)})
+        return out
+
+    async def stat_paths(self, paths: list[str]) -> dict[str, dict]:
+        """这些路径的现状（不存在的不返回）。"""
+        qs = " ".join(shlex.quote(p) for p in paths)
+        r = await self.exec(f"for f in {qs}; do [ -e \"$f\" ] && stat -c '%F\t%s\t%Y\t%n' \"$f\"; done; true", 30)
+        out = {}
+        for line in r.stdout.splitlines():
+            parts = line.split("\t", 3)
+            if len(parts) == 4:
+                kind, size, mtime, name = parts
+                out[name] = {"name": posixpath.basename(name), "path": name, "dir": kind == "directory",
+                             "size": int(size) if size.isdigit() else 0, "mtime": float(mtime or 0)}
+        return out
+
+    async def rm(self, path: str):
+        r = await self.exec(f"rm -rf -- {shlex.quote(path)}", 60)
+        if r.exit_code:
+            raise ValueError((r.stderr or i18n.t("删除失败")).strip()[:200])
+
+    def upload_paths(self, paths: list[str]) -> list[str]:
+        """browser_upload 要传的文件。本机电脑只许传工作文件夹里的（host.py）。"""
+        return paths
+
     # ---------- 控制权 ----------
     def takeover(self):
         self.controller = "human"
@@ -219,6 +263,16 @@ class Computer:
         if r.exit_code:
             raise ComputerError((r.stderr or r.stdout or i18n.t("退出码 {code}", code=r.exit_code)).strip()[:500])
         return r
+
+    async def look(self) -> tuple[bytes, str]:
+        """look_at_screen：整个屏幕的截图和当前窗口的标题。"""
+        png = await self.screenshot()
+        title = (await self.exec(f"DISPLAY={DISPLAY} xdotool getactivewindow getwindowname 2>/dev/null", timeout=10)).stdout.strip()
+        return png, title
+
+    async def peek(self, fmt: str = "jpeg") -> bytes:
+        """界面上的画面（本机电脑没有 VNC，用截图代替，见 host.py）。"""
+        raise ComputerError(i18n.t("这台电脑用实时画面，不用截图"))
 
     async def screenshot(self) -> bytes:
         """截整个屏幕（你在画面上看到的）。只是看，你接手时也不用等。"""
@@ -332,12 +386,16 @@ class Computer:
                                         "只是打开网页的话直接 browser_open，会换一个窗口。") from None
                 raise
             self._set_window(key, out.get("window"), out.get("browser"))   # 点链接弹出的新窗口，脚本会跟过去
+            if out.get("window"):
+                self.recent = (out["window"], out.get("browser"))
             return out
         raise ComputerError(i18n.t("找不到浏览器窗口"))
 
     async def page_shot(self, key: str) -> bytes:
         """截取 key 自己窗口里的页面（不含浏览器边框），点击坐标以它为准。"""
         r = await self.browser("screenshot", key=key)
+        if "data" in r:   # 本机电脑：截图直接带回来了
+            return base64.b64decode(r["data"])
         try:
             return await self.read_bytes(r["path"])
         finally:

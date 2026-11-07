@@ -1,13 +1,12 @@
-"""资料库：Bot 生成的页面（Pages），以及共用电脑里 /data/workspace 的文件。
+"""资料库：Bot 生成的页面（Pages），以及共用电脑工作文件夹里的文件（Docker / Instabox 是 /data/workspace，本机电脑见 host.py）。
 
 页面存在数据库里，格式是 markdown 或 html。分享就是生成一个不可猜的链接 /s/<token>，取消分享后链接失效。
 html 页面只通过带 CSP 的 /raw 地址在沙箱 iframe 里显示：脚本可以跑，但拿不到这个站点的任何数据，也连不上接口。
-文件直接读写电脑里的目录，两个电脑后端都走 exec，所以要先开机。
+文件直接读写电脑里的目录（Computer.ls / stat_paths / rm / read_bytes / write_bytes），Docker 和 Instabox 要先开机。
 """
 import posixpath
 import re
 import secrets
-import shlex
 import time
 from . import i18n
 from .memory import conn
@@ -22,7 +21,7 @@ conn.commit()
 FORMATS = ("markdown", "html")
 MAX_PAGE = 500_000
 MAX_PAGES = 1000
-WORKSPACE = "/data/workspace"
+LEGACY = "/data/workspace"   # Docker / Instabox 电脑里的工作文件夹
 MAX_UPLOAD = 20 << 20
 RAW_CSP = ("sandbox allow-scripts allow-popups; default-src 'none'; script-src 'unsafe-inline' https:; "
            "style-src 'unsafe-inline' https:; img-src https: data:; font-src https: data:; media-src https: data:; "
@@ -152,14 +151,23 @@ def tool_save_page(bot_id: int, args: dict, task_id: int | None = None) -> str:
 
 
 # ---------- 文件 ----------
-def norm(path: str | None) -> str:
-    """把路径规范成 /data/workspace 下的绝对路径；跑出去就报错。"""
-    p = (path or "").strip() or WORKSPACE
+def root() -> str:
+    """现在这台电脑的工作文件夹。"""
+    from . import computer
+    return computer.get().workspace
+
+
+def norm(path: str | None, base: str | None = None) -> str:
+    """把路径规范成工作文件夹下的绝对路径（相对路径从工作文件夹算起）；跑出去就报错。"""
+    base = base or root()
+    p = (path or "").strip() or base
+    if base != LEGACY and (p == LEGACY or p.startswith(LEGACY + "/")):   # 技能、记忆里可能还写着 Docker 电脑里的路径
+        p = base + p[len(LEGACY):]
     if not p.startswith("/"):
-        p = posixpath.join(WORKSPACE, p)
+        p = posixpath.join(base, p)
     p = posixpath.normpath(p)
-    if p != WORKSPACE and not p.startswith(WORKSPACE + "/"):
-        raise ValueError(i18n.t("只能访问 {dir} 里的文件", dir=WORKSPACE))
+    if p != base and not p.startswith(base.rstrip("/") + "/"):
+        raise ValueError(i18n.t("只能访问 {dir} 里的文件", dir=base))
     return p
 
 
@@ -171,28 +179,14 @@ def check_name(name: str) -> str:
 
 
 async def list_dir(c, path: str) -> list[dict]:
-    p = norm(path)
-    q = shlex.quote(p)
-    r = await c.exec(f"[ -d {q} ] || exit 3; find {q} -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%T@\\t%f\\n' | head -n 1000", 30)
-    if r.exit_code == 3:
-        raise ValueError(i18n.t("目录不存在"))
-    if r.exit_code:
-        raise ValueError((r.stderr or i18n.t("读取目录失败")).strip()[:200])
-    out = []
-    for line in r.stdout.splitlines():
-        parts = line.split("\t", 3)
-        if len(parts) != 4:
-            continue
-        kind, size, mtime, name = parts
-        out.append({"name": name, "path": posixpath.join(p, name), "dir": kind == "d",
-                    "size": int(size) if size.isdigit() else 0, "mtime": float(mtime or 0)})
+    out = await c.ls(norm(path, c.workspace))
     out.sort(key=lambda e: (not e["dir"], e["name"].lower()))
     return out
 
 
 async def put_file(c, directory: str, name: str, data: bytes) -> dict:
     """把文件写进电脑里的目录。同名时自动加序号，不覆盖。"""
-    d, name = norm(directory), check_name(name)
+    d, name = norm(directory, c.workspace), check_name(name)
     if len(data) > MAX_UPLOAD:
         raise ValueError(i18n.t("文件太大（最多 {n} MB）", n=MAX_UPLOAD >> 20))
     try:
@@ -211,32 +205,21 @@ async def put_file(c, directory: str, name: str, data: bytes) -> dict:
 
 async def stat_many(c, paths: list[str]) -> dict[str, dict]:
     """置顶文件的现状（可能已经被删了）。"""
-    if not paths:
-        return {}
-    qs = " ".join(shlex.quote(p) for p in paths)
-    r = await c.exec(f"for f in {qs}; do [ -e \"$f\" ] && stat -c '%F\t%s\t%Y\t%n' \"$f\"; done; true", 30)
-    out = {}
-    for line in r.stdout.splitlines():
-        parts = line.split("\t", 3)
-        if len(parts) == 4:
-            kind, size, mtime, name = parts
-            out[name] = {"name": posixpath.basename(name), "path": name, "dir": kind == "directory",
-                         "size": int(size) if size.isdigit() else 0, "mtime": float(mtime or 0)}
-    return out
+    return await c.stat_paths(paths) if paths else {}
 
 
 async def remove(c, path: str):
-    p = norm(path)
-    if p == WORKSPACE:
+    p = norm(path, c.workspace)
+    if p == c.workspace:
         raise ValueError(i18n.t("不能删除整个工作目录"))
-    r = await c.exec(f"rm -rf -- {shlex.quote(p)}", 60)
-    if r.exit_code:
-        raise ValueError((r.stderr or i18n.t("删除失败")).strip()[:200])
+    await c.rm(p)
     unpin(p)
 
 
 def pins() -> list[str]:
-    return [r[0] for r in conn.execute("select path from file_pins order by ts")]
+    """置顶的文件。换了电脑后，别的电脑里的置顶先不显示，换回去还在。"""
+    base = root().rstrip("/") + "/"
+    return [r[0] for r in conn.execute("select path from file_pins order by ts") if (r[0] + "/").startswith(base)]
 
 
 def pin(path: str):

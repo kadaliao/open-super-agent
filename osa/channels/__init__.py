@@ -320,7 +320,8 @@ def card_for(ev: dict) -> dict:
         app, _, name = tool.rpartition("__")
         head = i18n.t("应用 @{app} 的 **{tool}**", app=app, tool=name) if app else f"**{name}**"
         body = f"{head}\n{task_line}\n```\n{args}\n```"
-        buttons.append((i18n.t("总是允许"), "always", ""))
+        if not ev.get("once"):   # 本机电脑的终端命令只能一条一条地允许
+            buttons.append((i18n.t("总是允许"), "always", ""))
     return {"id": ev["id"], "kind": "approval", "title": i18n.t("⚠️ {name} 需要你确认", name=who), "body": body,
             "buttons": buttons, "link": None, "done": ""}
 
@@ -618,7 +619,7 @@ async def save_upload(name: str, data: bytes) -> str:
     if (await c.status())["state"] != "running":
         await c.start()
     name = re.sub(r"[/\\\0]", "_", name).strip() or "file"
-    return (await library.put_file(c, library.WORKSPACE + "/uploads", name[:200], data))["path"]
+    return (await library.put_file(c, "uploads", name[:200], data))["path"]
 
 
 from .telegram import Telegram   # noqa: E402  平台实现要用到上面的 Channel

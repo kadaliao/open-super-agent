@@ -6,11 +6,15 @@ DevTools 端口只监听电脑内部的 127.0.0.1，不对外暴露。
 
 几个任务同时用电脑时，每个任务在自己的浏览器窗口里做（stdin 里的 "win"，见 Ctx），登录状态是同一份。
 截图、点击、按键都经 CDP 发给自己窗口里的页面，不动真实的鼠标键盘，所以互不干扰。
+
+本机模式（host.py，环境变量 OSA_CDP_PROFILE 给了配置目录）：用你装的 Chrome，开一个单独的配置目录，和你日常用的分开。
+- 调试端口由 Chrome 随机选（--remote-debugging-port=0），写在配置目录的 DevToolsActivePort 里，只听 127.0.0.1；
+  不加 --remote-allow-origins，网页连不上它（这个脚本的 WebSocket 不带 Origin，不受影响）。
+- 不扫 /proc、不杀别的 Chrome，不把窗口提到最前面（你可能正在用别的程序），截图直接放在返回的 JSON 里。
 """
 from __future__ import annotations   # 电脑里的 Python 可能比较旧
 
 import base64
-import fcntl
 import json
 import os
 import shutil
@@ -23,10 +27,27 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 
-PORT = 9222
+try:
+    import fcntl
+except ImportError:   # Windows
+    fcntl = None
+
+HOST = os.environ.get("OSA_CDP_PROFILE", "")   # 本机模式：Chrome 的配置目录
+
+
+def _read_port() -> int:
+    """本机模式下 Chrome 自己选的调试端口。Chrome 正常退出后这个文件还在，所以拿到端口还要连一下才算数。"""
+    try:
+        with open(os.path.join(HOST, "DevToolsActivePort")) as f:
+            return int(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+PORT = _read_port() if HOST else 9222
 # 窗口被别的窗口挡住时，浏览器默认把它当成隐藏的：动画帧停掉、定时器降到每秒一次，网页会加载不全。几个任务并行时必须关掉
 FLAGS = ["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling"]
-LOCK = "/tmp/osa-cdp.lock"
+LOCK = os.path.join(os.path.dirname(HOST), "cdp.lock") if HOST else "/tmp/osa-cdp.lock"
 SNAPSHOT_JS = r"""
 (() => {
   document.querySelectorAll('[data-osa-ref]').forEach(e => e.removeAttribute('data-osa-ref'));
@@ -236,6 +257,11 @@ class WS:
 
 # ---------- 浏览器 ----------
 def _targets(timeout: float = 2):
+    global PORT
+    if HOST:
+        PORT = PORT or _read_port()
+        if not PORT:
+            raise ConnectionError("Chrome 还没开")
     with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list", timeout=timeout) as r:
         return [t for t in json.load(r) if t.get("type") == "page" and not t["url"].startswith("devtools://")]
 
@@ -262,6 +288,8 @@ def _browser_proc() -> tuple[int | None, list[str]]:
 
 
 def _launch(argv: list[str] | None = None) -> list:
+    if HOST:
+        return _launch_host()
     if not argv:
         b = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
         if not b:
@@ -281,6 +309,55 @@ def _launch(argv: list[str] | None = None) -> list:
         except Exception:
             pass
     raise RuntimeError("浏览器没有在 15 秒内开启 DevTools 端口")
+
+
+def _prefs():
+    """本机模式：下载存进工作文件夹、不弹“存到哪里”；上次没正常退出也不弹恢复提示。Chrome 没开着时才能改。"""
+    downloads = os.environ.get("OSA_CDP_DOWNLOADS")
+    path = os.path.join(HOST, "Default", "Preferences")
+    try:
+        with open(path, encoding="utf-8") as f:
+            prefs = json.load(f)
+    except (OSError, ValueError):
+        prefs = {}
+    if downloads:
+        os.makedirs(downloads, exist_ok=True)
+        prefs.setdefault("download", {}).update(default_directory=downloads, prompt_for_download=False, directory_upgrade=True)
+        prefs.setdefault("savefile", {})["default_directory"] = downloads
+    prefs.setdefault("profile", {})["exit_type"] = "Normal"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(prefs, f)
+
+
+def _launch_host() -> list:
+    global PORT
+    chrome = os.environ.get("OSA_CDP_CHROME") or ""
+    if not os.path.isfile(chrome):
+        raise RuntimeError("没找到 Chrome：先安装 Google Chrome，或者在 config.yaml 的 computer.chrome_path 写上它的路径")
+    try:
+        os.remove(os.path.join(HOST, "DevToolsActivePort"))   # 上次留下的旧端口
+    except OSError:
+        pass
+    _prefs()
+    size = os.environ.get("OSA_CDP_SIZE") or "1280,860"
+    argv = [chrome, f"--user-data-dir={HOST}", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1",
+            "--no-first-run", "--no-default-browser-check", "--hide-crash-restore-bubble", f"--window-size={size}",
+            *FLAGS, "about:blank"]
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    for _ in range(80):
+        time.sleep(0.25)
+        PORT = _read_port()
+        if not PORT:
+            continue
+        try:
+            ts = _targets()
+            if ts:
+                return ts
+        except Exception:
+            pass
+    raise RuntimeError("Chrome 没有在 20 秒内开启调试端口。Bot 用的 Chrome 可能已经开着但没开调试端口，关掉它再试")
 
 
 def _profile_dir(pid: int) -> str | None:
@@ -339,19 +416,23 @@ def _alive(pid: int) -> bool:
 
 def ensure_browser(restart_ok: bool = False):
     """确保 Chromium 开着 DevTools 端口。旧的浏览器进程没开端口时重启它（登录状态在配置目录里，不会丢）。
-    restart_ok：没有别人在用时，顺便把没带 FLAGS 的旧浏览器重开一次（_upgrade）。"""
+    restart_ok：没有别人在用时，顺便把没带 FLAGS 的旧浏览器重开一次（_upgrade）。
+    本机模式：浏览器是自己开的，参数都带着；连不上就开一个，不碰你别的 Chrome。"""
     try:
         ts = _targets()
-        if not restart_ok or all(f in _browser_proc()[1] for f in FLAGS):
+        if HOST or not restart_ok or all(f in _browser_proc()[1] for f in FLAGS):
             return ts
     except Exception:
         pass
     with open(LOCK, "w") as lock:   # 几个动作同时发现要开浏览器时，只开一次
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        if fcntl:
+            fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             ts = _targets()
         except Exception:
             ts = None
+        if HOST:
+            return ts if ts is not None else _launch()
         if ts is not None:
             return _upgrade(ts) if restart_ok else ts
         pid, _ = _browser_proc()
@@ -373,7 +454,8 @@ def page() -> WS:
             ts = [json.load(r)]
     t = ts[0]    # 列表第一个是最近激活 / 新开的标签页（点链接新开的标签也会排到最前）
     ws = WS(t["webSocketDebuggerUrl"])
-    ws.call("Page.bringToFront")
+    if not HOST:
+        ws.call("Page.bringToFront")
     return ws
 
 
@@ -428,7 +510,9 @@ class Ctx:
                 t, self.window = self.new_window(front)
                 created = True
         self.ws = WS(t["webSocketDebuggerUrl"])
-        if w.get("front"):
+        if HOST:
+            pass   # 本机模式不把窗口提到前面：你可能正在用别的程序（要看就点“显示窗口”，即 op front）
+        elif w.get("front"):
             self.ws.call("Page.bringToFront")
         elif created and front is not None:   # 新窗口会抢到最前面：不该它在前面时把原来的放回去
             self.to_front(front)
@@ -446,7 +530,8 @@ class Ctx:
         return out
 
     def new_window(self, like: int | None) -> tuple[dict, int]:
-        tid = self.b.call("Target.createTarget", {"url": "about:blank", "newWindow": True})["targetId"]
+        tid = self.b.call("Target.createTarget", {"url": "about:blank", "newWindow": True,
+                                                  **({"background": True} if HOST else {})})["targetId"]
         w = self.b.call("Browser.getWindowForTarget", {"targetId": tid})["windowId"]
         if like is not None:   # 和已有的窗口一样大、一样位置，屏幕上看起来像同一个浏览器
             try:
@@ -498,7 +583,7 @@ class Ctx:
     def done(self):
         """用户固定在看别的窗口时，把它放回最前面（点击会让操作的窗口跑到前面）。"""
         k = (self.win or {}).get("keep_front")
-        if k and k != self.window and self.op in ("open", "click", "type", "click_xy", "upload"):
+        if k and not HOST and k != self.window and self.op in ("open", "click", "type", "click_xy", "upload"):
             try:
                 self.to_front(k)
             except Exception:
@@ -739,8 +824,79 @@ def upload(ws: WS, ref, files: list[str]):
     ws.call("Page.setInterceptFileChooserDialog", {"enabled": False})
 
 
+# 这一步算不算“提交”（本机电脑默认要先问你）：点“发送 / 发布 / 付款”这类按钮、POST 表单的提交按钮，
+# 或者在发消息的输入框（多行、富文本）、POST 表单里回车。真链接、搜索框不算。参数 [ref, x, y, mode]，mode 是 click / enter
+INSPECT_JS = r"""
+(([ref, x, y, mode]) => {
+  const clean = s => (s || '').replace(/\s+/g, ' ').trim();
+  let e = ref !== null ? document.querySelector('[data-osa-ref="' + ref + '"]')
+        : mode === 'enter' ? document.activeElement : document.elementFromPoint(x, y);
+  while (mode === 'enter' && e && e.shadowRoot && e.shadowRoot.activeElement) e = e.shadowRoot.activeElement;
+  if (!e || !e.closest) return {submit: false, what: ''};
+  const form = e.form || e.closest('form');
+  const post = !!form && (form.getAttribute('method') || '').toLowerCase() === 'post';
+  if (mode === 'enter') {
+    const name = e.getAttribute('name') || '';
+    const search = e.type === 'search' || /^(q|query|search|keywords?|wd|kw|s)$/i.test(name) || !!e.closest('[role=search]');
+    const multi = e.tagName === 'TEXTAREA' || e.isContentEditable;
+    const label = clean(e.getAttribute('aria-label') || e.getAttribute('placeholder') || name).slice(0, 40);
+    return {submit: !search && (multi || post), what: '在' + (label ? '「' + label + '」' : '输入框') + '里按回车'};
+  }
+  const el = e.closest('button,a[href],input[type=submit],input[type=button],input[type=image],[role=button],[role=menuitem],[onclick]') || e;
+  const label = clean(el.innerText || el.value || el.getAttribute('aria-label') || el.title || '');
+  const link = el.tagName === 'A' && !/^(#|javascript:)/i.test(el.getAttribute('href') || '#') && el.getAttribute('role') !== 'button';
+  const submitBtn = el.matches('button[type=submit],input[type=submit],input[type=image]') || (el.tagName === 'BUTTON' && !el.getAttribute('type') && !!form);
+  const words = label.length <= 40 && (/发送|发布|发表|提交|确认|支付|付款|购买|下单|结算|删除|转账|回复/.test(label) ||
+    /\b(send|post|publish|submit|confirm|pay|buy|order|checkout|delete|transfer|reply|tweet)\b/i.test(label));
+  return {submit: !link && (words || submitBtn && post), what: '点击「' + (label.slice(0, 40) || el.tagName.toLowerCase()) + '」'};
+})(%s)
+"""
+
+
+def shot(ws: WS, fmt: str = "png") -> bytes:
+    """截当前标签页看得到的部分。高分屏上按页面像素截（不是两倍大），点击坐标才对得上。"""
+    params: dict = {"format": fmt, **({"quality": 70} if fmt == "jpeg" else {})}
+    try:
+        dpr, w, h, x, y = js(ws, "[devicePixelRatio, innerWidth, innerHeight, visualViewport ? visualViewport.pageLeft : scrollX, "
+                                 "visualViewport ? visualViewport.pageTop : scrollY]")
+        if abs(dpr - 1) > 0.01:
+            params["clip"] = {"x": x, "y": y, "width": w, "height": h, "scale": 1 / dpr}
+    except Exception:
+        pass   # 页面上跑不了脚本（PDF、浏览器自己的页面）：按原样截
+    return base64.b64decode(ws.call("Page.captureScreenshot", params)["data"])
+
+
+def peek(a: dict) -> dict:
+    """给界面看的画面：某个窗口（或最近用过的标签页）现在的样子。不开浏览器、不挑窗口、不抢焦点。"""
+    ts = _targets()
+    t = None
+    if a.get("window"):
+        c = Ctx.__new__(Ctx)
+        c.b = _browser_ws()
+        if not a.get("browser") or a["browser"] == BROWSER_ID:
+            t = next((t for t, x in c.windows(ts) if x == a["window"]), None)
+    t = t or (ts[0] if ts else None)
+    if not t:
+        raise RuntimeError("浏览器里没有打开的页面")
+    data = shot(WS(t["webSocketDebuggerUrl"]), a.get("format") or "png")
+    return {"data": base64.b64encode(data).decode(), "url": t.get("url", ""), "title": t.get("title", "")}
+
+
 def run(a: dict) -> dict:
     op = a["op"]
+    if op == "ensure":   # 只是确保浏览器开着
+        ensure_browser()
+        _browser_ws()
+        return {"ok": True, "browser": BROWSER_ID}
+    if op == "quit":
+        try:
+            _targets()
+            _browser_ws().call("Browser.close")
+        except Exception:
+            pass   # 本来就没开
+        return {"ok": True}
+    if op == "peek":
+        return peek(a)
     if op == "rec_start":
         return rec_start(a["file"], float(a.get("max_s") or 600))
     if op == "rec_stop":
@@ -755,6 +911,11 @@ def run(a: dict) -> dict:
         out = {"ok": True}
     elif op == "window":   # 只挑窗口
         out = {"ok": True}
+    elif op == "inspect":   # 动作之前看一眼要点的元素（见 INSPECT_JS）
+        ref = a.get("ref")
+        args = [None if ref is None else int(ref), float(a.get("x") or 0), float(a.get("y") or 0), a.get("mode") or "click"]
+        out = {**(js(ws, INSPECT_JS % json.dumps(args)) or {"submit": False, "what": ""}),
+               "url": js(ws, "location.href"), "title": js(ws, "document.title")}
     elif op == "open":
         ws.call("Page.enable")
         ws.call("Page.navigate", {"url": a["url"]})
@@ -808,11 +969,14 @@ def run(a: dict) -> dict:
                "offset": start, "text": text[start:start + 12000]}
     # 下面几个是 computer_* 工具：按截图上的像素坐标操作页面
     elif op == "screenshot":
-        data = base64.b64decode(ws.call("Page.captureScreenshot", {"format": "png"})["data"])
-        path = f"/tmp/osa-shot-{time.time_ns()}.png"
-        with open(path, "wb") as f:
-            f.write(data)
-        out = {"path": path}
+        data = shot(ws)
+        if HOST:   # 本机模式：脚本和服务在同一台电脑上，直接带回去
+            out = {"data": base64.b64encode(data).decode()}
+        else:
+            path = f"/tmp/osa-shot-{time.time_ns()}.png"
+            with open(path, "wb") as f:
+                f.write(data)
+            out = {"path": path}
     elif op == "click_xy":
         click_at(ws, float(a["x"]), float(a["y"]), a.get("button") or "left", 2 if a.get("double") else 1)
         settle(ws, 8)

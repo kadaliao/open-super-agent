@@ -157,12 +157,12 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     use_pc = (CFG.get("computer") or {}).get("enabled", True)
     pages = not label   # Heavy 模式的几个 Worker 只出草稿，不各自存页面
     system = WORKER_PROMPT.format(date=time.strftime("%Y-%m-%d"), lang=ANSWER_LANG[i18n.lang()]) + ("\n" + PAGE_HINT if pages else "") \
-        + ("\n\n" + ctools.SYSTEM_HINT if use_pc else "")
+        + ("\n\n" + ctools.system_hint() if use_pc else "")
     if known := memories.worker_block(task.bot_id):
         system += f"\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}"
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": goal}]
     schemas = tools.schemas() + ([library.SAVE_PAGE] if pages else []) + [library.READ_PAGE, search.SEARCH_TOOL] \
-        + (ctools.SCHEMAS if use_pc else [])
+        + (ctools.schemas() if use_pc else [])
     log = tasklog.Log(task, label)
 
     async def progress(text: str):
