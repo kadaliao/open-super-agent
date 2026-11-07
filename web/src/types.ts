@@ -5,7 +5,8 @@ export type Bot = {
 }
 export type Chat = {
   id: number; kind: 'direct' | 'group'; title: string; bot_ids: number[]
-  pinned: boolean; updated: number; preview: string; lead: number | null   // lead：群聊的协调者
+  // pinned：置顶的时间（侧栏上面那排按它排，先置顶的在前），0 是没置顶。lead：群聊的协调者
+  pinned: number; updated: number; preview: string; lead: number | null
 }
 export type Message = {
   id: number; ts: number; role: 'user' | 'assistant' | 'task'; content: string

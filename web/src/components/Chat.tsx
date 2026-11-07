@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, chatById, loadOlder, openChat, openLibrary, openThread, showTask, useStore } from '../store'
+import { api, approve, chatById, loadOlder, openChat, openLibrary, openThread, pinChat, showTask, useStore } from '../store'
 import type { Approval, Bot, Chat as ChatT, Message, Task } from '../types'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
 import Markdown from './Markdown'
 import { locale, t, tn } from '../i18n'
 import { ask } from './Dialog'
+import { Icon } from '../icons'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -401,6 +402,8 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
           <button className="ghost-btn" title={t('之前的对话不再带进上下文，省 token；长期记忆还在')} onClick={async () => {
             if (await ask(group ? t('开始新话题？群里的 Bot 不再参考之前的对话（记录还在，长期记忆也还在）。') : t('开始新话题？{name} 不再参考之前的对话（记录还在，长期记忆也还在）。', { name: bot!.name }), { ok: t('新话题') })) api(`/api/chats/${active}/reset`, { method: 'POST' })
           }}>{t('新话题')}</button>
+          <button className={'icon-btn' + (chat.pinned ? ' on' : '')} onClick={() => pinChat(chat.id, !chat.pinned)}
+                  title={chat.pinned ? t('取消置顶') : t('置顶到侧栏上方')}><Icon name="pin" size={16} /></button>
           <button className="icon-btn" onClick={onToggleDetails} title={t('详情')}>☰</button>
         </div>
       </header>

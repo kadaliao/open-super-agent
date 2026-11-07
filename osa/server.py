@@ -222,6 +222,17 @@ async def update_group(chat_id: int, data: dict = Body(...)):
     return g
 
 
+@app.post("/api/chats/{chat_id}/pin")
+async def pin_chat(chat_id: int, data: dict = Body(...)):
+    """置顶 / 取消置顶：{"pinned": true|false}。置顶的私聊、群聊显示在侧栏上面那排。"""
+    try:
+        c = bots.set_pinned(chat_id, bool(data.get("pinned")))
+    except ValueError as e:
+        _err(e)
+    await broadcast({"type": "bots_changed"})
+    return c
+
+
 @app.delete("/api/chats/{chat_id}")
 async def delete_group(chat_id: int):
     chat = bots.chat(chat_id)

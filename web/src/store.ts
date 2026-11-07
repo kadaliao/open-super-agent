@@ -124,6 +124,13 @@ export async function loadSkills(botId: number) {
   return list
 }
 
+// 置顶：放进侧栏上面那排；下面的列表照旧按最新消息排
+export async function pinChat(chatId: number, pinned: boolean) {
+  set(s => ({ chats: s.chats.map(c => c.id === chatId ? { ...c, pinned: pinned ? Date.now() / 1000 : 0 } : c) }))
+  try { await api(`/api/chats/${chatId}/pin`, { method: 'POST', body: { pinned } }) }
+  catch (e: any) { notice(e.message); refreshLists() }
+}
+
 export async function openChat(chatId: number) {
   localStorage.setItem('osa.active', String(chatId))
   set(s => ({ active: chatId, view: 'chat', unread: { ...s.unread, [chatId]: 0 }, thread: s.active === chatId ? s.thread : null }))
@@ -287,7 +294,7 @@ function handle(d: any) {
         if (th && up) messages = { ...messages, [th.parent]: up.map(x => x.id === th.root
           ? { ...x, thread: { id: th.id, count: th.count, last: th.last, bots: th.bots } } : x) }
         const chats = th ? s.chats : s.chats.map(c => c.id === cid ? { ...c, updated: m.ts, preview: m.content.slice(0, 80) } : c)
-          .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated - a.updated)
+          .sort((a, b) => b.updated - a.updated)   // 置顶的也按最新消息排，另外在上面那排
         const unread = home !== s.active && m.role !== 'user' ? { ...s.unread, [home]: (s.unread[home] || 0) + 1 } : s.unread
         const streams = m.role === 'assistant' ? { ...s.streams, [cid]: undefined } : s.streams
         return { chats, unread, streams, messages, ...(learned ? { thread: { ...s.thread!, id: cid } } : {}) }

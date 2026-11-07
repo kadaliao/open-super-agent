@@ -117,14 +117,25 @@ _CHAT_COLS = "id, kind, title, bot_ids, pinned, updated, lead, parent, root"
 def _chat(row) -> dict:
     i, kind, title, ids, pinned, updated, lead, parent, root = row
     last = conn.execute("select content, role from messages where chat_id=? order by id desc limit 1", (i,)).fetchone()
-    return {"id": i, "kind": kind, "title": title, "bot_ids": json.loads(ids or "[]"), "pinned": bool(pinned),
+    return {"id": i, "kind": kind, "title": title, "bot_ids": json.loads(ids or "[]"), "pinned": pinned or 0,
             "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead}
 
 
 def list_chats() -> list[dict]:
-    """侧栏里的对话：私聊和群聊，不含讨论串。"""
+    """侧栏里的对话：私聊和群聊，不含讨论串。按最新消息排，置顶的也一样（置顶的另外在侧栏上面那排）。"""
     return [_chat(r) for r in conn.execute(
-        f"select {_CHAT_COLS} from chats where kind != 'thread' order by pinned desc, updated desc")]
+        f"select {_CHAT_COLS} from chats where kind != 'thread' order by updated desc")]
+
+
+def set_pinned(chat_id: int, pinned: bool) -> dict:
+    """置顶 / 取消置顶私聊或群聊。pinned 存置顶的时间，侧栏上面那排按它排（先置顶的在前），0 是没置顶。"""
+    c = chat(chat_id)
+    if not c or c.get("parent"):
+        raise ValueError(i18n.t("没有这个对话"))
+    if bool(c["pinned"]) != pinned:
+        conn.execute("update chats set pinned=? where id=?", (time.time() if pinned else 0, chat_id))
+        conn.commit()
+    return chat(chat_id)
 
 
 def chat(chat_id: int) -> dict | None:
@@ -140,7 +151,7 @@ def chat(chat_id: int) -> dict | None:
     if not up:
         return None
     author = conn.execute("select bot_id from messages where id=?", (r[8],)).fetchone()
-    return {**up, "id": c["id"], "updated": c["updated"], "preview": c["preview"], "pinned": False,
+    return {**up, "id": c["id"], "updated": c["updated"], "preview": c["preview"], "pinned": 0,
             "parent": up["id"], "root": r[8], "root_bot": author[0] if author and author[0] in up["bot_ids"] else None}
 
 

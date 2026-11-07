@@ -95,7 +95,7 @@ web/src/
 
 | 表 | 用途 |
 |---|---|
-| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者；讨论串（`kind=thread`）的 `parent` 是所在的对话，`root` 是被回复的那条消息 |
+| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者；讨论串（`kind=thread`）的 `parent` 是所在的对话，`root` 是被回复的那条消息；`pinned` 是置顶的时间（0 是没置顶），只决定侧栏上面那排，不影响列表按 `updated` 排 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等 |
 | `llm_usage` | 每次模型调用的 token 数和费用 |
 | `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；只留最近 `memory.task_log_days` 天 |
