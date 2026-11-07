@@ -9,6 +9,7 @@ import { MemoryPanel } from './Memories'
 import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } from './Templates'
 import { TasksPanel } from './Tasks'
 import { ask } from './Dialog'
+import { AvatarImageTools, botPrompt } from './AvatarTools'
 
 // 新建 Bot：从模板装（带好技能和定时任务），或者空白的：只问名字和头像，职责在第一条消息里交代
 export function NewBotDialog({ onClose }: { onClose: () => void }) {
@@ -38,7 +39,7 @@ export function NewBotDialog({ onClose }: { onClose: () => void }) {
             <div className="modal-actions"><button className="btn" onClick={onClose}>{t('取消')}</button></div>
           </> : <>
             <div className="new-bot-preview"><BotAvatar avatar={avatar} size={88} /></div>
-            <AvatarPicker avatar={avatar} onChange={setAvatar} />
+            <AvatarPicker avatar={avatar} onChange={setAvatar} prompt={botPrompt(name)} />
             <label className="field">{t('名字')}<input autoFocus value={name} maxLength={40} placeholder={t('例如：Scout、研究员、邮件管家')}
               onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && create()} /></label>
             <p className="muted small">{t('建好之后，在第一条消息里告诉它要做什么工作。')}</p>
@@ -51,21 +52,25 @@ export function NewBotDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function AvatarPicker({ avatar, onChange }: { avatar: Avatar; onChange: (a: Avatar) => void }) {
+// 头像：选形状和颜色，或者用一张图片（上传、AI 生成）。点形状或颜色就不用图片了。prompt：AI 生成时默认的描述
+export function AvatarPicker({ avatar, onChange, prompt }: { avatar: Avatar; onChange: (a: Avatar) => void; prompt: string }) {
   const shapes = useStore(s => s.shapes)
   const colors = useStore(s => s.colors)
+  const plain = { shape: avatar.shape, color: avatar.color }
   return (
     <div className="avatar-picker">
       <div className="shape-row">
         {shapes.map(sh => (
-          <button key={sh} title={SHAPE_NAMES[sh]} className={sh === avatar.shape ? 'on' : ''} onClick={() => onChange({ ...avatar, shape: sh })}>
+          <button key={sh} title={SHAPE_NAMES[sh]} className={sh === avatar.shape && !avatar.image ? 'on' : ''} onClick={() => onChange({ ...plain, shape: sh })}>
             <BotAvatar avatar={{ shape: sh, color: avatar.color }} size={30} />
           </button>
         ))}
       </div>
       <div className="color-row">
-        {colors.map(c => <button key={c} className={c === avatar.color ? 'on' : ''} style={{ background: c }} onClick={() => onChange({ ...avatar, color: c })} aria-label={c} />)}
+        {colors.map(c => <button key={c} className={c === avatar.color && !avatar.image ? 'on' : ''} style={{ background: c }} onClick={() => onChange({ ...plain, color: c })} aria-label={c} />)}
       </div>
+      <AvatarImageTools prompt={prompt} onImage={image => onChange({ ...plain, image })} />
+      {avatar.image && <button className="ghost-btn" onClick={() => onChange(plain)}>{t('不用图片，改回形状')}</button>}
     </div>
   )
 }
@@ -119,7 +124,7 @@ function BotPanelInner({ bot, tasks, onClose }: { bot: Bot; tasks: any[]; onClos
   return (
       <div className="panel-body">
         <button className="panel-avatar" onClick={() => setEditAvatar(!editAvatar)} title={t('修改头像')}><BotAvatar avatar={avatar} size={72} /></button>
-        {editAvatar && <AvatarPicker avatar={avatar} onChange={setAvatar} />}
+        {editAvatar && <AvatarPicker avatar={avatar} onChange={setAvatar} prompt={botPrompt(name, instr)} />}
         <label className="field">{t('名字')}<input value={name} maxLength={40} onChange={e => setName(e.target.value)} /></label>
         <label className="field">{t('职责与要求')}
           <textarea rows={5} value={instr} placeholder={t('可以留空，直接在对话里交代。这里写的内容每次都会告诉 Bot。')} onChange={e => setInstr(e.target.value)} />

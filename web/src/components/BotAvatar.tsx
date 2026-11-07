@@ -15,6 +15,7 @@ const SHAPES: Record<string, string> = {
 const EYES: Record<string, number> = { sparkle: 46, star: 50, heart: 42, house: 56 }
 
 export default function BotAvatar({ avatar, size = 32, busy = false }: { avatar: Avatar; size?: number; busy?: boolean }) {
+  if (avatar.image) return <img className={'bot-avatar bot-img' + (busy ? ' busy' : '')} src={avatar.image} width={size} height={size} alt="" draggable={false} />
   const d = SHAPES[avatar.shape] || SHAPES.circle
   const y = EYES[avatar.shape] ?? 46
   return (

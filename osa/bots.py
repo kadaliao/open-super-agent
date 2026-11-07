@@ -4,8 +4,9 @@
 表里 kind='thread'。它不出现在侧栏；成员、协调者、标题跟着上级对话走，chat() 返回时 kind 也是上级的（direct / group），
 所以 Router、群聊、任务、私信回信都按普通对话处理，结果自然回到讨论串里。"""
 import json
+import re
 import time
-from . import i18n
+from . import avatars, i18n
 from .memory import conn
 
 _cols = {r[1] for r in conn.execute("pragma table_info(chats)")}
@@ -14,6 +15,8 @@ if "lead" not in _cols:
 if "parent" not in _cols:
     conn.execute("alter table chats add column parent integer")   # 讨论串：在哪个对话里
     conn.execute("alter table chats add column root integer")     # 讨论串：回复的是哪条消息
+if "image" not in _cols:
+    conn.execute("alter table chats add column image text")   # 群聊自己的头像图片（/avatars/…）；没有就用成员的头像拼
 conn.execute("create index if not exists chats_thread on chats(parent, root)")
 conn.commit()
 
@@ -52,11 +55,24 @@ def primary() -> dict:
     return get(r[0])
 
 
+def clean_avatar(avatar, n: int = 0) -> dict:
+    """头像：形状加颜色，可以再加一张图片（image，/avatars/…）。有图片时显示图片，形状和颜色留着：
+    导出成模板、图片被清掉时用。不认识的形状、颜色换成默认的。"""
+    a = avatar if isinstance(avatar, dict) else {}
+    out = {"shape": a.get("shape") if a.get("shape") in SHAPES else SHAPES[n % len(SHAPES)],
+           "color": a.get("color") if re.fullmatch(r"#[0-9a-fA-F]{6}", str(a.get("color") or "")) else COLORS[n % len(COLORS)]}
+    if a.get("image"):
+        if not avatars.valid(a["image"]):
+            raise ValueError(i18n.t("头像图片不存在，重新上传一次"))
+        out["image"] = a["image"]
+    return out
+
+
 def create(name: str, avatar: dict | None = None, instructions: str = "", is_primary: bool = False) -> dict:
     n = conn.execute("select count(*) from bots").fetchone()[0]
     if n >= MAX_BOTS:
         raise ValueError(i18n.t("最多 {n} 个 Bot", n=MAX_BOTS))
-    avatar = avatar or {"shape": SHAPES[n % len(SHAPES)], "color": COLORS[n % len(COLORS)]}
+    avatar = clean_avatar(avatar, n)
     now = time.time()
     cur = conn.execute("insert into bots(name, avatar, instructions, is_primary, created) values(?,?,?,?,?)",
                        (name.strip()[:40] or i18n.t("未命名"), json.dumps(avatar), instructions, int(is_primary), now))
@@ -72,8 +88,9 @@ def update(bot_id: int, **fields) -> dict:
         if k in fields and fields[k] is not None:
             conn.execute(f"update bots set {k}=? where id=?", (str(fields[k])[:4000], bot_id))
     if fields.get("avatar"):
-        conn.execute("update bots set avatar=? where id=?", (json.dumps(fields["avatar"]), bot_id))
+        conn.execute("update bots set avatar=? where id=?", (json.dumps(clean_avatar(fields["avatar"], bot_id)), bot_id))
     conn.commit()
+    avatars.gc()
     return get(bot_id)
 
 
@@ -96,6 +113,7 @@ def delete(bot_id: int):
         lead = g["lead"] if g["lead"] in ids else (ids[0] if ids else None)
         conn.execute("update chats set bot_ids=?, lead=? where id=?", (json.dumps(ids), lead, g["id"]))
     conn.commit()
+    avatars.gc()
 
 
 def thread_ids(chat_id: int) -> list[int]:
@@ -111,14 +129,14 @@ def _delete_chat(chat_id: int):
         conn.execute("delete from chats where id=?", (i,))
 
 
-_CHAT_COLS = "id, kind, title, bot_ids, pinned, updated, lead, parent, root"
+_CHAT_COLS = "id, kind, title, bot_ids, pinned, updated, lead, parent, root, image"
 
 
 def _chat(row) -> dict:
-    i, kind, title, ids, pinned, updated, lead, parent, root = row
+    i, kind, title, ids, pinned, updated, lead, parent, root, image = row
     last = conn.execute("select content, role from messages where chat_id=? order by id desc limit 1", (i,)).fetchone()
     return {"id": i, "kind": kind, "title": title, "bot_ids": json.loads(ids or "[]"), "pinned": pinned or 0,
-            "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead}
+            "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead, "image": image}
 
 
 def list_chats() -> list[dict]:
@@ -240,16 +258,23 @@ def create_group(bot_ids, title: str = "", lead=None) -> dict:
     return chat(cur.lastrowid)
 
 
-def update_group(chat_id: int, title: str | None = None, bot_ids=None, lead=None) -> dict:
+def update_group(chat_id: int, title: str | None = None, bot_ids=None, lead=None, image: str | None = None) -> dict:
+    """image：群头像图片的地址，空字符串是不用图片（用成员的头像拼）；None 不改。"""
     g = chat(chat_id)
     if not g or g["kind"] != "group" or g.get("parent"):
         raise ValueError(i18n.t("没有这个群聊"))
     ids = _members(bot_ids) if bot_ids is not None else g["bot_ids"]
     if title is not None:
         conn.execute("update chats set title=? where id=?", (title.strip()[:60] or auto_title(ids), chat_id))
+    if image is not None:
+        if image and not avatars.valid(image):
+            raise ValueError(i18n.t("头像图片不存在，重新上传一次"))
+        conn.execute("update chats set image=? where id=?", (image or None, chat_id))
     conn.execute("update chats set bot_ids=?, lead=? where id=?",
                  (json.dumps(ids), _lead(ids, lead if lead is not None else g["lead"]), chat_id))
     conn.commit()
+    if image is not None:
+        avatars.gc()
     return chat(chat_id)
 
 
@@ -257,6 +282,7 @@ def delete_group(chat_id: int):
     if conn.execute("select 1 from chats where id=? and kind='group'", (chat_id,)).fetchone():
         _delete_chat(chat_id)
         conn.commit()
+        avatars.gc()
 
 
 def ensure_default():

@@ -177,6 +177,16 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .shape-row button { padding: 5px; border-radius: 10px; border: 1px solid transparent; } .shape-row button.on { border-color: var(--fg2); background: var(--bg2); }
 .color-row button { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; } .color-row button.on { border-color: var(--fg); box-shadow: 0 0 0 2px var(--bg) inset; }
 .new-bot-preview { display: grid; place-items: center; padding: 6px 0 2px; }
+/* 图片头像：圆形；上传和 AI 生成 */
+.bot-img { border-radius: 50%; object-fit: cover; background: var(--bg3); }
+.avatar-tools { display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; }
+.avatar-tool-row { display: flex; gap: 8px; justify-content: center; }
+.avatar-tool-row .btn { font-size: 13px; padding: 5px 12px; } .avatar-tool-row .btn.on { background: var(--bg3); border-color: var(--fg3); }
+.ai-avatar { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.ai-avatar textarea { width: 100%; resize: vertical; font-size: 13px; }
+.ai-row { display: flex; gap: 8px; } .ai-row select { flex: 1; min-width: 0; font-size: 13px; }
+.ai-result { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.ai-result img { border-radius: 50%; }
 
 /* ---------- 弹窗 ---------- */
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 50; backdrop-filter: blur(2px); }

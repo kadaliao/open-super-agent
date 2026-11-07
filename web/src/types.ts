@@ -1,4 +1,5 @@
-export type Avatar = { shape: string; color: string }
+// image：自己的头像图片（/avatars/…，上传的或 AI 画的）。有图片时显示图片，形状和颜色留着备用
+export type Avatar = { shape: string; color: string; image?: string }
 export type Bot = {
   id: number; name: string; avatar: Avatar; instructions: string
   is_primary: boolean; created: number; chat_id: number
@@ -7,6 +8,7 @@ export type Chat = {
   id: number; kind: 'direct' | 'group'; title: string; bot_ids: number[]
   // pinned：置顶的时间（侧栏上面那排按它排，先置顶的在前），0 是没置顶。lead：群聊的协调者
   pinned: number; updated: number; preview: string; lead: number | null
+  image: string | null   // 群聊自己的头像图片；没有就用成员的头像拼
 }
 export type Message = {
   id: number; ts: number; role: 'user' | 'assistant' | 'task'; content: string

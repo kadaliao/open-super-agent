@@ -4,7 +4,7 @@ import { openApps, openChat, openLibrary, pinChat, useStore } from '../store'
 import { t } from '../i18n'
 import type { Chat } from '../types'
 import BotAvatar from './BotAvatar'
-import { GroupAvatars } from './Chat'
+import { GroupFace } from './Chat'
 
 // 侧栏预览：去掉任务标记和 Markdown 符号
 const plain = (s: string) => s === '[新话题]' ? t('— 新话题 —') : s.replace(/^\[[^\]]+\]\s*/, '').replace(/[#*`>_~|]+/g, '').replace(/\s+/g, ' ').trim()   // i18n-ignore：存在消息里的标记
@@ -87,7 +87,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
             return (
               <button key={c.id} className={'pin-item' + (x.isActive ? ' active' : '')} title={x.name} onClick={() => open(c)} onContextMenu={onMenu(c)}>
                 <span className="pin-av">
-                  {x.group ? <GroupAvatars bots={x.members} size={24} /> : <BotAvatar avatar={x.bot!.avatar} size={34} busy={x.busy} />}
+                  {x.group ? <GroupFace image={c.image} bots={x.members} size={34} stack={24} /> : <BotAvatar avatar={x.bot!.avatar} size={34} busy={x.busy} />}
                   {badge(c, x.needs)}
                 </span>
                 <span className="pin-name">{x.name}</span>
@@ -103,7 +103,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
           const { group, members, bot } = x
           return (
             <button key={c.id} className={'chat-item' + (x.isActive ? ' active' : '')} onClick={() => open(c)} onContextMenu={onMenu(c)}>
-              {group ? <span className="ci-group"><GroupAvatars bots={members} size={24} /></span> : <BotAvatar avatar={bot!.avatar} size={34} busy={x.busy} />}
+              {group ? <span className="ci-group"><GroupFace image={c.image} bots={members} size={34} stack={24} /></span> : <BotAvatar avatar={bot!.avatar} size={34} busy={x.busy} />}
               <div className="ci-text">
                 <div className="ci-name">{x.name}{bot?.is_primary && <span className="star">★</span>}{group && <span className="ci-count">{members.length}</span>}</div>
                 <div className="ci-preview">{x.needs ? '⚠ ' + t('等你确认') : x.away ? '⚠ ' + t('有 Bot 等你确认（在私聊里）') : plain(c.preview) || (group ? t('新的群聊') : t('新的 Bot'))}</div>

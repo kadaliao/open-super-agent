@@ -56,6 +56,7 @@ osa/
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
   library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
   bots.py          Bot 和对话的增删改查、旧数据迁移
+  avatars.py       头像图片：上传的和 AI 画的（兼容 OpenAI 的 /images/generations，硅基流动单独处理）、公开访问、清理没人用的
   settings.py      界面里改的设置（覆盖 config.yaml）
   i18n.py          界面语言：t() 按中文原文查 locales/en.json；python -m osa.i18n 检查前后端的翻译
   backup.py        备份与迁移：加密的备份文件、恢复前检查、启动时换上、命令行
@@ -95,7 +96,8 @@ web/src/
 
 | 表 | 用途 |
 |---|---|
-| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者；讨论串（`kind=thread`）的 `parent` 是所在的对话，`root` 是被回复的那条消息；`pinned` 是置顶的时间（0 是没置顶），只决定侧栏上面那排，不影响列表按 `updated` 排 |
+| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者；讨论串（`kind=thread`）的 `parent` 是所在的对话，`root` 是被回复的那条消息；`pinned` 是置顶的时间（0 是没置顶），只决定侧栏上面那排，不影响列表按 `updated` 排；Bot 的 `avatar`（JSON）是形状、颜色，可以再带一张图片 `image`，群聊的图片在 `chats.image` |
+| `avatars` | 头像图片（256 像素的 PNG / JPEG / WebP），`id` 是内容哈希，`/avatars/<id>` 不登录也能看（分享页要用）；没人用的一天后清掉 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等 |
 | `llm_usage` | 每次模型调用的 token 数和费用 |
 | `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；只留最近 `memory.task_log_days` 天 |

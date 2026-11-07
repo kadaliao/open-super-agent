@@ -6,6 +6,8 @@ import BotAvatar from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { TasksPanel } from './Tasks'
 import { ask } from './Dialog'
+import { GroupFace } from './Chat'
+import { AvatarImageTools, groupPrompt } from './AvatarTools'
 
 const MIN = 2, MAX = 6
 const SEP = lang === 'en' ? ', ' : '、'
@@ -89,6 +91,7 @@ function GroupSettings({ chat, onClose }: { chat: Chat; onClose: () => void }) {
   const tasks = useStore(s => s.tasks)
   const [title, setTitle] = useState(chat.title)
   const [adding, setAdding] = useState(false)
+  const [editAvatar, setEditAvatar] = useState(false)
   const [err, setErr] = useState('')
   const members = chat.bot_ids.map(i => bots.find(b => b.id === i)).filter((b): b is Bot => !!b)
   const others = bots.filter(b => !chat.bot_ids.includes(b.id))
@@ -104,6 +107,12 @@ function GroupSettings({ chat, onClose }: { chat: Chat; onClose: () => void }) {
   const running = Object.values(tasks).filter(x => x.chat_id === chat.id && x.status === 'running')
   return (
     <>
+      <button className="panel-avatar" onClick={() => setEditAvatar(!editAvatar)} title={t('修改群头像')}>
+        <GroupFace image={chat.image} bots={members} size={72} stack={48} /></button>
+      {editAvatar && <div className="avatar-picker">
+        <AvatarImageTools prompt={groupPrompt(chat.title, members.map(b => b.name))} onImage={image => { patch({ image }); setEditAvatar(false) }} />
+        {chat.image && <button className="ghost-btn" onClick={() => { patch({ image: '' }); setEditAvatar(false) }}>{t('不用图片，用成员的头像拼')}</button>}
+      </div>}
       <label className="field">{t('群名')}<input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}
         onBlur={() => title !== chat.title && patch({ title })} onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} /></label>
       <div className="section-head"><h4>{t('成员（{n}/{max}）', { n: members.length, max: MAX })}</h4>

@@ -259,6 +259,11 @@ const STARTERS = [
   t('你能做哪些事？先介绍一下你的能力'),
 ]
 
+// 群聊的头像：有自己的图片用图片（size 大小），没有就用成员的头像拼（每个 stack 大小）
+export function GroupFace({ image, bots, size, stack }: { image?: string | null; bots: Bot[]; size: number; stack?: number }) {
+  return image ? <BotAvatar avatar={{ shape: 'circle', color: '', image }} size={size} /> : <GroupAvatars bots={bots} size={stack ?? size} />
+}
+
 export function GroupAvatars({ bots, size = 26 }: { bots: Bot[]; size?: number }) {
   return (
     <span className="group-avatars" style={{ width: size + (Math.min(bots.length, 3) - 1) * size * 0.45 }}>
@@ -394,7 +399,7 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
     <main className="chat">
       <header className="chat-head">
         <button className="head-bot" onClick={onToggleDetails} title={group ? t('群聊设置') : t('Bot 详情')}>
-          {group ? <GroupAvatars bots={members} /> : <BotAvatar avatar={bot!.avatar} size={26} />}
+          {group ? <GroupFace image={chat.image} bots={members} size={26} /> : <BotAvatar avatar={bot!.avatar} size={26} />}
           <span className="head-name">{title}</span>
           {group ? <span className="muted small">{t('{n} 个 Bot', { n: members.length })}</span> : bot!.is_primary && <span className="star" title={t('主 Bot')}>★</span>}
         </button>
@@ -411,7 +416,7 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
         <div className="thread">
           {empty && (group ? (
             <div className="welcome">
-              <GroupAvatars bots={members} size={56} />
+              <GroupFace image={chat.image} bots={members} size={72} stack={56} />
               <h2>{chat.title}</h2>
               <p className="muted">{lead ? t('@ 某个 Bot 让它来做，@所有人 让大家都说说；不 @ 的消息由协调者 {lead} 接，它会分给合适的 Bot。', { lead: lead.name }) : t('@ 某个 Bot 让它来做，@所有人 让大家都说说；不 @ 的消息由协调者接，它会分给合适的 Bot。')}
                 {' '}{t('Bot 之间可以交接工作；要你确认的操作会出现在各自的私聊里。')}</p>

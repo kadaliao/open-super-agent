@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
-from . import approvals, auth, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import approvals, auth, avatars, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, memories, memory, push, router as rt, routines
 from . import prices, providers, search, settings, skills, tasklog, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
@@ -136,7 +136,10 @@ async def create_bot(data: dict = Body(...)):
 async def update_bot(bot_id: int, data: dict = Body(...)):
     if not bots.get(bot_id):
         raise HTTPException(404, i18n.t("没有这个 Bot"))
-    b = bots.update(bot_id, **data)
+    try:
+        b = bots.update(bot_id, **data)
+    except ValueError as e:
+        _err(e)
     if data.get("name"):
         memory.conn.execute("update chats set title=? where id=?", (b["name"], b["chat_id"]))
         memory.conn.commit()
@@ -201,6 +204,41 @@ async def open_thread(chat_id: int, data: dict = Body(...)):
     return {"root": _root(chat_id, th["root"]), "id": th["id"]}
 
 
+# ---------- 头像 ----------
+@app.post("/api/avatars")
+async def upload_avatar(data: dict = Body(...)):
+    """传一张头像（浏览器裁好的 256 像素图片，data URL），返回地址；Bot 或群聊保存时再用上。"""
+    try:
+        return {"image": avatars.save(data.get("data") or "")}
+    except ValueError as e:
+        _err(e)
+
+
+@app.get("/api/avatars/models")
+async def avatar_models():
+    return await avatars.models()
+
+
+@app.post("/api/avatars/generate")
+async def generate_avatar(data: dict = Body(...)):
+    """让生图模型画一张头像，返回原图（data URL），浏览器裁好后再传上来。"""
+    try:
+        return {"data": await avatars.generate(data.get("prompt", ""), data.get("provider", ""), data.get("model", ""))}
+    except ValueError as e:
+        _err(e)
+
+
+@app.get("/avatars/{aid}")
+async def avatar_file(aid: str):
+    """头像图片。不用登录（分享出去的页面也要显示）；地址是内容的哈希，内容不会变。"""
+    got = avatars.get(aid) if len(aid) == 24 else None
+    if not got:
+        raise HTTPException(404)
+    return Response(got[1], media_type=got[0], headers={
+        "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'"})
+
+
 # ---------- 群聊 ----------
 @app.post("/api/groups")
 async def create_group(data: dict = Body(...)):
@@ -215,7 +253,7 @@ async def create_group(data: dict = Body(...)):
 @app.patch("/api/chats/{chat_id}")
 async def update_group(chat_id: int, data: dict = Body(...)):
     try:
-        g = bots.update_group(chat_id, data.get("title"), data.get("bot_ids"), data.get("lead"))
+        g = bots.update_group(chat_id, data.get("title"), data.get("bot_ids"), data.get("lead"), data.get("image"))
     except (ValueError, TypeError) as e:
         _err(e)
     await broadcast({"type": "bots_changed"})

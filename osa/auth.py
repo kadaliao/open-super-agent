@@ -34,7 +34,7 @@ TICKET_TTL = 30              # 桌面 App 自动登录用的票，30 秒内有�
 
 # 前端构建产物里不含数据的文件：登录页和分享页要用
 PUBLIC_FILES = {"/manifest.json", "/sw.js", "/favicon.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"}
-PUBLIC_PREFIXES = ("/assets/", "/hooks/", "/api/shared/", "/s/", "/skill/", "/template/")
+PUBLIC_PREFIXES = ("/assets/", "/hooks/", "/api/shared/", "/s/", "/skill/", "/template/", "/avatars/")
 # 没开登录时，Host 是这些名字才接受：别人没法让这些名字解析到你的 127.0.0.1
 LOCAL_SUFFIXES = (".localhost", ".local", ".ts.net")
 

@@ -514,5 +514,13 @@
   "（用时 {d}）": " (took {d})",
   "，以后同类操作自动允许": ". Similar actions will be allowed automatically from now on",
   "，然后按回车": ", then pressed Enter",
-  "🙋 {name} 需要你帮忙": "🙋 {name} needs your help"
+  "🙋 {name} 需要你帮忙": "🙋 {name} needs your help",
+  "没收到图片": "No image received",
+  "图片太大了（最多 {n} KB）": "The image is too large (max {n} KB)",
+  "只支持 PNG、JPG、WebP 图片": "Only PNG, JPG and WebP images are supported",
+  "写一句想要什么样的头像": "Describe the avatar you want",
+  "{model} 不是画图的模型": "{model} is not an image model",
+  "画图服务没有返回图片": "The image service didn't return an image",
+  "画图失败：{e}": "Couldn't generate the image: {e}",
+  "头像图片不存在，重新上传一次": "The avatar image is missing. Please upload it again"
 }

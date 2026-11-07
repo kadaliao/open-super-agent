@@ -7,6 +7,7 @@ import { BRANDS } from '../brandIcons'
 import type { Bot, CatalogItem, Preset, Settings as S } from '../types'
 import BotAvatar from './BotAvatar'
 import { AvatarPicker } from './BotEditor'
+import { botPrompt } from './AvatarTools'
 import { BrandIcon } from './BrandIcon'
 import { AppIcon, howOf, Sheet, StateTag } from './Market'
 import { ListsCtx, ModelIcon, ModelPicker, ProviderBadge, ProviderForm, TestButton, useLists, useTest } from './ModelSettings'
@@ -217,7 +218,7 @@ function BotStep({ bot, onBack, onNext }: { bot: Bot; onBack: () => void; onNext
         </label>
       </div>
     </div>
-    {editAvatar && <AvatarPicker avatar={avatar} onChange={setAvatar} />}
+    {editAvatar && <AvatarPicker avatar={avatar} onChange={setAvatar} prompt={botPrompt(name, instr)} />}
     <h4>{t('或者从模板装一个现成的')}</h4>
     <p className="muted small">{t('模板带好了技能和定时任务，装上就能干活。{name} 也会留着。', { name: bot.name })}</p>
     <TemplatePicker compact onPreview={setPreview} />

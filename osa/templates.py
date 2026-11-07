@@ -187,7 +187,8 @@ def from_bot(bot_id: int) -> dict:
     ss = [s for s in skills.list_for(bot_id) if s["bot_id"] == bot_id or s["name"] in used]
     body = " ".join([b["instructions"]] + [s["body"] for s in ss] + [r["prompt"] for r in rs])
     first = next((x.strip(" -#*") for x in b["instructions"].splitlines() if x.strip(" -#*")), "")
-    t = {"osa_template": FORMAT, "name": b["name"], "description": first[:120], "avatar": b["avatar"],
+    t = {"osa_template": FORMAT, "name": b["name"], "description": first[:120],
+         "avatar": {k: b["avatar"][k] for k in ("shape", "color") if k in b["avatar"]},   # 头像图片只在这台上有，不带
          "instructions": b["instructions"], "apps": skills.apps_in(body),
          "skills": [{"name": s["name"], "description": s["description"], "body": s["body"]} for s in ss],
          "routines": [{"name": r["name"], **({"prompt": r["prompt"]} if r["prompt"] else {}),
