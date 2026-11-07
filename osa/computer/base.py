@@ -73,6 +73,7 @@ class Computer:
     backend = "base"
     workspace = "/data/workspace"   # 文件放在这里：资料库、上传的附件、Bot 下载的东西
     auto_pause = True               # 闲置一段时间自动暂停（本机电脑不暂停：你可能正在那个 Chrome 里登录）
+    recent_desk = False             # 最近一次操作的是整个屏幕（本机电脑的“操作整台电脑”），不是浏览器：画面看屏幕
     on_change = None   # 谁在用电脑变了：() -> None，由 computer/__init__.py 设置，用来通知前端
     background = staticmethod(asyncio.ensure_future)   # 在后台跑一个协程（computer/__init__.py 换成会留引用的）
 
@@ -276,8 +277,8 @@ class Computer:
         title = (await self.exec(f"DISPLAY={DISPLAY} xdotool getactivewindow getwindowname 2>/dev/null", timeout=10)).stdout.strip()
         return png, title
 
-    async def peek(self, fmt: str = "jpeg") -> bytes:
-        """界面上的画面（本机电脑没有 VNC，用截图代替，见 host.py）。"""
+    async def peek(self, fmt: str = "jpeg", view: str = "") -> bytes:
+        """界面上的画面（本机电脑没有 VNC，用截图代替，见 host.py）。view：本机电脑看 screen（整个屏幕）还是 chrome。"""
         raise ComputerError(i18n.t("这台电脑用实时画面，不用截图"))
 
     async def screenshot(self) -> bytes:
@@ -394,6 +395,9 @@ class Computer:
             self._set_window(key, out.get("window"), out.get("browser"))   # 点链接弹出的新窗口，脚本会跟过去
             if out.get("window"):
                 self.recent = (out["window"], out.get("browser"))
+            if self.recent_desk:
+                self.recent_desk = False
+                self.changed()
             return out
         raise ComputerError(i18n.t("找不到浏览器窗口"))
 

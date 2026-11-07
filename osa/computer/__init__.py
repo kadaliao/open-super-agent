@@ -102,7 +102,7 @@ async def public_state(bot_id: int = SHARED) -> dict:
     extra = {}
     if c.backend == "host":
         from .host import shell_on
-        extra = {"shell": shell_on()}
+        extra = {"shell": shell_on(), "desktop": c.desk_state()}
     return {"bot_id": bot_id, "backend": c.backend, "controller": c.controller, "width": c.width, "height": c.height,
             "parallel": c.slots(), "users": users, "waiting": list(c.waiting.values()), "watch": c.watch,
             "exclusive": c.exclusive_label, "workspace": c.workspace, **extra, **(await c.status())}

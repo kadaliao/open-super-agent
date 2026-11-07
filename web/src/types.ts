@@ -45,6 +45,12 @@ export type ComputerState = {
   bot_id: number; backend: string; controller: 'bot' | 'human'; state: string; detail: string; width: number; height: number
   parallel?: number; users?: ComputerUser[]; waiting?: string[]; watch?: string | null; exclusive?: string
   workspace?: string; shell?: boolean   // shell：本机电脑的终端开没开
+  desktop?: DesktopState                // 本机电脑的“操作整台电脑”（只有 Mac）
+}
+// supported：这台机器能不能用（Mac、没开服务器锁）；on：打开了没有；accessibility / screen：两个 macOS 权限
+// problem：现在不能操作的原因（缺权限、屏幕锁着）；owner：谁在用屏幕；paused_by=input：你动了鼠标键盘，Bot 自己停下的
+export type DesktopState = {
+  supported: boolean; on?: boolean; accessibility?: boolean; screen?: boolean; problem?: string; owner?: string; paused_by?: string
 }
 export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
@@ -81,6 +87,7 @@ export type Settings = {
   computer_backends: { id: string; ok: boolean; locked?: boolean }[]   // 这台机器上能用哪些；locked：服务器锁不让用
   computer_on_desktop: boolean                          // 服务是桌面 App 自带的（本地模式）；否则“本机”指服务器那台机器
   computer_host_shell: boolean
+  computer_host_desktop: boolean
   embedding: { provider: string; model: string }
   image_model: { provider: string; model: string }   // 画图用哪个模型（对话里画图、生成头像共用），空的是用排在最前面的
   model_info: Record<string, ModelInfo>   // 键是 服务/模型

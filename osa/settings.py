@@ -36,6 +36,7 @@ def apply():
         b = None
     pc["backend"] = b or _PC.get("backend", "auto")
     pc["host_shell"] = o.get("computer_host_shell", bool(_PC.get("host_shell", False)))
+    pc["host_desktop"] = o.get("computer_host_desktop", bool(_PC.get("host_desktop", False)))
     if "embedding" in o:
         CFG["embedding"] = o["embedding"]
 
@@ -88,6 +89,7 @@ def public() -> dict:
         "computer_backends": computer.available(),
         "computer_on_desktop": bool(os.environ.get("OSA_DESKTOP")),   # 服务是桌面 App 自带的：“本机”就是用户面前这台电脑
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
+        "computer_host_desktop": bool((CFG.get("computer") or {}).get("host_desktop")),
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
         "image_model": avatars.choice(),   # 画图用哪个模型（对话里画图、生成头像共用），没选过是空的
         "model_info": {f"{p}/{m}": _info(p, m) for p, m in used},
@@ -101,8 +103,13 @@ def public() -> dict:
 def save(data: dict) -> dict:
     if security.demo() and ({"limits", "heavy_workers", "computer_parallel"} & data.keys()):
         raise ValueError(i18n.t("演示服务器上不能改用量上限"))
-    if not security.local_exec() and (data.get("computer_backend") == "host" or data.get("computer_host_shell")):
+    if not security.local_exec() and (data.get("computer_backend") == "host" or data.get("computer_host_shell")
+                                      or data.get("computer_host_desktop")):
         raise ValueError(security.no_local_exec())
+    if data.get("computer_host_desktop"):
+        from .computer import macdesk
+        if not macdesk.supported():
+            raise ValueError(i18n.t("操作整台电脑现在只支持 macOS"))
     if "language" in data:
         i18n.set_lang(data["language"])
     o = _load()
@@ -138,6 +145,8 @@ def save(data: dict) -> dict:
             o["computer_backend"] = b
     if "computer_host_shell" in data:
         o["computer_host_shell"] = bool(data["computer_host_shell"])
+    if "computer_host_desktop" in data:
+        o["computer_host_desktop"] = bool(data["computer_host_desktop"])
     if "embedding" in data:
         e = data["embedding"] or {}
         provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:200]

@@ -260,10 +260,31 @@ function NewBotCard({ a }: { a: Approval }) {
   )
 }
 
+// 本机电脑：任务第一次要操作整台电脑（真实的屏幕、鼠标键盘）时问一次，参数是 {任务}
+function DesktopCard({ a }: { a: Approval }) {
+  const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
+  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('已允许操作整台电脑') + (a.always ? t('，以后不再询问') : '')
+    : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没让 Bot 操作整台电脑')}</div>
+  return (
+    <div className="approval-card desk">
+      <div className="approval-title">🖥 {t('{name} 想操作整台电脑', { name: bot?.name || 'Bot' })}<Origin a={a} /></div>
+      <div className="muted small">{typeof a.task_id === 'number' ? t('来自任务 #{id}：{goal}', { id: a.task_id, goal: a.goal }) : a.goal}</div>
+      <div className="small">{t('它会看你的屏幕，用你的鼠标键盘操作这台电脑上的 App。操作时你动一下鼠标或键盘它就停下；点“发送”“付款”这类按钮前还会再问你。')}</div>
+      <div className="approval-actions">
+        <span className="grow" />
+        <button className="btn" onClick={() => approve(a.id, false)}>{t('不行')}</button>
+        <button className="btn" onClick={() => approve(a.id, true)}>{t('这次允许')}</button>
+        <button className="btn primary" title={t('以后任务操作整台电脑不再询问，可在设置 → 确认规则里撤销')} onClick={() => approve(a.id, true, '', true)}>{t('总是允许')}</button>
+      </div>
+    </div>
+  )
+}
+
 function ApprovalCard({ a }: { a: Approval }) {
   if (a.kind === 'help') return <HelpCard a={a} />
   if (a.tool === 'generate_image') return <DrawCard a={a} />
   if (a.tool === 'create_bot') return <NewBotCard a={a} />
+  if (a.tool === 'desktop') return <DesktopCard a={a} />
   const [note, setNote] = useState('')
   const done = a.status && a.status !== 'pending'
   const label: Record<string, string> = { approved: a.always ? t('已允许，以后自动允许') : t('已允许'), rejected: t('已拒绝'), expired: t('超时未确认，按拒绝处理'), cancelled: t('任务已取消') }

@@ -36,7 +36,7 @@ See [Features](docs/features.en.md) for the full list.
 
 | Client | What you get |
 |---|---|
-| 💻 **macOS desktop app** | Download the dmg and open it: about 43 MB with its own runtime, no Docker or Python; Bots use the Chrome on your computer. It keeps running in the menu bar after you close the window, and can also connect to your server. See [Desktop app](docs/desktop.md) (Chinese) |
+| 💻 **macOS desktop app** | Download the dmg and open it: about 43 MB with its own runtime, no Docker or Python; Bots use the Chrome on your computer, and can use the whole computer once you allow it. It keeps running in the menu bar after you close the window, and can also connect to your server. See [Desktop app](docs/desktop.md) (Chinese) |
 | 🖥️ **Server** | One `docker compose up` on a VPS or a machine at home keeps it always on; connect from a browser, the desktop app, your phone or a chat app. See [Deploy with Docker Compose](docs/docker.md) (Chinese) |
 | 📱 **iPhone app** (TestFlight) | Scan a QR code on your computer with the Camera to connect; approvals and finished tasks are pushed to your phone, encrypted, and readable on the lock screen. See [iPhone app](docs/mobile.md) (Chinese) |
 | 💬 **Chat apps** | Talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, with approvals as message buttons. See [Chat apps](docs/channels.md) (Chinese) |
@@ -105,7 +105,7 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 ## Roadmap
 
 - **Clients**: a public iPhone beta, then the App Store; then Windows and Android; using the bot in chat-app group chats.
-- **Computers**: whole-desktop control (not just the browser); letting Bots on a server borrow the browser on your computer; snapshots and rollback.
+- **Computers**: whole-desktop control on Windows; letting Bots on a server borrow your computer; snapshots and rollback.
 - **App ecosystem**: new apps and Bot templates mostly come from community PRs; the project fills gaps in the manifest format and connection methods.
 - **Bot abilities**: voice conversations.
 

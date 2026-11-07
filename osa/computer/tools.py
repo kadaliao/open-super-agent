@@ -1,12 +1,16 @@
 """Worker 的电脑工具。所有 Bot 共用一台电脑，几个任务同时用时各自一个浏览器窗口，满了排队；
 computer_* 截的是自己窗口里的页面、按页面坐标点击，动作之后自动附上新截图，模型马上能看到结果。
 本机电脑（host.py）的工具说明和提示词不一样：文件只在工作文件夹里，终端默认没有；
-上传文件、写文件、提交、终端命令按确认规则先问用户（_confirm，规则见 approvals.decide）。"""
+上传文件、写文件、提交、终端命令按确认规则先问用户（_confirm，规则见 approvals.decide）。
+本机电脑打开“操作整台电脑”后还有 desktop_* 工具：看整个屏幕、用真实的鼠标键盘操作别的 App（_desktop，见 host.py）。"""
+import asyncio
 import contextvars
 import base64
+import re
+import time
 from .. import i18n
-from . import ComputerError, get
-from .host import shell_on
+from . import ComputerError, get, macdesk
+from .host import desktop_on, shell_on
 
 AUTO_SHOT = {"computer_click", "computer_type", "computer_key", "computer_scroll"}
 
@@ -65,7 +69,24 @@ SCHEMAS = [
     _fn("ask_approval", "在执行有后果的操作之前调用，例如提交表单、下单付款、发送消息或邮件、删除数据、发布内容。"
         "说明要做什么、影响是什么。用户同意后才能继续。", {"action": S}),
 ]
-NAMES = {s["function"]["name"] for s in SCHEMAS}
+DESK_SCHEMAS = [
+    _fn("desktop_screenshot", "截取用户这台 Mac 的整个屏幕（主显示器），返回图片，以及前台 App、屏幕上的窗口、鼠标位置。"
+        "要操作浏览器以外的 App 时先用它看屏幕；desktop_click 等工具的坐标以这张截图为准。"
+        "save=true 时把这张截图存进工作文件夹（screenshots 子文件夹），返回文件路径，要把截图发给用户就用 send_file 发这个文件。",
+        {"save": B}, []),
+    _fn("desktop_click", "按 desktop_screenshot 截图上的坐标点击屏幕（真实的鼠标，会把点到的窗口换到前面）",
+        {"x": I, "y": I, "button": {"type": "string", "enum": ["left", "right", "middle"]}, "double": B}, ["x", "y"]),
+    _fn("desktop_drag", "按住鼠标左键从 (x, y) 拖到 (to_x, to_y)：拖文件、拖滑块、框选", {"x": I, "y": I, "to_x": I, "to_y": I}),
+    _fn("desktop_type", "在屏幕上当前有焦点的地方输入文字（用粘贴输入，中文也行，不受输入法影响；不会按回车）。先点一下要输入的地方", {"text": S}),
+    _fn("desktop_key", "按键或组合键，例如 enter、esc、tab、backspace、cmd+a、cmd+c、cmd+v、cmd+tab、cmd+space（聚焦搜索）、"
+        "cmd+w（关窗口）、cmd+q（退出 App）、cmd+shift+g（在访达里前往文件夹）、up、down。"
+        "要按顺序按几个键就用空格隔开，一次按完，例如 \"1 2 3 * 4 5 enter\"、\"down down enter\"", {"keys": S}),
+    _fn("desktop_scroll", "把鼠标移到截图上的 (x, y) 再滚动",
+        {"x": I, "y": I, "direction": {"type": "string", "enum": ["up", "down", "left", "right"]}, "amount": I}, ["x", "y", "direction"]),
+    _fn("desktop_open_app", "打开一个 App，或者把它切到最前面（例如 微信、访达、备忘录、日历、Safari、系统设置），name 写 App 的名字", {"name": S}),
+]
+DESKTOP = {s["function"]["name"] for s in DESK_SCHEMAS}
+NAMES = {s["function"]["name"] for s in SCHEMAS} | DESKTOP
 
 _HOST_FILES = {
     "computer_read_file": "读取工作文件夹里的文本文件（路径可以写相对工作文件夹的）",
@@ -74,8 +95,15 @@ _HOST_FILES = {
 }
 
 
+def desk_schemas(c=None) -> list[dict]:
+    """操作整个屏幕的工具：只有本机电脑打开了“操作整台电脑”才给。"""
+    c = c or get()
+    return DESK_SCHEMAS if c.backend == "host" and desktop_on() else []
+
+
 def schemas(c=None) -> list[dict]:
-    """给 Worker 的电脑工具。本机电脑：文件工具说明换成工作文件夹，终端没打开就不给 computer_shell。"""
+    """给 Worker 的电脑工具。本机电脑：文件工具说明换成工作文件夹，终端没打开就不给 computer_shell，
+    打开了“操作整台电脑”再加上 desktop_*。"""
     c = c or get()
     if c.backend != "host":
         return SCHEMAS
@@ -90,7 +118,7 @@ def schemas(c=None) -> list[dict]:
         elif f["name"] in _HOST_FILES:
             s = {"type": "function", "function": {**f, "description": _HOST_FILES[f["name"]]}}
         out.append(s)
-    return out
+    return out + desk_schemas(c)
 
 
 def _intro(c) -> str:
@@ -99,13 +127,26 @@ def _intro(c) -> str:
 别的任务同时在别的窗口里做、互不干扰；登录状态和文件是大家共用的。用 browser_* / computer_* 工具操作："""
     shell = ("- 终端：computer_shell 在用户这台电脑上执行命令（工作目录是工作文件夹）。每条命令都要用户确认，只在必要时用，几步合成一条。"
              if shell_on() else "- 没有终端（用户没有打开）。下载文件用浏览器，读写文件用 computer_read_file / computer_write_file。")
+    desk = DESK_HINT if desktop_on() else ""
     return f"""你有一台电脑：用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己日常用的 Chrome 分开，所有 Bot 共用，
 用户在里面登录过的网站你都能直接用）。你的任务有自己的浏览器窗口，别的任务同时在别的窗口里做、互不干扰。用 browser_* / computer_* 工具操作：
 - 文件只能放在工作文件夹 {c.workspace} 里：computer_read_file / computer_write_file 只能读写这里面的文件（可以写相对路径），
   浏览器下载的文件在它的 downloads 子文件夹，browser_upload 也只能传这里面的文件。
 {shell}
 - 上传文件、写文件、点“发送 / 发布 / 提交 / 付款”这类按钮时，系统会自动弹确认卡片问用户，这些不用再调用 ask_approval；
-  用户拒绝了就别再试，换个做法或者在结果里说明。"""
+  用户拒绝了就别再试，换个做法或者在结果里说明。{desk}"""
+
+
+DESK_HINT = """
+- 整台电脑：用户还允许你操作这台 Mac 上的其他 App（desktop_* 工具，用的是用户真实的屏幕、鼠标和键盘）。
+  网页仍然优先用 browser_*（Bot 自己的 Chrome，又快又不占鼠标）；网页以外的事（微信等聊天软件、访达里的文件、备忘录、日历、
+  系统设置、用户自己的浏览器……）才用 desktop_*：先 desktop_screenshot 看屏幕 → desktop_open_app 打开或切换 App →
+  按截图坐标 desktop_click → desktop_type 输入 → desktop_key 按快捷键。每个动作之后会自动附上新的屏幕截图。
+  第一次用会弹卡片请用户同意。鼠标键盘一次只能一个任务用，别的任务要等，所以用完尽快结束。
+  用户一动鼠标或键盘你就会被暂停，用户交还后先重新 desktop_screenshot 再继续。
+  在屏幕上点“发送 / 付款”这类按钮、在多行输入框里按回车时系统会自动弹确认卡片；别的有后果的操作（删除文件、改系统设置、
+  在终端里执行命令）先用 ask_approval。不要操作 Open Super Agent 自己的窗口。屏幕锁着时用 ask_human 请用户解锁。
+  要把屏幕截图给用户：desktop_screenshot(save=true) 存进工作文件夹，再 send_file；不要用系统的截屏快捷键或“截屏” App。"""
 
 
 def system_hint(c=None) -> str:
@@ -122,7 +163,11 @@ def capability(c=None) -> str:
                 "可以打开网页、点击、输入、登录后操作、上传下载文件（文件放在工作文件夹）"
                 + ("、在终端执行命令（每条都要用户确认）" if shell_on() else "") + "。几个任务可以同时用，各自一个浏览器窗口，"
                 "登录状态共用；同时用的任务多了才排队。浏览器窗口就在用户的屏幕上，右栏也能看到画面。"
-                "上传文件、写文件、点“发送 / 发布 / 付款”这类按钮时会自动弹确认卡片。")
+                "上传文件、写文件、点“发送 / 发布 / 付款”这类按钮时会自动弹确认卡片。"
+                + ("用户还打开了“操作整台电脑”：任务能看整个屏幕、用真实的鼠标键盘操作这台 Mac 上的其他 App（微信、访达、备忘录、"
+                   "系统设置等，desktop_* 工具），每个任务第一次用会先问用户；鼠标键盘一次只能一个任务用。"
+                   "你自己用 desktop_* 只做一两步的事（打开某个 App、看一眼屏幕）；要在 App 里按一串按钮、填东西、来回操作的，"
+                   "派一个任务去做（你这一轮能调用的工具次数有限）。" if desktop_on() else ""))
     return ("每个后台任务都能用所有 Bot 共用的一台电脑（Linux 桌面 + Chromium 浏览器 + 终端），"
             "可以打开网页、点击、输入、登录后操作、上传下载文件、运行脚本。几个任务可以同时用，各自一个浏览器窗口，"
             "登录状态和文件共用；同时用的任务多了才排队。用户能在右栏实时看到屏幕。")
@@ -186,6 +231,20 @@ def _progress_label(name: str, args: dict) -> str:
         return i18n.t("读取 {path}", path=args.get("path"))
     if name == "computer_write_file":
         return i18n.t("写入 {path}", path=args.get("path"))
+    if name == "desktop_screenshot":
+        return i18n.t("看屏幕")
+    if name == "desktop_click":
+        return i18n.t("点击屏幕 ({x}, {y})", x=args.get("x"), y=args.get("y"))
+    if name == "desktop_drag":
+        return i18n.t("在屏幕上拖动")
+    if name == "desktop_type":
+        return i18n.t("输入 “{text}”", text=str(args.get("text", ""))[:30])
+    if name == "desktop_key":
+        return i18n.t("按键 {key}", key=args.get("keys"))
+    if name == "desktop_scroll":
+        return i18n.t("滚动 {direction}", direction=args.get("direction"))
+    if name == "desktop_open_app":
+        return i18n.t("打开 {app}", app=args.get("name", ""))
     if name == "ask_human":
         return i18n.t("请你帮忙：{reason}", reason=str(args.get("reason", ""))[:60])
     if name == "ask_approval":
@@ -231,6 +290,14 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
     from .. import approvals
     c = get()
     key = key or CLAIM.get() or str(task.id)
+    if name in DESKTOP:
+        await notify_progress(_progress_label(name, args))
+        try:
+            return await _desktop(task, c, name, args, key, notify_progress)
+        except ComputerError as e:
+            return f"电脑操作失败：{e}", None
+        except (TypeError, ValueError, KeyError) as e:
+            return f"参数不对：{e}", None
     if name in WINDOW and not key.startswith("chat-"):
         await c.claim(key, _label(task, key), notify_progress,
                       {"task_id": task.id if isinstance(task.id, int) else None, "bot_id": task.bot_id})
@@ -309,7 +376,105 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
     return text, shot
 
 
-def image_message(png: bytes, caption: str = "当前页面截图", coords: bool = True) -> dict:
+class Shot(bytes):
+    """带说明的截图（整个屏幕的截图和浏览器页面的截图，给模型的说明不一样）。"""
+    caption = "当前页面截图"
+
+
+def shot(png: bytes, caption: str) -> Shot:
+    s = Shot(png)
+    s.caption = caption
+    return s
+
+
+# 屏幕上点了就发出去、花钱的按钮（比浏览器里那份少了“删除、确认、回复”：App 里到处都是，比如计算器的退格键就叫“删除”）
+DESK_SUBMIT = re.compile(r"发送|发布|发表|提交|支付|付款|购买|下单|结算|转账"
+                         r"|\b(send|post|publish|submit|pay|buy|order|checkout|transfer|tweet)\b", re.I)
+SETTLE = {"desktop_open_app": 1.5}   # 动作之后等一会儿再截图，界面才变过来
+
+
+def _desk_text(d: dict) -> str:
+    f = d["front"]
+    wins = "；".join(f"{w['app']}" + (f" — {w['title']}" if w["title"] else "") for w in d["windows"]) or "无"
+    return (f"屏幕截图 {d['width']}×{d['height']}（点击坐标按这个尺寸），鼠标在 ({d['cursor'][0]}, {d['cursor'][1]})。"
+            f"前台：{f['app'] or '未知'}" + (f" — {f['title']}" if f["title"] else "") + f"。屏幕上的窗口（从前到后）：{wins}")
+
+
+async def _desktop(task, c, name: str, args: dict, key: str, notify_progress) -> tuple[str, bytes | None]:
+    """整个屏幕的工具：占住屏幕（一次一个任务）→ 这个任务第一次用先问用户 → 点“发送”类按钮、在输入框里回车先问 → 做 → 截图。"""
+    from .. import approvals
+    if c.backend != "host" or not desktop_on():
+        return "用户没有打开“操作整台电脑”，只能用浏览器（browser_*）。", None
+    ok_key = key if key.startswith("chat-") else f"task:{task.id}"   # 同意按任务记：Heavy 的几个研究员只问一次
+    no = ("用户这次没同意你操作整台电脑（“操作整台电脑”的开关是开着的，是用户在卡片上点了“不行”）。"
+          "能用浏览器做的用 browser_*，做不了就在结果里说明，这个任务里别再试 desktop_*。")
+    if time.time() - c.desk_denied.get(ok_key, 0) < 600:
+        return no, None
+    await c.desk_claim(key, _label(task, key), notify_progress)
+    if not c.desk_allowed(ok_key):
+        if approvals.decide("desktop", c.backend)[0]:
+            ok, note = await approvals.request(task, "desktop", {"任务": task.goal[:300]})
+            if not ok:
+                c.desk_denied[ok_key] = time.time()
+                await c.desk_release(key)
+                return f"{no}{note}", None
+        c.desk_ok[ok_key] = time.time()
+    if name == "desktop_screenshot":
+        d = await c.desk("screenshot", key)
+        saved = ""
+        if args.get("save"):
+            path = f"screenshots/屏幕 {time.strftime('%Y-%m-%d %H.%M.%S')}.png"
+            await c.write_bytes(path, d["png"])
+            saved = f"截图已存到工作文件夹：{c.workspace}/{path}（发给用户用 send_file）。"
+        return saved + _desk_text(d), shot(d["png"], "整个屏幕的截图")
+    what = ""   # 不为空：这一步像是发出去（点“发送”、在输入框里回车），先问用户
+    if name == "desktop_click":
+        x, y = int(args["x"]), int(args["y"])
+        button = args.get("button") or "left"
+        if button not in ("left", "right", "middle"):
+            return "button 只能是 left / right / middle", None
+        el = await c.desk("inspect", key, x=x, y=y)
+        label = el.get("label") or ""
+        if button == "left" and len(label) <= 40 and DESK_SUBMIT.search(label):
+            what = f"在「{el.get('app') or '?'}」里点击「{label}」"
+        op, kw = "click", {"x": x, "y": y, "button": button, "double": bool(args.get("double"))}
+        done = f"已点击 ({x}, {y})" + (f"「{label}」" if label else "") + "。"
+    elif name == "desktop_drag":
+        op, kw, done = "drag", {k: int(args[k]) for k in ("x", "y", "to_x", "to_y")}, "已拖动。"
+    elif name == "desktop_type":
+        if not args.get("text"):
+            return "没有要输入的文字", None
+        op, kw, done = "type", {"text": str(args["text"])[:20000]}, "已输入。"
+    elif name == "desktop_key":
+        keys = str(args.get("keys") or "")
+        if any(macdesk.parse_keys(k)[1] in ("enter", "return") for k in keys.split()):
+            f = await c.desk("focused", key)
+            if f.get("role") == "AXTextArea":   # 多行输入框（聊天软件、终端）里按回车，多半是发出去、执行
+                what = f"在「{f.get('app') or '?'}」的输入框里按 {keys}"
+        op, kw, done = "key", {"keys": keys}, f"已按 {keys}。"
+    elif name == "desktop_scroll":
+        op, kw = "scroll", {"x": int(args["x"]), "y": int(args["y"]), "direction": args.get("direction") or "down",
+                            "amount": args.get("amount") or 3}
+        done = "已滚动。"
+    elif name == "desktop_open_app":
+        app = str(args.get("name") or "").strip()
+        if not app:
+            return "没有给 App 的名字", None
+        op, kw, done = "open_app", {"name": app}, f"已打开 {app}。"
+    else:
+        return "未知的电脑工具", None
+    if what and approvals.decide("desktop_submit", c.backend)[0]:
+        ok, note = await approvals.request(task, "desktop_submit", {"操作": what})
+        if not ok:
+            return f"用户拒绝了这个操作，没有执行。{note}".strip(), None
+    await c.desk(op, key, **kw)
+    await asyncio.sleep(SETTLE.get(name, 0.6))
+    d = await c.desk("screenshot", key)
+    return done + _desk_text(d), shot(d["png"], "整个屏幕的截图")
+
+
+def image_message(png: bytes, caption: str | None = None, coords: bool = True) -> dict:
+    caption = caption or getattr(png, "caption", "当前页面截图")
     w, h = int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")   # PNG 头里的宽高
     tail = "点击坐标按这个尺寸" if coords else "只用来看，不能按这张图的坐标点击"
     return {"role": "user", "content": [

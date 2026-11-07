@@ -31,9 +31,11 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - Watch it live and take over or hand back at any time; for captchas and logins, the Bot asks you to step in.
 - The computer is one of these three; the first two are free:
   - your own Chrome: the default in the desktop app, with a separate profile apart from your everyday one, no Docker needed;
+    on a Mac you can also turn on "use the whole computer" so Bots see the whole screen and use your mouse and keyboard in other apps;
   - a Linux desktop (Chromium and a terminal) in local Docker;
   - an [Instabox](https://instabox.sh) cloud machine.
 - With your own Chrome it is more careful: uploading files, writing files and clicking "send / publish / pay" all ask first, files stay inside the workspace folder, and the terminal is off by default.
+  Using the whole computer is off by default, each task asks before it starts, and the Bot stops as soon as you move the mouse or press a key.
 
 ## Apps, skills and templates
 

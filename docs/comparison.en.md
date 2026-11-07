@@ -7,7 +7,7 @@
 | | open-super-agent | OpenMausBot |
 |---|---|---|
 | Models | Any OpenAI-compatible API (DeepSeek, Kimi, Zhipu, Ollama, …), pay per token, daily spend visible | Mainly the `claude`, `codex` and `grok` CLIs on your machine, using subscriptions you already have; other endpoints through config |
-| Computer | One shared by all Bots, several tasks at once in their own windows; your Chrome, local Docker (both free) or an Instabox cloud machine; browser and terminal | One per Bot: a Boat cloud computer (paid after a trial), a local VM, or your own computer with whole-desktop control (macOS and Ubuntu Xorg) |
+| Computer | One shared by all Bots, several tasks at once in their own windows; your Chrome, local Docker (both free) or an Instabox cloud machine; browser and terminal, plus the whole desktop on a Mac | One per Bot: a Boat cloud computer (paid after a trial), a local VM, or your own computer with whole-desktop control (macOS and Ubuntu Xorg) |
 | Apps | One manifest file per app, connected with a login or token, including Feishu, DingTalk, WeCom and Tencent Docs; any MCP server too | 500+ apps through Composio (a third-party service with its own account); events in those apps can start a Bot; MCP too |
 | Where you use it | Web, the macOS desktop app, the iPhone app (TestFlight, not public yet), plus Telegram, Feishu, DingTalk, WeCom and Discord | Desktop apps (macOS, Windows, Ubuntu), web, the iPhone app (on the App Store), an Android app (APK) |
 | Phone notifications | Arrive while the app is closed and the phone locked, with the content on the lock screen; end-to-end encrypted through a relay that can't read them | Arrive while the app is open or briefly after it goes to the background; not once iOS suspends or closes it (their docs say this version doesn't do it) |
@@ -24,7 +24,7 @@ OpenMausBot is the better fit if you:
 - need Windows or Linux desktop apps, an Android app, or an iPhone app you can install from the App Store today;
 - want voice conversations: spoken replies and calls with your Bots;
 - want to use an existing Claude, ChatGPT or Grok subscription instead of paying per token;
-- want Bots to control your whole desktop, or each Bot to have its own computer;
+- want Bots to control the whole desktop on Windows or Ubuntu, or each Bot to have its own computer;
 - want to direct Bots from Claude Desktop, Cursor or scripts;
 - want 500+ apps through Composio, or Bots that start when a new email or message arrives in an app.
 

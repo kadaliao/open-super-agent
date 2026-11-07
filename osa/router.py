@@ -3,6 +3,7 @@
 一个 Bot 一个 Router，既在私聊里说话，也在它所在的群聊里说话；每一轮都明确是在哪个对话里。"""
 import asyncio
 import json
+import re
 import time
 import openai
 from .computer import tools as ctools
@@ -190,6 +191,9 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
 ]
 
 
+# 关掉工具时 DeepSeek 偶尔把想调的工具写成正文（<｜DSML｜…> 标记），不给用户看
+TOOL_LEAK = re.compile(r"<[｜|]+DSML[｜|]+.*", re.S)
+
 TASKS: dict[int, Task] = {}       # 所有 Bot 的任务，Watchdog 统一巡检
 RUNTIMES: dict[int, "Router"] = {}
 notify = None                     # 由 server 设置：async (event) -> None
@@ -288,10 +292,18 @@ class Router:
                     await dm.answer(self.bot_id, owed, shown or i18n.t("（没有回复内容）"), chat_id)
             finally:
                 self.turn = {}
+                await self._release_desk()
+
+    async def _release_desk(self):
+        """这一轮说完了：对话里直接操作屏幕占着的话让出来，排队的任务不用等（同意过的一会儿之内不用再问）。"""
+        from . import computer
+        c = computer._computers.get(computer.SHARED)
+        if c is not None and c.backend == "host":
+            await c.desk_release(f"chat-{self.bot_id}")
 
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
-        tools = ROUTER_TOOLS + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
+        tools = ROUTER_TOOLS + ctools.desk_schemas() + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
             ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + ([newbot.CREATE_BOT] if self.bot["is_primary"] else [])
         cid = self.chat["id"]
         def create():
@@ -417,14 +429,16 @@ class Router:
                     msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out})
                 if shots:   # 图片要放在所有 tool 消息之后；只在本轮用，不存进记录
                     png, whole = shots[-1]
-                    msgs.append(ctools.image_message(png, "电脑的整个屏幕" if whole else "当前页面截图", coords=not whole))
+                    msgs.append(ctools.image_message(png, "电脑的整个屏幕" if whole else None, coords=not whole))
                     shots = []
                 if shown and not shown.endswith("\n"):
                     shown += "\n\n"
                     await self.emit({"type": "stream", "sid": sid, "delta": "\n\n"}, cid)
             if not shown.strip():   # 工具轮数用完还没开口：关掉工具，逼它给一句回复
+                msgs.append({"role": "user", "content": "（系统：这一轮能调用工具的次数用完了。现在不要再调用任何工具，"
+                             "直接用文字告诉用户做到哪一步了；没做完的，告诉用户下一条消息里你会派任务接着做。）"})
                 content, reasoning, _ = await self._stream(client, model, msgs, sid, started, use_tools=False)
-                shown, thinking = content, thinking + reasoning
+                shown, thinking = TOOL_LEAK.sub("", content), thinking + reasoning
         finally:
             await self.emit({"type": "stream_end", "sid": sid}, cid)
         await self.add("assistant", shown.strip(), cid, reasoning=reasoning, thinking=thinking,
@@ -552,7 +566,7 @@ class Router:
             return await newbot.create(self.bot, self.chat["id"], self.chat_id, args, self.add, self.emit)
         if name == "look_at_screen":
             return await self._look()
-        if name in DIRECT_PC:
+        if name in DIRECT_PC or name in ctools.DESKTOP:
             return await self._direct(name, args)
         return "未知工具"
 
@@ -580,7 +594,7 @@ class Router:
             return f"电脑正在{c.exclusive_label}，先别操作。"
         if c.controller == "human":
             return "用户正在接手电脑，先别操作。"
-        if (await c.status())["state"] != "running":
+        if name not in ctools.DESKTOP and (await c.status())["state"] != "running":   # 整个屏幕不用开 Chrome
             await c.start()
         # 本机电脑点“发送 / 发布”这类按钮前会弹确认卡片（ctools._confirm），卡片要用到这些
         fake = SimpleNamespace(id=f"对话·{self.bot['name']}", bot_id=self.bot_id, chat_id=self.chat_id,

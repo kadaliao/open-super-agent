@@ -1025,11 +1025,12 @@ async def pc_status(bot_id: int):
 
 
 @app.get("/api/bots/{bot_id}/computer/shot")
-async def pc_shot(bot_id: int):
-    """本机电脑的画面：Bot 正在用的那个窗口的截图，网页上每隔一两秒取一次（没有 VNC）。"""
+async def pc_shot(bot_id: int, view: str = ""):
+    """本机电脑的画面：Bot 正在用的那个窗口的截图，网页上每隔一两秒取一次（没有 VNC）。
+    打开了“操作整台电脑”时 view 选 screen（整个屏幕）/ chrome，不给就跟着 Bot 最近一次操作的走。"""
     c = _pc(bot_id)
     try:
-        data = await c.peek("jpeg")
+        data = await c.peek("jpeg", view)
     except computer.ComputerError as e:
         raise HTTPException(409, str(e))
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
@@ -1060,13 +1061,15 @@ async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
         elif action == "pause":
             await c.pause()
         elif action == "takeover":
-            await c.start()
+            desk = c.backend == "host" and c.desk_busy()   # Bot 在用整个屏幕：接手就是让它停下，不用开 Chrome
+            if not desk:
+                await c.start()
             # 从“请你帮忙”卡片接手：先把请你帮忙的那个任务（Heavy 里是那个研究员）的窗口放到最前面
             tid = (data or {}).get("task_id")
             key = c.asking.get(tid) or next((k for k, u in c.users.items() if tid and u.get("task_id") == tid), None)
             if key in c.users and c.users[key].get("window"):
                 await c.front(key)
-            elif c.backend == "host":   # 浏览器窗口就在你屏幕上：放到最前面，接手就是直接在里面操作
+            elif c.backend == "host" and not desk:   # 浏览器窗口就在你屏幕上：放到最前面，接手就是直接在里面操作
                 await c.show()
             c.takeover()
         elif action == "show" and c.backend == "host":
@@ -1078,6 +1081,19 @@ async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
     except computer.ComputerError as e:
         _err(e)
     state = await _pc_state(bot_id)
+    await broadcast({"type": "computer", "computer": state})
+    return state
+
+
+@app.post("/api/computer/desktop/grant")
+async def pc_desktop_grant():
+    """“操作整台电脑”还差 macOS 权限：弹系统的授权提示，打开系统设置里对应的页面。"""
+    from .computer import macdesk
+    c = computer.get()
+    if c.backend != "host" or not macdesk.supported() or not security.local_exec():
+        raise HTTPException(400, i18n.t("只有在 Mac 上用本机电脑时才能操作整台电脑"))
+    await asyncio.to_thread(macdesk.request_permissions)
+    state = await computer.public_state()
     await broadcast({"type": "computer", "computer": state})
     return state
 
@@ -1442,7 +1458,7 @@ async def put_settings(data: dict = Body(...)):
         _err(e)
     if "computer_parallel" in data:   # 并行数改大了，排队的任务马上能开始
         await computer.get().recheck()
-    if {"computer_parallel", "computer_backend", "computer_host_shell"} & data.keys():
+    if {"computer_parallel", "computer_backend", "computer_host_shell", "computer_host_desktop"} & data.keys():
         await broadcast({"type": "computer", "computer": await computer.public_state()})
     return out
 

@@ -23,6 +23,7 @@ conn.commit()
 
 _ids = itertools.count(1)
 pending: dict[int, dict] = {}
+last_done = 0.0        # 最近一次确认结束的时间：之前那一下点击是你在点卡片，不算你在用电脑（computer/host.py）
 notify = None          # 由 server 设置：async (event) -> None
 
 DEFAULT_WORDS = ["create", "update", "delete", "remove", "archive", "append", "patch", "post", "write",
@@ -76,7 +77,8 @@ def delete_rule(rid: int):
     conn.commit()
 
 
-PC_ASK = {"browser_upload", "computer_write_file", "browser_submit"}   # 本机电脑默认先问的电脑工具
+# 本机电脑默认先问的电脑工具。desktop：任务第一次用整个屏幕（真实的鼠标键盘）；desktop_submit：在屏幕上点“发送 / 付款”这类按钮、在输入框里按回车
+PC_ASK = {"browser_upload", "computer_write_file", "browser_submit", "desktop", "desktop_submit"}
 PC_TOOLS = PC_ASK | {"computer_shell"}
 ASK = {"generate_image"}   # 默认每次都问的（画图要花钱）；点“总是允许”后不再问
 
@@ -103,6 +105,7 @@ def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
 # ---------- 确认请求 ----------
 async def request(task, tool: str, args: dict, kind: str = "approval", once: bool = False) -> tuple[bool, str]:
     """创建确认请求并等待用户决定。返回 (是否允许, 用户附言)。once：只能一次一次地允许（卡片上没有“总是允许”）。"""
+    global last_done
     aid = next(_ids)
     fut = asyncio.get_running_loop().create_future()
     background = bool(getattr(task, "background", False))
@@ -125,6 +128,7 @@ async def request(task, tool: str, args: dict, kind: str = "approval", once: boo
         if notify:
             await notify({"type": "approval", "id": aid, "status": "expired", "chat_id": chat_id})
     finally:
+        last_done = time.time()
         pending.pop(aid, None)
         task.waiting_approval = None
         task.last_progress = time.time()

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
 import { api, useStore, setComputer, setSettings, setTeachDraft } from '../store'
-import type { ComputerState, Settings, Teach } from '../types'
+import type { ComputerState, DesktopState, Settings, Teach } from '../types'
 import { lang, t } from '../i18n'
 import BotAvatar from './BotAvatar'
 import { ask, notice } from './Dialog'
@@ -99,8 +99,40 @@ function HostShell({ on }: { on: boolean }) {
   )
 }
 
-/** 本机电脑的画面：没有 VNC，每隔一会儿取一张 Bot 正在用的窗口的截图（手机上也能看）。窗口本身就在这台电脑的屏幕上。 */
-export function HostView({ botId }: { botId: number }) {
+/** 本机电脑的“操作整台电脑”（只有 Mac）：默认关；打开后 Bot 能看整个屏幕、用你的鼠标键盘操作别的 App。还差 macOS 权限时给按钮去打开。 */
+function HostDesktop({ d }: { d: DesktopState }) {
+  const [busy, setBusy] = useState(false)
+  const save = async (v: boolean) => {
+    if (v && !(await ask(t('让 Bot 能像你一样用这台电脑？它能看整个屏幕，用你的鼠标键盘打开任何 App、点击、打字（包括终端和系统设置）。每个任务第一次用会先问你；Bot 操作时你动一下鼠标或键盘，它就会停下等你交还。'), { ok: t('打开') }))) return
+    try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_host_desktop: v } })) }
+    catch (e: any) { notice(e.message) }
+  }
+  const grant = async () => {
+    setBusy(true)
+    try { setComputer(await api<ComputerState>('/api/computer/desktop/grant', { method: 'POST' })) } catch (e: any) { notice(e.message) }
+    setBusy(false)
+  }
+  const missing = [!d.accessibility && t('辅助功能'), !d.screen && t('屏幕录制')].filter(Boolean)
+  return (
+    <div className="pc-desk">
+      <label className="pc-shell muted small">
+        <input type="checkbox" checked={!!d.on} onChange={e => save(e.target.checked)} />
+        {t('允许 Bot 操作整台电脑（看屏幕、用鼠标键盘操作其他 App）')}
+      </label>
+      {d.on && !!missing.length && <div className="pc-desk-perm small">
+        <span>{t('还差 macOS 权限：{what}', { what: missing.join(SEP) })}</span>
+        <button className="btn" disabled={busy} onClick={grant}>{t('去打开权限')}</button>
+        <span className="muted">{t('在系统设置里打开 Open Super Agent 的开关；打开后还显示没有，就退出 App 再打开。')}</span>
+      </div>}
+      {d.on && !missing.length && d.problem && <div className="muted small">{d.problem}</div>}
+      {d.on && !missing.length && !d.problem && <div className="muted small">{d.owner ? t('{who} 正在用屏幕，你动一下鼠标或键盘它就停下', { who: d.owner }) : t('Bot 操作屏幕时，你动一下鼠标或键盘它就停下')}</div>}
+    </div>
+  )
+}
+
+/** 本机电脑的画面：没有 VNC，每隔一会儿取一张 Bot 正在用的窗口的截图（手机上也能看）。窗口本身就在这台电脑的屏幕上。
+ *  打开了“操作整台电脑”时 view 选整个屏幕还是 Bot 的 Chrome，空的是跟着 Bot 最近一次操作的走。 */
+export function HostView({ botId, view = '' }: { botId: number; view?: string }) {
   const [src, setSrc] = useState('')
   const [err, setErr] = useState('')
   useEffect(() => {
@@ -109,7 +141,7 @@ export function HostView({ botId }: { botId: number }) {
       if (busy || document.hidden) return
       busy = true
       try {
-        const r = await fetch(`/api/bots/${botId}/computer/shot`, { cache: 'no-store' })
+        const r = await fetch(`/api/bots/${botId}/computer/shot${view ? `?view=${view}` : ''}`, { cache: 'no-store' })
         if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || r.statusText)
         const next = URL.createObjectURL(await r.blob())
         if (stop) { URL.revokeObjectURL(next); return }
@@ -122,7 +154,7 @@ export function HostView({ botId }: { botId: number }) {
     tick()
     const i = setInterval(tick, 1500)
     return () => { stop = true; clearInterval(i); if (url) URL.revokeObjectURL(url) }
-  }, [botId])
+  }, [botId, view])
   return (
     <div className="pc-view">
       {src && <img className="pc-shot" src={src} alt="" />}
@@ -237,6 +269,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
   const [big, setBig] = useState(false)
+  const [look, setLook] = useState('')   // 本机电脑：看整个屏幕（screen）还是 Bot 的 Chrome（chrome），空的是跟着 Bot 走
   useEffect(() => { if (teach) setBig(true) }, [teach?.started])   // 开始录制就放大画面
 
   useEffect(() => { api<ComputerState>(`/api/bots/${botId}/computer`).then(setComputer).catch(() => {}) }, [botId])
@@ -258,20 +291,28 @@ export function ComputerPanel({ botId }: { botId: number }) {
   }, [botId])
 
   if (!st) return <div className="muted small">{t('读取电脑状态…')}</div>
-  const running = st.state === 'running'
-  const human = st.controller === 'human'
   const host = st.backend === 'host'
-  const view = host ? <HostView botId={botId} /> : <ComputerView botId={botId} interactive={human} />
+  const desk = host && !!st.desktop?.on && !!st.desktop.screen   // 能看整个屏幕：Chrome 没开也有画面
+  const running = st.state === 'running' || desk
+  const human = st.controller === 'human'
+  const view = host ? <HostView botId={botId} view={desk ? look : 'chrome'} /> : <ComputerView botId={botId} interactive={human} />
+  const looks = desk && st.state === 'running' && (
+    <div className="seg pc-look">
+      {[['', t('跟着 Bot')], ['screen', t('整个屏幕')], ['chrome', 'Chrome']].map(([v, label]) =>
+        <button key={v} className={look === v ? 'on' : ''} onClick={() => setLook(v)}>{label}</button>)}
+    </div>
+  )
   return (
     <div className="pc-panel">
       <div className="pc-bar">
-        <span className={'pc-dot ' + st.state} />
-        <span>{STATE[st.state] || st.state}</span>
+        <span className={'pc-dot ' + (desk ? 'running' : st.state)} />
+        <span>{desk && st.state !== 'running' ? t('Chrome 没开，能看整个屏幕') : STATE[st.state] || st.state}</span>
         <BackendPicker st={st} />
         <span className="grow" />
-        {running && host && <button className="ghost-btn" disabled={!!busy} onClick={() => act('show')} title={t('把 Bot 的 Chrome 窗口放到屏幕最前面')}>{t('显示窗口')}</button>}
+        {st.state === 'running' && host && <button className="ghost-btn" disabled={!!busy} onClick={() => act('show')} title={t('把 Bot 的 Chrome 窗口放到屏幕最前面')}>{t('显示窗口')}</button>}
         {running && <button className="ghost-btn" onClick={() => setBig(true)} title={t('放大')}>⤢ {t('放大')}</button>}
       </div>
+      {looks}
       {running && <Users st={st} />}
       {running ? view : (
         <div className="pc-empty">
@@ -289,17 +330,19 @@ export function ComputerPanel({ botId }: { botId: number }) {
       {running && !teach && (
         <div className="pc-actions">
           {human ? <>
-            <span className="pc-you">{host ? t('Bot 已暂停，你直接在 Chrome 窗口里操作') : t('你正在操作')}</span>
+            <span className="pc-you">{st.desktop?.paused_by === 'input' ? t('你动了鼠标或键盘，Bot 先停下了。用完点交还，它接着做') : desk ? t('Bot 已暂停，你直接用电脑') : host ? t('Bot 已暂停，你直接在 Chrome 窗口里操作') : t('你正在操作')}</span>
             <button className="btn primary" onClick={() => act('handback')}>{t('交还给 Bot')}</button>
           </> : <>
             <span className="muted small">{task?.last_action ? t('Bot：{action}', { action: task.last_action }) : host ? t('Bot 控制中') : t('Bot 控制中（你只能看）')}</span>
             <span className="grow" />
             <button className="btn" onClick={() => { act('takeover'); if (!host) setBig(true) }}>{t('接手')}</button>
-            <button className="btn" disabled={!!busy} onClick={() => act('pause')}>{host ? t('关闭 Chrome') : t('暂停')}</button>
+            {(!host || st.state === 'running') && <button className="btn" disabled={!!busy} onClick={() => act('pause')}>{host ? t('关闭 Chrome') : t('暂停')}</button>}
           </>}
         </div>
       )}
+      {host && st.state !== 'running' && desk && <button className="btn" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? t('启动中…（首次需要一会儿）') : t('打开 Chrome')}</button>}
       {host && <HostShell on={!!st.shell} />}
+      {host && st.desktop?.supported && <HostDesktop d={st.desktop} />}
       {err && <div className="error-line">{err}</div>}
       {big && running && (
         <div className="modal-bg" onMouseDown={() => setBig(false)}>
@@ -312,6 +355,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
               <button className="icon-btn" onClick={() => setBig(false)}>✕</button>
             </div>
             {teach && <TeachBar teach={teach} />}
+            {looks}
             <Users st={st} />
             {view}
             {human && touch && <TypeBar botId={botId} />}

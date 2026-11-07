@@ -127,3 +127,4 @@ computer:
   instabox_machine: ""            # 用已有的 Instabox 机器 id（免费版只能有一台，比如 m_xxx）；留空则自动创建
   chrome_path: ""            # host 用的浏览器；留空按常见位置找 Chrome（Chromium、Edge、Brave 也行）
   host_shell: false          # host 的终端：默认关，打开后 Bot 每条命令都要你确认（电脑面板里也能开关）
+  host_desktop: false        # host 的“操作整台电脑”（只有 macOS）：默认关，打开后 Bot 能看整个屏幕、用你的鼠标键盘操作别的 App（电脑面板里也能开关）
