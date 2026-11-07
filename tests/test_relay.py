@@ -237,3 +237,9 @@ async def test_health(fake):
     async with client() as c:
         r = await c.get("/healthz")
     assert r.json()["ok"] and r.json()["apns"]
+
+
+async def test_missing_apns_key_is_a_clean_error(fake, phone, monkeypatch):
+    monkeypatch.setattr(relay, "KEY_FILE", "/nonexistent/AuthKey.p8")
+    out, = await push.send("t", "b")
+    assert "502" in out and "not configured" in out and push.count() == 1

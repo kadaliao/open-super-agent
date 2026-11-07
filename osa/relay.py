@@ -178,8 +178,11 @@ class Apns:
         """返回 (状态码, 苹果给的原因)。"""
         for attempt in range(2):
             try:
-                r = await self.client().post(f"{APNS_HOSTS[env]}/3/device/{device}", content=payload, headers={
-                    **headers, "authorization": f"bearer {self.token(fresh=attempt > 0)}"})
+                auth = f"bearer {self.token(fresh=attempt > 0)}"
+            except (OSError, ValueError):   # 推送密钥没配好
+                return 502, "apns key not configured"
+            try:
+                r = await self.client().post(f"{APNS_HOSTS[env]}/3/device/{device}", content=payload, headers={**headers, "authorization": auth})
             except httpx.HTTPError as e:
                 return 502, type(e).__name__
             reason = ""
