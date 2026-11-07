@@ -263,7 +263,7 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 | 上传文件 | 每个 20 MB，存到电脑的工作文件夹（Docker / Instabox 是 `/data/workspace`，本机 Chrome 是 `data/workspace`；附件在 `uploads/` 下） |
 | 对话里的图片 | 浏览器先缩到最长边 1600 像素，每张最多 10 MB，存在数据库里；没有消息引用的一天后清掉。对话模型能看图时带上最近 4 张（PNG / JPEG / WebP） |
 | `send_file` | 一轮对话、一个任务最多发 5 个文件；10 MB 以内的图片另存一份直接显示 |
-| 链接卡片 | 单独一段的链接展开成卡片或播放器，一条消息最多 3 个。网页卡片由服务器去抓（8 秒、最多 512 KB），缓存 7 天，抓不到的过 1 小时再试；和 `fetch_url` 一样不抓本机和内网地址（`tools.fetch_private` 也管它）。YouTube、X 要浏览器能访问才显示 |
+| 链接卡片 | 单独一段的链接展开成卡片或播放器，一条消息最多 3 个。网页卡片由服务器去抓（8 秒、最多 512 KB），缓存 7 天，抓不到的过 1 小时再试；和 `fetch_url` 一样不抓本机和内网地址（`tools.fetch_private` 也管它）。YouTube、X 要浏览器能访问才显示；B 站会拦一些机房的 IP，服务器访问不了 B 站时只显示播放按钮、没有封面和标题，点了照样能播 |
 
 “从其他助手导入”用 `filter` 角色的模型把粘贴的内容拆成条目，费用记在这个角色下。
 
