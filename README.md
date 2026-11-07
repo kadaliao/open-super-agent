@@ -38,6 +38,7 @@ Grok Bot 的体验很好，但价格高，模型也换不了。open-super-agent 
 - 📚 **资料库**：Bot 做好的报告和网页存成页面，可以置顶、生成分享链接；共用电脑里的文件可以浏览、上传、下载。聊天时也能直接发附件。
 - ⏰ **定时任务**：每个 Bot 自己的定时任务（每天 / 每周几定时、每隔一段时间、webhook），支持暂停、恢复、测试，保留最近 20 次运行记录。在对话里说“每天 9 点帮我……”就能建。webhook 事件先过关键词过滤，再交给便宜的模型判断要不要处理。
 - 💬 **聊天软件**：在 Telegram、飞书、钉钉、企业微信、Discord 里直接和 Bot 说话，和网页上是同一个对话；要你确认的操作变成消息里的按钮，发文件、发语音（钉钉、企业微信）也行。服务器不需要公网地址，[几步就能连上](docs/channels.md)。
+- 💻 **桌面 App（macOS 预览）**：安装包约 42 MB，自带运行环境，不用装 Docker 和 Python；Bot 直接用你电脑上的 Chrome。关掉窗口后在菜单栏接着跑，要你确认的操作、做完的任务发系统通知；也能当客户端连到你的服务器。
 - 📱 **手机**：能添加到主屏幕当应用用；有语音输入；不开着页面时，需要你确认的事、做完的任务会推送到手机。手机上也能看屏幕、接手电脑打字、处理确认。
 - 💰 **费用透明**：按角色、任务和天统计 token 和金额，有每日预算；Watchdog 会自动取消卡住、死循环或超预算的任务。
 - 📦 **备份与迁移**：全部数据（连同密钥）导出成一个加密文件，换机器、从本机搬到服务器时上传就能接着用；服务器上也能用命令行定时备份。
@@ -46,17 +47,34 @@ Grok Bot 的体验很好，但价格高，模型也换不了。open-super-agent 
 
 ## 适合谁
 
-- **放在服务器上一直开着**：一条 `docker compose up` 就能跑在 VPS 或家里的机器上，在网页、手机和聊天软件里随时用。聊天软件走长连接，服务器不需要公网地址。
-- **用 API 按 token 付费，模型随便换**：DeepSeek、Kimi、智谱、阿里云百炼，或者本机的 Ollama 都行，对话和后台任务可以用不同的模型。每天花了多少钱看得到，可以设每日预算。
-- **在国内用**：飞书、钉钉、企业微信、腾讯文档、flomo、滴答清单这些国内的应用和聊天软件都接好了，默认的配置不需要任何国外的付费服务。
-- **几个 Bot 共用一台电脑**：在电脑上登录一次，所有 Bot 都能用这个登录状态。
-- **默认先问再做**：写操作先弹卡片等你确认；密钥加密存在保险库里，不进聊天记录。
+- **装上就能用**：macOS 桌面 App 只有 42 MB 左右，自带运行环境，不用装 Docker、Python，也不用先装哪个 AI 命令行工具；Bot 直接用你电脑上的 Chrome。想一直开着，就一条 `docker compose up` 放到 VPS 或家里的机器上，在网页、手机、聊天软件里随时用，桌面 App 也能连过去。
+- **模型随便换，花多少看得到**：DeepSeek、Kimi、智谱、阿里云百炼、硅基流动、OpenRouter、本机的 Ollama，任何兼容 OpenAI 的接口在设置里填 Key、点一下测试就能用；对话和后台任务可以用不同的模型。按角色、任务、天统计 token 和金额，有每日预算，超了 Watchdog 自动停。
+- **在国内用**：在飞书、钉钉、企业微信里直接和 Bot 说话（Telegram、Discord 也行），要你确认的操作变成消息里的按钮；腾讯文档、flomo、滴答清单、QQ 邮箱这些应用登录或填 token 就能接，不经过第三方中转。中英文界面，默认配置不需要任何国外的付费服务。
+- **一台电脑大家一起用，任务不排队**：所有 Bot 共用一台电脑，在上面登录一次网站，大家都能用；几个任务同时做，各自一个浏览器窗口。网页按元素直接控制，读页面文字、点编号，比看截图估坐标更快、更准、更省 token。电脑可以是你自己的 Chrome（单独的配置目录）、本地 Docker 里的 Linux 桌面，或者 Instabox 云电脑，前两种不花钱。
+- **默认先问再做**：写操作先弹卡片（允许一次 / 拒绝 / 总是允许），规则在设置里管。用你自己的 Chrome 时，上传文件、写文件、点“发送 / 发布 / 付款”也先问，文件只能放在工作文件夹里。密钥加密存在保险库里，不进聊天记录。
+- **像一个团队一样干活**：群聊里 Bot 之间交接工作，也能私信别的 Bot 帮忙；Heavy 模式几个 Worker 各做一遍再互审汇总；“演示一遍”把你的操作整理成技能；做好的报告存进资料库、生成分享链接；全部数据能打包成一个加密文件搬到别的机器。
 
-[OpenMausBot](https://github.com/milind-soni/OpenMausBot) 也是开源的 Grok Bot 替代品，做法不太一样：它主打桌面 App（macOS、Windows、Ubuntu），Bot 跑在你本机的 `claude`、`codex`、`grok` 命令行上，用你已有的 Claude、ChatGPT 订阅；每个 Bot 各有一台电脑（云电脑、本地虚拟机，或者借用你自己的电脑），应用通过 Composio 接入。想用桌面 App、想用现成的订阅、想让 Bot 直接操作你自己的电脑，选它更合适。
+### 和 OpenMausBot 比
+
+[OpenMausBot](https://github.com/milind-soni/OpenMausBot) 也是开源的 Grok Bot 替代品，两边的取舍不一样：
+
+| | open-super-agent | OpenMausBot |
+|---|---|---|
+| 模型 | 任何兼容 OpenAI 的接口（DeepSeek、Kimi、智谱、Ollama……），按 token 付费，每天花多少看得到 | 主要跑在本机的 `claude`、`codex`、`grok` 命令行上，用你已有的订阅；其他接口改配置接入 |
+| 电脑 | 所有 Bot 共用一台，几个任务各开一个窗口同时做；用你的 Chrome、本地 Docker（都免费）或 Instabox 云电脑；操作浏览器和终端 | 每个 Bot 一台：Boat 云电脑（试用后付费）、本地虚拟机，或者你的电脑（能控制整个桌面，支持 macOS 和 Ubuntu Xorg） |
+| 应用 | 每个应用一份清单文件，登录或填 token 直接连，包括飞书、钉钉、企业微信、腾讯文档等国内应用；也能接任意 MCP | 经 Composio 接 500 多个应用（第三方服务，要它的账号）；也能接 MCP |
+| 在哪用 | 网页、手机（添加到主屏幕、推送）、macOS 桌面 App，以及 Telegram、飞书、钉钉、企业微信、Discord | 桌面 App、网页、iOS / Android App |
+| 部署 | `docker compose up` 放到服务器上；macOS 桌面 App（预览） | 桌面 App（macOS、Windows、Ubuntu）；`npx openmausbot serve` 或 Docker 放到服务器上 |
+| 安装包 | 42–48 MB（自带 Python 运行环境） | 250–316 MB |
+| 密钥 | 加密存在保险库里 | 明文存在 `config.json` 里（文件权限 0600） |
+
+想要 Windows / Linux 桌面 App、原生手机 App、语音对话，想用现成的 Claude、ChatGPT 订阅而不是按 token 付费，或者想让 Bot 控制你的整个桌面，选 OpenMausBot 更合适。（对比依据两边 2026-11-07 的 README 和发布页。）
 
 ## 快速开始
 
-用 Docker Compose，只需要装 Docker：
+在 Mac 上最快的办法是装**桌面 App**（预览版）：到 [发布页](https://github.com/kadaliao/open-super-agent/releases) 下载对应芯片的 dmg，打开后选“在这台电脑上运行”，说明见 [桌面 App](docs/desktop.md)。
+
+放到服务器上一直开着，用 Docker Compose，只需要装 Docker：
 
 ```bash
 git clone https://github.com/kadaliao/open-super-agent.git && cd open-super-agent
@@ -110,8 +128,8 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 和 Grok Bot 对齐的功能已经全部做完（v0.3.0，见 [更新日志](CHANGELOG.md)）。接下来的方向：
 
 - **应用生态**：应用和 Bot 模板主要靠社区提 PR 收录，项目补齐清单格式和连接方式上缺的能力。
-- **更多客户端**：macOS / Windows 桌面端（菜单栏、快捷键、系统通知，还能把你自己的电脑借给 Bot 用）；iOS / Android 原生 App；在聊天软件的群里使用机器人。
-- **电脑**：“演示一遍”从浏览器扩展到整个桌面；快照与回滚。
+- **更多客户端**：macOS 桌面 App 正式版，然后是 Windows 版；iOS / Android 原生 App；在聊天软件的群里使用机器人。
+- **电脑**：让 Bot 控制整个桌面（不只是浏览器），“演示一遍”跟着扩展；服务器上的 Bot 借用你电脑上的浏览器；快照与回滚。
 - **Bot 能力**：语音对话。
 
 每个方向的考虑和先后顺序见 [docs/roadmap.md](docs/roadmap.md)。想要的功能欢迎提 issue。
