@@ -154,6 +154,8 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
             if op == "open" and not str(args.get("url", "")).startswith(("http://", "https://")):
                 return "只能打开 http / https 网址", None
             kw = {k: v for k, v in args.items() if v is not None}
+            if "key" in kw:   # browser_key 的按键名：key 这个名字 c.browser 自己要用（谁在操作）
+                kw["name"] = kw.pop("key")
             return page_text(await c.browser(op, key=key, **kw)), None
         if name == "computer_screenshot":
             return "这是浏览器里当前页面的截图。", await c.page_shot(key)

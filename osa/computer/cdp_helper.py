@@ -783,7 +783,7 @@ def run(a: dict) -> dict:
         if a.get("ref") is None:   # computer_type：只是在焦点处输入
             out = {"ok": True}
     elif op == "key":
-        key(ws, a["key"])
+        key(ws, a.get("name") or a.get("key") or "")
         settle(ws, 8)
     elif op == "upload":
         upload(ws, a["ref"], [str(f) for f in (a.get("files") or [])])
