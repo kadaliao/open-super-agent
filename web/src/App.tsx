@@ -9,6 +9,7 @@ import Settings from './components/Settings'
 import Onboarding from './components/Onboarding'
 import { BotPanel, NewBotDialog } from './components/BotEditor'
 import { GroupPanel, NewGroupDialog } from './components/Groups'
+import { ImageViewer } from './components/Media'
 
 export default function App() {
   const ready = useStore(s => s.ready)
@@ -129,6 +130,7 @@ export default function App() {
       {newGroup && <NewGroupDialog onClose={() => setNewGroup(false)} />}
       {settings !== false && <Settings initial={settings || undefined} onClose={() => setSettings(false)} />}
       {onboard && <Onboarding onClose={() => setOnboard(false)} />}
+      <ImageViewer />
     </div>
   )
 }

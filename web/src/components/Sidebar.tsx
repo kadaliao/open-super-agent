@@ -7,7 +7,7 @@ import BotAvatar from './BotAvatar'
 import { GroupFace } from './Chat'
 
 // 侧栏预览：去掉任务标记和 Markdown 符号
-const plain = (s: string) => s === '[新话题]' ? t('— 新话题 —') : s.replace(/^\[[^\]]+\]\s*/, '').replace(/[#*`>_~|]+/g, '').replace(/\s+/g, ' ').trim()   // i18n-ignore：存在消息里的标记
+const plain = (s: string) => s === '[新话题]' ? t('— 新话题 —') : s.replace(/\[附件\] ([^\n]+)/g, (_, p: string) => '📎 ' + p.split('/').pop()).replace(/!\[([^\]]*)\]\([^)]*\)/g, '🖼 $1').replace(/^\[[^\]]+\]\s*/, '').replace(/[#*`>_~|]+/g, '').replace(/\s+/g, ' ').trim()   // i18n-ignore：存在消息里的标记
 
 export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: { onNewBot: () => void; onNewGroup: () => void; onSettings: () => void; onClose: () => void }) {
   const chats = useStore(s => s.chats)

@@ -10,6 +10,8 @@ export type Chat = {
   pinned: number; updated: number; preview: string; lead: number | null
   image: string | null   // 群聊自己的头像图片；没有就用成员的头像拼
 }
+// 消息的附件（meta.attachments，见 osa/media.py）：path 是电脑里的文件，media 是存在服务端的图片（缩略图、给模型看）
+export type Attachment = { name: string; size?: number; path?: string; media?: string; mime?: string; w?: number; h?: number }
 export type Message = {
   id: number; ts: number; role: 'user' | 'assistant' | 'task'; content: string
   meta: Record<string, any>; bot_id: number | null

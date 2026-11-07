@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
-import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadSummary } from './types'
+import type { App, Approval, Attachment, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadSummary } from './types'
 import { notice } from './components/Dialog'
 import { desktop } from './desktop'
 
@@ -155,7 +155,7 @@ export async function openThread(chatId: number, rootId: number) {
 export const closeThread = () => set({ thread: null })
 const same = (chatId: number, rootId: number) => state.thread?.chat === chatId && state.thread.rootId === rootId
 
-export async function sendInThread(text: string) {
+export async function sendInThread(text: string, attachments: Attachment[] = []) {
   const th = state.thread
   if (!th) return
   let id = th.id
@@ -165,7 +165,7 @@ export async function sendInThread(text: string) {
     set(s => ({ messages: { ...s.messages, [r.id]: s.messages[r.id] || [] },
                 thread: same(th.chat, th.rootId) ? { ...s.thread!, id: r.id, root: r.root } : s.thread }))
   }
-  send(id, text)
+  send(id, text, attachments)
 }
 
 // 对话还没加载过就拉最近 60 条（不切换主区显示什么）
@@ -269,9 +269,10 @@ async function resync() {
   Object.keys(state.taskSteps).forEach(id => loadTask(Number(id)))   // 断线期间漏掉的过程
 }
 
-export function send(chatId: number, text: string) {
+// attachments：附件（图片的 media id、电脑里的路径），服务端在正文后面接上“[附件] 路径”
+export function send(chatId: number, text: string, attachments: Attachment[] = []) {
   set(s => ({ errors: { ...s.errors, [chatId]: undefined } }))
-  ws?.send(JSON.stringify({ type: 'send', chat_id: chatId, text }))
+  ws?.send(JSON.stringify({ type: 'send', chat_id: chatId, text, ...(attachments.length ? { attachments } : {}) }))
 }
 
 export function approve(id: number, ok: boolean, note = '', always = false) {

@@ -1036,5 +1036,10 @@
   "由你选的模型服务来画，按它的价格收费。": "Drawn by the provider you pick and billed at its price.",
   "不用图片，改回形状": "Remove image, use a shape",
   "修改群头像": "Change group avatar",
-  "不用图片，用成员的头像拼": "Remove image, use members' avatars"
+  "不用图片，用成员的头像拼": "Remove image, use members' avatars",
+  "「{name}」没存到电脑里（{error}）：Bot 能看到图，但不能用它处理文件": "“{name}” was not saved to the computer ({error}): the Bot can see the image but cannot work with the file",
+  "移除": "Remove",
+  "在新标签页打开": "Open in new tab",
+  "电脑里的文件": "File on the computer",
+  "打开（电脑没开会先开机）": "Open (starts the computer if it is off)"
 }

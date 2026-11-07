@@ -59,6 +59,15 @@ def finish_onboarding():
     conn.commit()
 
 
+def _info(provider: str, model: str) -> dict:
+    """单价和能力；能不能看图以设置里测出来的为准（见 media.can_see）。"""
+    from . import media
+    out = prices.lookup(provider, model)
+    if (seen := media.tested(provider, model)) is not None:
+        out["vision"] = seen
+    return out
+
+
 def public() -> dict:
     emb = CFG.get("embedding") or {}
     used = [(v["provider"], v["model"]) for v in CFG["roles"].values()]
@@ -75,7 +84,7 @@ def public() -> dict:
         "computer_backends": computer.available(),
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
-        "model_info": {f"{p}/{m}": prices.lookup(p, m) for p, m in used},
+        "model_info": {f"{p}/{m}": _info(p, m) for p, m in used},
         "prices": prices.info(),
         "problem": problem(),
         "language": i18n.lang(),

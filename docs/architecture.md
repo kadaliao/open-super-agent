@@ -56,6 +56,7 @@ osa/
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
   library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
   bots.py          Bot 和对话的增删改查、旧数据迁移
+  media.py         对话里的图片和附件：media 表、消息的 meta.attachments、给能看图的模型带上图片、send_file、清理没人用的
   avatars.py       头像图片：上传的和 AI 画的（兼容 OpenAI 的 /images/generations，硅基流动单独处理）、公开访问、清理没人用的
   settings.py      界面里改的设置（覆盖 config.yaml）
   i18n.py          界面语言：t() 按中文原文查 locales/en.json；python -m osa.i18n 检查前后端的翻译
@@ -98,7 +99,8 @@ web/src/
 |---|---|
 | `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者；讨论串（`kind=thread`）的 `parent` 是所在的对话，`root` 是被回复的那条消息；`pinned` 是置顶的时间（0 是没置顶），只决定侧栏上面那排，不影响列表按 `updated` 排；Bot 的 `avatar`（JSON）是形状、颜色，可以再带一张图片 `image`，群聊的图片在 `chats.image` |
 | `avatars` | 头像图片（256 像素的 PNG / JPEG / WebP），`id` 是内容哈希，`/avatars/<id>` 不登录也能看（分享页要用）；没人用的一天后清掉 |
-| `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等 |
+| `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等；`attachments` 是附件（见下面 `media`） |
+| `media` | 对话里的图片（PNG / JPEG / WebP / GIF，浏览器缩到 1600 像素左右），`id` 是内容哈希，带文件名、大小、宽高；`/api/media/<id>` 要登录。消息的 `meta.attachments` 引用它：`[{name, size, path?, media?, mime?, w?, h?}]`，`path` 是电脑里的文件。没人引用的一天后清掉 |
 | `llm_usage` | 每次模型调用的 token 数和费用 |
 | `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；只留最近 `memory.task_log_days` 天 |
 | `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
@@ -303,6 +305,17 @@ web/src/
 - 文件都在共用电脑的 `/data/workspace` 里，经 `exec` 读写，所以两个后端一样；路径一律先过 `library.norm`，跑出这个目录就拒绝。
   电脑没开时列目录不会自动开机，由用户点“开机查看”。
 - Heavy 模式下并行的几个 Worker 拿不到 `save_page`，免得每个都存一份页面。
+
+### 图片和附件
+- 你发的附件照旧传到电脑的 `uploads` 目录（任务靠路径处理），正文后面由服务端接上“[附件] 路径”（`media.with_marks`），这一行存进数据库、不翻译；
+  附件本身记在 `meta.attachments`，界面上有它就把那几行藏起来，显示缩略图和文件卡片。图片在浏览器里缩小后另存一份进 `media`：
+  显示不用开电脑，电脑在 Instabox 上时也不用远程取。聊天软件发来的图片原样存一份（`channels.inbound`）。
+- **对话模型能看图时 Bot 直接看**（`media.can_see`：设置里点“测试”测出来的为准，没测过按 models.dev）：`memory.context(images=4)`
+  把最近 4 张用户发的图片拼成 `image_url` 片段（和截图一样的格式），更早的只剩路径那一行；`with_state` 把这一轮的状态接在图片后面。
+  GIF 不给（很多模型不收）。不能看图时提示词和以前逐字一样（`ATTACH_BLIND`），附件照旧派任务处理。
+- Bot 发文件用 `send_file(path)`（Router 和任务都有，Heavy 的研究员没有）：图片存进 `media` 直接显示，其他文件是卡片，点开走 `/api/files/download`。
+  Router 发的挂在这一轮的回复下面，任务发的挂在任务结果下面。不让模型自己拼下载链接。
+- 聊天软件里先发链接（`/media/<id>`、`/files/download?path=`）：不是 `/api/` 开头，没登录会先跳去登录页。
 
 ### 模型接口（DeepSeek）
 - 思考模式下，如果请求带了工具，历史回复的 `reasoning_content` 必须原样传回，所以它存在消息的 `meta.reasoning` 里。

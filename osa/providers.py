@@ -356,6 +356,8 @@ async def test(provider: str, model: str, kind: str = "chat", role: str = "") ->
         if not seen:   # 请求没报错，但没认出颜色：可能是服务把图片丢掉了，参考 models.dev 的记录
             from . import prices
             seen = {False: "no", True: "unsure"}.get(prices.lookup(provider, model).get("vision"), "unsure")
+        from . import media
+        media.remember_test(provider, model, "yes" if seen is True else seen)   # 以后按测出来的判断要不要给它看图
         return {"ok": True, "vision": "yes" if seen is True else seen, "reply": reply[:80], "ms": ms()}
     except (openai.AuthenticationError, openai.PermissionDeniedError, openai.APIConnectionError, openai.RateLimitError) as e:
         return {"ok": False, "error": explain(e, base), "ms": ms()}
@@ -364,6 +366,8 @@ async def test(provider: str, model: str, kind: str = "chat", role: str = "") ->
     try:
         t0 = time.time()
         reply = await ask("回复“好”这一个字。")
+        from . import media
+        media.remember_test(provider, model, "no")
         return {"ok": True, "vision": "no", "vision_error": img_err, "reply": reply[:80], "ms": ms()}
     except Exception as e:
         return {"ok": False, "error": explain(e, base), "ms": ms()}

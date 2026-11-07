@@ -523,5 +523,8 @@
   "{model} 不是画图的模型": "{model} is not an image model",
   "画图服务没有返回图片": "The image service didn't return an image",
   "画图失败：{e}": "Couldn't generate the image: {e}",
-  "头像图片不存在，重新上传一次": "The avatar image is missing. Please upload it again"
+  "头像图片不存在，重新上传一次": "The avatar image is missing. Please upload it again",
+  "图片太大了（最多 {n} MB）": "Image too large (max {n} MB)",
+  "只支持 PNG、JPG、WebP、GIF 图片": "Only PNG, JPG, WebP and GIF images are supported",
+  "发文件：{path}": "Send file: {path}"
 }

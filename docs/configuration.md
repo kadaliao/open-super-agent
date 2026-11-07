@@ -246,6 +246,8 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 | 做过的事 | 每个 Bot 保留最近 20 条，提示词里带最近 10 条 |
 | 页面 | 共 1000 个，每个 50 万字 |
 | 上传文件 | 每个 20 MB，存到电脑的工作文件夹（Docker / Instabox 是 `/data/workspace`，本机 Chrome 是 `data/workspace`；附件在 `uploads/` 下） |
+| 对话里的图片 | 浏览器先缩到最长边 1600 像素，每张最多 10 MB，存在数据库里；没有消息引用的一天后清掉。对话模型能看图时带上最近 4 张（PNG / JPEG / WebP） |
+| `send_file` | 一轮对话、一个任务最多发 5 个文件；10 MB 以内的图片另存一份直接显示 |
 
 “从其他助手导入”用 `filter` 角色的模型把粘贴的内容拆成条目，费用记在这个角色下。
 

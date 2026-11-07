@@ -6,7 +6,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, dm, i18n, library, memories, memory, providers, routines, search, skills, tasklog
+from . import approvals, bots, dm, i18n, library, media, memories, memory, providers, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -23,7 +23,8 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
   对你工作的要求和偏好只记在你自己这里。新信息和旧记忆冲突时用 replace_id 改那一条；用户让你忘掉就 forget。
 - 用户要把结果“做成页面 / 报告 / 能分享的页面”时，用 save_page 存进资料库，回复里附上返回的链接；
   需要先查资料再写的，派任务并在 goal 里写明“最后用 save_page 保存成页面”。
-- 消息里的“[附件] 路径”是用户上传到电脑里的文件；要读或处理它就派任务，goal 里写上完整路径。
+{attach_rule}
+- 要把电脑里的文件（截图、画好的图、做好的表格和文档）交给用户时用 send_file，图片会直接显示在对话里；不要自己拼下载链接。
 - 用户要求定期 / 每天 / 每隔一段时间做某事，或收到外部事件时做某事，用 create_routine 建定时任务；
   建好后告诉用户什么时候运行、可以在右栏“定时”里暂停或修改。
 - 用户问进度用 list_tasks；要取消用 cancel_task；需要早先对话原文用 recall。
@@ -59,6 +60,11 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 
 你的长期记忆（每次对话都带着，按这些偏好做事；#后面是编号）：
 {memories}{group}"""
+
+# 附件怎么处理：对话模型能看图时，用户发的图片直接附在消息里（memory.context 的 images）
+ATTACH_BLIND = "- 消息里的“[附件] 路径”是用户上传到电脑里的文件；要读或处理它就派任务，goal 里写上完整路径。"
+ATTACH_SEE = ("- 消息里的“[附件] 路径”是用户上传到电脑里的文件。用户发的图片会直接附在消息里给你看（只带最近几张，更早的只剩路径）："
+              "看图就能回答的直接回答，不用派任务；要处理文件（读文档、改图、转格式、传到网页上）才派任务，goal 里写上完整路径。")
 
 # 每轮都会变的内容（任务、待确认、相关记忆、这一轮的来由）不放进系统提示词，附在最新一条消息后面：
 # 系统提示词和之前的对话逐字不变，才能一直命中模型服务的缓存（命中的部分便宜得多）
@@ -150,6 +156,7 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
     library.SAVE_PAGE,
     library.READ_PAGE,
+    media.SEND_FILE,
     search.SEARCH_TOOL,
     {"type": "function", "function": {"name": "list_tasks", "description": "查看任务状态",
         "parameters": {"type": "object", "properties": {}}}},
@@ -186,6 +193,8 @@ def with_state(history: list[dict], state: str) -> list[dict]:
     有的模型（比如 Qwen 的对话模板）不接受出现在对话中间的 system，有的不接受连着两条 user。"""
     if history and history[-1]["role"] == "user" and isinstance(history[-1].get("content"), str):
         return history[:-1] + [{**history[-1], "content": history[-1]["content"] + state}]
+    if history and history[-1]["role"] == "user" and isinstance(history[-1].get("content"), list):   # 带图片的消息：接一段文字
+        return history[:-1] + [{**history[-1], "content": history[-1]["content"] + [{"type": "text", "text": state.lstrip()}]}]
     return history + [{"role": "user", "content": state.lstrip()}]
 
 
@@ -236,10 +245,11 @@ class Router:
     def _over_budget(self) -> bool:
         return memory.tokens_today() > CFG["limits"]["daily_token_budget"]
 
-    async def handle_user(self, text: str, via: str = "", chat_id: int | None = None):
-        """用户在私聊（或私聊里的讨论串 chat_id）里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。"""
+    async def handle_user(self, text: str, via: str = "", chat_id: int | None = None, attachments: list | None = None):
+        """用户在私聊（或私聊里的讨论串 chat_id）里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。
+        attachments：附件（见 media.py），记在消息的 meta 里。"""
         cid = chat_id or self.chat_id
-        meta = {"via": via} if via else {}
+        meta = ({"via": via} if via else {}) | ({"attachments": attachments} if attachments else {})
         if hit := skills.parse(self.bot_id, text):
             meta |= {"skill": hit[0]["name"], "skill_prompt": skills.expand(*hit)}
         await self.add("user", text, cid, **meta)
@@ -340,19 +350,23 @@ class Router:
         related = await memories.related(self.bot_id, woke["text"] if woke else (last[0] if last else ""))
         if started := self.turn.get("started"):
             started()   # 下面就读对话了：这之前到的私信、回信都看得到，之后到的另起一轮（见 dm.py）
+        see = media.can_see()
         system = ROUTER_PROMPT.format(
             name=b["name"], instructions=b["instructions"] or "你的具体职责以用户在对话里交代的为准。",
             date=time.strftime("%Y-%m-%d"), skills=skills.summary(self.bot_id), routines=self._routine_list(),
             capabilities=self._capabilities(), memories=memories.prompt_block(self.bot_id),
-            group=self._group_block(chat), others=self._others()) + i18n.model_hint()
+            group=self._group_block(chat), others=self._others(),
+            attach_rule=ATTACH_SEE if see else ATTACH_BLIND) + i18n.model_hint()
         recent = memories.turn_block(self.bot_id, related)
         state = STATE_PROMPT.format(tasks=self._task_list(), approvals=approvals.summary(self.bot_id),
                                     memories="\n\n" + recent if recent else "", turn=self._turn_block())
         msgs = [{"role": "system", "content": system}] + with_state(
-            memory.context(cid, self.bot_id if chat["kind"] == "group" else None, me=self.bot_id), state)
+            memory.context(cid, self.bot_id if chat["kind"] == "group" else None, me=self.bot_id,
+                           images=media.MODEL_IMAGES if see else 0), state)
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
         self._turn_dms = 0                # 本轮发出的私信
+        self._turn_files = []             # 本轮 send_file 发的文件，挂在这条回复下面显示
         shown, thinking, shots = "", "", []
         await self.emit({"type": "stream_start", "sid": sid}, cid)
         try:
@@ -389,7 +403,8 @@ class Router:
         finally:
             await self.emit({"type": "stream_end", "sid": sid}, cid)
         await self.add("assistant", shown.strip(), cid, reasoning=reasoning, thinking=thinking,
-                       thought_s=round(time.time() - started, 1), sid=sid, tasks=self._turn_tasks)
+                       thought_s=round(time.time() - started, 1), sid=sid, tasks=self._turn_tasks,
+                       **({"attachments": self._turn_files} if self._turn_files else {}))
         return shown.strip()
 
     def _member(self, name: str) -> dict | None:
@@ -497,6 +512,15 @@ class Router:
             return await search.tool(self.bot_id, args)
         if name == "read_page":
             return library.tool_read_page(args)
+        if name == "send_file":
+            if len(self._turn_files) >= media.MAX_SEND:
+                return f"没发：一次最多发 {media.MAX_SEND} 个文件"
+            try:
+                att = await media.from_computer(str(args.get("path") or ""))
+            except Exception as e:
+                return f"没发：{e}"
+            self._turn_files.append(att)
+            return media.sent_text(att)
         if name == "look_at_screen":
             return await self._look()
         if name in DIRECT_PC:
@@ -631,7 +655,8 @@ class Router:
             return
         memory.update_meta(task.id, status=task.status, elapsed=round(time.time() - task.started), steps=task.steps)
         await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", task.chat_id, kind="result", task_id=task.id,
-                       status=task.status, elapsed=round(time.time() - task.started))
+                       status=task.status, elapsed=round(time.time() - task.started),
+                       **({"attachments": task.files} if task.files else {}))
         await self.emit({"type": "task", "task": task.public()}, task.chat_id)
         if task.handoff:
             from . import groups

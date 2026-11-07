@@ -6,7 +6,7 @@
 import json
 import re
 import time
-from . import avatars, i18n
+from . import avatars, i18n, media
 from .memory import conn
 
 _cols = {r[1] for r in conn.execute("pragma table_info(chats)")}
@@ -114,6 +114,7 @@ def delete(bot_id: int):
         conn.execute("update chats set bot_ids=?, lead=? where id=?", (json.dumps(ids), lead, g["id"]))
     conn.commit()
     avatars.gc()
+    media.gc()
 
 
 def thread_ids(chat_id: int) -> list[int]:
@@ -283,6 +284,7 @@ def delete_group(chat_id: int):
         _delete_chat(chat_id)
         conn.commit()
         avatars.gc()
+        media.gc()
 
 
 def ensure_default():

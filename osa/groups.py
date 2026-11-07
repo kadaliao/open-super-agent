@@ -103,9 +103,9 @@ async def note(chat_id: int, text: str):
     await _message(chat_id, "task", f"[{text}]", None, kind="note")
 
 
-async def on_user(chat: dict, text: str, via: str = ""):
-    """用户在群里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。"""
-    await _message(chat["id"], "user", text, **({"via": via} if via else {}))
+async def on_user(chat: dict, text: str, via: str = "", attachments: list | None = None):
+    """用户在群里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。attachments：附件（见 media.py）。"""
+    await _message(chat["id"], "user", text, **({"via": via} if via else {}), **({"attachments": attachments} if attachments else {}))
     g = get(chat["id"])
     async with g.lock:
         chat = bots.chat(chat["id"]) or chat

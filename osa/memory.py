@@ -113,11 +113,27 @@ def defang(text: str) -> str:
     return _MARKS.sub(r"转述的“系统\1”", text or "")
 
 
-def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> list[dict]:
+def _pick_images(recent: list, limit: int) -> set[tuple[int, str]]:
+    """最近 limit 张用户发的图片 (消息 id, 图片 id)，给能看图的模型看；更早的只留“[附件] 路径”那一行。"""
+    from . import media
+    out: set[tuple[int, str]] = set()
+    for mid, r, _, meta, _ in reversed(recent):
+        if len(out) >= limit:
+            break
+        if r != "user" or '"media"' not in (meta or ""):
+            continue
+        for a in reversed(json.loads(meta).get("attachments") or []):
+            if a.get("media") and a.get("mime") in media.MODEL_MIMES and len(out) < limit:
+                out.add((mid, a["media"]))
+    return out
+
+
+def context(chat_id: int, viewer: int | None = None, me: int | None = None, images: int = 0) -> list[dict]:
     """组装给 Router 的历史消息。viewer 是群聊里正在发言的 Bot：
     它自己的回复保持 assistant；别的 Bot 的发言、任务和交接都换成带名字的通知。私聊时 viewer 为空。
     me 是正在发言的 Bot（私聊也给），Bot 之间的私信按它的角度写成“谁私信了你 / 你回了谁”。
-    讨论串：上级对话到被回复的那条消息为止，接着是讨论串里的消息（见 THREAD_NOTE）。"""
+    讨论串：上级对话到被回复的那条消息为止，接着是讨论串里的消息（见 THREAD_NOTE）。
+    images：模型能看图时最多带几张用户发的图片（最近的），带上的那几条消息的 content 是文字加图片的列表。"""
     n = CFG["memory"]["inline_messages"]
     rows, split, root = _rows(chat_id)
     names = dict(conn.execute("select id, name from bots"))
@@ -135,7 +151,8 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> l
         msgs.append({"role": "system", "content": "更早的对话已移出上下文，需要时用 recall(id) 取回原文：\n" + index})
     # 讨论串从哪一条开始；开头已经移出上下文的话，标在留下的第一条前面
     at = max(split, cut) if split is not None else -1
-    for k, (_, r, c, meta, b) in enumerate(recent, cut):
+    shown = _pick_images(recent, images) if images else set()
+    for k, (mid, r, c, meta, b) in enumerate(recent, cut):
         meta = json.loads(meta or "{}")
         if k == at:
             note = THREAD_NOTE.format(root=root)
@@ -176,7 +193,12 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> l
                 c = f"（来自{VIA.get(meta['via'], meta['via'])}）{c}"
             if meta.get("skill_prompt"):   # /技能：把技能做法附在用户原话后面
                 c = f"{c}\n\n{meta['skill_prompt']}"
-            msgs.append({"role": "user", "content": c})
+            parts = []
+            if shown:
+                from . import media
+                parts = [p for a in meta.get("attachments") or [] if (mid, a.get("media")) in shown
+                         and (p := media.image_part(a["media"]))]
+            msgs.append({"role": "user", "content": [{"type": "text", "text": c}, *parts] if parts else c})
     return msgs
 
 

@@ -17,7 +17,7 @@ import json
 import re
 import secrets
 import time
-from .. import approvals, bots, i18n, memory, vault
+from .. import approvals, bots, i18n, media, memory, vault
 from . import fmt
 
 conn = memory.conn
@@ -248,13 +248,21 @@ def _absolute(md: str) -> str:
     return re.sub(r"(?<![\w\]\(/.:])(/(?:library/pages|s)/[\w-]+)", lambda m: base + m[1], md)
 
 
+def _files(atts) -> str:
+    """Bot 发来的图片和文件：聊天软件里先给链接（点开要登录网页），以后再改成直接发图片。"""
+    if not atts:
+        return ""
+    return "\n\n" + "\n".join(f"📎 [{a.get('name') or 'file'}]({media.link(a)})" for a in atts)
+
+
 def render(m: dict, group: bool) -> str | None:
     """一条界面消息在聊天软件里怎么说；不用发的返回 None。用户自己的消息不回显。"""
     meta, role = m.get("meta") or {}, m.get("role")
     content = (m.get("content") or "").strip()
     name = _bot_name(m.get("bot_id"))
+    files = _files(meta.get("attachments"))
     if role == "assistant":
-        return (f"**{name}**\n" if group else "") + content if content else None
+        return (f"**{name}**\n" if group else "") + content + files if content or files else None
     if role != "task":
         return None
     kind = meta.get("kind")
@@ -272,7 +280,7 @@ def render(m: dict, group: bool) -> str | None:
                 i18n.t("❌ 任务 #{id} 失败", id=tid) if status == "failed" else i18n.t("⏹ 任务 #{id} 没做完", id=tid)
         if meta.get("elapsed"):
             head += i18n.t("（用时 {d}）", d=_duration(meta["elapsed"]))
-        return f"**{head}**" + (f" · {name}" if group else "") + f"\n\n{body}"
+        return f"**{head}**" + (f" · {name}" if group else "") + f"\n\n{body}" + files
     if kind == "cancel":
         return "⏹ " + content.strip("[]")
     if kind == "handoff":
@@ -550,18 +558,27 @@ class Channel:
         chat = bots.chat(r["chat_id"])
         if not chat:
             return self.say(i18n.t("绑定的对话不存在了，请在网页的 设置 → 聊天软件 里重新选择。"))
-        paths = []
+        atts = []
         for name, fref in files:
             try:
                 got = await self.download(fref)
                 data, name = (got[0], got[1] or name) if isinstance(got, tuple) else (got, name)
-                paths.append(await save_upload(name, data))
             except Exception as e:
                 self.say(i18n.t("附件「{name}」没存上：{error}", name=name, error=e))
-        if paths:
-            text = (text + "\n" if text else "") + "\n".join(f"[附件] {p}" for p in paths)
-        if text:
-            await handle(chat, text, self.kind)
+                continue
+            att = {"name": name, "size": len(data)}
+            if media.sniff(data) and len(data) <= media.MAX_BYTES:   # 图片另存一份：对话里显示缩略图，能看图的模型直接看
+                att["media"] = media.save(data, name)["id"]
+            try:
+                att["path"] = await save_upload(name, data)
+            except Exception as e:
+                if "media" not in att:   # 图片存下来了的话照样发：Bot 能看图，只是电脑里没有这个文件
+                    self.say(i18n.t("附件「{name}」没存上：{error}", name=name, error=e))
+                    continue
+            atts.append(att)
+        atts = media.clean_attachments(atts)
+        if text or atts:
+            await handle(chat, text, self.kind, atts)
 
     async def _pair(self, peer: str, who: str, text: str):
         r = self.row

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
-from . import approvals, auth, avatars, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, memories, memory, push, router as rt, routines
+from . import approvals, auth, avatars, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
 from . import prices, providers, search, settings, skills, tasklog, teach, templates, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
@@ -89,7 +89,7 @@ async def lifespan(app):
     await channels.start()
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
           asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop()),
-          asyncio.create_task(prices.loop()), asyncio.create_task(tasklog.prune_loop())]
+          asyncio.create_task(prices.loop()), asyncio.create_task(tasklog.prune_loop()), asyncio.create_task(media.gc_loop())]
     if os.environ.get("OSA_PARENT_PID", "").isdigit():
         bg.append(asyncio.create_task(parent_watch(int(os.environ["OSA_PARENT_PID"]))))
     search.sync()   # 补上旧数据的索引；配了 embedding 的话后台开始算向量
@@ -238,6 +238,42 @@ async def avatar_file(aid: str):
     return Response(got[1], media_type=got[0], headers={
         "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'"})
+
+
+# ---------- 对话里的图片 ----------
+@app.put("/api/media")
+async def upload_media(request: Request, name: str = ""):
+    """传一张对话里用的图片（请求体就是图片，浏览器已经缩过），返回 id、宽高。发消息时放进 attachments。"""
+    if int(request.headers.get("content-length") or 0) > media.MAX_BYTES:
+        raise HTTPException(413, i18n.t("图片太大了（最多 {n} MB）", n=media.MAX_BYTES >> 20))
+    data = await request.body()
+    try:
+        return media.save(data, name)
+    except ValueError as e:
+        _err(e)
+
+
+def _media_response(mid: str, download: bool = False) -> Response:
+    got = media.get(mid)
+    if not got:
+        raise HTTPException(404)
+    mime, data, name = got
+    return Response(data, media_type=mime, headers={
+        "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'",
+        "Content-Disposition": f"{'attachment' if download else 'inline'}; filename*=UTF-8''{quote(name)}"})
+
+
+@app.get("/api/media/{mid}")
+async def media_file(mid: str, download: bool = False):
+    """对话里的图片。要登录；地址是内容的哈希，内容不会变。"""
+    return _media_response(mid, download)
+
+
+@app.get("/media/{mid}")
+async def media_page(mid: str):
+    """同一张图片，给聊天软件里的链接用：不是 /api/ 开头，没登录时会先跳去登录页，登录后回到这里。"""
+    return _media_response(mid)
 
 
 # ---------- 群聊 ----------
@@ -843,6 +879,12 @@ async def download_file(path: str):
     return Response(data, media_type=kind if inline else "application/octet-stream", headers={
         "Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(name)}",
         "X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/files/download")
+async def download_file_page(path: str):
+    """聊天软件里的文件链接：和 /api/files/download 一样，没登录时先跳去登录页。"""
+    return await download_file(path)
 
 
 @app.put("/api/files/content")
@@ -1514,20 +1556,24 @@ async def ws(sock: WebSocket):
             elif data.get("type") == "send":
                 text = (data.get("text") or "").strip()
                 chat = bots.chat(int(data.get("chat_id", 0)))
-                if text and chat:
-                    asyncio.create_task(safe_handle(chat, text))
+                atts = media.clean_attachments(data.get("attachments"))
+                if (text or atts) and chat:
+                    asyncio.create_task(safe_handle(chat, text, attachments=atts))
     except WebSocketDisconnect:
         clients.discard(sock)
         watching.pop(sock, None)
 
 
-async def safe_handle(chat: dict, text: str, via: str = ""):
-    """用户发来一条消息（网页，或者 via 指明的聊天软件）。"""
+async def safe_handle(chat: dict, text: str, via: str = "", attachments: list | None = None):
+    """用户发来一条消息（网页，或者 via 指明的聊天软件）。attachments：附件（见 media.py），
+    正文后面照旧接上“[附件] 路径”，附件本身记在消息的 meta.attachments 里。"""
+    atts = attachments or []
+    text = media.with_marks(text, atts)
     try:
         if chat["kind"] == "group":
-            await groups.on_user(chat, text, via)
+            await groups.on_user(chat, text, via, atts)
         else:
-            await rt.runtime(chat["bot_ids"][0]).handle_user(text, via, chat["id"])
+            await rt.runtime(chat["bot_ids"][0]).handle_user(text, via, chat["id"], atts)
     except Exception as e:
         logging.getLogger(__name__).exception("对话 %s 出错", chat["id"])
         await broadcast({"type": "error", "chat_id": chat["id"], "message": i18n.t("出错了：{e}", e=providers.brief(e))})

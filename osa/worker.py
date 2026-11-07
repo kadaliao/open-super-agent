@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import approvals, i18n, library, memories, memory, mcp_hub, search, tasklog, tools
+from . import approvals, i18n, library, media, memories, memory, mcp_hub, search, tasklog, tools
 from .computer import tools as ctools
 
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
@@ -17,6 +17,7 @@ WORKER_PROMPT = """你是执行任务的 Worker。用工具查证事实，给出
 # 最终答案用什么语言：中文界面和以前一样；英文界面默认英文
 ANSWER_LANG = {"zh": "中文", "en": "默认用英文，任务是用别的语言写的就用那种语言"}
 PAGE_HINT = "任务要求做成页面或报告时，用 save_page 保存，最终答案里附上返回的链接。"
+FILE_HINT = "要把电脑里的文件（截图、画好的图、做好的表格和文档）交给用户时用 send_file，它们会显示在任务结果下面；不要自己拼下载链接。"
 
 
 
@@ -46,6 +47,7 @@ class Task:
     quiet_ok: bool = False                 # 定时任务：结果只有“无新内容”时不发结果消息（见 routines.QUIET）
     quiet: bool = False                    # 这次确实没有新内容
     notes: str = ""                        # 只给 Worker 看的补充说明，不显示、不存进对话（定时任务：上次的结果、“无新内容”的约定）
+    files: list = field(default_factory=list)   # send_file 发的文件（附件，见 media.py），显示在任务结果下面
 
 
 def _public(self) -> dict:
@@ -131,6 +133,16 @@ async def _tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, p
         if name == "read_page":
             await progress(i18n.t("读页面 #{id}", id=args.get("page_id")))
             return library.tool_read_page(args), "done"
+        if name == "send_file" and pages:
+            await progress(i18n.t("发文件：{path}", path=str(args.get("path", ""))[:60]))
+            if len(task.files) >= media.MAX_SEND:
+                return f"没发：一个任务最多发 {media.MAX_SEND} 个文件", "error"
+            try:
+                att = await media.from_computer(str(args.get("path") or ""))
+            except Exception as e:
+                return f"没发：{e}", "error"
+            task.files.append(att)
+            return media.sent_text(att).replace("对话里", "任务结果下面"), "done"
         if name == "save_page" and pages:
             await progress(i18n.t("保存页面：{title}", title=str(args.get("title", ""))[:40]))
             out = library.tool_save_page(task.bot_id, args, task.id)
@@ -157,12 +169,12 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     use_pc = (CFG.get("computer") or {}).get("enabled", True)
     pages = not label   # Heavy 模式的几个 Worker 只出草稿，不各自存页面
     system = WORKER_PROMPT.format(date=time.strftime("%Y-%m-%d"), lang=ANSWER_LANG[i18n.lang()]) + ("\n" + PAGE_HINT if pages else "") \
-        + ("\n\n" + ctools.system_hint() if use_pc else "")
+        + ("\n" + FILE_HINT if pages and use_pc else "") + ("\n\n" + ctools.system_hint() if use_pc else "")
     if known := memories.worker_block(task.bot_id):
         system += f"\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}"
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": goal}]
     schemas = tools.schemas() + ([library.SAVE_PAGE] if pages else []) + [library.READ_PAGE, search.SEARCH_TOOL] \
-        + (ctools.schemas() if use_pc else [])
+        + (ctools.schemas() if use_pc else []) + ([media.SEND_FILE] if pages and use_pc else [])
     log = tasklog.Log(task, label)
 
     async def progress(text: str):

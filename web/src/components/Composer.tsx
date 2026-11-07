@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadSkills, send, useStore } from '../store'
-import type { Bot } from '../types'
+import type { Attachment, Bot } from '../types'
 import { locale, t, tc } from '../i18n'
 import { desktop } from '../desktop'
+import { shrinkImage, uploadMedia } from './Media'
+
+type Pending = Attachment & { key: string; busy: boolean; preview?: string }   // 输入框上面还没发出去的附件
 
 // 浏览器自带的语音识别：Safari（含 iPhone）直接能用；Chrome 要能连上 Google 的语音服务。不支持的浏览器不显示麦克风。
 // 桌面 App 里外壳说能用才显示
@@ -19,7 +22,7 @@ const ALL = t('所有人')
 // bot：私聊的 Bot；群聊时为空，members 是群成员。busy：正在回复的 Bot 名字。
 // inThread：讨论串里的输入框，发消息走 onSend；拖进窗口的文件、“填进输入框”的事件归主对话的输入框管
 export default function Composer({ chatId, bot, members, busy, onSend, inThread }: {
-  chatId: number; bot?: Bot; members: Bot[]; busy: string; onSend?: (text: string) => void; inThread?: boolean
+  chatId: number; bot?: Bot; members: Bot[]; busy: string; onSend?: (text: string, attachments: Attachment[]) => void; inThread?: boolean
 }) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -29,7 +32,7 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
   const skills = useStore(s => (bot ? s.skills[bot.id] : undefined))
   const group = !bot
   const [pick, setPick] = useState(0)
-  const [uploading, setUploading] = useState('')
+  const [atts, setAtts] = useState<Pending[]>([])
   const [upErr, setUpErr] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   useEffect(() => { if (bot && !skills) loadSkills(bot.id) }, [bot?.id, skills])
@@ -66,20 +69,37 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
     if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 240) + 'px' }
   }, [text])
 
-  // 附件传到共用电脑的 uploads 目录，消息里写上路径，Bot 派任务时就能处理
+  // 附件：原文件传到共用电脑的 uploads 目录（Bot 派任务时靠路径处理它）；图片另外缩小后存一份到服务端，
+  // 对话里显示缩略图，对话模型能看图时直接给它看。发出去时服务端在正文后面接上“[附件] 路径”
+  const putFile = async (f: File) => {
+    const r = await fetch(`/api/files/content?dir=uploads&name=${encodeURIComponent(f.name)}`, { method: 'PUT', body: f })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(d.detail || t('上传失败（{status}）', { status: r.status }))
+    return d as { path: string; name: string; size: number }
+  }
+  const attachOne = async (f: File) => {
+    const key = `${Date.now()}-${Math.random()}`
+    const img = f.type.startsWith('image/') && f.type !== 'image/svg+xml'
+    setAtts(a => [...a, { key, name: f.name, size: f.size, busy: true, preview: img ? URL.createObjectURL(f) : undefined }])
+    const [m, p] = await Promise.allSettled([img ? shrinkImage(f).then(b => uploadMedia(b, f.name)) : Promise.reject(null), putFile(f)])
+    const patch: Partial<Pending> = { busy: false }
+    if (p.status === 'fulfilled') Object.assign(patch, { path: p.value.path, name: p.value.name })
+    if (m.status === 'fulfilled') Object.assign(patch, { media: m.value.id, mime: m.value.mime, w: m.value.w, h: m.value.h })
+    const why = p.status === 'rejected' ? (p.reason as Error)?.message || '' : ''
+    if (!patch.path && !patch.media) { drop(key); setUpErr(why); return }
+    if (!patch.path) setUpErr(t('「{name}」没存到电脑里（{error}）：Bot 能看到图，但不能用它处理文件', { name: f.name, error: why }))
+    setAtts(a => a.map(x => (x.key === key ? { ...x, ...patch } : x)))
+  }
   const attach = async (files: FileList | null) => {
     setUpErr('')
-    for (const f of Array.from(files || [])) {
-      setUploading(t('正在上传 {name}…（第一次会先开机）', { name: f.name }))
-      try {
-        const r = await fetch(`/api/files/content?dir=uploads&name=${encodeURIComponent(f.name)}`, { method: 'PUT', body: f })
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok) throw new Error(d.detail || t('上传失败（{status}）', { status: r.status }))
-        setText(s => (s && !s.endsWith('\n') ? s + '\n' : s) + `[附件] ${d.path}\n`)   // i18n-ignore：消息里的附件标记，Bot 靠它找文件
-      } catch (e: any) { setUpErr(e.message) }
-    }
-    setUploading(''); ref.current?.focus()
+    await Promise.all(Array.from(files || []).map(attachOne))
+    ref.current?.focus()
   }
+  const drop = (key: string) => setAtts(a => {
+    a.filter(x => x.key === key).forEach(x => x.preview && URL.revokeObjectURL(x.preview))
+    return a.filter(x => x.key !== key)
+  })
+  const uploading = atts.find(a => a.busy)
   const attachRef = useRef(attach)
   attachRef.current = attach
 
@@ -145,12 +165,14 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
 
   const submit = () => {
     const msg = text.trim()
-    if (!msg) return
+    if ((!msg && !atts.length) || uploading) return
     rec.current?.abort()
-    if (onSend) onSend(msg)
-    else send(chatId, msg)
-    setText('')
+    const out: Attachment[] = atts.map(({ key: _k, busy: _b, preview, ...a }) => { if (preview) URL.revokeObjectURL(preview); return a })
+    if (onSend) onSend(msg, out)
+    else send(chatId, msg, out)
+    setText(''); setAtts([]); setUpErr('')
   }
+  const ready = (text.trim() || atts.length) && !uploading
 
   return (
     <div className="composer-wrap">
@@ -163,8 +185,18 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
             </button>))}
         </div>
       )}
+      {atts.length > 0 && (
+        <div className="composer-atts">
+          {atts.map(a => (
+            <div key={a.key} className={'c-att' + (a.preview ? ' img' : '') + (a.busy ? ' busy' : '')} title={a.path || a.name}>
+              {a.preview ? <img src={a.preview} alt="" /> : <span className="c-att-name">{a.name}</span>}
+              {a.busy && <span className="spin" />}
+              <button className="c-att-x" onClick={() => drop(a.key)} title={t('移除')} aria-label={t('移除')}>✕</button>
+            </div>))}
+        </div>
+      )}
       <div className="composer">
-        <button className="attach" title={t('上传附件（存到电脑的 uploads 目录）')} disabled={!!uploading} onClick={() => fileInput.current?.click()}>＋</button>
+        <button className="attach" title={t('上传附件（存到电脑的 uploads 目录）')} onClick={() => fileInput.current?.click()}>＋</button>
         <input ref={fileInput} type="file" multiple hidden onChange={e => { attach(e.target.files); e.target.value = '' }} />
         <textarea ref={ref} rows={1} value={text} placeholder={inThread ? t('回复…') : group ? t('发到群里，@ 指定 Bot') : t('给 {name} 发消息', { name: bot!.name })}
           onChange={e => setText(e.target.value)}
@@ -182,10 +214,10 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
           }} />
         {Speech && <button className={'mic' + (listening ? ' on' : '')} onClick={toggleMic} title={listening ? t('停止语音输入') : t('语音输入')}
           aria-label={t('语音输入')}>{listening ? '■' : '🎙'}</button>}
-        <button className={'send' + (text.trim() ? ' on' : '')} onClick={submit} title={t('发送（Enter）')} aria-label={t('发送')}>↑</button>
+        <button className={'send' + (ready ? ' on' : '')} onClick={submit} title={t('发送（Enter）')} aria-label={t('发送')}>↑</button>
       </div>
       {listening && <div className="composer-hint">{t('正在听…说完点 ■ 停止，确认文字后再发送')}</div>}
-      {(uploading || upErr) && <div className={'composer-hint' + (upErr ? ' bad' : '')}>{upErr || uploading}</div>}
+      {(uploading || upErr) && <div className={'composer-hint' + (upErr ? ' bad' : '')}>{upErr || t('正在上传 {name}…（第一次会先开机）', { name: uploading!.name })}</div>}
       <div className="composer-hint">{busy ? t('{name} 正在回复…你可以继续发消息', { name: busy })
         : inThread ? t('Enter 发送 · Shift+Enter 换行 · Esc 关闭') : group ? t('Enter 发送 · Shift+Enter 换行 · @ 指定 Bot 或应用 · @所有人') : t('Enter 发送 · Shift+Enter 换行 · @ 指定应用 · / 调用技能')}</div>
     </div>

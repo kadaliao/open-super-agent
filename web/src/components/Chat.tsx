@@ -7,6 +7,7 @@ import Markdown from './Markdown'
 import { locale, t, tn } from '../i18n'
 import { ask } from './Dialog'
 import { Icon } from '../icons'
+import { Attachments, splitMarks } from './Media'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -75,6 +76,7 @@ function BotMessage({ bot, m, children, showName, reply }: { bot?: Bot; m: Messa
         <Speaker bot={bot} show={showName} />
         <Thinking text={m.meta.thinking} seconds={m.meta.thought_s} />
         <Markdown text={m.content} />
+        <Attachments items={m.meta.attachments} />
         {children}
         <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} /><ReplyBtn m={m} reply={reply} /></div>
@@ -143,6 +145,7 @@ function ResultMessage({ bot, m, goal, showName, reply }: { bot?: Bot; m: Messag
         </div>
         <div className={open ? '' : 'clamp'}><Markdown text={text} /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
+        <Attachments items={m.meta.attachments} />
         <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} />
           {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}
@@ -287,14 +290,20 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
     owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)}
     replyTo={botOf(byId.get(tid)!.meta.reply_to)} />
   return <>{list.map(m => {
-    if (m.role === 'user') return (
-      <div key={m.id} className="msg user">
-        <div className="user-col">
-          <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble">{m.content}</div></div>
-          <ThreadLink m={m} reply={reply} />
-          {reply && <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} /><ReplyBtn m={m} reply={reply} /></div>}
-        </div>
-      </div>)
+    if (m.role === 'user') {
+      // “[附件] 路径”这几行不显示，换成缩略图和文件卡片
+      const { text, items } = splitMarks(m.content, m.meta.attachments)
+      return (
+        <div key={m.id} className="msg user">
+          <div className="user-col">
+            {items.length > 0 && <Attachments items={items} />}
+            {(text || !items.length) && <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble">{text}</div></div>}
+            {!text && items.length > 0 && m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
+            <ThreadLink m={m} reply={reply} />
+            {reply && <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text || m.content} /><ReplyBtn m={m} reply={reply} /></div>}
+          </div>
+        </div>)
+    }
     if (m.role === 'assistant') return m.content || m.meta.tasks?.length ? (
       <BotMessage key={m.id} bot={speaker(m)} m={m} showName={group} reply={reply}>
         {(m.meta.tasks || []).map(task)}
