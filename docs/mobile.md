@@ -1,4 +1,4 @@
-# iPhone App（开发中）
+# iPhone App（TestFlight 内测）
 
 iOS 的原生 App，用 Tauri 2 做（和桌面 App 同一套），代码在 `mobile/`。App 只是客户端：手机上不跑服务，连的是你部署好的服务器，
 界面就是服务器自己的网页界面，服务器升级界面就跟着升级。先在中国大陆以外的地区上架，先发 TestFlight 测试版。

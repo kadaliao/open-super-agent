@@ -36,9 +36,9 @@
 
 | 用法 | 说明 |
 |---|---|
-| 💻 **macOS 桌面 App**（预览） | 下载 dmg 打开就能用：约 42 MB，自带运行环境，不用装 Docker 和 Python，Bot 直接用你电脑上的 Chrome。关掉窗口后在菜单栏接着跑，也能连到你的服务器。见 [桌面 App](docs/desktop.md) |
+| 💻 **macOS 桌面 App** | 下载 dmg 打开就能用：约 42 MB，自带运行环境，不用装 Docker 和 Python，Bot 直接用你电脑上的 Chrome。关掉窗口后在菜单栏接着跑，也能连到你的服务器。见 [桌面 App](docs/desktop.md) |
 | 🖥️ **服务器** | 一条 `docker compose up` 放到 VPS 或家里的机器上，一直开着；浏览器、桌面 App、手机、聊天软件都能连。见 [用 Docker Compose 部署](docs/docker.md) |
-| 📱 **iPhone App**（开发中） | 用相机扫电脑上的二维码就连上；要你确认的事、做完的任务推送到手机，内容加密，锁屏上就能看。见 [iPhone App](docs/mobile.md) |
+| 📱 **iPhone App**（TestFlight 内测） | 用相机扫电脑上的二维码就连上；要你确认的事、做完的任务推送到手机，内容加密，锁屏上就能看。见 [iPhone App](docs/mobile.md) |
 | 💬 **聊天软件** | 在 Telegram、飞书、钉钉、企业微信、Discord 里直接和 Bot 说话，要你确认的操作变成消息里的按钮。见 [聊天软件](docs/channels.md) |
 
 <p align="center">
@@ -50,13 +50,13 @@
   <img src="docs/images/ios-approval.png" width="200" alt="iPhone App：确认卡片，允许一次、总是允许或拒绝">
   <img src="docs/images/ios-computer.png" width="200" alt="iPhone App：实时看 Bot 的电脑，随时接手">
 </p>
-<p align="center"><sub>上：macOS 桌面 App。下：iPhone App（开发中），对话 · 后台任务 · 确认卡片 · 看 Bot 的电脑</sub></p>
+<p align="center"><sub>上：macOS 桌面 App。下：iPhone App（TestFlight 内测），对话 · 后台任务 · 确认卡片 · 看 Bot 的电脑</sub></p>
 
 同类项目 OpenMausBot 的取舍不一样，见 [和 OpenMausBot 比](docs/comparison.md)。
 
 ## 快速开始
 
-在 Mac 上最快的办法是装**桌面 App**（预览版）：到 [发布页](https://github.com/kadaliao/open-super-agent/releases) 下载对应芯片的 dmg，打开后选“在这台电脑上运行”。
+在 Mac 上最快的办法是装**桌面 App**：到 [发布页](https://github.com/kadaliao/open-super-agent/releases) 下载对应芯片的 dmg，打开后选“在这台电脑上运行”。
 
 放到服务器上一直开着，用 Docker Compose，只需要装 Docker：
 
@@ -98,8 +98,8 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 | [功能一览](docs/features.md) | 全部功能，按主题分组 |
 | [用 Docker Compose 部署](docs/docker.md) | 一条命令跑起来、自动 HTTPS、数据和备份、国内网络 |
 | [配置](docs/configuration.md) | 模型服务和各项工作用的模型、限额与单价、电脑、应用、确认规则与保险库、定时任务、推送、远程访问 |
-| [桌面 App（预览）](docs/desktop.md) | 在这台电脑上运行或连接服务器、系统通知、菜单栏、自动更新 |
-| [iPhone App（开发中）](docs/mobile.md) | 扫码连接、推送怎么送到手机、推送中转看得到什么、开发 |
+| [桌面 App](docs/desktop.md) | 在这台电脑上运行或连接服务器、系统通知、菜单栏、自动更新 |
+| [iPhone App（内测）](docs/mobile.md) | 扫码连接、推送怎么送到手机、推送中转看得到什么、开发 |
 | [聊天软件](docs/channels.md) | 连接 Telegram、飞书、钉钉、企业微信、Discord，配对，权限和常见问题 |
 | [给应用市场加应用](docs/apps.md) | 应用清单的格式、图标、在本机试、提 PR |
 | [写一个 Bot 模板](docs/templates.md) | 模板的格式、从现有 Bot 导出、加进内置 |

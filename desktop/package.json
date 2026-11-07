@@ -1,7 +1,7 @@
 {
   "name": "osa-desktop",
   "private": true,
-  "version": "0.7.0-preview.2",
+  "version": "0.7.0",
   "scripts": {
     "tauri": "tauri"
   },

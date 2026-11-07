@@ -1,6 +1,6 @@
-# 桌面 App（预览）
+# 桌面 App
 
-macOS 的桌面 App，Apple 芯片和 Intel 都有。现在是预览版，Windows 版以后再做。
+macOS 的桌面 App，Apple 芯片和 Intel 都有。Windows 版以后再做。
 
 <p align="center"><img src="images/macos-app.png" width="860" alt="桌面 App：左边是 Bot 列表，中间的对话里有后台任务和等你确认的卡片，右边是 Bot 正在操作的 Chrome"></p>
 

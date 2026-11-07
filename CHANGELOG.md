@@ -2,7 +2,7 @@
 
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.0] - 2026-11-07
 ### 新增
 - **对话里的图片和文件**：
   - 你发的图片显示成缩略图，点开看大图、下载；其他文件显示成卡片（名字、大小，点开就看或下载）。输入框上面先列出要发的附件，可以删掉再发
@@ -43,7 +43,7 @@
   - 电脑面板上看 Bot 窗口的截图（手机上也能看），“显示窗口”把它放到最前面，“接手”让 Bot 暂停
 - 电脑面板上方可以换用哪台电脑：本机 Chrome、本地 Docker、Instabox
 - 电脑工具也按确认规则走：可以给 `browser_upload`、`computer_write_file`、`computer_shell`、`browser_submit`（提交）加“先问我”或“自动允许”
-- **桌面 App（macOS 预览）**，说明见 [桌面 App](docs/desktop.md)：
+- **桌面 App（macOS）**，说明见 [桌面 App](docs/desktop.md)：
   - 第一次打开选用法：在这台电脑上运行（自带运行环境，不用装 Docker 和 Python，安装包约 42 MB），或者连接到自己的服务器
   - 关掉窗口藏到菜单栏，服务和定时任务接着跑；Bot 的回复、任务结果、等你确认的操作发系统通知，点通知打开对应的对话；菜单栏显示待确认数
   - ⌘⇧空格呼出窗口；开机时启动；在浏览器里打开；自动更新
@@ -55,7 +55,7 @@
   - `OSA_COOKIE`：改登录 cookie 的名字。cookie 不分端口，同一台机器上跑两个服务时，起不同的名字才不会互相把登录顶掉
   - `OSA_PARENT_PID`：这个进程退出后，服务跟着正常退出（Windows 上暂时不支持）
   - 页面里给桌面 App 留了接口（`window.osaDesktop`）：Bot 的回复、任务结果、等你确认的操作发系统通知，菜单栏显示待确认数，点通知打开对应的对话
-- 给 iOS App 准备的功能（App 还在做）：
+- **iPhone App**（TestFlight 内测，还没上架 App Store），说明见 [iPhone App](docs/mobile.md)：扫电脑上的二维码连上服务器；Bot 的回复、做完的任务、等你确认的操作推送到手机，锁屏上能看，点开直接到对应的对话。服务端为它加的功能：
   - 设置 → 手机 App：显示二维码，用 iPhone 相机扫一下就连上这台服务器并登录。二维码里是一张 5 分钟内有效、只能用一次的登录票（`POST /api/pair`，要先登录）
   - 推送带上待确认数（App 显示在图标上）和 RFC 8030 的 `Topic`：同一个对话的新推送替换推送服务里还没送到的旧推送；推送标题最长 80 字
   - iPhone 的刘海和灵动岛：手机 App 和添加到主屏幕后，顶上的菜单按钮、侧栏和全屏面板让出状态栏
@@ -324,7 +324,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.6.1...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kadaliao/open-super-agent/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kadaliao/open-super-agent/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kadaliao/open-super-agent/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kadaliao/open-super-agent/compare/v0.4.0...v0.5.0
