@@ -97,6 +97,19 @@ jobs:
           npm ci
           npx tauri build --target ${{ matrix.target }} --bundles app,dmg
 
+      # Tauri 只公证 App 本身；下载下来的是 dmg，系统打开前会先查它，所以 dmg 也要公证并把结果钉上
+      - name: Notarize the dmg
+        if: steps.cert.outputs.identity != '-' && steps.cert.outputs.api_key_path != ''
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          KEY_PATH: ${{ steps.cert.outputs.api_key_path }}
+        run: |
+          dmg=$(ls desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg)
+          xcrun notarytool submit "$dmg" --key "$KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+          spctl -a -t open --context context:primary-signature -vv "$dmg"
+
       - name: Collect
         run: |
           v=$(node -p "require('./desktop/package.json').version")

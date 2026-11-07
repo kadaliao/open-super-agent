@@ -145,6 +145,9 @@ pub fn launch(resources: Option<PathBuf>, port: u16, secret: &str) -> Result<Lau
         let app = res.join("app");
         env.push(("OSA_CONFIG".into(), app.join("config.yaml").display().to_string()));
         env.push(("PATH".into(), search_path(Some(&res.join("runtime/bin")))));
+        // uvx 应用用 uv 自己下载的 Python，别拿 App 里这个建环境：它签名时开了强化运行时，
+        // 只能加载同一个开发者签过名的扩展模块，PyPI 上下载的那些会被拒绝
+        env.push(("UV_PYTHON_PREFERENCE".into(), "only-managed".into()));
         return Ok(Launch { program: res.join("runtime/bin/python3"), args: args(&[]), cwd: app, env, log });
     }
     if cfg!(debug_assertions) {
