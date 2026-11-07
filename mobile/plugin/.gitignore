@@ -1,0 +1,3 @@
+/.tauri
+/target
+Cargo.lock

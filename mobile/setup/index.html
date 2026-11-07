@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Open Super Agent</title>
+<style>
+:root{--bg:#0d0d0e;--bg2:#151517;--line:#26262a;--fg:#ececec;--fg2:#a8a8ad;--fg3:#6e6e74;--acc:#ececec;--acc-fg:#0d0d0e;--bad:#ef6b6b;color-scheme:dark}
+@media (prefers-color-scheme:light){:root{--bg:#fbfbfa;--bg2:#f2f2f0;--line:#e2e2df;--fg:#18181a;--fg2:#57575c;--fg3:#8d8d92;--acc:#18181a;--acc-fg:#fbfbfa;color-scheme:light}}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;-webkit-font-smoothing:antialiased;
+  padding:calc(env(safe-area-inset-top) + 48px) 20px calc(env(safe-area-inset-bottom) + 24px);-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.logo{font-size:34px;text-align:center;line-height:1}h1{margin:0;font-size:22px;text-align:center;font-weight:600}
+.sub{margin:-6px 0 6px;text-align:center;color:var(--fg2);font-size:15px}
+.card{border:1px solid var(--line);background:var(--bg2);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.card h2{margin:0;font-size:17px;font-weight:600}.card p{margin:0;color:var(--fg2);font-size:15px}
+ol{margin:0;padding-left:20px;color:var(--fg2);font-size:15px}
+input{font:inherit;width:100%;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;outline:none;-webkit-user-select:text;user-select:text}
+input:focus{border-color:var(--fg3)}
+button{font:inherit;width:100%;padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--fg)}
+button.primary{background:var(--acc);color:var(--acc-fg);border-color:var(--acc);font-weight:600}button:disabled{opacity:.5}
+.err{color:var(--bad);font-size:14px;margin:0}
+.server{font-weight:600;word-break:break-all;color:var(--fg)}
+section{display:flex;flex-direction:column;gap:14px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">◆</div>
+  <h1>Open Super Agent</h1>
+  <p class="sub" data-t="sub"></p>
+
+  <section id="connect" hidden>
+    <div class="card">
+      <h2 data-t="scanTitle"></h2>
+      <ol><li data-t="scan1"></li><li data-t="scan2"></li></ol>
+    </div>
+    <div class="card">
+      <h2 data-t="urlTitle"></h2>
+      <p data-t="urlDesc"></p>
+      <form id="remote" style="display:flex;flex-direction:column;gap:10px">
+        <input id="url" type="url" inputmode="url" placeholder="https://osa.example.com" autocomplete="url" autocapitalize="off" spellcheck="false">
+        <button class="primary" type="submit" data-t="connectBtn"></button>
+      </form>
+      <p class="err" id="err" hidden></p>
+    </div>
+    <button id="back" hidden data-t="back"></button>
+  </section>
+
+  <section id="pair" hidden>
+    <div class="card">
+      <h2 data-t="pairTitle"></h2>
+      <p class="server" id="pairServer"></p>
+      <p data-t="pairDesc"></p>
+      <button class="primary" id="pairOk" data-t="pairOk"></button>
+      <button id="pairNo" data-t="pairNo"></button>
+      <p class="err" id="pairErr" hidden></p>
+    </div>
+  </section>
+
+  <section id="opening" hidden><p class="sub" data-t="opening"></p></section>
+</main>
+<script src="setup.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "private_key": "qyLWciikYE0xSuvVufW_uXWGsR0k5tjLLibaRBksKhQ",
+  "auth": "XERt2rlvK-3ycTQfjrapkg",
+  "body": "VPMS52GLKTHX40i36LWsPwAAEABBBKsmo5M72AJwAslYD3n36fXktSIb_mc-h_x9qxuWWFK-iL36wnhWp71BnVJONs09j6zzbPV0ocW6ONIoG58kfDyMkU9s9JbNA0GAb0vmEe90uxq_9XfOMtR2fzRMh0RB3fTg3pkYJVHJaOeTpQpMaHfJPtC6j4i_1U70GPGYnfZIbuLCOUVdvG3s6ZBIhHhhntNCMGfUNf-NiNsQT-cHhA9OHVG-z94HAV6ib2Dk9zxyshCIKpStiBE9g-wdOTYde0t7O85BxaeKCyprOvojvFXmUYnhTI_5qs5PE-JF3SvmkekRJf1D7QM",
+  "payload": {
+    "title": "小助手 需要你确认",
+    "body": "send_mail：给 Alice 发周报 ✉️",
+    "url": "/?chat=12&thread=34",
+    "tag": "approval-7",
+    "badge": 2
+  }
+}

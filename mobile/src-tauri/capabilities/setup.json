@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "setup",
+  "description": "App 自带的连接页：填地址、确认扫到的二维码。服务器的页面另外在运行时授权（推送、角标、弹出页、打开外部链接）",
+  "windows": ["main"],
+  "local": true,
+  "permissions": ["allow-setup-state", "allow-choose-remote", "allow-confirm-pair", "allow-cancel-pair"]
+}

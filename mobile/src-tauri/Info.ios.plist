@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 扫电脑上的二维码打开 App：opensuperagent://pair?u=<服务器>&t=<登录票> -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.kadaliao.opensuperagent</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>opensuperagent</string>
+			</array>
+		</dict>
+	</array>
+	<!-- 自己部署的服务器可能在局域网或 Tailscale 上、用 http：只放行网页内容和本地网络，App 自己的请求仍然只走 https -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect to your Open Super Agent server on this network.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo or video to send to your Bot.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record a video to send to your Bot.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save images your Bot made to your photo library.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+</dict>
+</plist>

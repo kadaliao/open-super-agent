@@ -39,3 +39,27 @@ uv run uvicorn osa.relay:app --port 8790 --no-access-log --proxy-headers
 ```
 
 systemd 和 Caddy 的配置见 `deploy/relay/`。
+
+## 开发
+
+要 Xcode 26、CocoaPods（`brew install cocoapods`）、Rust 的 iOS 目标（`rustup target add aarch64-apple-ios aarch64-apple-ios-sim`）。
+
+```bash
+cd mobile && npm install
+npx tauri ios build --debug --target aarch64-sim     # 模拟器调试版，在 ~/Library/Developer/Xcode/DerivedData/osa-mobile-*/Build/Products/debug-iphonesimulator/
+cd swift/WebPushCrypto && swift test                  # 推送解密（RFC 8291 的例子，和 osa/push.py 加密出来的一条）
+cd src-tauri && cargo test --lib                      # 地址、配对链接、授权路径
+```
+
+- 目录：`src-tauri/` 是 Rust 外壳（连接页的命令、给网页界面授权、下载、扫码配对），`setup/` 是 App 自带的连接页，
+  `plugin/` 是 Swift 部分（推送注册和钥匙串、弹出页、分享面板、点通知），`ios/NotificationService/` 是通知扩展，
+  `swift/WebPushCrypto/` 是 App 和通知扩展共用的解密和钥匙存取。
+- Xcode 工程在 `src-tauri/gen/apple/`，提交进仓库。改 `project.yml` 后在那个目录里跑 `xcodegen generate`；
+  别再跑 `tauri ios init`，它会把通知扩展、权限、文案这些改动冲掉。
+- 网页和 App 之间的接口是 `window.osaDesktop`（`web/src/desktop.ts`），手机版多了 `platform: 'ios'`、`push`、`openSheet`、
+  `switchServer`、`takePendingOpen`。只有服务器的网页界面（`/`、`/apps`、`/library`）能调，Bot 生成的报告页调不到。
+- 模拟器上没法点屏幕，调试版留了自动测试的通道（正式版里没有）：
+  - 启动参数 `--osa-open <链接>`：当成打开了这个链接，比如 `opensuperagent://pair?u=…&t=…`；
+  - 启动参数 `-OSAAutotest YES`：开推送时用不弹窗的临时授权；`-OSARelay http://127.0.0.1:8790` 换成本机的推送中转；
+  - 往 App 的 `Documents/autotest.js` 里写 JS，App 会在页面里执行它（`xcrun simctl get_app_container <设备> com.kadaliao.opensuperagent data`）；
+  - 通知扩展把最后一条推送的解密结果写进 App Group 的 `last-push.json`。`simctl push` 不会调用通知扩展，要用苹果的 sandbox 推送才行。

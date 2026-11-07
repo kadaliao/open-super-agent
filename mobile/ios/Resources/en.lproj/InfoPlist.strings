@@ -1,0 +1,4 @@
+"NSLocalNetworkUsageDescription" = "Connect to your Open Super Agent server on this network.";
+"NSCameraUsageDescription" = "Take a photo or video to send to your Bot.";
+"NSMicrophoneUsageDescription" = "Record a video to send to your Bot.";
+"NSPhotoLibraryAddUsageDescription" = "Save images your Bot made to your photo library.";
