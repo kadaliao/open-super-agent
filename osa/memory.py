@@ -54,23 +54,52 @@ def update_meta(msg_id: int, **fields):
 
 
 def page(chat_id: int, before: int | None = None, limit: int = 60) -> list[dict]:
-    """前端翻页用：某个对话里 id < before 的最近 limit 条消息，按时间正序返回。"""
+    """前端翻页用：某个对话里 id < before 的最近 limit 条消息，按时间正序返回。
+    下面有讨论串的消息带上 thread（见 bots.thread_summaries）。"""
+    from . import bots
     rows = conn.execute("""select id, ts, role, content, meta, bot_id from messages
         where chat_id=? and id < ? order by id desc limit ?""", (chat_id, before or 1 << 62, limit)).fetchall()
-    return [{"id": i, "ts": ts, "role": r, "content": c, "meta": json.loads(m or "{}"), "bot_id": b}
+    threads = bots.thread_summaries(chat_id, [r[0] for r in rows])
+    return [{"id": i, "ts": ts, "role": r, "content": c, "meta": json.loads(m or "{}"), "bot_id": b,
+             **({"thread": threads[i]} if i in threads else {})}
             for i, ts, r, c, m, b in reversed(rows)]
+
+
+def thread_of(chat_id: int) -> tuple[int, int] | None:
+    """讨论串的 (上级对话, 回复的那条消息)；不是讨论串返回 None。"""
+    r = conn.execute("select parent, root from chats where id=? and kind='thread'", (chat_id,)).fetchone()
+    return (r[0], r[1]) if r else None
 
 
 def recall(msg_id: int, chat_id: int) -> str:
     row = conn.execute("select role, content from messages where id=? and chat_id=?", (msg_id, chat_id)).fetchone()
+    if not row and (th := thread_of(chat_id)) and msg_id <= th[1]:   # 讨论串里能看到上级对话到那条消息为止的内容
+        row = conn.execute("select role, content from messages where id=? and chat_id=?", (msg_id, th[0])).fetchone()
     return f"[{row[0]}] {row[1]}" if row else f"没有 id={msg_id} 的消息"
 
 
-def topic_start(chat_id: int) -> int:
-    """最后一次“新话题”的消息 id；之前的消息不再带进上下文（长期记忆不受影响）。"""
-    r = conn.execute("""select max(id) from messages where chat_id=? and role='task'
-        and json_extract(meta, '$.kind')='reset'""", (chat_id,)).fetchone()
+def topic_start(chat_id: int, before: int | None = None) -> int:
+    """最后一次“新话题”的消息 id（before 给了就只看它之前的）；之前的消息不再带进上下文（长期记忆不受影响）。"""
+    r = conn.execute("""select max(id) from messages where chat_id=? and role='task' and id < ?
+        and json_extract(meta, '$.kind')='reset'""", (chat_id, before or 1 << 62)).fetchone()
     return r[0] or 0
+
+
+# 讨论串的上下文：上级对话到被回复的那条消息为止，接着是讨论串里的消息。这句接在讨论串的第一条消息前面
+THREAD_NOTE = "（以下是讨论串：用户在针对上面 #{root} 这条消息回复，回答时围绕它。主对话里在它之后的消息这里看不到）"
+
+
+def _rows(chat_id: int) -> tuple[list, int | None, int | None]:
+    """给 Router 的消息记录、讨论串从第几条开始、回复的是哪条消息（不是讨论串后两个是 None）。
+    没有新内容的定时任务（meta.quiet）不带进上下文。"""
+    sql = "select id, role, content, meta, bot_id from messages where chat_id=? and id > ? and id <= ? " \
+          "and json_extract(meta, '$.quiet') is null order by id"
+    th = thread_of(chat_id)
+    if not th:
+        return conn.execute(sql, (chat_id, topic_start(chat_id), 1 << 62)).fetchall(), None, None
+    parent, root = th
+    before = conn.execute(sql, (parent, topic_start(parent, root), root)).fetchall()
+    return before + conn.execute(sql, (chat_id, 0, 1 << 62)).fetchall(), len(before), root
 
 
 VIA = {"telegram": " Telegram", "feishu": "飞书", "dingtalk": "钉钉", "wecom": "企业微信", "discord": " Discord"}
@@ -87,11 +116,10 @@ def defang(text: str) -> str:
 def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> list[dict]:
     """组装给 Router 的历史消息。viewer 是群聊里正在发言的 Bot：
     它自己的回复保持 assistant；别的 Bot 的发言、任务和交接都换成带名字的通知。私聊时 viewer 为空。
-    me 是正在发言的 Bot（私聊也给），Bot 之间的私信按它的角度写成“谁私信了你 / 你回了谁”。"""
+    me 是正在发言的 Bot（私聊也给），Bot 之间的私信按它的角度写成“谁私信了你 / 你回了谁”。
+    讨论串：上级对话到被回复的那条消息为止，接着是讨论串里的消息（见 THREAD_NOTE）。"""
     n = CFG["memory"]["inline_messages"]
-    # 没有新内容的定时任务（meta.quiet）不带进上下文
-    rows = conn.execute("select id, role, content, meta, bot_id from messages where chat_id=? and id > ? "
-                        "and json_extract(meta, '$.quiet') is null order by id", (chat_id, topic_start(chat_id))).fetchall()
+    rows, split, root = _rows(chat_id)
     names = dict(conn.execute("select id, name from bots"))
     me = viewer if viewer is not None else me
     name = lambda b: names.get(b, "已删除的 Bot")
@@ -105,8 +133,16 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None) -> l
             return name(b) if viewer is not None and r == "assistant" and b != viewer else r
         index = "\n".join(f"#{i} [{who(r, b)}] {c[:60].replace(chr(10), ' ')}" for i, r, c, _, b in old[-200:])
         msgs.append({"role": "system", "content": "更早的对话已移出上下文，需要时用 recall(id) 取回原文：\n" + index})
-    for _, r, c, meta, b in recent:
+    # 讨论串从哪一条开始；开头已经移出上下文的话，标在留下的第一条前面
+    at = max(split, cut) if split is not None else -1
+    for k, (_, r, c, meta, b) in enumerate(recent, cut):
         meta = json.loads(meta or "{}")
+        if k == at:
+            note = THREAD_NOTE.format(root=root)
+            if r == "user":
+                c = note + c
+            else:
+                msgs.append({"role": "user", "content": note})
         others = viewer is not None and b != viewer
         if r == "task" and meta.get("kind") == "handoff" and viewer is not None:
             to = meta.get("to")

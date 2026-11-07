@@ -16,8 +16,11 @@ const SPEECH_ERR: Record<string, string> = {
 // @所有人：英文界面插入 @everyone，服务端两个都认
 const ALL = t('所有人')
 
-// bot：私聊的 Bot；群聊时为空，members 是群成员。busy：正在回复的 Bot 名字
-export default function Composer({ chatId, bot, members, busy }: { chatId: number; bot?: Bot; members: Bot[]; busy: string }) {
+// bot：私聊的 Bot；群聊时为空，members 是群成员。busy：正在回复的 Bot 名字。
+// inThread：讨论串里的输入框，发消息走 onSend；拖进窗口的文件、“填进输入框”的事件归主对话的输入框管
+export default function Composer({ chatId, bot, members, busy, onSend, inThread }: {
+  chatId: number; bot?: Bot; members: Bot[]; busy: string; onSend?: (text: string) => void; inThread?: boolean
+}) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
@@ -53,6 +56,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
 
   useEffect(() => { ref.current?.focus() }, [chatId])
   useEffect(() => {
+    if (inThread) return
     const fill = (e: Event) => { setText((e as CustomEvent).detail); ref.current?.focus() }
     window.addEventListener('osa-fill', fill)
     return () => window.removeEventListener('osa-fill', fill)
@@ -82,6 +86,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
   // 把文件拖到窗口里任何地方，都传给这个对话
   const [dragging, setDragging] = useState(false)
   useEffect(() => {
+    if (inThread) return
     const files = (e: DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files')
     let depth = 0   // dragenter / dragleave 在子元素之间也会触发，数一下进出才知道是不是真的离开了窗口
     const enter = (e: DragEvent) => { if (files(e)) { depth++; setDragging(true) } }
@@ -142,7 +147,8 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
     const msg = text.trim()
     if (!msg) return
     rec.current?.abort()
-    send(chatId, msg)
+    if (onSend) onSend(msg)
+    else send(chatId, msg)
     setText('')
   }
 
@@ -160,7 +166,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
       <div className="composer">
         <button className="attach" title={t('上传附件（存到电脑的 uploads 目录）')} disabled={!!uploading} onClick={() => fileInput.current?.click()}>＋</button>
         <input ref={fileInput} type="file" multiple hidden onChange={e => { attach(e.target.files); e.target.value = '' }} />
-        <textarea ref={ref} rows={1} value={text} placeholder={group ? t('发到群里，@ 指定 Bot') : t('给 {name} 发消息', { name: bot!.name })}
+        <textarea ref={ref} rows={1} value={text} placeholder={inThread ? t('回复…') : group ? t('发到群里，@ 指定 Bot') : t('给 {name} 发消息', { name: bot!.name })}
           onChange={e => setText(e.target.value)}
           onPaste={paste}
           onCompositionStart={() => (composing.current = true)}
@@ -181,7 +187,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
       {listening && <div className="composer-hint">{t('正在听…说完点 ■ 停止，确认文字后再发送')}</div>}
       {(uploading || upErr) && <div className={'composer-hint' + (upErr ? ' bad' : '')}>{upErr || uploading}</div>}
       <div className="composer-hint">{busy ? t('{name} 正在回复…你可以继续发消息', { name: busy })
-        : group ? t('Enter 发送 · Shift+Enter 换行 · @ 指定 Bot 或应用 · @所有人') : t('Enter 发送 · Shift+Enter 换行 · @ 指定应用 · / 调用技能')}</div>
+        : inThread ? t('Enter 发送 · Shift+Enter 换行 · Esc 关闭') : group ? t('Enter 发送 · Shift+Enter 换行 · @ 指定 Bot 或应用 · @所有人') : t('Enter 发送 · Shift+Enter 换行 · @ 指定应用 · / 调用技能')}</div>
     </div>
   )
 }

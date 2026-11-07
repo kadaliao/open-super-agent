@@ -26,6 +26,7 @@
   "Client Secret（AppSecret）": "Client Secret (AppSecret)",
   "Enter 发送 · Shift+Enter 换行 · @ 指定 Bot 或应用 · @所有人": "Enter to send · Shift+Enter for a new line · @ a bot or app · @everyone",
   "Enter 发送 · Shift+Enter 换行 · @ 指定应用 · / 调用技能": "Enter to send · Shift+Enter for a new line · @ an app · / for a skill",
+  "Enter 发送 · Shift+Enter 换行 · Esc 关闭": "Enter to send · Shift+Enter for a new line · Esc to close",
   "Heavy 任务": "Heavy task",
   "Heavy 模式同时跑几个任务": "Parallel tasks in Heavy mode",
   "Heavy 模式里，把几个并行任务的结果汇总成一份。": "In Heavy mode, combines the results of the parallel tasks into one.",
@@ -144,6 +145,10 @@
   "{n} 个页面": [
     "{n} page",
     "{n} pages"
+  ],
+  "{n} 条回复": [
+    "{n} reply",
+    "{n} replies"
   ],
   "{n} 条消息": [
     "{n} message",
@@ -288,6 +293,7 @@
   "共享后其他 Bot 也会知道这一条。": "Once shared, other bots will know this too.",
   "共用": "All bots",
   "关于你": "About you",
+  "关闭": "Close",
   "关闭 Chrome": "Close Chrome",
   "关闭（Esc）": "Close (Esc)",
   "其他常用的": "Other popular apps",
@@ -384,6 +390,8 @@
   "四叶草": "Clover",
   "回上一步检查 API Key 和地址。": "Go back and check the API key and URL.",
   "回了 {name} 的私信": "Replied to {name}'s DM",
+  "回复": "Reply",
+  "回复…": "Reply…",
   "回调地址（Redirect URL）": "Redirect URL",
   "回车": "Enter",
   "圆": "Circle",
@@ -642,6 +650,7 @@
   "更新于 {time}": "Updated {time}",
   "更新失败：{error}": "Update failed: {error}",
   "更早的任务": "Older tasks",
+  "最后回复 {time}": "Last reply {time}",
   "最多同时 {n} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。": "Up to {n} at a time; the rest wait in line. Tasks start it automatically when needed, and it pauses after 15 idle minutes.",
   "最近做过的事": "Recent work",
   "有 Bot 等你确认（在私聊里）": "A bot needs your approval (in its direct chat)",
@@ -864,6 +873,7 @@
   "解密检查中…": "Decrypting and checking…",
   "触发器 {name}：": "Trigger {name}: ",
   "认识一下你的 Bot": "Meet your bot",
+  "讨论串": "Thread",
   "让 Bot 用上你的应用": "Let your bots use your apps",
   "让 Bot 能在这台电脑上执行终端命令？每条命令执行前都会问你，命令能访问这台电脑上你能访问的所有文件。": "Let bots run terminal commands on this computer? You'll be asked before each command runs. Commands can access every file you can access on this computer.",
   "让模型判断要不要处理（可选）": "Let the model decide whether to handle it (optional)",
@@ -975,6 +985,8 @@
   "重新配对": "Re-pair",
   "重新配对后，原来的私聊就不能再用了。继续？": "After re-pairing, the old direct chat can't use it anymore. Continue?",
   "重试": "Try again",
+  "针对这条消息回复，在旁边单独讨论": "Reply to this message in a separate thread",
+  "针对这条消息的回复只在这里，不进主对话": "Replies to this message stay here and don't go into the main chat",
   "钉钉": "DingTalk",
   "钉钉开发者后台": "DingTalk Developer Console",
   "钉钉的卡片按钮要另建模板，确认请求改成点链接（或回复“允许 #编号”）。": "DingTalk card buttons need a separate template, so approval requests use links instead (or reply \"Allow once #N\").",

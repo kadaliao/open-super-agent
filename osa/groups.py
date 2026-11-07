@@ -109,7 +109,8 @@ async def on_user(chat: dict, text: str, via: str = ""):
             await note(chat["id"], i18n.t("群里没有 Bot 了，先在右栏添加成员"))
             return
         hit = mentions(text, chat["bot_ids"])
-        lead = chat["lead"] if chat["lead"] in chat["bot_ids"] else chat["bot_ids"][0]
+        # 讨论串里没 @ 人：由被回复的那条消息的作者接；回复的是用户自己的消息，还是协调者接
+        lead = chat.get("root_bot") or (chat["lead"] if chat["lead"] in chat["bot_ids"] else chat["bot_ids"][0])
         await g.run([(b, "mention") for b in hit] or [(lead, "lead")])
 
 

@@ -10,7 +10,12 @@ export type Chat = {
 export type Message = {
   id: number; ts: number; role: 'user' | 'assistant' | 'task'; content: string
   meta: Record<string, any>; bot_id: number | null
+  thread?: ThreadSummary   // 这条消息下面有讨论串
 }
+// 讨论串：针对某条消息的回复，是挂在原对话下面的一个子对话（id 是它的对话 id）。bots：回复过的 Bot
+export type ThreadSummary = { id: number; count: number; last: number | null; bots: number[] }
+// 右边打开着的讨论串：chat 是原对话，rootId 是被回复的那条消息；id 在第一次回复之前是 null
+export type OpenThread = { chat: number; rootId: number; root: Message | null; id: number | null }
 export type Task = {
   id: number; goal: string; mode: string; status: string; steps: number
   bot_id: number; chat_id: number; started: number; waiting_approval: number | null; elapsed: number; last_action?: string
@@ -38,6 +43,7 @@ export type ComputerState = {
 }
 export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
+  origin_thread?: number   // 任务是在讨论串里派的：origin_chat_id 是讨论串所在的对话，这个是讨论串
   args: string; ts: number; expires?: number | null; status?: string; always?: boolean
   once?: boolean   // 只能一次一次地允许（本机电脑的终端命令），没有“总是允许”
 }

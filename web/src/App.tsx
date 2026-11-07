@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { bootstrap, chatById, connect, getState, openApps, openChat, openLibrary, useStore } from './store'
+import { bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openLibrary, openThread, useStore } from './store'
 import Chat from './components/Chat'
+import ThreadPanel from './components/Thread'
 import Library from './components/Library'
 import Market from './components/Market'
 import Sidebar from './components/Sidebar'
@@ -13,6 +14,7 @@ export default function App() {
   const ready = useStore(s => s.ready)
   const view = useStore(s => s.view)
   const chat = useStore(s => chatById(s, s.active))
+  const thread = useStore(s => !!s.thread)   // 讨论串打开时占用右栏，关掉后回到原来的面板
   const [newBot, setNewBot] = useState(false)
   const [newGroup, setNewGroup] = useState(false)
   const [settings, setSettings] = useState<string | false>(false)   // 打开时是哪一页（空字符串：上次看的那页）
@@ -32,7 +34,7 @@ export default function App() {
   useEffect(() => {
     const h = (e: Event) => {
       const { botId, takeover, taskId } = (e as CustomEvent).detail
-      setDetails(true); setTab('computer')
+      closeThread(); setDetails(true); setTab('computer')
       if (takeover) setTimeout(() => window.dispatchEvent(new CustomEvent('osa-takeover', { detail: { botId, taskId } })), 300)
     }
     window.addEventListener('osa-open-computer', h)
@@ -40,7 +42,7 @@ export default function App() {
   }, [])
   // 点了任务卡片上的“过程”：打开右栏的任务标签
   useEffect(() => {
-    const h = () => { setDetails(true); setTab('tasks') }
+    const h = () => { closeThread(); setDetails(true); setTab('tasks') }
     window.addEventListener('osa-open-task', h)
     return () => window.removeEventListener('osa-open-task', h)
   }, [])
@@ -51,7 +53,7 @@ export default function App() {
   const showBot = (botId: number, t: string) => {
     const b = getState().bots.find(x => x.id === botId)
     if (b && getState().active !== b.chat_id) openChat(b.chat_id)
-    setDetails(true); setTab(t)
+    closeThread(); setDetails(true); setTab(t)
   }
   useEffect(() => { if (teach) showBot(teach.bot_id, 'computer') }, [teach?.started])
   useEffect(() => { if (draft) showBot(draft.bot_id, 'skills') }, [draft])
@@ -70,8 +72,9 @@ export default function App() {
     if (!('serviceWorker' in navigator)) return
     const h = (e: MessageEvent) => {
       if (e.data?.type !== 'open') return
-      const chat = Number(new URL(e.data.url, location.origin).searchParams.get('chat'))
-      if (chat && getState().chats.some(c => c.id === chat)) openChat(chat)
+      const q = new URL(e.data.url, location.origin).searchParams
+      const chat = Number(q.get('chat')), root = Number(q.get('thread'))   // 讨论串里的消息：?chat=12&thread=34
+      if (chat && getState().chats.some(c => c.id === chat)) openChat(chat).then(() => { if (root) openThread(chat, root) })
     }
     navigator.serviceWorker.addEventListener('message', h)
     return () => navigator.serviceWorker.removeEventListener('message', h)
@@ -111,13 +114,15 @@ export default function App() {
   useEffect(() => localStorage.setItem('osa.details', details ? '1' : '0'), [details])
 
   if (!ready) return <div className="loading">◆</div>
+  const panel = view === 'chat' && (thread || details)
+  const width = thread ? ' mid-panel' : details && tab === 'computer' ? ' wide-panel' : details && tab === 'tasks' ? ' mid-panel' : ''
   return (
-    <div className={'app' + (details && view === 'chat' ? ' with-panel' : '') + (details && tab === 'computer' ? ' wide-panel' : details && tab === 'tasks' ? ' mid-panel' : '') + (side ? ' side-open' : '')}>
+    <div className={'app' + (panel ? ' with-panel' : '') + (panel ? width : '') + (side ? ' side-open' : '')}>
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
       <div className="side-mask" onClick={() => setSide(false)} />
       <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings('')} onClose={() => setSide(false)} />
-      {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : <Chat onToggleDetails={() => setDetails(!details)} />}
-      {details && view === 'chat' && (chat?.kind === 'group'
+      {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : <Chat onToggleDetails={() => { if (thread) { closeThread(); setDetails(true) } else setDetails(!details) }} />}
+      {view === 'chat' && thread ? <ThreadPanel /> : details && view === 'chat' && (chat?.kind === 'group'
         ? <GroupPanel chat={chat} onClose={() => setDetails(false)} tab={tab} setTab={setTab} />
         : <BotPanel onClose={() => setDetails(false)} tab={tab} setTab={setTab} />)}
       {newBot && <NewBotDialog onClose={() => setNewBot(false)} />}

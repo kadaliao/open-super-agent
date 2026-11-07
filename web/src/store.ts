@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
-import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft } from './types'
+import type { App, Approval, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadSummary } from './types'
 import { notice } from './components/Dialog'
 import { desktop } from './desktop'
 
@@ -13,6 +13,7 @@ type State = {
   shapes: string[]
   colors: string[]
   active: number | null              // 当前打开的对话
+  thread: OpenThread | null          // 右边打开着的讨论串（在当前对话里）
   messages: Record<number, Message[]>
   hasMore: Record<number, boolean>
   streams: Record<number, Stream | undefined>
@@ -38,7 +39,7 @@ type State = {
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
+  active: null, thread: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
   view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false,
 }
 const subs = new Set<() => void>()
@@ -91,13 +92,17 @@ export async function bootstrap() {
   const approvals: Record<number, Approval> = {}
   b.approvals.forEach((a: Approval) => (approvals[a.id] = { ...a, status: 'pending' }))
   // 从推送通知点进来时地址是 /?chat=12
-  const fromUrl = Number(new URLSearchParams(location.search).get('chat'))
+  const params = new URLSearchParams(location.search)
+  const fromUrl = Number(params.get('chat')), threadRoot = Number(params.get('thread'))   // 讨论串里的消息推送：?chat=12&thread=34
   if (fromUrl) history.replaceState(null, '', location.pathname)
   const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
         tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], categories: b.categories || [], oauthCallback: b.oauth_callback || '', teach: b.teach || null, auth: !!b.auth, onboarding: !!b.onboarding, ready: true })
-  if (active) openChat(active)
+  if (active) {
+    const opened = openChat(active)
+    if (active === fromUrl && threadRoot) opened.then(() => openThread(active, threadRoot))
+  }
 }
 
 export const setTeachDraft = (d: TeachDraft | null) => set({ teachDraft: d })
@@ -121,8 +126,39 @@ export async function loadSkills(botId: number) {
 
 export async function openChat(chatId: number) {
   localStorage.setItem('osa.active', String(chatId))
-  set(s => ({ active: chatId, view: 'chat', unread: { ...s.unread, [chatId]: 0 } }))
+  set(s => ({ active: chatId, view: 'chat', unread: { ...s.unread, [chatId]: 0 }, thread: s.active === chatId ? s.thread : null }))
   await loadChat(chatId)
+}
+
+// ---------- 讨论串 ----------
+// 在右边打开某条消息下的讨论串。还没人回复过时先不建，第一次回复时再建（sendInThread）
+export async function openThread(chatId: number, rootId: number) {
+  const root = state.messages[chatId]?.find(m => m.id === rootId) || null
+  set({ thread: { chat: chatId, rootId, root, id: root?.thread?.id ?? null } })
+  let r: { root: Message; id: number | null }
+  try { r = await api(`/api/chats/${chatId}/threads/${rootId}`) } catch (e: any) {
+    if (same(chatId, rootId)) { closeThread(); notice(e.message) }
+    return
+  }
+  if (!same(chatId, rootId)) return
+  set(s => ({ thread: { ...s.thread!, root: r.root, id: r.id } }))
+  if (r.id) await loadChat(r.id)
+}
+
+export const closeThread = () => set({ thread: null })
+const same = (chatId: number, rootId: number) => state.thread?.chat === chatId && state.thread.rootId === rootId
+
+export async function sendInThread(text: string) {
+  const th = state.thread
+  if (!th) return
+  let id = th.id
+  if (!id) {
+    const r: { root: Message; id: number } = await api(`/api/chats/${th.chat}/threads`, { method: 'POST', body: { root: th.rootId } })
+    id = r.id
+    set(s => ({ messages: { ...s.messages, [r.id]: s.messages[r.id] || [] },
+                thread: same(th.chat, th.rootId) ? { ...s.thread!, id: r.id, root: r.root } : s.thread }))
+  }
+  send(id, text)
 }
 
 // 对话还没加载过就拉最近 60 条（不切换主区显示什么）
@@ -222,6 +258,7 @@ async function resync() {
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   set({ messages: {}, streams: {}, tasks, teach: b.teach || null })
   if (state.active) loadChat(state.active)
+  if (state.thread) openThread(state.thread.chat, state.thread.rootId)
   Object.keys(state.taskSteps).forEach(id => loadTask(Number(id)))   // 断线期间漏掉的过程
 }
 
@@ -239,15 +276,25 @@ function handle(d: any) {
   switch (d.type) {
     case 'message': {
       const m: Message = d.message
+      // 讨论串里的消息：更新原对话里那条消息下面的“N 条回复”；未读和通知都算在原对话上
+      const th: (ThreadSummary & { parent: number; root: number }) | undefined = d.thread
+      const home = th ? th.parent : cid
+      const learned = !!th && same(th.parent, th.root) && !state.thread!.id   // 别的页面先回复了这个讨论串
       set(s => {
         const list = s.messages[cid]
-        const chats = s.chats.map(c => c.id === cid ? { ...c, updated: m.ts, preview: m.content.slice(0, 80) } : c)
+        let messages = list ? { ...s.messages, [cid]: [...list, m] } : s.messages
+        const up = th && messages[th.parent]
+        if (th && up) messages = { ...messages, [th.parent]: up.map(x => x.id === th.root
+          ? { ...x, thread: { id: th.id, count: th.count, last: th.last, bots: th.bots } } : x) }
+        const chats = th ? s.chats : s.chats.map(c => c.id === cid ? { ...c, updated: m.ts, preview: m.content.slice(0, 80) } : c)
           .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated - a.updated)
-        const unread = cid !== s.active && m.role !== 'user' ? { ...s.unread, [cid]: (s.unread[cid] || 0) + 1 } : s.unread
+        const unread = home !== s.active && m.role !== 'user' ? { ...s.unread, [home]: (s.unread[home] || 0) + 1 } : s.unread
         const streams = m.role === 'assistant' ? { ...s.streams, [cid]: undefined } : s.streams
-        return { chats, unread, streams, messages: list ? { ...s.messages, [cid]: [...list, m] } : s.messages }
+        return { chats, unread, streams, messages, ...(learned ? { thread: { ...s.thread!, id: cid } } : {}) }
       })
-      if (m.role !== 'user' && (cid !== state.active || desktop)) notifyOS(cid, m)   // 桌面 App 里窗口藏起来时，当前对话的回复也要通知
+      if (learned) loadChat(cid)
+      // 桌面 App 里窗口藏起来时，当前对话的回复也要通知
+      if (m.role !== 'user' && (home !== state.active || (th && state.thread?.id !== cid) || desktop)) notifyOS(home, m, undefined, th?.root)
       break
     }
     case 'stream_start':
@@ -307,13 +354,14 @@ function handle(d: any) {
   }
 }
 
-function notifyOS(chatId: number, m: Message | null, text?: string) {
+// threadRoot：消息在讨论串里，点通知时打开那个讨论串
+function notifyOS(chatId: number, m: Message | null, text?: string, threadRoot?: number) {
   if (desktop) return notifyDesktop(chatId, m, text)
   if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return
   if (localStorage.getItem('osa.push') === '1') return   // 这台设备开了推送，由服务端推，免得重复
   const chat = state.chats.find(c => c.id === chatId)
   const n = new Notification(chat?.title || 'Open Super Agent', { body: text || m?.content.slice(0, 120) })
-  n.onclick = () => { window.focus(); openChat(chatId) }
+  n.onclick = async () => { window.focus(); await openChat(chatId); if (threadRoot) openThread(chatId, threadRoot) }
 }
 
 // 桌面 App 用系统通知：Bot 的回复、任务结果、等你确认的操作，和服务端推送的规则一样。

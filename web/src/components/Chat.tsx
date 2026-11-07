@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, chatById, loadOlder, openChat, openLibrary, showTask, useStore } from '../store'
-import type { Approval, Bot, Message, Task } from '../types'
+import { api, approve, chatById, loadOlder, openChat, openLibrary, openThread, showTask, useStore } from '../store'
+import type { Approval, Bot, Chat as ChatT, Message, Task } from '../types'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
 import Markdown from './Markdown'
@@ -46,7 +46,27 @@ function CopyBtn({ text }: { text: string }) {
 // 群聊里每条消息上面标出是哪个 Bot 说的
 const Speaker = ({ bot, show }: { bot?: Bot; show?: boolean }) => show ? <div className="speaker">{bot?.name || t('已删除的 Bot')}</div> : null
 
-function BotMessage({ bot, m, children, showName }: { bot?: Bot; m: Message; children?: React.ReactNode; showName?: boolean }) {
+// 针对这条消息回复：在右边打开它下面的讨论串。reply 为空（讨论串里的消息）时不显示
+type Reply = { chat: number } | undefined
+const ReplyBtn = ({ m, reply }: { m: Message; reply: Reply }) =>
+  reply ? <button className="ghost-btn" title={t('针对这条消息回复，在旁边单独讨论')} onClick={() => openThread(reply.chat, m.id)}>{t('回复')}</button> : null
+
+// 消息下面的“N 条回复”：谁回复过、最后一条什么时候
+function ThreadLink({ m, reply }: { m: Message; reply: Reply }) {
+  const bots = useStore(s => s.bots)
+  const open = useStore(s => !!reply && s.thread?.chat === reply.chat && s.thread.rootId === m.id)
+  if (!reply || !m.thread?.count) return null
+  const who = m.thread.bots.map(id => bots.find(b => b.id === id)).filter((b): b is Bot => !!b)
+  return (
+    <button className={'th-link' + (open ? ' on' : '')} onClick={() => openThread(reply.chat, m.id)}>
+      {who.length > 0 && <GroupAvatars bots={who} size={18} />}
+      <b>{t('{n} 条回复', { n: m.thread.count })}</b>
+      {m.thread.last && <span className="muted">{t('最后回复 {time}', { time: time(m.thread.last) })}</span>}
+    </button>
+  )
+}
+
+function BotMessage({ bot, m, children, showName, reply }: { bot?: Bot; m: Message; children?: React.ReactNode; showName?: boolean; reply?: Reply }) {
   return (
     <div className="msg bot">
       {bot && <BotAvatar avatar={bot.avatar} size={28} />}
@@ -55,7 +75,8 @@ function BotMessage({ bot, m, children, showName }: { bot?: Bot; m: Message; chi
         <Thinking text={m.meta.thinking} seconds={m.meta.thought_s} />
         <Markdown text={m.content} />
         {children}
-        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} /></div>
+        <ThreadLink m={m} reply={reply} />
+        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} /><ReplyBtn m={m} reply={reply} /></div>
       </div>
     </div>
   )
@@ -107,7 +128,7 @@ function SavePageBtn({ bot, text, goal, taskId }: { bot?: Bot; text: string; goa
   return <button className="ghost-btn" disabled={busy} onClick={save}>{t('存为页面')}</button>
 }
 
-function ResultMessage({ bot, m, goal, showName }: { bot?: Bot; m: Message; goal: string; showName?: boolean }) {
+function ResultMessage({ bot, m, goal, showName, reply }: { bot?: Bot; m: Message; goal: string; showName?: boolean; reply?: Reply }) {
   const text = m.content.replace(/^\[任务 #\d+ 结果\]\n?/, '')   // i18n-ignore：存在消息里的标记
   const [open, setOpen] = useState(text.length < 1800)
   const status = m.meta.status || 'done'
@@ -121,9 +142,11 @@ function ResultMessage({ bot, m, goal, showName }: { bot?: Bot; m: Message; goal
         </div>
         <div className={open ? '' : 'clamp'}><Markdown text={text} /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
+        <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} />
           {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}
-          {taskKind(m).taskId && <button className="ghost-btn" onClick={() => showTask(taskKind(m).taskId!)}>{t('查看过程')}</button>}</div>
+          {taskKind(m).taskId && <button className="ghost-btn" onClick={() => showTask(taskKind(m).taskId!)}>{t('查看过程')}</button>}
+          <ReplyBtn m={m} reply={reply} /></div>
       </div>
     </div>
   )
@@ -208,7 +231,7 @@ function DmLine({ m, from, to, here }: { m: Message; from?: Bot; to?: Bot; here:
 }
 
 // 私信的回信：显示成发信 Bot 的一条消息，长的折起来
-function DmReply({ m, bot, to }: { m: Message; bot?: Bot; to?: Bot }) {
+function DmReply({ m, bot, to, reply }: { m: Message; bot?: Bot; to?: Bot; reply?: Reply }) {
   const [open, setOpen] = useState(m.content.length < 1800)
   const bad = m.meta.status && m.meta.status !== 'done'
   return (
@@ -219,9 +242,11 @@ function DmReply({ m, bot, to }: { m: Message; bot?: Bot; to?: Bot }) {
         <div className={'result-head' + (bad ? ' failed' : '')}>↩ {t('回了 {name} 的私信', { name: to?.name || t('已删除的 Bot') })}{m.meta.task_id ? ' · ' + t('任务 #{id}', { id: m.meta.task_id }) : ''}</div>
         <div className={open ? '' : 'clamp'}><Markdown text={m.content} /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
+        <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} />
           {bot && <button className="ghost-btn" onClick={() => openChat(bot.chat_id)}>{t('去 {name} 的私聊', { name: bot.name })}</button>}
-          {m.meta.task_id && <button className="ghost-btn" onClick={() => showTask(m.meta.task_id)}>{t('查看过程')}</button>}</div>
+          {m.meta.task_id && <button className="ghost-btn" onClick={() => showTask(m.meta.task_id)}>{t('查看过程')}</button>}
+          <ReplyBtn m={m} reply={reply} /></div>
       </div>
     </div>
   )
@@ -241,14 +266,94 @@ export function GroupAvatars({ bots, size = 26 }: { bots: Bot[]; size?: number }
   )
 }
 
+// 一串消息，主对话和讨论串共用。reply：能针对消息回复（主对话里给；讨论串里不给，不能再套讨论串）
+export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[]; reply?: Reply }) {
+  const allBots = useStore(s => s.bots)
+  const tasks = useStore(s => s.tasks)
+  const group = chat.kind === 'group'
+  const botOf = (id: number | null | undefined) => allBots.find(b => b.id === id)
+  const bot = group ? undefined : botOf(chat.bot_ids[0])
+  const speaker = (m: Message) => (group ? botOf(m.bot_id) : bot)
+  // 回复里记录了本轮派发的任务：任务卡片挂到回复下面，不再单独显示
+  const byId = new Map(list.map(m => [m.id, m]))
+  const attached = new Set(list.flatMap(m => (m.role === 'assistant' ? m.meta.tasks || [] : [])))
+  const task = (tid: number) => byId.get(tid) && <TaskCard key={tid} m={byId.get(tid)!} task={tasks[tid]}
+    owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)}
+    replyTo={botOf(byId.get(tid)!.meta.reply_to)} />
+  return <>{list.map(m => {
+    if (m.role === 'user') return (
+      <div key={m.id} className="msg user">
+        <div className="user-col">
+          <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble">{m.content}</div></div>
+          <ThreadLink m={m} reply={reply} />
+          {reply && <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} /><ReplyBtn m={m} reply={reply} /></div>}
+        </div>
+      </div>)
+    if (m.role === 'assistant') return m.content || m.meta.tasks?.length ? (
+      <BotMessage key={m.id} bot={speaker(m)} m={m} showName={group} reply={reply}>
+        {(m.meta.tasks || []).map(task)}
+      </BotMessage>) : null
+    const k = taskKind(m)
+    // 没有新内容的定时任务（跑完才知道）不显示，运行记录在右栏“定时”里
+    if (k.kind === 'dispatch') return attached.has(m.id) || m.meta.quiet || tasks[m.id]?.quiet ? null : task(m.id)
+    if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group} reply={reply}
+      goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />   // i18n-ignore：存在消息里的标记
+    if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
+    if (k.kind === 'dm') return <DmLine key={m.id} m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />
+    if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
+      {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChat(m.meta.chat)}>{t('去看')}</button></>}</div>
+    if (k.kind === 'dm_reply') return <DmReply key={m.id} m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} reply={reply} />
+    if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>
+    if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>   // i18n-ignore：存在消息里的标记
+    return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>
+  })}</>
+}
+
+// 正在流式输出的回复
+export function StreamMessage({ chat, chatId }: { chat: ChatT; chatId: number }) {
+  const stream = useStore(s => s.streams[chatId])
+  const who = useStore(s => s.bots.find(b => b.id === (chat.kind === 'group' ? stream?.bot_id : chat.bot_ids[0])))
+  if (!stream) return null
+  return (
+    <div className="msg bot">
+      {who && <BotAvatar avatar={who.avatar} size={28} busy />}
+      <div className="msg-body">
+        <Speaker bot={who} show={chat.kind === 'group'} />
+        <Thinking text={stream.thinking} live={!stream.text} seconds={(Date.now() - stream.started) / 1000} />
+        {stream.text ? <Markdown text={stream.text + ' ▍'} /> : !stream.thinking && <div className="typing"><i /><i /><i /></div>}
+      </div>
+    </div>
+  )
+}
+
+// 要你确认的卡片；群里派的任务卡片在 Bot 的私聊里，这里只放一条“去处理”。
+// here：哪些卡片在这里显示；from：哪些是在这里派的任务
+export function PendingApprovals({ here, from }: { here: (a: Approval) => boolean; from: (a: Approval) => boolean }) {
+  const approvals = useStore(s => s.approvals)
+  const bots = useStore(s => s.bots)
+  const list = Object.values(approvals)
+  const pending = list.filter(a => here(a) && (a.status === 'pending' || Date.now() / 1000 - a.ts < 600))
+  const elsewhere = list.filter(a => from(a) && !here(a) && a.status === 'pending')
+  return <>
+    {pending.map(a => <ApprovalCard key={a.id} a={a} />)}
+    {elsewhere.map(a => {
+      const b = bots.find(x => x.id === a.bot_id)
+      return (
+        <div key={a.id} className="elsewhere">
+          <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id }) : t('{name} 的任务 #{id} 需要你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })}</span>
+          {b && <button className="btn" onClick={() => openChat(b.chat_id)}>{t('去处理')}</button>}
+        </div>
+      )
+    })}
+  </>
+}
+
 export default function Chat({ onToggleDetails }: { onToggleDetails: () => void }) {
   const active = useStore(s => s.active)
   const chat = useStore(s => chatById(s, s.active))
   const allBots = useStore(s => s.bots)
   const messages = useStore(s => (s.active ? s.messages[s.active] : undefined))
   const stream = useStore(s => (s.active ? s.streams[s.active] : undefined))
-  const tasks = useStore(s => s.tasks)
-  const approvals = useStore(s => s.approvals)
   const hasMore = useStore(s => (s.active ? s.hasMore[s.active] : false))
   const error = useStore(s => (s.active ? s.errors[s.active] : undefined))
   const scroller = useRef<HTMLDivElement>(null)
@@ -277,19 +382,9 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
   const members = chat.bot_ids.map(botOf).filter((b): b is Bot => !!b)
   const bot = group ? undefined : members[0]
   if (!group && !bot) return <main className="chat empty-main" />
-  const speaker = (m: Message) => (group ? botOf(m.bot_id) : bot)
   const lead = botOf(chat.lead)
-  // 回复里记录了本轮派发的任务：任务卡片挂到回复下面，不再单独显示
-  const byId = new Map((messages || []).map(m => [m.id, m]))
-  const attached = new Set((messages || []).flatMap(m => (m.role === 'assistant' ? m.meta.tasks || [] : [])))
-  const pending = Object.values(approvals).filter(a => a.chat_id === active && (a.status === 'pending' || Date.now() / 1000 - a.ts < 600))
-  // 群里派的任务要确认时，卡片在 Bot 的私聊里；这里只放一条提示
-  const elsewhere = Object.values(approvals).filter(a => a.origin_chat_id === active && a.chat_id !== active && a.status === 'pending')
   const empty = messages && messages.length === 0 && !stream
   const title = group ? chat.title : bot!.name
-  const task = (tid: number) => byId.get(tid) && <TaskCard key={tid} m={byId.get(tid)!} task={tasks[tid]}
-    owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)}
-    replyTo={botOf(byId.get(tid)!.meta.reply_to)} />
   const starters = group && members.length >= 2
     ? [t('@所有人 先各自介绍一下你们能做什么'), t('@{a} 查一下今天的 AI 新闻，查完交给 @{b} 写一段 100 字的总结', { a: members[0].name, b: members[1].name })]
     : STARTERS
@@ -327,50 +422,9 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
               <div className="starters">{starters.map(s => <button key={s} onClick={() => window.dispatchEvent(new CustomEvent('osa-fill', { detail: s }))}>{s}</button>)}</div>
             </div>
           ))}
-          {messages?.map(m => {
-            if (m.role === 'user') return <div key={m.id} className="msg user">
-              {m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble">{m.content}</div></div>
-            if (m.role === 'assistant') return m.content || m.meta.tasks?.length ? (
-              <BotMessage key={m.id} bot={speaker(m)} m={m} showName={group}>
-                {(m.meta.tasks || []).map(task)}
-              </BotMessage>) : null
-            const k = taskKind(m)
-            // 没有新内容的定时任务（跑完才知道）不显示，运行记录在右栏“定时”里
-            if (k.kind === 'dispatch') return attached.has(m.id) || m.meta.quiet || tasks[m.id]?.quiet ? null : task(m.id)
-            if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group}
-              goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />   // i18n-ignore：存在消息里的标记
-            if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
-            if (k.kind === 'dm') return <DmLine key={m.id} m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />
-            if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
-              {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChat(m.meta.chat)}>{t('去看')}</button></>}</div>
-            if (k.kind === 'dm_reply') return <DmReply key={m.id} m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} />
-            if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>
-            if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>   // i18n-ignore：存在消息里的标记
-            return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>
-          })}
-          {stream && (() => {
-            const who = group ? botOf(stream.bot_id) : bot
-            return (
-              <div className="msg bot">
-                {who && <BotAvatar avatar={who.avatar} size={28} busy />}
-                <div className="msg-body">
-                  <Speaker bot={who} show={group} />
-                  <Thinking text={stream.thinking} live={!stream.text} seconds={(Date.now() - stream.started) / 1000} />
-                  {stream.text ? <Markdown text={stream.text + ' ▍'} /> : !stream.thinking && <div className="typing"><i /><i /><i /></div>}
-                </div>
-              </div>
-            )
-          })()}
-          {pending.map(a => <ApprovalCard key={a.id} a={a} />)}
-          {elsewhere.map(a => {
-            const b = botOf(a.bot_id)
-            return (
-              <div key={a.id} className="elsewhere">
-                <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id }) : t('{name} 的任务 #{id} 需要你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })}</span>
-                {b && <button className="btn" onClick={() => openChat(b.chat_id)}>{t('去处理')}</button>}
-              </div>
-            )
-          })}
+          {messages && <MessageList chat={chat} list={messages} reply={{ chat: chat.id }} />}
+          <StreamMessage chat={chat} chatId={chat.id} />
+          <PendingApprovals here={a => a.chat_id === active} from={a => a.origin_chat_id === active} />
           {error && <div className="error-line">{error}</div>}
         </div>
       </div>

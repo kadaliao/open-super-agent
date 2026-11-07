@@ -38,7 +38,7 @@
 osa/
   server.py        HTTP / WebSocket 入口、REST 接口、VNC 桥、前端静态文件
   auth.py          登录（OSA_PASSWORD）：登录页、签名 cookie、拦截未登录的请求和 WebSocket；跨站请求检查（开没开登录都查）、没开登录时只认本机这类访问地址
-  router.py        Bot 的常驻会话：提示词、流式输出、Router 工具；每一轮都明确在哪个对话（私聊或群聊）里
+  router.py        Bot 的常驻会话：提示词、流式输出、Router 工具；每一轮都明确在哪个对话（私聊、群聊或讨论串）里
   groups.py        群聊：解析 @、协调者、handoff 队列、任务做完自动交接、每轮发言上限
   dm.py            Bot 之间的私信：message_bot 发信、回信自动送回发信的对话、深度上限、排队中的一轮合并
   teach.py         演示一遍：开始 / 结束录制、把录到的事件排成步骤、让模型写技能草稿
@@ -85,7 +85,7 @@ web/public/         PWA：manifest.json、sw.js（推送和离线提示页）、
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
   i18n.ts          界面语言：t() 按中文原文查 locales/en.json
-  components/      Chat、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、
+  components/      Chat、Thread（讨论串面板）、Composer、Sidebar、BotEditor、Computer、Settings、Routines（技能和定时任务面板）、
                    Memories（记忆面板）、Library（资料库和分享页）、Groups（新建群聊和群聊面板）、Tasks（任务列表和过程）、Markdown
 ```
 
@@ -95,7 +95,7 @@ web/src/
 
 | 表 | 用途 |
 |---|---|
-| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者 |
+| `bots`、`chats` | Bot 和对话；每个 Bot 有一个私聊（`kind=direct`）；群聊（`kind=group`）的 `bot_ids` 有 2–6 个，`lead` 是协调者；讨论串（`kind=thread`）的 `parent` 是所在的对话，`root` 是被回复的那条消息 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等 |
 | `llm_usage` | 每次模型调用的 token 数和费用 |
 | `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；只留最近 `memory.task_log_days` 天 |
@@ -186,6 +186,20 @@ web/src/
 - **确认卡片只进私聊**：任务带 `approval_chat_id`（Bot 的私聊），确认请求的 `chat_id` 是私聊，`origin_chat_id` 是任务所在的群；
   前端在群里只显示“去处理”的提示。
 - 群聊里不解析 `/技能`；技能、定时任务、记忆都属于单个 Bot，在它的私聊和右栏里管理。
+
+### 讨论串
+- 针对某条消息回复时，在那条消息（`root`）下面开一个讨论串：`chats` 里一条 `kind=thread` 的子对话，不进侧栏。
+  `bots.chat()` 把它按上级对话的样子返回（`kind` 是 direct / group，成员、协调者、标题都跟着上级对话），另外带上 `parent`、`root`。
+  所以 Router、群聊、派任务、私信回信不用区分，消息、任务结果、流式输出都按讨论串自己的 `chat_id` 走，自然回到讨论串里。
+- **上下文是分叉的**（`memory.context`）：上级对话从 `root` 之前最后一次“新话题”起、到 `root` 为止，接着是讨论串里的消息，
+  讨论串第一条前面标一句 `THREAD_NOTE`。主对话里在 `root` 之后的消息讨论串里看不到，讨论串里的消息主对话也看不到。
+  `recall` 在讨论串里也能取上级对话到 `root` 为止的原文。系统提示词和上级对话一样，不为讨论串改。
+- 群里的讨论串没 @ 人时由 `root` 的作者接（`root_bot`），回复的是用户自己的消息才由协调者接。讨论串里不能再开讨论串，也没有“新话题”。
+- `broadcast` 遇到讨论串里的消息，给事件加上 `thread`（上级对话、`root`、回复数、回复过的 Bot、最后回复时间）：
+  前端据此更新原消息下面的“N 条回复”，未读和通知算在上级对话上；手机推送的地址是 `/?chat=<上级对话>&thread=<root>`。
+  翻页接口（`memory.page`）给下面有讨论串的消息带上同样的摘要。
+- 确认卡片的 `origin_chat_id` 是讨论串所在的私聊或群聊（聊天软件、“在群聊里派的”提示照旧），`origin_thread` 是讨论串。
+- 讨论串只在网页上用：聊天软件绑定的是私聊或群聊，讨论串里的消息不发过去。删除 Bot 或群聊时它下面的讨论串一起删。
 
 ### Bot 之间的私信
 - 不用拉群也能让别的 Bot 帮忙：`message_bot(to, text)` 在发信的对话里记一条 `kind=dm`，收信 Bot 的私聊里记一条同样的（`meta.chat` 是发信的对话），

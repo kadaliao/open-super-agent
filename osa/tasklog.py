@@ -128,9 +128,9 @@ def list_tasks(bot_id: int | None = None, chat_id: int | None = None, before: in
     if bot_id:
         where.append("bot_id=?")
         args.append(bot_id)
-    if chat_id:
-        where.append("chat_id=?")
-        args.append(chat_id)
+    if chat_id:   # 连同这个对话下面的讨论串里派的
+        where.append("chat_id in (select ? union select id from chats where kind='thread' and parent=?)")
+        args += [chat_id, chat_id]
     rows = conn.execute(f"select id, ts, content, meta, chat_id, bot_id from messages where {' and '.join(where)} "
                         "order by id desc limit ?", (*args, limit)).fetchall()
     return [_task(r) for r in rows]

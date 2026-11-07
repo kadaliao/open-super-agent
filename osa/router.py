@@ -236,13 +236,14 @@ class Router:
     def _over_budget(self) -> bool:
         return memory.tokens_today() > CFG["limits"]["daily_token_budget"]
 
-    async def handle_user(self, text: str, via: str = ""):
-        """用户在私聊里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。"""
+    async def handle_user(self, text: str, via: str = "", chat_id: int | None = None):
+        """用户在私聊（或私聊里的讨论串 chat_id）里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。"""
+        cid = chat_id or self.chat_id
         meta = {"via": via} if via else {}
         if hit := skills.parse(self.bot_id, text):
             meta |= {"skill": hit[0]["name"], "skill_prompt": skills.expand(*hit)}
-        await self.add("user", text, **meta)
-        await self.respond(self.chat_id)
+        await self.add("user", text, cid, **meta)
+        await self.respond(cid)
 
     async def respond(self, chat_id: int, turn: dict | None = None):
         """在某个对话里说一轮话。群聊由 groups 决定轮到谁。

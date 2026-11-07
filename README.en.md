@@ -21,7 +21,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 ## Features
 
-- 🤖 **Multiple bots**: each with its own name, avatar, persona and conversation. Replies stream in, and the model's reasoning can be expanded or collapsed.
+- 🤖 **Multiple bots**: each with its own name, avatar, persona and conversation. Replies stream in, and the model's reasoning can be expanded or collapsed. Reply to any message in a side thread to dig into it without derailing the main chat.
 - 👥 **Group chats**: 2–6 Bots in one chat. `@` a Bot to have it answer, or `@everyone`; unaddressed messages go to the group's coordinator, who hands work to the right Bot. Bots hand off to each other (one researches, the next summarizes when the research is done). Approval requests stay in each Bot's private chat.
 - ✉️ **Bots message each other**: no group needed. A Bot can DM another Bot for help ("ask Postman whether there's mail from Anthropic"); the other Bot works in its own chat, and the result comes back to the original conversation automatically.
 - ⚡ **Background tasks**: workers run long jobs while you keep chatting. **Heavy mode** runs several workers on the same problem and has a reviewer merge their answers.

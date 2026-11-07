@@ -142,6 +142,8 @@ def message_for(event: dict) -> tuple[str, str, str, str] | None:
     """把一个界面事件翻译成 (标题, 正文, 打开的地址, 合并用的 tag)；不需要推的返回 None。"""
     t, cid = event.get("type"), event.get("chat_id")
     url = f"/?chat={cid}" if cid else "/"
+    if th := event.get("thread"):   # 讨论串里的消息：打开上级对话里的那个讨论串
+        cid, url = th["parent"], f"/?chat={th['parent']}&thread={th['root']}"
     if t == "approval" and event.get("status") == "pending":
         who = _bot_name(event.get("bot_id"))
         if event.get("kind") == "help":

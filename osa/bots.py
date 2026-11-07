@@ -1,12 +1,21 @@
-"""Bot 和对话的增删改查。每个 Bot 有一个私聊对话；群聊的 bot_ids 有 2–6 个，lead 是协调者。"""
+"""Bot 和对话的增删改查。每个 Bot 有一个私聊对话；群聊的 bot_ids 有 2–6 个，lead 是协调者。
+
+讨论串（thread）：针对私聊或群聊里的某一条消息（root）回复，是挂在那个对话（parent）下面的一个子对话，
+表里 kind='thread'。它不出现在侧栏；成员、协调者、标题跟着上级对话走，chat() 返回时 kind 也是上级的（direct / group），
+所以 Router、群聊、任务、私信回信都按普通对话处理，结果自然回到讨论串里。"""
 import json
 import time
 from . import i18n
 from .memory import conn
 
-if "lead" not in {r[1] for r in conn.execute("pragma table_info(chats)")}:
+_cols = {r[1] for r in conn.execute("pragma table_info(chats)")}
+if "lead" not in _cols:
     conn.execute("alter table chats add column lead integer")   # 群聊的协调者：没人被 @ 时由它接
-    conn.commit()
+if "parent" not in _cols:
+    conn.execute("alter table chats add column parent integer")   # 讨论串：在哪个对话里
+    conn.execute("alter table chats add column root integer")     # 讨论串：回复的是哪条消息
+conn.execute("create index if not exists chats_thread on chats(parent, root)")
+conn.commit()
 
 SHAPES = ["square", "sparkle", "clover", "flower", "heart", "house", "star", "circle"]
 COLORS = ["#7c9cff", "#ff8a65", "#4fc3a1", "#f6c453", "#c792ea", "#ff6b9a", "#5cc8ff", "#a3a3a3"]
@@ -79,9 +88,7 @@ def delete(bot_id: int):
         return
     if b["is_primary"]:
         raise ValueError(i18n.t("主 Bot 不能删除，先把别的 Bot 设为主 Bot"))
-    conn.execute("delete from task_steps where task_id in (select id from messages where chat_id=?)", (b["chat_id"],))
-    conn.execute("delete from messages where chat_id=?", (b["chat_id"],))
-    conn.execute("delete from chats where id=?", (b["chat_id"],))
+    _delete_chat(b["chat_id"])
     conn.execute("delete from bots where id=?", (bot_id,))
     # 从群聊里移出；群里的历史消息保留，协调者换成剩下的第一个
     for g in [c for c in list_chats() if c["kind"] == "group" and bot_id in c["bot_ids"]]:
@@ -91,18 +98,99 @@ def delete(bot_id: int):
     conn.commit()
 
 
+def thread_ids(chat_id: int) -> list[int]:
+    """一个对话下面所有讨论串的 id。"""
+    return [r[0] for r in conn.execute("select id from chats where kind='thread' and parent=?", (chat_id,))]
+
+
+def _delete_chat(chat_id: int):
+    """删掉一个对话和它的消息、任务过程，连同它下面的讨论串。"""
+    for i in [chat_id, *thread_ids(chat_id)]:
+        conn.execute("delete from task_steps where task_id in (select id from messages where chat_id=?)", (i,))
+        conn.execute("delete from messages where chat_id=?", (i,))
+        conn.execute("delete from chats where id=?", (i,))
+
+
+_CHAT_COLS = "id, kind, title, bot_ids, pinned, updated, lead, parent, root"
+
+
+def _chat(row) -> dict:
+    i, kind, title, ids, pinned, updated, lead, parent, root = row
+    last = conn.execute("select content, role from messages where chat_id=? order by id desc limit 1", (i,)).fetchone()
+    return {"id": i, "kind": kind, "title": title, "bot_ids": json.loads(ids or "[]"), "pinned": bool(pinned),
+            "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead}
+
+
 def list_chats() -> list[dict]:
-    out = []
-    for i, kind, title, ids, pinned, updated, lead in conn.execute(
-            "select id, kind, title, bot_ids, pinned, updated, lead from chats order by pinned desc, updated desc"):
-        last = conn.execute("select content, role from messages where chat_id=? order by id desc limit 1", (i,)).fetchone()
-        out.append({"id": i, "kind": kind, "title": title, "bot_ids": json.loads(ids), "pinned": bool(pinned),
-                    "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead})
-    return out
+    """侧栏里的对话：私聊和群聊，不含讨论串。"""
+    return [_chat(r) for r in conn.execute(
+        f"select {_CHAT_COLS} from chats where kind != 'thread' order by pinned desc, updated desc")]
 
 
 def chat(chat_id: int) -> dict | None:
-    return next((c for c in list_chats() if c["id"] == chat_id), None)
+    """一个对话。讨论串按上级对话的样子返回，另外带上 parent（上级对话）、root（回复的那条消息）
+    和 root_bot（那条消息是群里哪个成员说的：没 @ 人时由它接着回答）。"""
+    r = conn.execute(f"select {_CHAT_COLS} from chats where id=?", (chat_id,)).fetchone()
+    if not r:
+        return None
+    c = _chat(r)
+    if c["kind"] != "thread":
+        return c
+    up = chat(r[7])
+    if not up:
+        return None
+    author = conn.execute("select bot_id from messages where id=?", (r[8],)).fetchone()
+    return {**up, "id": c["id"], "updated": c["updated"], "preview": c["preview"], "pinned": False,
+            "parent": up["id"], "root": r[8], "root_bot": author[0] if author and author[0] in up["bot_ids"] else None}
+
+
+# ---------- 讨论串 ----------
+def find_thread(parent: int, root: int) -> int | None:
+    r = conn.execute("select id from chats where kind='thread' and parent=? and root=?", (parent, root)).fetchone()
+    return r[0] if r else None
+
+
+def thread(parent: int, root: int) -> dict:
+    """某条消息下的讨论串，没有就建一个。只能回复私聊、群聊里的消息，讨论串里不能再开讨论串。"""
+    up = chat(parent)
+    if not up or up.get("parent"):
+        raise ValueError(i18n.t("只能回复私聊或群聊里的消息"))
+    if not conn.execute("select 1 from messages where id=? and chat_id=?", (root, parent)).fetchone():
+        raise ValueError(i18n.t("这个对话里没有这条消息"))
+    tid = find_thread(parent, root)
+    if not tid:
+        tid = conn.execute("insert into chats(kind, title, bot_ids, updated, parent, root) values('thread', '', '[]', ?, ?, ?)",
+                           (time.time(), parent, root)).lastrowid
+        conn.commit()
+    return chat(tid)
+
+
+# 讨论串里算作“回复”的消息：用户和 Bot 说的话、任务结果；派任务、交接这类记录不算
+_REPLY = ("(m.role = 'user' or (m.role = 'assistant' and m.content != '') "
+          "or json_extract(m.meta, '$.kind') in ('result', 'dm_reply'))")
+
+
+def thread_summaries(parent: int, roots: list[int]) -> dict[int, dict]:
+    """这些消息下面的讨论串：root -> {id, count 回复数, last 最后回复的时间, bots 回复过的 Bot}。"""
+    if not roots:
+        return {}
+    marks = ",".join("?" * len(roots))
+    rows = conn.execute(f"""select c.id, c.root, count(m.id), max(m.ts),
+        group_concat(distinct case when m.role != 'user' then m.bot_id end)
+        from chats c left join messages m on m.chat_id = c.id and {_REPLY}
+        where c.kind = 'thread' and c.parent = ? and c.root in ({marks}) group by c.id""", (parent, *roots)).fetchall()
+    return {root: {"id": i, "count": n, "last": last, "bots": [int(x) for x in (who or "").split(",") if x]}
+            for i, root, n, last, who in rows}
+
+
+def thread_event(chat_id: int) -> dict | None:
+    """讨论串里来了新消息时，给前端更新上级对话里那条消息下面的“N 条回复”。不是讨论串返回 None。"""
+    from .memory import thread_of
+    r = thread_of(chat_id)
+    if not r:
+        return None
+    s = thread_summaries(r[0], [r[1]]).get(r[1])
+    return s and {"parent": r[0], "root": r[1], **s}
 
 
 # ---------- 群聊 ----------
@@ -143,7 +231,7 @@ def create_group(bot_ids, title: str = "", lead=None) -> dict:
 
 def update_group(chat_id: int, title: str | None = None, bot_ids=None, lead=None) -> dict:
     g = chat(chat_id)
-    if not g or g["kind"] != "group":
+    if not g or g["kind"] != "group" or g.get("parent"):
         raise ValueError(i18n.t("没有这个群聊"))
     ids = _members(bot_ids) if bot_ids is not None else g["bot_ids"]
     if title is not None:
@@ -155,10 +243,9 @@ def update_group(chat_id: int, title: str | None = None, bot_ids=None, lead=None
 
 
 def delete_group(chat_id: int):
-    conn.execute("delete from task_steps where task_id in (select id from messages where chat_id=?)", (chat_id,))
-    conn.execute("delete from messages where chat_id=?", (chat_id,))
-    conn.execute("delete from chats where id=? and kind='group'", (chat_id,))
-    conn.commit()
+    if conn.execute("select 1 from chats where id=? and kind='group'", (chat_id,)).fetchone():
+        _delete_chat(chat_id)
+        conn.commit()
 
 
 def ensure_default():

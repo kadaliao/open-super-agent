@@ -28,6 +28,9 @@ watching: dict[WebSocket, bool] = {}   # 每个页面现在是不是正被看着
 
 
 async def broadcast(event: dict):
+    # 讨论串里的新消息：带上上级对话和“N 条回复”，前端据此更新被回复的那条消息、未读数和通知
+    if event.get("type") == "message" and event.get("chat_id") and (th := bots.thread_event(event["chat_id"])):
+        event = {**event, "thread": th}
     channels.on_event(event)   # 聊天软件（Telegram、飞书、钉钉……）里也发一份
     for ws in list(clients):
         try:
@@ -173,6 +176,31 @@ async def messages(chat_id: int, before: int | None = None, limit: int = 60):
     return memory.page(chat_id, before, min(limit, 200))
 
 
+# ---------- 讨论串 ----------
+def _root(chat_id: int, root: int) -> dict:
+    r = memory.conn.execute("select id, ts, role, content, meta, bot_id from messages where id=? and chat_id=?",
+                            (root, chat_id)).fetchone()
+    if not r:
+        raise HTTPException(404, i18n.t("这个对话里没有这条消息"))
+    return {"id": r[0], "ts": r[1], "role": r[2], "content": r[3], "meta": json.loads(r[4] or "{}"), "bot_id": r[5]}
+
+
+@app.get("/api/chats/{chat_id}/threads/{root}")
+async def get_thread(chat_id: int, root: int):
+    """某条消息下的讨论串：被回复的那条消息，和讨论串的对话 id（还没人回复过是 null，不新建）。"""
+    return {"root": _root(chat_id, root), "id": bots.find_thread(chat_id, root)}
+
+
+@app.post("/api/chats/{chat_id}/threads")
+async def open_thread(chat_id: int, data: dict = Body(...)):
+    """针对某条消息回复：返回它下面的讨论串，没有就建一个。之后像普通对话一样往讨论串的 id 发消息。"""
+    try:
+        th = bots.thread(chat_id, int(data.get("root") or 0))
+    except (ValueError, TypeError) as e:
+        _err(e)
+    return {"root": _root(chat_id, th["root"]), "id": th["id"]}
+
+
 # ---------- 群聊 ----------
 @app.post("/api/groups")
 async def create_group(data: dict = Body(...)):
@@ -197,13 +225,15 @@ async def update_group(chat_id: int, data: dict = Body(...)):
 @app.delete("/api/chats/{chat_id}")
 async def delete_group(chat_id: int):
     chat = bots.chat(chat_id)
-    if not chat or chat["kind"] != "group":
+    if not chat or chat["kind"] != "group" or chat.get("parent"):
         raise HTTPException(400, i18n.t("只能删除群聊；Bot 的私聊随 Bot 一起删除"))
+    inside = {chat_id, *bots.thread_ids(chat_id)}   # 群里的讨论串一起删
     for t in list(rt.TASKS.values()):
-        if t.chat_id == chat_id and t.status == "running":
+        if t.chat_id in inside and t.status == "running":
             rt.cancel(t.id, i18n.t("群聊已删除"))
     bots.delete_group(chat_id)
-    groups.forget(chat_id)
+    for i in inside:
+        groups.forget(i)
     channels.chat_removed(chat_id)
     await broadcast({"type": "bots_changed"})
     return {"ok": True}
@@ -215,6 +245,8 @@ async def new_topic(chat_id: int):
     chat = bots.chat(chat_id)
     if not chat:
         raise HTTPException(404, i18n.t("没有这个对话"))
+    if chat.get("parent"):
+        raise HTTPException(400, i18n.t("讨论串里不能开新话题"))
     return {"id": await reset_chat(chat)}
 
 
@@ -1445,7 +1477,7 @@ async def safe_handle(chat: dict, text: str, via: str = ""):
         if chat["kind"] == "group":
             await groups.on_user(chat, text, via)
         else:
-            await rt.runtime(chat["bot_ids"][0]).handle_user(text, via)
+            await rt.runtime(chat["bot_ids"][0]).handle_user(text, via, chat["id"])
     except Exception as e:
         await broadcast({"type": "error", "chat_id": chat["id"], "message": i18n.t("出错了：{e}", e=e)})
 

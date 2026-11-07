@@ -800,3 +800,25 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .step-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .step-filter button { font-size: 12.5px; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--line); color: var(--fg2); }
 .step-filter button.on { background: var(--acc); color: var(--acc-fg); border-color: var(--acc); }
+
+/* 讨论串：消息下面的“N 条回复”、右边的讨论串面板 */
+.msg.user .user-col { display: flex; flex-direction: column; align-items: flex-end; max-width: 78%; min-width: 0; }
+.msg.user .user-line { display: flex; align-items: flex-end; justify-content: flex-end; max-width: 100%; }
+.msg.user .user-col .bubble { max-width: 100%; }
+.msg.user .msg-actions { justify-content: flex-end; }
+.th-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 4px 10px 4px 6px; border: 1px solid var(--line);
+  border-radius: 10px; font-size: 12.5px; color: var(--link); max-width: 100%; }
+.th-link b { font-weight: 600; white-space: nowrap; } .th-link .muted { color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-link:hover, .th-link.on { background: var(--bg2); }
+.th-link .group-avatars { height: 18px; }
+.msg.user .th-link { align-self: flex-end; }
+.th-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-left: 4px; }
+.th-title .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-body { padding: 8px 16px 12px; }
+.th-body .msg { margin: 14px 0; }
+.th-body .msg.user .user-col { max-width: 88%; }
+.th-divider { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; color: var(--fg3); font-size: 12px; }
+.th-divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.th-body .handoff, .th-body .elsewhere { margin-left: 0; }
+.th-panel .composer-wrap { padding: 8px 12px 12px; }
+@media (max-width: 760px) { .th-panel .composer-wrap { padding: 6px 10px calc(10px + env(safe-area-inset-bottom)); } }
