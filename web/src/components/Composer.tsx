@@ -68,7 +68,7 @@ export default function Composer({ chatId, bot, members, busy }: { chatId: numbe
     for (const f of Array.from(files || [])) {
       setUploading(t('正在上传 {name}…（第一次会先开机）', { name: f.name }))
       try {
-        const r = await fetch(`/api/files/content?dir=${encodeURIComponent('/data/workspace/uploads')}&name=${encodeURIComponent(f.name)}`, { method: 'PUT', body: f })
+        const r = await fetch(`/api/files/content?dir=uploads&name=${encodeURIComponent(f.name)}`, { method: 'PUT', body: f })
         const d = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(d.detail || t('上传失败（{status}）', { status: r.status }))
         setText(s => (s && !s.endsWith('\n') ? s + '\n' : s) + `[附件] ${d.path}\n`)   // i18n-ignore：消息里的附件标记，Bot 靠它找文件

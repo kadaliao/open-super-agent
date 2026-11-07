@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
-import { api, useStore, setComputer, setTeachDraft } from '../store'
-import type { ComputerState, Teach } from '../types'
+import { api, useStore, setComputer, setSettings, setTeachDraft } from '../store'
+import type { ComputerState, Settings, Teach } from '../types'
 import { lang, t } from '../i18n'
 import BotAvatar from './BotAvatar'
 import { ask, notice } from './Dialog'
@@ -55,7 +55,74 @@ function TypeBar({ botId }: { botId: number }) {
 const STATE: Record<string, string> = {
   none: t('还没启动'), starting: t('启动中'), running: t('运行中'), paused: t('已暂停'), stopped: t('已停止'), error: t('出错了'),
 }
-const BACKEND: Record<string, string> = { local: t('本地 Docker'), instabox: t('Instabox 云端') }
+const BACKEND: Record<string, string> = { host: t('本机 Chrome'), local: t('本地 Docker'), instabox: t('Instabox 云端') }
+const MISSING: Record<string, string> = { host: t('没找到 Chrome'), local: t('没装 Docker'), instabox: t('没设 INSTABOX_API_KEY') }
+
+/** 用哪台电脑：本机的 Chrome、本地 Docker、Instabox。有任务在用时不能换。 */
+function BackendPicker({ st }: { st: ComputerState }) {
+  const s = useStore(x => x.settings)
+  if (!s?.computer_backends) return <span className="muted small">· {BACKEND[st.backend] || st.backend}</span>
+  const busy = !!(st.users?.length || st.exclusive)
+  const change = async (v: string) => {
+    try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_backend: v } })) }
+    catch (e: any) { notice(e.message) }
+  }
+  return (
+    <select className="pc-backend" value={s.computer_backend || 'auto'} disabled={busy} title={busy ? t('有任务在用电脑，用完再换') : t('用哪台电脑')}
+      onChange={e => change(e.target.value)}>
+      <option value="auto">{t('自动（{name}）', { name: BACKEND[s.computer_backend === 'auto' ? st.backend : ''] || t('按环境选') })}</option>
+      {s.computer_backends.map(b => <option key={b.id} value={b.id} disabled={!b.ok && b.id !== s.computer_backend}>
+        {BACKEND[b.id] || b.id}{b.ok ? '' : `（${MISSING[b.id]}）`}</option>)}
+    </select>
+  )
+}
+
+/** 本机电脑：终端默认关，打开后 Bot 每条命令都要你确认。 */
+function HostShell({ on }: { on: boolean }) {
+  const save = async (v: boolean) => {
+    if (v && !(await ask(t('让 Bot 能在这台电脑上执行终端命令？每条命令执行前都会问你，命令能访问这台电脑上你能访问的所有文件。'), { ok: t('打开终端') }))) return
+    try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_host_shell: v } })) }
+    catch (e: any) { notice(e.message) }
+  }
+  return (
+    <label className="pc-shell muted small">
+      <input type="checkbox" checked={on} onChange={e => save(e.target.checked)} />
+      {t('允许 Bot 用终端（每条命令都要你确认）')}
+    </label>
+  )
+}
+
+/** 本机电脑的画面：没有 VNC，每隔一会儿取一张 Bot 正在用的窗口的截图（手机上也能看）。窗口本身就在这台电脑的屏幕上。 */
+export function HostView({ botId }: { botId: number }) {
+  const [src, setSrc] = useState('')
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let stop = false, busy = false, url = ''
+    const tick = async () => {
+      if (busy || document.hidden) return
+      busy = true
+      try {
+        const r = await fetch(`/api/bots/${botId}/computer/shot`, { cache: 'no-store' })
+        if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || r.statusText)
+        const next = URL.createObjectURL(await r.blob())
+        if (stop) { URL.revokeObjectURL(next); return }
+        if (url) URL.revokeObjectURL(url)
+        url = next
+        setSrc(next); setErr('')
+      } catch (e: any) { if (!stop) setErr(e.message) }
+      finally { busy = false }
+    }
+    tick()
+    const i = setInterval(tick, 1500)
+    return () => { stop = true; clearInterval(i); if (url) URL.revokeObjectURL(url) }
+  }, [botId])
+  return (
+    <div className="pc-view">
+      {src && <img className="pc-shot" src={src} alt="" />}
+      {(!src || err) && <div className="pc-overlay">{err || t('正在取画面…')}</div>}
+    </div>
+  )
+}
 
 /** 电脑的实时画面。interactive=false 时只能看。 */
 export function ComputerView({ botId, interactive }: { botId: number; interactive: boolean }) {
@@ -186,22 +253,28 @@ export function ComputerPanel({ botId }: { botId: number }) {
   if (!st) return <div className="muted small">{t('读取电脑状态…')}</div>
   const running = st.state === 'running'
   const human = st.controller === 'human'
+  const host = st.backend === 'host'
+  const view = host ? <HostView botId={botId} /> : <ComputerView botId={botId} interactive={human} />
   return (
     <div className="pc-panel">
       <div className="pc-bar">
         <span className={'pc-dot ' + st.state} />
         <span>{STATE[st.state] || st.state}</span>
-        <span className="muted small">· {BACKEND[st.backend] || st.backend}</span>
+        <BackendPicker st={st} />
         <span className="grow" />
+        {running && host && <button className="ghost-btn" disabled={!!busy} onClick={() => act('show')} title={t('把 Bot 的 Chrome 窗口放到屏幕最前面')}>{t('显示窗口')}</button>}
         {running && <button className="ghost-btn" onClick={() => setBig(true)} title={t('放大')}>⤢ {t('放大')}</button>}
       </div>
       {running && <Users st={st} />}
-      {running ? <ComputerView botId={botId} interactive={human} /> : (
+      {running ? view : (
         <div className="pc-empty">
-          <p className="muted small">{t('所有 Bot 共用一台电脑（浏览器 + 终端）。几个任务可以同时用，每个任务一个浏览器窗口，登录状态和文件共用；')}
-            {' '}{t('最多同时 {n} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。', { n: st.parallel || 3 })}</p>
+          {host ? <p className="muted small">{t('Bot 用这台电脑上单独开的一个 Chrome（和你自己的 Chrome 分开），窗口就在你的屏幕上。第一次用先打开它，在里面登录要 Bot 用的网站，所有 Bot 共用这些登录。')}
+            {' '}{t('几个任务可以同时用，每个任务一个窗口，最多同时 {n} 个。文件放在工作文件夹里：{dir}', { n: st.parallel || 3, dir: st.workspace || '' })}</p>
+            : <p className="muted small">{t('所有 Bot 共用一台电脑（浏览器 + 终端）。几个任务可以同时用，每个任务一个浏览器窗口，登录状态和文件共用；')}
+            {' '}{t('最多同时 {n} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。', { n: st.parallel || 3 })}</p>}
+          {st.state === 'error' && st.detail && <div className="error-line">{st.detail}</div>}
           {st.backend === 'instabox' && <MachinePicker key={st.detail} botId={botId} onErr={setErr} />}
-          <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? t('启动中…（首次需要一会儿）') : st.state === 'paused' ? t('恢复') : st.state === 'none' ? t('新建并启动电脑') : t('启动电脑')}</button>
+          {!(host && st.state === 'error') && <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? t('启动中…（首次需要一会儿）') : host ? t('打开 Chrome') : st.state === 'paused' ? t('恢复') : st.state === 'none' ? t('新建并启动电脑') : t('启动电脑')}</button>}
         </div>
       )}
       {teach && <TeachBar teach={teach} />}
@@ -209,16 +282,17 @@ export function ComputerPanel({ botId }: { botId: number }) {
       {running && !teach && (
         <div className="pc-actions">
           {human ? <>
-            <span className="pc-you">{t('你正在操作')}</span>
+            <span className="pc-you">{host ? t('Bot 已暂停，你直接在 Chrome 窗口里操作') : t('你正在操作')}</span>
             <button className="btn primary" onClick={() => act('handback')}>{t('交还给 Bot')}</button>
           </> : <>
-            <span className="muted small">{task?.last_action ? t('Bot：{action}', { action: task.last_action }) : t('Bot 控制中（你只能看）')}</span>
+            <span className="muted small">{task?.last_action ? t('Bot：{action}', { action: task.last_action }) : host ? t('Bot 控制中') : t('Bot 控制中（你只能看）')}</span>
             <span className="grow" />
-            <button className="btn" onClick={() => { act('takeover'); setBig(true) }}>{t('接手')}</button>
-            <button className="btn" disabled={!!busy} onClick={() => act('pause')}>{t('暂停')}</button>
+            <button className="btn" onClick={() => { act('takeover'); if (!host) setBig(true) }}>{t('接手')}</button>
+            <button className="btn" disabled={!!busy} onClick={() => act('pause')}>{host ? t('关闭 Chrome') : t('暂停')}</button>
           </>}
         </div>
       )}
+      {host && <HostShell on={!!st.shell} />}
       {err && <div className="error-line">{err}</div>}
       {big && running && (
         <div className="modal-bg" onMouseDown={() => setBig(false)}>
@@ -232,7 +306,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
             </div>
             {teach && <TeachBar teach={teach} />}
             <Users st={st} />
-            <ComputerView botId={botId} interactive={human} />
+            {view}
             {human && touch && <TypeBar botId={botId} />}
           </div>
         </div>

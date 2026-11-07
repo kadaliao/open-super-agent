@@ -34,10 +34,12 @@ export type ComputerUser = { key: string; label: string; task_id: number | null;
 export type ComputerState = {
   bot_id: number; backend: string; controller: 'bot' | 'human'; state: string; detail: string; width: number; height: number
   parallel?: number; users?: ComputerUser[]; waiting?: string[]; watch?: string | null; exclusive?: string
+  workspace?: string; shell?: boolean   // shell：本机电脑的终端开没开
 }
 export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
   args: string; ts: number; expires?: number | null; status?: string; always?: boolean
+  once?: boolean   // 只能一次一次地允许（本机电脑的终端命令），没有“总是允许”
 }
 export type Stream = { sid: string; text: string; thinking: string; started: number; bot_id: number }
 // 模型服务：一个兼容 OpenAI 的接口地址加一个密钥。source：config.yaml 里写的，还是界面上加的
@@ -64,6 +66,9 @@ export type Settings = {
   limits: Record<string, number>
   heavy_workers: number
   computer_parallel: number
+  computer_backend: string                              // auto / host / local / instabox
+  computer_backends: { id: string; ok: boolean }[]      // 这台机器上能用哪些
+  computer_host_shell: boolean
   embedding: { provider: string; model: string }
   model_info: Record<string, ModelInfo>   // 键是 服务/模型
   prices: { source: string; updated: number; error: string; rate: number; currency: string; models: number }

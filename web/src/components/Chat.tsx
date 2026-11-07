@@ -172,7 +172,7 @@ function ApprovalCard({ a }: { a: Approval }) {
         <input value={note} onChange={e => setNote(e.target.value)} placeholder={t('附一句意见（可选）')} />
         <button className="btn" onClick={() => approve(a.id, false, note)}>{t('拒绝')}</button>
         <button className="btn" onClick={() => approve(a.id, true, note)}>{t('允许一次')}</button>
-        <button className="btn primary" title={t('以后 {tool} 不再询问，可在设置 → 确认规则里撤销', { tool: a.tool })} onClick={() => approve(a.id, true, note, true)}>{t('总是允许')}</button>
+        {!a.once && <button className="btn primary" title={t('以后 {tool} 不再询问，可在设置 → 确认规则里撤销', { tool: a.tool })} onClick={() => approve(a.id, true, note, true)}>{t('总是允许')}</button>}
       </div>
     </div>
   )
