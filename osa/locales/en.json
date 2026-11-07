@@ -545,5 +545,17 @@
   "[没新建 Bot「{name}」]": "[Didn't create bot \"{name}\"]",
   "[没建成 Bot「{name}」：{error}]": "[Couldn't create bot \"{name}\": {error}]",
   "{who} 想新建一个 Bot": "{who} wants to create a new bot",
-  "没权限打开 Chrome（{path}），它可能在外接硬盘上。到 系统设置 → 隐私与安全性 → 文件与文件夹，给 Open Super Agent 打开“可移除的宗卷”，再重新打开 App": "No permission to open Chrome ({path}); it may be on an external drive. In System Settings → Privacy & Security → Files and Folders, turn on \"Removable Volumes\" for Open Super Agent, then reopen the app"
+  "没权限打开 Chrome（{path}），它可能在外接硬盘上。到 系统设置 → 隐私与安全性 → 文件与文件夹，给 Open Super Agent 打开“可移除的宗卷”，再重新打开 App": "No permission to open Chrome ({path}); it may be on an external drive. In System Settings → Privacy & Security → Files and Folders, turn on \"Removable Volumes\" for Open Super Agent, then reopen the app",
+  "{label}里不能写 env: 或 vault: 引用": "{label} can't contain env: or vault: references",
+  "换了接口地址要重新填 API Key（原来的密钥不会发给新地址）": "Enter the API key again after changing the API address (the old key isn't sent to a new address)",
+  "演示服务器上不能导出或恢复备份": "Backups can't be exported or restored on the demo server",
+  "演示服务器上不能改用量上限": "Usage limits can't be changed on the demo server",
+  "演示服务器上不能用在服务器上运行程序的应用，可以添加远程连接的应用": "The demo server can't use apps that run a program on the server. You can add remote apps",
+  "演示服务器上不能用本机或内网的模型服务地址": "The demo server can't use a model service on localhost or a private network",
+  "演示服务器上只能添加应用市场里的应用": "The demo server only allows apps from the app market",
+  "演示服务器上只能添加应用市场里的应用，不能自定义或改高级设置": "The demo server only allows apps from the app market; custom apps and connection settings can't be changed",
+  "这台服务器上只能用应用市场里原样的本地应用，启动命令、参数和环境变量都不能改（config.yaml 的 security.local_exec）": "This server only runs local apps exactly as listed in the app market; their command, arguments and environment variables can't be changed (security.local_exec in config.yaml)",
+  "这台服务器上，应用配置不能引用服务的环境变量（env:名字）": "On this server, app settings can't reference the service's environment variables (env:NAME)",
+  "这台服务器上，文件夹应用只能访问工作文件夹（{dir}）": "On this server, the Folder app can only access the workspace folder ({dir})",
+  "这台服务器不允许从网页上在服务器本机执行命令（config.yaml 的 security.local_exec）": "This server doesn't allow running commands on the server from the web (security.local_exec in config.yaml)"
 }

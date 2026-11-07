@@ -115,6 +115,7 @@ def test_auto_backend(monkeypatch):
 async def test_chrome_without_permission(tmp_path, monkeypatch):
     """Chrome 在外接硬盘上、App 没权限看：算找到了，状态里说清楚去哪给权限，而不是“没找到 Chrome”。"""
     chrome = "/Volumes/Ext/Google Chrome.app/Contents/MacOS/Google Chrome"
+    monkeypatch.setitem(CFG["computer"], "enabled", True)     # 测试配置里电脑是关的，关着的电脑 start() 直接拒绝
     monkeypatch.setattr(host, "DATA", tmp_path / "data")
     monkeypatch.setitem(CFG.setdefault("computer", {}), "chrome_path", chrome)
     real = os.stat

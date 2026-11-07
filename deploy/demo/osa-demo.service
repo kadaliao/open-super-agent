@@ -1,20 +1,41 @@
-# 演示服务器（demo.cclsp.top）：给苹果审核员和想先试试的人登录用。和正式服务共用 /opt/osa/app 的代码和虚拟环境，
+# 演示服务器（demo.cclsp.top）：给苹果审核员和想先试试的人登录用，密码是公开出去的。和正式服务共用 /opt/osa/app 的代码和虚拟环境，
 # 数据、密码、配置都是自己的一份：
-#   /opt/osa/demo/env（权限 600）：DEEPSEEK_API_KEY、OSA_PASSWORD、OSA_CONFIG=/opt/osa/demo/config.yaml、OSA_DATA_DIR=/opt/osa/demo/data
-#   /opt/osa/demo/config.yaml：每次部署后用 deploy/demo/make-config.sh 从 config.yaml 重新生成（关掉电脑、去掉触发器、每天的 token 上限调小）
+#   /opt/osa/demo/env（root，600）：DEEPSEEK_API_KEY、OSA_PASSWORD、OSA_CONFIG=/opt/osa/demo/config.yaml、OSA_DATA_DIR=/opt/osa/demo/data
+#   /opt/osa/demo/config.yaml：每次部署后用 deploy/demo/make-config.sh 从 config.yaml 重新生成（演示模式、关掉电脑、去掉触发器、token 上限调小）
+# 代码里的演示模式之外，再用系统隔离兜底：单独的普通用户 osa-demo（不在 docker 组），只能写自己的数据目录，
+# 看不到正式服务的数据和推送中转，不能提权。虚拟环境的 Python 要放在这个用户读得到的地方（/opt/osa/python，不能在 /root 下）。
+# 第一次装：useradd --system --home-dir /opt/osa/demo/home --shell /usr/sbin/nologin osa-demo
+#   mkdir -p /opt/osa/demo/home && chown -R osa-demo:osa-demo /opt/osa/demo/data /opt/osa/demo/home && chmod 711 /opt/osa/demo
 [Unit]
 Description=open-super-agent demo
 After=network-online.target
 Wants=network-online.target
 
 [Service]
+User=osa-demo
+Group=osa-demo
 WorkingDirectory=/opt/osa/app
 EnvironmentFile=/opt/osa/demo/env
-Environment=TZ=Asia/Shanghai PYTHONUNBUFFERED=1 HOME=/opt/osa/demo
+Environment=TZ=Asia/Shanghai PYTHONUNBUFFERED=1 HOME=/opt/osa/demo/home
 ExecStart=/opt/osa/app/.venv/bin/uvicorn osa.server:app --host 127.0.0.1 --port 8766 --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=on-failure
 RestartSec=3
 MemoryMax=400M
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/osa/demo/data /opt/osa/demo/home
+InaccessiblePaths=-/opt/osa/app/data -/opt/osa/relay -/opt/osa/env
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target

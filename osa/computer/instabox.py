@@ -10,7 +10,7 @@ import httpx
 import websockets
 from .. import i18n
 from ..memory import conn
-from .base import Computer, ComputerError, ExecResult
+from .base import Computer, ComputerError, ExecResult, check_enabled
 
 API = os.environ.get("INSTABOX_API_URL", "https://api.instabox.sh")
 STATE = {"running": "running", "suspended": "paused", "stopped": "stopped", "creating": "starting",
@@ -98,6 +98,7 @@ class InstaboxComputer(Computer):
         return {"state": STATE.get(m.get("state"), "error"), "detail": m.get("state", ""), "machine_id": mid}
 
     async def start(self):
+        check_enabled()
         async with self._starting:
             st = await self.status()
             mid = self.machine_id

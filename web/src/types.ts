@@ -78,7 +78,7 @@ export type Settings = {
   heavy_workers: number
   computer_parallel: number
   computer_backend: string                              // auto / host / local / instabox
-  computer_backends: { id: string; ok: boolean }[]      // 这台机器上能用哪些
+  computer_backends: { id: string; ok: boolean; locked?: boolean }[]   // 这台机器上能用哪些；locked：服务器锁不让用
   computer_on_desktop: boolean                          // 服务是桌面 App 自带的（本地模式）；否则“本机”指服务器那台机器
   computer_host_shell: boolean
   embedding: { provider: string; model: string }
@@ -87,6 +87,8 @@ export type Settings = {
   prices: { source: string; updated: number; error: string; rate: number; currency: string; models: number }
   problem: string                         // 对话或后台任务的模型没法用的原因；能用是空
   language: 'zh' | 'en'                   // 界面语言
+  // 服务器锁（local_exec 为 false：网页上不能让服务器执行任意命令）和演示模式，只能在服务器的 config.yaml 里改。旧版服务没有这一项
+  security?: { local_exec: boolean; demo: boolean }
 }
 export type SearchHit = { kind: 'memory' | 'page'; ref: number; title: string; snippet: string; bot_id: number | null; sub: string; score: number }
 export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'

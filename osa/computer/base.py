@@ -27,6 +27,12 @@ KEYS = {"enter": "Return", "return": "Return", "esc": "Escape", "escape": "Escap
         "super": "super", "win": "super", "+": "plus"}
 
 
+def check_enabled():
+    """config.yaml 里 computer.enabled: false（比如演示服务器）：电脑不开机。每个后端的 start() 先调它，界面、工具、聊天软件谁来开都挡住。"""
+    if not (CFG.get("computer") or {}).get("enabled", True):
+        raise ComputerError(i18n.t("这台服务器没有打开电脑功能（config.yaml 的 computer.enabled）"))
+
+
 class ComputerError(Exception):
     pass
 

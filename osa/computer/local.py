@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from .. import i18n
 from ..config import CFG, DATA
-from .base import Computer, ComputerError, ExecResult
+from .base import Computer, ComputerError, ExecResult, check_enabled
 
 IMAGE = "osa-computer:1"
 IMAGE_DIR = Path(__file__).parent / "image"
@@ -101,6 +101,7 @@ class LocalComputer(Computer):
                 raise ComputerError(i18n.t("电脑镜像构建失败：{error}", error=(err or out)[-800:]))
 
     async def start(self):
+        check_enabled()
         async with self._starting:
             st = (await self.status())["state"]
             if st == "running":

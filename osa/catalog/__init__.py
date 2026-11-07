@@ -51,6 +51,7 @@ FIELD_KEYS = {"key", "label", "placeholder", "default", "secret", "optional", "n
 CONNECT_KEYS = {"type", "command", "args", "env", "url", "headers", "oauth"}
 OAUTH_KEYS = {"client_id", "client_secret", "scope", "params"}
 SLOT = re.compile(r"\{(\w+)\}")
+REF = re.compile(r"^(env|vault):|\{(env|vault):")   # mcp_hub._resolve 认的引用写法
 COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 SVG_PATH = re.compile(r"^[MmZzLlHhVvCcSsQqTtAa0-9eE.,+\-\s]+$")
 
@@ -99,6 +100,28 @@ def load() -> tuple[dict[str, dict], list[str]]:
 
 def items() -> dict[str, dict]:
     return load()[0]
+
+
+_builtin: dict[str, tuple] = {}
+
+
+def builtin(name: str) -> dict | None:
+    """随项目发布的清单（不看 data/apps 里本机加的、覆盖的）。服务器锁只认这里的启动命令（见 security.py）。"""
+    if not ID.match(name or ""):
+        return None
+    p = BUILTIN / f"{name}.yaml"
+    try:
+        sig = p.stat().st_mtime_ns
+    except OSError:
+        return None
+    if (hit := _builtin.get(name)) and hit[0] == sig:
+        return hit[1]
+    try:
+        it = parse(name, yaml.safe_load(p.read_text("utf-8")))
+    except (OSError, yaml.YAMLError, ValueError):
+        it = None
+    _builtin[name] = (sig, it)
+    return it
 
 
 def parse(name: str, m) -> dict:
@@ -412,6 +435,8 @@ def _values(it: dict, values: dict) -> dict:
             raise ValueError(i18n.t("请填写{label}", label=f["label"]))
         if v and f.get("pattern") and not re.search(f["pattern"], v):
             raise ValueError(f.get("invalid") or i18n.t("{label}的格式不对", label=f["label"]))
+        if REF.search(v):   # 值原样填进模板，连接时才把 {env:名字} 这类引用换成明文，不能让用户借此取服务的密钥
+            raise ValueError(i18n.t("{label}里不能写 env: 或 vault: 引用", label=f["label"]))
         vals[f["key"]] = v
     return vals
 

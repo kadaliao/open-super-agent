@@ -79,7 +79,7 @@ function BackendPicker({ st }: { st: ComputerState }) {
       onChange={e => change(e.target.value)}>
       <option value="auto">{t('自动（{name}）', { name: s.computer_backend === 'auto' ? backendName(st.backend, s) : t('按环境选') })}</option>
       {s.computer_backends.map(b => <option key={b.id} value={b.id} disabled={!b.ok && b.id !== s.computer_backend}>
-        {backendName(b.id, s)}{b.ok ? '' : `（${onServer(b.id, s) ? t('没装') : MISSING[b.id]}）`}</option>)}
+        {backendName(b.id, s)}{b.ok ? '' : `（${b.locked ? t('这台服务器不允许') : onServer(b.id, s) ? t('没装') : MISSING[b.id]}）`}</option>)}
     </select>
   )
 }

@@ -24,9 +24,9 @@ from pathlib import Path
 
 import httpx
 
-from .. import i18n
+from .. import i18n, security
 from ..config import CFG, DATA
-from .base import Computer, ComputerError, ExecResult
+from .base import Computer, ComputerError, ExecResult, check_enabled
 
 HELPER = Path(__file__).parent / "cdp_helper.py"
 LEGACY = "/data/workspace"   # Docker / Instabox 电脑里的工作文件夹，技能、记忆里可能还写着
@@ -74,7 +74,7 @@ def chrome_path() -> str | None:
 
 
 def shell_on() -> bool:
-    return bool((CFG.get("computer") or {}).get("host_shell", False))
+    return bool((CFG.get("computer") or {}).get("host_shell", False)) and security.local_exec()
 
 
 def _env() -> dict:
@@ -139,6 +139,7 @@ class HostComputer(Computer):
         return {"state": "stopped", "detail": ""}
 
     async def start(self):
+        check_enabled()
         st = await self.status()
         if st["state"] == "error":
             raise ComputerError(st["detail"])

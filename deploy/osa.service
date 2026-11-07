@@ -1,0 +1,30 @@
+# 正式服务（osa.cclsp.top），装在 /etc/systemd/system/osa.service。配置 config.server.yaml 由 deploy/make-config.sh 生成（打开了服务器锁）。
+# 还是以 root 运行（npx / uvx 应用的缓存在 /root 下），但收紧了它能碰到的东西：代码目录和系统目录（/usr、/etc、/boot）只读，
+# 只有 data/ 可写；没有任何特权（capabilities），不能提权；看不到 /root/.ssh、演示服务器和推送中转的目录。
+[Unit]
+Description=open-super-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/osa/app
+EnvironmentFile=/opt/osa/env
+Environment=TZ=Asia/Shanghai PYTHONUNBUFFERED=1 HOME=/root
+Environment=PATH=/opt/node/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/osa/app/.venv/bin/uvicorn osa.server:app --host 127.0.0.1 --port 8765 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=3
+MemoryMax=600M
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=full
+ReadOnlyPaths=/opt/osa/app
+ReadWritePaths=/opt/osa/app/data
+InaccessiblePaths=-/root/.ssh -/opt/osa/demo -/opt/osa/relay
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

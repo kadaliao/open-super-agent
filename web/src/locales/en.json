@@ -1100,5 +1100,10 @@
   "服务器上的 Chrome": "Chrome on the server",
   "服务器上的 Docker": "Docker on the server",
   "App 连着服务器，Bot 用的是服务器上的电脑。要让 Bot 用这台电脑上的 Chrome：菜单栏 → 切换服务器… → 在这台电脑上运行": "The app is connected to a server, so bots use the server's computer. To let bots use Chrome on this computer: menu bar → Switch server… → Run on this computer",
-  "没装": "not installed"
+  "没装": "not installed",
+  "没有找到“{q}”。": "Nothing found for “{q}”.",
+  "演示服务器上不能导出或恢复备份": "Backups can't be exported or restored on the demo server",
+  "这台服务器不允许": "not allowed on this server",
+  "这台服务器不允许从网页上添加本机命令的应用，也不能改它们的启动命令、参数和环境变量": "This server doesn't allow adding local-command apps from the web, or changing their command, arguments and environment variables",
+  "演示服务器上不能改用量上限": "Usage limits can't be changed on the demo server"
 }

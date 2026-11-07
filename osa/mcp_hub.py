@@ -34,7 +34,7 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import CONNECTION_CLOSED
 from .config import CFG, DATA
 from .memory import conn
-from . import i18n, vault
+from . import i18n, security, vault
 
 conn.execute("create table if not exists apps(name text primary key, config text, enabled integer, created real)")
 conn.commit()
@@ -80,19 +80,22 @@ _oauth2.validate_metadata_issuer = _issuer_ok
 
 
 # ---------- 存储 ----------
+def from_yaml(s: dict) -> dict:
+    """config.yaml 里 mcp_servers 的一项 → 应用配置。"""
+    if s.get("url"):
+        return {"type": "http", "url": s["url"], "headers": s.get("headers", {}), "oauth": bool(s.get("oauth")),
+                "deny": s.get("deny", []), "confirm": s.get("confirm", "auto")}
+    return {"command": s.get("command", ""), "args": s.get("args", []), "env": {k: f"env:{k}" for k in s.get("env_from", [])},
+            "deny": s.get("deny", []), "confirm": s.get("confirm", "auto")}
+
+
 def _seed():
     """把 config.yaml 里还没导入过的 mcp_servers 导入数据库。"""
     have = {r[0] for r in conn.execute("select name from apps")}
     for name, s in (CFG.get("mcp_servers") or {}).items():
         if name in have:
             continue
-        env = {k: f"env:{k}" for k in s.get("env_from", [])}
-        cfg = {"command": s.get("command", ""), "args": s.get("args", []), "env": env,
-               "deny": s.get("deny", []), "confirm": s.get("confirm", "auto")}
-        if s.get("url"):
-            cfg = {"type": "http", "url": s["url"], "headers": s.get("headers", {}), "oauth": bool(s.get("oauth")),
-                   "deny": cfg["deny"], "confirm": cfg["confirm"]}
-        conn.execute("insert into apps values(?,?,?,?)", (name, json.dumps(cfg), int(bool(s.get("enabled"))), time.time()))
+        conn.execute("insert into apps values(?,?,?,?)", (name, json.dumps(from_yaml(s)), int(bool(s.get("enabled"))), time.time()))
     conn.commit()
 
 
@@ -165,6 +168,8 @@ def save(name: str, data: dict) -> dict:
         if not isinstance(cfg["args"], list) or not isinstance(cfg["env"], dict):
             raise ValueError(i18n.t("args 要是列表，env 要是对象"))
     enabled = bool(data.get("enabled", old.get("enabled", True)))
+    if enabled:      # 停用、删除不检查：已经不能用的应用也要能关掉
+        security.check_app(name, cfg)
     conn.execute("insert or replace into apps values(?,?,?,coalesce((select created from apps where name=?),?))",
                  (name, json.dumps(cfg), int(enabled), name, time.time()))
     conn.commit()
@@ -496,6 +501,7 @@ def _first(e: BaseException) -> BaseException:
 
 def _transport(name: str, a: dict):
     """返回 (transport 上下文, 要一起关的 http client 或 None)。"""
+    security.check_app(name, a)   # 服务器锁、演示模式：不管配置是怎么进的数据库（界面、恢复备份），连之前都查一遍
     if a.get("type") in ("http", "sse"):
         missing: list = []
         url = _resolve(a["url"], missing)

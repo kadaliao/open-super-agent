@@ -62,6 +62,8 @@ docker compose --profile https up -d
 
 自带的 Caddy 会自动申请证书，访问 https://osa.example.com 。服务本身仍只监听本机的 8765。
 
+放到公网上，建议在 `config.yaml` 里再设 `security.local_exec: false`，网页上就不能让服务器执行任意命令了，见 [服务器锁和演示模式](configuration.md#服务器锁和演示模式)。
+
 服务器上已经有 Caddy 或 nginx 的话，不用这个 profile，把域名反代到 `127.0.0.1:8765` 就行，写法见 [配置 → 部署到公网服务器](configuration.md#部署到公网服务器)。
 
 ## 电脑用 Instabox

@@ -263,12 +263,29 @@ def _new_name(base: str) -> str:
     return name
 
 
+def same_origin(a: str, b: str) -> bool:
+    """两个接口地址是不是同一个服务（协议、主机、端口都一样）。"""
+    def origin(u: str):
+        p = urlparse(u)
+        try:
+            port = p.port
+        except ValueError:
+            return None
+        return p.scheme, (p.hostname or "").lower(), port or (443 if p.scheme == "https" else 80)
+    return origin(a) is not None and origin(a) == origin(b)
+
+
 def save(name: str | None, data: dict) -> str:
-    """name 为空是新建。api_key 留空表示不改；clear_key 删掉界面里填的密钥（回到环境变量）。"""
+    """name 为空是新建。api_key 留空表示不改；clear_key 删掉界面里填的密钥（回到环境变量）。
+    改到别的服务（主机或端口变了）时要重新填密钥：不然原来的密钥（可能是服务自己环境变量里的）会发到新地址去。"""
     d = _load()
     title = _stored_title((data.get("title") or "").strip()[:40])
     url = _clean_url(data.get("base_url", ""))
     preset = data.get("preset") if data.get("preset") in PRESET else None
+    key = (data.get("api_key") or "").strip()
+    if name is not None and name in CFG["providers"] and not key and api_key(name) \
+            and not same_origin(url, CFG["providers"][name]["base_url"]):
+        raise ValueError(i18n.t("换了接口地址要重新填 API Key（原来的密钥不会发给新地址）"))
     if name is None:
         name = _new_name(preset if preset and preset != "custom" else title or "custom")
         d[name] = {"title": title or PRESET.get(preset or "", {}).get("title") or name, "base_url": url, "preset": preset or "custom"}
@@ -276,7 +293,6 @@ def save(name: str | None, data: dict) -> str:
         if name not in CFG["providers"]:
             raise ValueError(i18n.t("没有这个模型服务：{name}", name=name))
         d.setdefault(name, {}).update({"base_url": url, **({"title": title} if title else {})})
-    key = (data.get("api_key") or "").strip()
     if key:
         vault.put(key_ref(name), key)
     elif data.get("clear_key"):

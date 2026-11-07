@@ -98,26 +98,28 @@ function Limits() {
   const [lim, setLim] = useState(s.limits)
   const [heavy, setHeavy] = useState(s.heavy_workers)
   const [pcs, setPcs] = useState(s.computer_parallel)
+  const demo = !!s.security?.demo   // 演示服务器：用量上限不让改
   const save = async (body: object) => {
     try { setSettings(await api('/api/settings', { method: 'PUT', body })); toast(t('已保存，马上生效')) }
     catch (e: any) { toast(e.message, true) }
   }
   return (
     <div className="set-rows">
+      {demo && <p className="muted small">{t('演示服务器上不能改用量上限')}</p>}
       {Object.entries(LIMIT_NAMES).map(([k, [name, hint]]) => (
         <label key={k} className="set-row">
           <span><b>{name}</b><span>{hint}</span></span>
-          <input type="number" min={1} value={lim[k] ?? ''} onChange={e => setLim({ ...lim, [k]: Number(e.target.value) })}
+          <input type="number" min={1} disabled={demo} value={lim[k] ?? ''} onChange={e => setLim({ ...lim, [k]: Number(e.target.value) })}
             onBlur={() => { if (lim[k] && lim[k] !== s.limits[k]) save({ limits: { [k]: lim[k] } }) }} />
         </label>))}
       <label className="set-row">
         <span><b>{t('Heavy 模式同时跑几个任务')}</b><span>{t('同一个问题交给几个后台任务分头做，再汇总。越多越全面，也越贵（1–8）')}</span></span>
-        <input type="number" min={1} max={8} value={heavy} onChange={e => setHeavy(Number(e.target.value))}
+        <input type="number" min={1} max={8} disabled={demo} value={heavy} onChange={e => setHeavy(Number(e.target.value))}
           onBlur={() => { if (heavy && heavy !== s.heavy_workers) save({ heavy_workers: heavy }) }} />
       </label>
       <label className="set-row">
         <span><b>{t('同时用电脑的任务')}</b><span>{t('几个后台任务可以同时用电脑，每个开一个浏览器窗口，登录状态共用；多了排队。电脑内存小就调小（1–8）')}</span></span>
-        <input type="number" min={1} max={8} value={pcs} onChange={e => setPcs(Number(e.target.value))}
+        <input type="number" min={1} max={8} disabled={demo} value={pcs} onChange={e => setPcs(Number(e.target.value))}
           onBlur={() => { if (pcs && pcs !== s.computer_parallel) save({ computer_parallel: pcs }) }} />
       </label>
     </div>

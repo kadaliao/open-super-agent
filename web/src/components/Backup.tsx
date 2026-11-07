@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../store'
+import { api, useStore } from '../store'
 import { lang, locale, t, tc, tn } from '../i18n'
 import { ask } from './Dialog'
 import { isEnter } from '../keys'
@@ -18,8 +18,10 @@ const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(
 
 export default function Backup() {
   const [info, setInfo] = useState<Info | null>(null)
+  const demo = useStore(s => !!s.settings?.security?.demo)
   const load = () => api('/api/backup').then(setInfo)
   useEffect(() => { load() }, [])
+  if (demo) return <p className="muted">{t('演示服务器上不能导出或恢复备份')}</p>
   if (!info) return <div className="muted">{t('加载中…')}</div>
   return (
     <div>

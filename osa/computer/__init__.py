@@ -6,6 +6,7 @@ import asyncio
 import os
 import shutil
 import time
+from .. import security
 from ..config import CFG
 from ..memory import conn
 from .base import Computer, ComputerError, ExecResult
@@ -51,9 +52,9 @@ BACKENDS = ("host", "local", "instabox")
 
 def backend_name() -> str:
     b = (CFG.get("computer") or {}).get("backend", "auto")
-    if b == "auto":
-        if os.environ.get("OSA_DESKTOP"):
-            return "host"
+    if b == "auto" and os.environ.get("OSA_DESKTOP"):
+        b = "host"
+    if b == "auto" or (b == "host" and not security.local_exec()):   # 服务器锁：不用这台机器当电脑
         return "instabox" if os.environ.get("INSTABOX_API_KEY") else "local"
     return b
 
@@ -61,7 +62,8 @@ def backend_name() -> str:
 def available() -> list[dict]:
     """设置里能选的电脑，以及这台机器上能不能用。"""
     from .host import chrome_path
-    return [{"id": "host", "ok": bool(chrome_path())}, {"id": "local", "ok": bool(shutil.which("docker"))},
+    host = {"id": "host", "ok": bool(chrome_path())} if security.local_exec() else {"id": "host", "ok": False, "locked": True}
+    return [host, {"id": "local", "ok": bool(shutil.which("docker"))},
             {"id": "instabox", "ok": bool(os.environ.get("INSTABOX_API_KEY"))}]
 
 

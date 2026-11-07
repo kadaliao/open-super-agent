@@ -331,6 +331,25 @@ uv run python -m osa.backup restore ~/backups/osa-backup-20261106-0835.osabak
 - 放在反向代理（Caddy、nginx）后面时，启动 uvicorn 要加 `--proxy-headers --forwarded-allow-ips 127.0.0.1`，
   这样限速按真实 IP 计算，cookie 也会带上 `Secure`。
 
+## 服务器锁和演示模式
+
+登录密码只管“能不能用这个应用”。有几样功能等于把服务所在的机器交出去，自己电脑上、桌面 App 里正常，放到公网服务器上，
+密码一旦泄露就是这台服务器的权限。`config.yaml` 的 `security` 用来关掉它们，只能在服务器上改，网页上改不了：
+
+```yaml
+security:
+  local_exec: false   # 服务器锁，默认 true
+  demo: false         # 演示服务器，默认 false
+```
+
+| 设置 | 关掉什么 |
+|---|---|
+| `local_exec: false` | 电脑选“本机”、本机终端；自定义启动命令的应用，以及改应用的启动命令、参数、环境变量；“文件夹”应用访问工作文件夹以外的目录；应用配置里引用服务的环境变量（`env:名字`）。应用市场里的应用照常能用：只认随项目发布的清单（`osa/catalog/apps`）里原样的命令，填的值只能进模板里留的位置。`mcp_servers` 里写的应用不受限 |
+| `demo: true` | 给登录密码公开出去的演示服务器，包含上一行，另外还关掉：所有在服务器上运行程序的应用（npx / uvx，应用市场里的也不行）、自定义应用和应用的连接配置、本机或内网的模型服务地址、改用量上限（每天的 token 上限、Heavy 并行数）、备份的导出和恢复 |
+
+检查放在启动应用之前，不管配置是从界面、恢复备份还是别的途径进的数据库，都一样挡住。界面上用不了的选项会藏起来或变灰。
+另外不分模式：模型服务换了地址（主机或端口变了）要重新填 API Key，原来的密钥不会发给新地址；应用市场里填的值不能写 `env:` / `vault:` 引用。
+
 ## 远程访问（Tailscale）
 
 服务只监听本机，由 Tailscale 提供 HTTPS：
@@ -346,7 +365,8 @@ tailscale serve --bg --https=8443 8765     # 访问 https://<机器名>.<tailnet
 
 用 Docker Compose 的话，自带一个自动申请证书的 Caddy，见 [用 Docker Compose 部署](docker.md#部署到公网自动-https)。下面是不用 Docker 的做法。
 
-先设置 `OSA_PASSWORD`。服务仍然只监听本机，由 Caddy 之类的反向代理提供 HTTPS：
+先设置 `OSA_PASSWORD`，并在 `config.yaml` 里设 `security.local_exec: false`（见 [服务器锁和演示模式](#服务器锁和演示模式)）。
+服务仍然只监听本机，由 Caddy 之类的反向代理提供 HTTPS：
 
 ```bash
 OSA_PASSWORD=... uv run uvicorn osa.server:app --host 127.0.0.1 --port 8765 --proxy-headers --forwarded-allow-ips 127.0.0.1

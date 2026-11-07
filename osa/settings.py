@@ -2,7 +2,7 @@
 import json
 import os
 import time
-from . import avatars, computer, i18n, prices, providers
+from . import avatars, computer, i18n, prices, providers, security
 from .config import CFG
 from .memory import conn
 
@@ -31,7 +31,10 @@ def apply():
     if "computer_parallel" in o:
         CFG.setdefault("computer", {})["parallel"] = o["computer_parallel"]
     pc = CFG.setdefault("computer", {})
-    pc["backend"] = o.get("computer_backend") or _PC.get("backend", "auto")
+    b = o.get("computer_backend")
+    if b == "host" and not security.local_exec():   # 比如从别处恢复的备份：服务器锁下不认
+        b = None
+    pc["backend"] = b or _PC.get("backend", "auto")
     pc["host_shell"] = o.get("computer_host_shell", bool(_PC.get("host_shell", False)))
     if "embedding" in o:
         CFG["embedding"] = o["embedding"]
@@ -91,10 +94,15 @@ def public() -> dict:
         "prices": prices.info(),
         "problem": problem(),
         "language": i18n.lang(),
+        "security": security.public(),   # 服务器锁、演示模式：界面上藏掉用不了的
     }
 
 
 def save(data: dict) -> dict:
+    if security.demo() and ({"limits", "heavy_workers", "computer_parallel"} & data.keys()):
+        raise ValueError(i18n.t("演示服务器上不能改用量上限"))
+    if not security.local_exec() and (data.get("computer_backend") == "host" or data.get("computer_host_shell")):
+        raise ValueError(security.no_local_exec())
     if "language" in data:
         i18n.set_lang(data["language"])
     o = _load()

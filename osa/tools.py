@@ -52,15 +52,21 @@ async def blocked(url: str) -> str | None:
         return "只能抓取 http / https 网址"
     if (CFG.get("tools") or {}).get("fetch_private"):
         return None
-    host = u.hostname
+    if await private_host(url):
+        return f"没抓取：{u.hostname} 是本机或内网地址。要抓内网页面，在 config.yaml 里设 tools.fetch_private: true"
+    return None
+
+
+async def private_host(url: str) -> bool:
+    """网址的主机是不是本机或内网地址：先解析域名，解析到内网的也算。解析不了的算不是，交给真正的请求报错。"""
+    u = urlsplit(url)
+    host = u.hostname or ""
     try:
         ips = [host] if _is_ip(host) else [i[4][0] for i in await asyncio.get_running_loop().getaddrinfo(
             host, u.port or (443 if u.scheme == "https" else 80), type=socket.SOCK_STREAM)]
-    except OSError:
-        return None   # 解析不了的交给下面的请求报错
-    if any(private_ip(ip) for ip in ips):
-        return f"没抓取：{host} 是本机或内网地址。要抓内网页面，在 config.yaml 里设 tools.fetch_private: true"
-    return None
+    except (OSError, ValueError):
+        return False
+    return any(private_ip(ip) for ip in ips)
 
 
 def _is_ip(host: str) -> bool:

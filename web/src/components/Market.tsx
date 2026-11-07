@@ -79,6 +79,7 @@ export default function Market() {
   const [open, setOpen] = useState<string | null>(null)        // 打开详情的应用（市场 id 或应用名）
   const [custom, setCustom] = useState<{ app?: App } | null>(null)
   const [quickErr, setQuickErr] = useState('')
+  const demo = useStore(s => !!s.settings?.security?.demo)   // 演示服务器：只能用应用市场里的应用
   useEffect(() => { refreshApps() }, [])
   const byName = useMemo(() => Object.fromEntries(apps.map(a => [a.name, a])), [apps])
   const itemOf = (a: App) => catalog.find(c => c.id === (a.catalog || a.name))
@@ -142,11 +143,11 @@ export default function Market() {
                 </div>
               </div>)
           })}
-          {!list.length && <div className="muted m-none">{t('没有找到“{q}”。可以添加自定义应用。', { q })}</div>}
+          {!list.length && <div className="muted m-none">{demo ? t('没有找到“{q}”。', { q }) : t('没有找到“{q}”。可以添加自定义应用。', { q })}</div>}
         </div>
-        <p className="muted small m-foot">
+        {!demo && <p className="muted small m-foot">
           {tn('找不到想要的？任何 MCP server 都能接：{add}', { add: <button className="link-btn" onClick={() => setCustom({})}>{t('添加自定义应用')}</button> })}
-        </p>
+        </p>}
       </div></div>
       {open && (openItem || openApp) && <Sheet item={openItem} app={openApp} initErr={quickErr} onClose={() => { setOpen(null); setQuickErr('') }}
         onEdit={() => { setOpen(null); setCustom({ app: openApp }) }} />}
@@ -314,6 +315,7 @@ function Callback() {
 }
 
 function Advanced({ app, onEdit }: { app: App; onEdit: () => void }) {
+  const demo = useStore(s => !!s.settings?.security?.demo)
   const [deny, setDeny] = useState(app.deny.join(', '))
   const [msg, setMsg] = useState('')
   const patch = async (body: any) => {
@@ -338,7 +340,7 @@ function Advanced({ app, onEdit }: { app: App; onEdit: () => void }) {
           <button className="btn" onClick={() => patch({ deny: deny.split(/[,，\s]+/).filter(Boolean) })}>{t('保存')}</button></span>
       </label>
       {msg && <span className="muted small">{msg}</span>}
-      <button className="link-btn small" onClick={onEdit}>{t('查看或修改连接配置')}</button>
+      {!demo && <button className="link-btn small" onClick={onEdit}>{t('查看或修改连接配置')}</button>}
     </details>
   )
 }
@@ -346,6 +348,7 @@ function Advanced({ app, onEdit }: { app: App; onEdit: () => void }) {
 // ---------- 自定义应用：任意 MCP server ----------
 function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
   const isNew = !app
+  const locked = useStore(s => s.settings?.security?.local_exec === false)   // 服务器锁：本地应用的命令改不了，也不能新加
   const [name, setName] = useState(app?.name || '')
   const [type, setType] = useState<'stdio' | 'http' | 'sse'>(app?.type || 'http')
   const remote = type !== 'stdio'
@@ -388,7 +391,8 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
         <input value={name} disabled={!isNew} onChange={e => setName(e.target.value.toLowerCase())} placeholder={t('例如 mytools')} /></label>
       <div className="field">{t('连接方式')}
         <div className="seg"><button className={remote ? 'on' : ''} onClick={() => setType('http')}>{t('远程地址')}</button>
-          <button className={type === 'stdio' ? 'on' : ''} onClick={() => setType('stdio')}>{t('本机命令')}</button></div>
+          {!(locked && isNew) && <button className={type === 'stdio' ? 'on' : ''} onClick={() => setType('stdio')}>{t('本机命令')}</button>}</div>
+        {locked && <span className="muted small">{t('这台服务器不允许从网页上添加本机命令的应用，也不能改它们的启动命令、参数和环境变量')}</span>}
       </div>
       {remote ? <>
         <label className="field">{t('地址')}<input value={url} onChange={e => setUrl(e.target.value)} placeholder={type === 'sse' ? 'https://example.com/sse' : 'https://example.com/mcp'} /></label>
@@ -405,24 +409,24 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
           <input type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)}
             placeholder={app?.headers.includes('Authorization') ? t('已保存在保险库，留空则不修改') : t('加密保存到保险库')} /></label>}
       </> : <>
-        <label className="field">{t('启动命令')}<input value={command} onChange={e => setCommand(e.target.value)} placeholder={t('npx / uvx / 可执行文件路径')} /></label>
-        <label className="field">{t('参数（每行一个）')}<textarea rows={3} value={args} onChange={e => setArgs(e.target.value)} /></label>
-        <div className="field">{t('环境变量')} <span className="muted small">{tn('值可以写 {vault}（取保险库）或 {env}（取服务的环境变量）', {
-            vault: <code>vault:{tc('placeholder', '名字')}</code>, env: <code>env:{tc('placeholder', '名字')}</code> })}</span>
+        <label className="field">{t('启动命令')}<input value={command} disabled={locked} onChange={e => setCommand(e.target.value)} placeholder={t('npx / uvx / 可执行文件路径')} /></label>
+        <label className="field">{t('参数（每行一个）')}<textarea rows={3} value={args} disabled={locked} onChange={e => setArgs(e.target.value)} /></label>
+        <div className="field">{t('环境变量')} {!locked && <span className="muted small">{tn('值可以写 {vault}（取保险库）或 {env}（取服务的环境变量）', {
+            vault: <code>vault:{tc('placeholder', '名字')}</code>, env: <code>env:{tc('placeholder', '名字')}</code> })}</span>}
           {env.map(([k, v], i) => (
             <div className="env-row" key={i}>
-              <input value={k} placeholder={t('变量名')} onChange={e => setEnv(env.map((x, j) => j === i ? [e.target.value, x[1]] : x))} />
-              <input value={v} placeholder={t('值')} onChange={e => setEnv(env.map((x, j) => j === i ? [x[0], e.target.value] : x))} />
-              <button className="icon-btn" onClick={() => setEnv(env.filter((_, j) => j !== i))}>✕</button>
+              <input value={k} disabled={locked} placeholder={t('变量名')} onChange={e => setEnv(env.map((x, j) => j === i ? [e.target.value, x[1]] : x))} />
+              <input value={v} disabled={locked} placeholder={t('值')} onChange={e => setEnv(env.map((x, j) => j === i ? [x[0], e.target.value] : x))} />
+              {!locked && <button className="icon-btn" onClick={() => setEnv(env.filter((_, j) => j !== i))}>✕</button>}
             </div>))}
-          <button className="btn small-btn" onClick={() => setEnv([...env, ['', '']])}>+ {t('添加变量')}</button>
+          {!locked && <button className="btn small-btn" onClick={() => setEnv([...env, ['', '']])}>+ {t('添加变量')}</button>}
         </div>
       </>}
       {err && <div className="error-line">{err}</div>}
       <div className="row-actions">
         {!isNew && <button className="btn danger" onClick={remove}>{t('删除')}</button>}
         <span className="grow" />
-        <button className="btn primary" disabled={busy || !name || (remote ? !url : !command)} onClick={save}>
+        <button className="btn primary" disabled={busy || !name || (remote ? !url : !command || locked)} onClick={save}>
           {busy ? t('连接中…') : t('保存并连接')}</button>
       </div>
     </div>

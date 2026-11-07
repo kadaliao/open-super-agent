@@ -19,7 +19,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, avatars, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
-from . import prices, providers, search, settings, skills, tasklog, teach, templates, unfurl, vault
+from . import prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -643,8 +643,15 @@ async def backup_info():
             "started": STARTED, "version": backup.version()}
 
 
+def _no_backup_in_demo():
+    """演示服务器的数据大家共用：不让导出（里面有别人存的密钥），也不让恢复（会换掉整个数据库）。"""
+    if security.demo():
+        raise HTTPException(403, i18n.t("演示服务器上不能导出或恢复备份"))
+
+
 @app.post("/api/backup/export")
 async def backup_export(data: dict = Body(...)):
+    _no_backup_in_demo()
     try:
         backup.check_passphrase(data.get("passphrase") or "")
         snap = backup.snapshot()   # 快照在这里做（用的是服务的数据库连接），压缩、加密放到线程里
@@ -659,6 +666,7 @@ async def backup_export(data: dict = Body(...)):
 @app.put("/api/backup/restore")
 async def backup_upload(request: Request):
     """上传备份文件（请求体就是文件，口令放在 x-passphrase 头里，base64 编码）：解密、检查，返回摘要等确认。"""
+    _no_backup_in_demo()
     if backup.RESTART:
         raise HTTPException(409, i18n.t("正在重启，稍后再试"))
     try:
@@ -687,6 +695,7 @@ async def backup_upload(request: Request):
 
 @app.post("/api/backup/restore/confirm")
 async def backup_confirm():
+    _no_backup_in_demo()
     try:
         backup.confirm()
     except backup.BackupError as e:
@@ -1196,6 +1205,7 @@ async def install_app(item_id: str, data: dict = Body(default={})):
         _err(ValueError(i18n.t("已经添加过了")))
     values = data.get("values") or {}
     try:
+        security.check_market(item_id)
         await catalog.check(item_id, values)
         mcp_hub.save(item_id, catalog.build(item_id, values) | {"enabled": True})
     except ValueError as e:
@@ -1217,6 +1227,8 @@ async def install_app(item_id: str, data: dict = Body(default={})):
 @app.put("/api/apps/{name}")
 async def save_app(name: str, data: dict = Body(...)):
     """自定义或高级设置。secrets 里的明文先存进保险库，配置里只留 vault:名字；token 放进 Authorization 请求头。"""
+    if security.demo():   # 应用市场填的值有格式检查，这里没有（比如能把地址改到服务器的内网）
+        raise HTTPException(403, i18n.t("演示服务器上只能添加应用市场里的应用，不能自定义或改高级设置"))
     try:
         old = mcp_hub.get(name) or {}
         owned = list(old.get("owned") or [])
@@ -1458,15 +1470,22 @@ async def check_provider(data: dict = Body(...)):
         url = providers._clean_url(data.get("base_url", ""))
     except ValueError as e:
         _err(e)
+    try:
+        await security.check_provider_url(url)
+    except ValueError as e:
+        _err(e)
     key = (data.get("api_key") or "").strip()
-    if not key and providers.exists(data.get("name") or ""):
-        key = providers.api_key(data["name"])
+    name = data.get("name") or ""
+    # 留空用已经存的密钥，但只发给原来那个服务：不然改个地址点“检查”，密钥就发到别人那里了
+    if not key and providers.exists(name) and providers.same_origin(url, providers.describe(name)["base_url"]):
+        key = providers.api_key(name)
     return await providers.check(url, key)
 
 
 @app.post("/api/providers")
 async def add_provider(data: dict = Body(...)):
     try:
+        await security.check_provider_url(data.get("base_url") or "")
         name = providers.save(None, data)
     except ValueError as e:
         _err(e)
@@ -1476,6 +1495,7 @@ async def add_provider(data: dict = Body(...)):
 @app.put("/api/providers/{name}")
 async def update_provider(name: str, data: dict = Body(...)):
     try:
+        await security.check_provider_url(data.get("base_url") or "")
         providers.save(name, data)
     except ValueError as e:
         _err(e)
