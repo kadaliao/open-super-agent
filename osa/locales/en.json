@@ -557,5 +557,6 @@
   "这台服务器上只能用应用市场里原样的本地应用，启动命令、参数和环境变量都不能改（config.yaml 的 security.local_exec）": "This server only runs local apps exactly as listed in the app market; their command, arguments and environment variables can't be changed (security.local_exec in config.yaml)",
   "这台服务器上，应用配置不能引用服务的环境变量（env:名字）": "On this server, app settings can't reference the service's environment variables (env:NAME)",
   "这台服务器上，文件夹应用只能访问工作文件夹（{dir}）": "On this server, the Folder app can only access the workspace folder ({dir})",
-  "这台服务器不允许从网页上在服务器本机执行命令（config.yaml 的 security.local_exec）": "This server doesn't allow running commands on the server from the web (security.local_exec in config.yaml)"
+  "这台服务器不允许从网页上在服务器本机执行命令（config.yaml 的 security.local_exec）": "This server doesn't allow running commands on the server from the web (security.local_exec in config.yaml)",
+  "这台服务器没有打开电脑功能（config.yaml 的 computer.enabled）": "The computer is turned off on this server (computer.enabled in config.yaml)"
 }
