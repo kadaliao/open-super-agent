@@ -140,6 +140,12 @@ docker rm -f osa-computer       # 删掉旧容器，下次使用时会用新镜�
 代码在 `desktop/`（Tauri 2），怎么运行、打包、发布见 [桌面 App](desktop.md)。外壳只是一个窗口，打开服务器自己的网址；
 网页里和 App 打交道的只有 `web/src/desktop.ts`（`window.osaDesktop`）：没有它时一切照旧。
 
+## iPhone App
+
+代码在 `mobile/`（Tauri 2），怎么编译、在模拟器上测（包括调试版的自动测试通道）见 [iPhone App → 开发](mobile.md#开发)。
+和网页打交道的也是 `web/src/desktop.ts`：手机版的 `window.osaDesktop` 多了 `platform: 'ios'`、`push`、`openSheet`、`switchServer`、`takePendingOpen`。
+推送中转是 `osa/relay.py`，测试在 `tests/test_relay.py`（假的苹果推送服务，不连网）。
+
 ## 发版
 
 1. `CHANGELOG.md` 把 [未发布] 改成新版本号和日期，底部加上比较链接。

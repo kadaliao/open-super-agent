@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > 这是项目第一阶段的计划，P1–P7 已在 v0.3.0（2026-11-04）全部完成，这里留作存档。
-> 下文“暂不做”里的原生 App 已经改成计划要做。现在的计划见 [路线图](roadmap.md)。
+> 下文“暂不做”里的原生 App 已经在做了，见 [iPhone App](../mobile.md)。现在的计划见 [路线图](../roadmap.md)。
 
 参照对象：xAI 的 Grok Bot（https://x.ai/bot，2026-08 发布）。
 资料来源：docs.x.ai/grok-bot 概览、flaviocopes 的深度评测，以及多篇第三方评测（见文末）。

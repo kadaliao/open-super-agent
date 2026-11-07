@@ -225,8 +225,10 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 
 ## 手机、语音与推送
 
-- **要用 https 访问**：推送、添加到主屏幕、语音输入都要求安全连接（本机 `localhost` 也算）。手机上建议用下面“远程访问”里 Tailscale 的 https 地址。
-- **推送**：在每台设备的“设置 → 通知”里开启。iPhone / iPad 要先在 Safari 里“添加到主屏幕”，从主屏幕打开再开启（iOS 16.4 起支持）。
+- **iPhone App**（开发中）：在电脑上打开 设置 → 手机 App，用 iPhone 的相机扫二维码就能连上并登录。
+  网页要用手机能打开的地址打开（局域网 IP、Tailscale 或域名），`localhost` 不行。推送经推送中转送到手机，见 [iPhone App](mobile.md)。
+- **要用 https 访问**：浏览器里的推送、添加到主屏幕、语音输入都要求安全连接（本机 `localhost` 也算）。手机上建议用下面“远程访问”里 Tailscale 的 https 地址。
+- **推送**：在每台设备的“设置 → 通知”里开启；iPhone App 里点“在这台手机上开启推送”。用 Safari 的 iPhone / iPad 要先“添加到主屏幕”，从主屏幕打开再开启（iOS 16.4 起支持）。
   VAPID 密钥第一次用时自动生成，存在数据库里；换数据库后各设备要重新开启。可以设置联系地址（推送服务出问题时可能用它联系你）：
 
   ```yaml

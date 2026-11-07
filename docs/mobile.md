@@ -3,6 +3,14 @@
 iOS 的原生 App，用 Tauri 2 做（和桌面 App 同一套），代码在 `mobile/`。App 只是客户端：手机上不跑服务，连的是你部署好的服务器，
 界面就是服务器自己的网页界面，服务器升级界面就跟着升级。先在中国大陆以外的地区上架，先发 TestFlight 测试版。
 
+<p align="center">
+  <img src="images/ios-connect.png" width="200" alt="第一次打开：扫码连接，或者填服务器地址">
+  <img src="images/ios-chat.png" width="200" alt="对话">
+  <img src="images/ios-approval.png" width="200" alt="确认卡片">
+  <img src="images/ios-computer.png" width="200" alt="看 Bot 的电脑">
+</p>
+<p align="center"><sub>连接服务器 · 对话 · 确认卡片 · 看 Bot 的电脑（模拟器上的开发版）</sub></p>
+
 ## 连接服务器
 
 - 在电脑上打开 设置 → 手机 App，用 iPhone 的相机扫二维码，直接进 App 并登录。二维码里是服务器地址和一张 5 分钟内有效、

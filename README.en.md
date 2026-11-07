@@ -19,58 +19,44 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 </div>
 
-## Features
+## Highlights
 
-- 🤖 **Multiple bots**: each with its own name, avatar, persona and conversation. Replies stream in, and the model's reasoning can be expanded or collapsed. Reply to any message in a side thread to dig into it without derailing the main chat.
-- 👥 **Group chats**: 2–6 Bots in one chat. `@` a Bot to have it answer, or `@everyone`; unaddressed messages go to the group's coordinator, who hands work to the right Bot. Bots hand off to each other (one researches, the next summarizes when the research is done). Approval requests stay in each Bot's private chat.
-- ✉️ **Bots message each other**: no group needed. A Bot can DM another Bot for help ("ask Postman whether there's mail from Anthropic"); the other Bot works in its own chat, and the result comes back to the original conversation automatically.
-- ⚡ **Background tasks**: workers run long jobs while you keep chatting. **Heavy mode** runs several workers on the same problem and has a reviewer merge their answers.
-- 🖥️ **A computer**: one shared Linux desktop with Chromium and a terminal. Several tasks can use it at once, each in its own browser window, sharing logins and files instead of queueing. Web pages are driven directly over CDP (by element, reading page text), which is fast and precise. Watch it live and take over or hand back at any time; for captchas and logins, the bot asks you to step in. When it runs on your own computer, it can use your installed Chrome instead (with a separate profile, apart from your everyday one), no Docker needed.
-- 🔌 **App market**: pick apps from the sidebar's Apps page. Notion, flomo, Tencent Docs, DingTalk, TickTick, Todoist and others connect with one click and an account login; Gmail, QQ Mail, Feishu, WeCom and GitHub take a single password, token or link; Slack takes a small app you create once; any MCP server works too. Mention one in chat with `@app`. Each app is a single manifest file, so [listing a new one](docs/apps.md) takes a PR, no code.
-- ✅ **Approvals & vault**: write operations ask first (allow once / deny / always allow), with rules you manage in Settings; secrets are stored encrypted and never enter the chat.
-- 🧩 **Skills**: reusable procedures invoked with `/name`. Ask a Bot to save what it just did as a skill, or edit skills in the side panel. With **Teach a task**, do it once yourself on the computer and the Bot turns the recording into a draft skill for you to review. Export a skill as a file or share it by link, and others install it by pasting the link; `SKILL.md` files from Claude and similar tools import as is.
-- 🎁 **Bot templates**: start a new Bot from a ready-made template (news digest, inbox helper, GitHub watcher, trip planner) with skills and routines already set up. Turn a Bot you've tuned into a template and share it; [write one](docs/templates.md) (Chinese) and open a PR to make it built in.
-- 🧠 **Memory**: each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots. Just say "remember ...", or view, edit, delete and import (e.g. from ChatGPT) in the side panel. Start a **new topic** to drop old messages from the context while keeping memories. Memories and the library are searchable by meaning, and Bots look up past notes and pages on their own.
-- 📚 **Library**: finished reports and web pages are saved as Pages you can pin and share by link; browse, upload and download files on the shared computer, and attach files in chat.
-- ⏰ **Routines**: per-Bot schedules (daily / weekdays, every N minutes, webhook) with pause, resume, test and the last 20 runs. Create one by saying "every day at 9, ...". Webhook events go through keyword filters, then a cheap model decides whether to act.
-- 💬 **Chat apps**: talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, in the same conversation as the web UI. Approval requests arrive as buttons, and you can send files (and voice messages on DingTalk and WeCom). No public address needed ([setup guide](docs/channels.md), Chinese).
-- 💻 **Desktop app (macOS preview)**: about a 42 MB download with its own runtime, no Docker or Python; Bots use the Chrome on your computer. It keeps running in the menu bar after you close the window and sends system notifications for approvals and finished tasks; it can also act as a client for your server.
-- 📱 **Mobile**: install it to your home screen as an app, dictate messages by voice, and get push notifications for approvals and finished tasks when no page is open. Watch the screen, take over and type, and handle approvals from your phone.
-- 💰 **Transparent cost**: token and money tracking per role, task and day, with a daily budget. A watchdog cancels tasks that stall, loop or exceed the budget.
-- 📦 **Backup and migration**: export all data, secrets included, as one encrypted file and upload it on the new machine to carry on. Servers can also back up on a schedule from the command line.
-- 🔄 **Any model**: add model providers in Settings (DeepSeek, OpenAI, OpenRouter, SiliconFlow, Alibaba Bailian, Zhipu, Kimi, Ollama, or any OpenAI-compatible endpoint), paste an API key and test it in one click; pick a model per role. Prices are fetched automatically.
-- 🌐 **English and Chinese**: the UI, notifications and messaging-app messages come in both languages; switch in Settings. In the English UI, bots reply in English by default.
+- **Chats and delegates**: each Bot has its own persona, memory and conversation. Long jobs run as background tasks while you keep chatting; put several Bots in a group, and one hands its research to another to write up.
+- **A computer you can watch and take over**: Bots browse, fill in forms and download files on the computer while you watch live; for captchas and logins, they ask you to step in. Several tasks run at once, each in its own browser window, without queueing.
+- **Connects to the apps you use**: 40 apps in the market, including Notion, Gmail, GitHub, Feishu, DingTalk and Tencent Docs, connected with a login or a token; any MCP server works too.
+- **Asks before acting**: sending mail, submitting forms and similar actions show a card first; secrets are encrypted in a vault and never enter the chat.
+- **Any model, with visible cost**: DeepSeek, Kimi, Zhipu, OpenAI, Ollama on your own machine, or any OpenAI-compatible endpoint. Spend is tracked per task and per day, with a daily budget.
+- **Show it once**: with Teach a task, do the job yourself on the computer and the Bot turns it into a skill you run again with `/name`; say "every day at 9, ..." to set up a routine.
+- **Works in mainland China**: talk to your Bots in Feishu, DingTalk or WeCom; the default setup needs no paid foreign service; the UI comes in Chinese and English.
+- **Your data stays yours**: it runs on your own machine, and all data, secrets included, exports as one encrypted file you can carry to another machine.
 
-The architecture follows DeepSeek's Super-agent design: a Router that converses, Workers that execute, and a Watchdog that supervises.
+See [Features](docs/features.en.md) for the full list.
 
-## Who it's for
+## Where you use it
 
-- **Install and go**: the macOS desktop app is about 42 MB and bundles its own runtime, so there is no Docker, Python or AI command-line tool to install first; Bots use the Chrome already on your computer. To keep it always on, one `docker compose up` puts it on a VPS or a machine at home, usable from the browser, your phone or a chat app, and the desktop app can connect to it.
-- **Any model, with visible cost**: DeepSeek, Kimi, Zhipu, Alibaba Bailian, SiliconFlow, OpenRouter, Ollama on your own machine, or any OpenAI-compatible endpoint: paste a key in Settings and test it in one click. Chat and background tasks can use different models. Tokens and money are tracked per role, task and day, with a daily budget the watchdog enforces.
-- **Works in mainland China**: talk to your Bots in Feishu/Lark, DingTalk or WeCom (Telegram and Discord too), with approvals as message buttons; Tencent Docs, flomo, TickTick and QQ Mail connect with a login or a token, no third-party relay. The UI comes in Chinese and English, and the default setup needs no paid foreign service.
-- **One computer, shared, without queueing**: all Bots share one computer, so a site you sign in to once works for every Bot, and several tasks run at once, each in its own browser window. Pages are driven by element (reading page text, clicking numbered elements), which is faster, more precise and cheaper in tokens than guessing coordinates from screenshots. The computer can be your own Chrome (with a separate profile), a Linux desktop in local Docker, or an Instabox cloud machine; the first two are free.
-- **Asks before acting**: write operations show a card first (allow once / deny / always allow), with rules you manage in Settings. With your own Chrome, uploading files, writing files and clicking "send / publish / pay" also ask first, and files stay inside the workspace folder. Secrets are encrypted in a vault and never enter the chat.
-- **Works like a team**: Bots hand off work in group chats and DM each other for help; Heavy mode has several workers do the same job and cross-review; Teach a task turns what you do into a skill; finished reports go to the library with share links; and all your data exports as one encrypted file to move machines.
+| Client | What you get |
+|---|---|
+| 💻 **macOS desktop app** (preview) | Download the dmg and open it: about 42 MB with its own runtime, no Docker or Python; Bots use the Chrome on your computer. It keeps running in the menu bar after you close the window, and can also connect to your server. See [Desktop app](docs/desktop.md) (Chinese) |
+| 🖥️ **Server** | One `docker compose up` on a VPS or a machine at home keeps it always on; connect from a browser, the desktop app, your phone or a chat app. See [Deploy with Docker Compose](docs/docker.md) (Chinese) |
+| 📱 **iPhone app** (in development) | Scan a QR code on your computer with the Camera to connect; approvals and finished tasks are pushed to your phone, encrypted, and readable on the lock screen. See [iPhone app](docs/mobile.md) (Chinese) |
+| 💬 **Chat apps** | Talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, with approvals as message buttons. See [Chat apps](docs/channels.md) (Chinese) |
 
-### Compared with OpenMausBot
+<p align="center">
+  <img src="docs/images/macos-app.png" width="860" alt="The macOS desktop app: Bots on the left, a background task and an approval card in the chat, and the Chrome the Bot is driving on the right">
+</p>
+<p align="center">
+  <img src="docs/images/ios-chat.png" width="200" alt="iPhone app: a conversation">
+  <img src="docs/images/ios-task.png" width="200" alt="iPhone app: a finished background task with a comparison table">
+  <img src="docs/images/ios-approval.png" width="200" alt="iPhone app: an approval card with allow once, always allow and deny">
+  <img src="docs/images/ios-computer.png" width="200" alt="iPhone app: watching the Bot's computer live">
+</p>
+<p align="center"><sub>Top: the macOS desktop app. Bottom: the iPhone app (in development): chat · background task · approval · the Bot's computer. Screenshots show the Chinese UI.</sub></p>
 
-[OpenMausBot](https://github.com/milind-soni/OpenMausBot) is another open-source Grok Bot alternative that makes different trade-offs:
-
-| | open-super-agent | OpenMausBot |
-|---|---|---|
-| Models | Any OpenAI-compatible API (DeepSeek, Kimi, Zhipu, Ollama, …), pay per token, daily spend visible | Mainly the `claude`, `codex` and `grok` CLIs on your machine, using subscriptions you already have; other endpoints through config |
-| Computer | One shared by all Bots, several tasks at once in their own windows; your Chrome, local Docker (both free) or an Instabox cloud machine; browser and terminal | One per Bot: a Boat cloud computer (paid after a trial), a local VM, or your own computer with whole-desktop control (macOS and Ubuntu Xorg) |
-| Apps | One manifest file per app, connected with a login or token, including Feishu, DingTalk, WeCom and Tencent Docs; any MCP server too | 500+ apps through Composio (a third-party service with its own account); MCP too |
-| Where you use it | Web, phone (home-screen app, push), the macOS desktop app, plus Telegram, Feishu, DingTalk, WeCom and Discord | Desktop app, web, iOS and Android apps |
-| Deployment | `docker compose up` on a server; macOS desktop app (preview) | Desktop apps (macOS, Windows, Ubuntu); `npx openmausbot serve` or Docker on a server |
-| Installer | 42–48 MB (Python runtime included) | 250–316 MB |
-| Secrets | Encrypted in a vault | Plain text in `config.json` (file mode 0600) |
-
-If you want Windows or Linux desktop apps, native phone apps or voice conversations, want to use an existing Claude or ChatGPT subscription instead of paying per token, or want Bots to control your whole desktop, OpenMausBot is the better fit. (Based on both projects' READMEs and release pages as of 2026-11-07.)
+OpenMausBot, a similar project, makes different trade-offs; see [Compared with OpenMausBot](docs/comparison.en.md).
 
 ## Quick start
 
-On a Mac, the quickest way is the **desktop app** (preview): download the dmg for your chip from the [releases page](https://github.com/kadaliao/open-super-agent/releases), open it and choose "Run on this computer". See [Desktop app](docs/desktop.md) (in Chinese).
+On a Mac, the quickest way is the **desktop app** (preview): download the dmg for your chip from the [releases page](https://github.com/kadaliao/open-super-agent/releases), open it and choose "Run on this computer".
 
 To keep it always on a server, use Docker Compose; you only need Docker:
 
@@ -81,10 +67,12 @@ docker compose up -d     # the first build takes 5–10 minutes; then open http:
 ```
 
 The first time you open it, a short setup guide walks you through adding a model provider, meeting your Bot (or installing one from a template) and connecting an app.
+See [Deploy with Docker Compose](docs/docker.md) (Chinese) for automatic HTTPS, using Instabox as the computer, and backups.
 
-See [Deploy with Docker Compose](docs/docker.md) (in Chinese) for automatic HTTPS, using Instabox as the computer, and backups.
+<details>
+<summary>Run without Docker</summary>
 
-Without Docker you need Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/) and Node ≥ 20 (plus Docker for the local Docker computer; not needed with Instabox or your local Chrome):
+You need Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/) and Node ≥ 20 (plus Docker for the local Docker computer; not needed with Instabox or your local Chrome):
 
 ```bash
 export DEEPSEEK_API_KEY=sk-...              # optional, you can also add it in Settings → Models; see .env.example
@@ -92,34 +80,46 @@ export DEEPSEEK_API_KEY=sk-...              # optional, you can also add it in S
 uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 ```
 
+</details>
+
 > [!WARNING]
 > Login is off by default, so run it on localhost or a private network such as Tailscale. To put it on the public internet, set `OSA_PASSWORD` to turn on login and serve it over HTTPS. See [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
-The detailed docs are currently in Chinese:
+[Features](docs/features.en.md) and [the comparison](docs/comparison.en.md) are in English; the other docs are in Chinese for now:
 
 - [Deploy with Docker Compose](docs/docker.md)
-- [Configuration](docs/configuration.md)
-- [Architecture](docs/architecture.md)
-- [Development](docs/development.md)
-- [Desktop app (preview)](docs/desktop.md): the macOS app, running on your computer or connecting to your server
+- [Configuration](docs/configuration.md): models, limits and prices, the computer, apps, approvals and the vault, routines, push, remote access
+- [Desktop app (preview)](docs/desktop.md): running on your computer or connecting to your server
+- [iPhone app (in development)](docs/mobile.md): QR pairing, how pushes reach the phone, what the push relay can see, development
 - [Chat apps](docs/channels.md): connecting Telegram, Feishu/Lark, DingTalk, WeCom and Discord
 - [Adding an app to the market](docs/apps.md)
 - [Writing a Bot template](docs/templates.md)
-- [Roadmap](docs/roadmap.md): what comes next ([the Grok Bot parity plan](docs/grok-bot-parity.md) is archived)
+- [Architecture](docs/architecture.md)
+- [Development](docs/development.md)
+- [Roadmap](docs/roadmap.md): what comes next; finished plans are in [docs/plans](docs/plans/)
 - [Changelog](CHANGELOG.md)
+- [Security](SECURITY.md)
 
 ## Roadmap
 
-Everything needed to match Grok Bot shipped in v0.3.0 (see the [changelog](CHANGELOG.md)). Where it goes next:
-
+- **Clients**: a stable macOS desktop app; the iPhone app on TestFlight first; then Windows and Android; using the bot in chat-app group chats.
+- **Computers**: whole-desktop control (not just the browser); letting Bots on a server borrow the browser on your computer; snapshots and rollback.
 - **App ecosystem**: new apps and Bot templates mostly come from community PRs; the project fills gaps in the manifest format and connection methods.
-- **More clients**: a stable macOS desktop app, then Windows; native iOS and Android apps; using the bot in chat-app group chats.
-- **Computers**: whole-desktop control (not just the browser), with Teach a task following along; letting Bots on a server borrow the browser on your computer; snapshots and rollback.
 - **Bot abilities**: voice conversations.
 
 The reasoning and priorities are in [docs/roadmap.md](docs/roadmap.md) (Chinese). Feature requests are welcome as issues.
+
+## Contributing
+
+Issues and PRs are welcome; please read [CONTRIBUTING.md](CONTRIBUTING.md) (Chinese) first.
+
+## Acknowledgements
+
+- DeepSeek Super-agent (October 2026 tech blog): the Router / Worker / Watchdog / Inline & Spill architecture
+- [Grok Bot](https://x.ai/bot): the product shape and interaction model
+- [Instabox](https://instabox.sh), [noVNC](https://github.com/novnc/noVNC), [Model Context Protocol](https://modelcontextprotocol.io), [Tauri](https://tauri.app)
 
 ## License
 

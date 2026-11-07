@@ -1,4 +1,7 @@
-# 计划：多媒体消息、对话里画图、链接卡片
+# 计划：多媒体消息、对话里画图、链接卡片（已完成）
+
+> [!NOTE]
+> 三步都已做完，合进了 main，这里留作存档。功能说明见 [功能一览](../features.md#资料库图片和链接)。
 
 2026-11-07 定下方向，当天三步都做完了（分支 `multimedia`）。按下面的顺序分三步做，**每一步单独提交**，做完更新 `CHANGELOG.md` 的 `[未发布]`，
 然后在这份文档的“进度”里勾掉。设计里标了“待定”的地方，动手前先问用户。
@@ -104,10 +107,10 @@ Bot 回复里的图片、文件、音视频好好显示。
 
 ## 做的时候注意
 
-- 先读 [架构 → 设计约定](architecture.md) 和 [开发](development.md)。界面文字用 `t()`，`en.json` 补英文，跑 `uv run python -m osa.i18n`。
+- 先读 [架构 → 设计约定](../architecture.md) 和 [开发](../development.md)。界面文字用 `t()`，`en.json` 补英文，跑 `uv run python -m osa.i18n`。
 - 测试：`uv run pytest -q`（本机环境里有 `INSTABOX_API_KEY` 的话加 `env -u INSTABOX_API_KEY`），前端 `cd web && npm run typecheck && npm run build`。
   前端没有单元测试，界面用 Playwright 驱动系统 Chrome 实际点一遍、截图看。
-- 本机试用：复制数据库、另开端口（见 [开发 → 不要用真实数据测试](development.md#不要用真实数据测试)），电脑类型写 `local`，测完把服务关掉。
+- 本机试用：复制数据库、另开端口（见 [开发 → 不要用真实数据测试](../development.md#不要用真实数据测试)），电脑类型写 `local`，测完把服务关掉。
 - 生图先用假服务测：`tests/test_avatars.py` 用 `httpx.MockTransport`；界面上试用时，可以起一个返回固定 PNG 的假 `/v1/images/generations`，
   再在设置里加成“其他”服务（本机地址不用密钥）。需要真调一次时，用硅基流动的 Kolors（免费）。
-- 新增的数据库表和字段，补进 [架构](architecture.md) 的数据表说明。
+- 新增的数据库表和字段，补进 [架构](../architecture.md) 的数据表说明。

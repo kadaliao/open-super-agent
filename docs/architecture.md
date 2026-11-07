@@ -86,6 +86,9 @@ osa/
     image/         本地电脑镜像
 Dockerfile          服务镜像：后端、构建好的前端、应用要用的 Node 和 uv
 compose.yaml        Docker Compose 部署（deploy/Caddyfile 是 --profile https 的反向代理），见 docs/docker.md
+deploy/relay/       推送中转（osa/relay.py）的 systemd 和 Caddy 配置
+desktop/            macOS 桌面 App（Tauri 2）：外壳、自带的 Python 运行环境、打包脚本，见 docs/desktop.md
+mobile/             iPhone App（Tauri 2）：Rust 外壳、Swift 插件、通知扩展、推送解密（WebPushCrypto），见 docs/mobile.md
 web/public/         PWA：manifest.json、sw.js（推送和离线提示页）、图标
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
@@ -290,11 +293,14 @@ web/src/
 - 写给模型的提示词保持中文，英文界面只在末尾加一句默认用英文回复；中文界面的提示词一个字不变。
 - 存进数据库、之后还要比对的标记（`[任务已派发]` 等）存中文原文，在显示的地方翻。
 
-### 推送与 PWA
+### 推送（网页和 iPhone App）
 - 推送按 RFC 8291（aes128gcm）加密、RFC 8292（VAPID）签名，只用 `cryptography` 和 `httpx`。推送服务只看得到密文。
 - 什么时候推：所有页面都没被看着时（前端在切前后台时发 `visibility`），把确认、帮忙、任务结果、Bot 回复推出去；流式输出之类的过程事件不推。
 - 开了推送的设备不再弹页面自己的系统通知（`localStorage osa.push`），免得重复。
 - Service Worker 不缓存接口和页面，只在连不上服务器时返回一个提示页。
+- iPhone App 也走这条路，服务器不分网页和 App：App 在推送中转（`osa/relay.py`）登记，拿到一个地址，连同手机上生成的公钥当成普通的推送订阅交给 `/api/push/subscribe`。
+  中转验 VAPID 签名（只认登记时那台服务器的公钥）后把密文转给苹果，手机上的通知扩展解密。中转看不到内容，见 docs/mobile.md。
+- 推送内容带 `badge`（待确认数，App 显示在图标上）；带 RFC 8030 的 `Topic` 头（tag 的哈希），同一个对话的新推送替换还没送到的旧推送。
 
 ### 记忆与资料库
 - **两种“记忆”别混**：`memory.py` 是对话记录（Inline & Spill，只在本对话里有效）；`memories.py` 是长期记忆，
