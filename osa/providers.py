@@ -21,6 +21,9 @@ from .memory import conn
 
 BASE = copy.deepcopy(CFG.get("providers") or {})   # config.yaml 里写的
 MODELS_TTL = 600
+# 服务那边临时出错（500、503、限流、连不上）时自动重试几次。SDK 默认只试 2 次、一共等 1.5 秒左右，
+# DeepSeek 高峰期连着报 500 时不够用；5 次按 0.5、1、2、4、8 秒退避，一共最多等 15 秒左右
+RETRIES = 5
 
 # 添加时可以选的服务商。key_url：去哪里拿密钥；embedding：推荐的 embedding 模型（没有就是这家不提供）；
 # models：推荐的对话模型，前面的优先，第一次打开的引导里默认选服务列出来的第一个（都要能看图，2026-11 抄自 models.dev）
@@ -166,7 +169,7 @@ def client(name: str, timeout: float | None = None) -> AsyncOpenAI:
         raise ValueError(i18n.t("没有这个模型服务：{name}", name=name))
     k = (p["base_url"], api_key(name) or "none", timeout)
     if k not in _clients:
-        _clients[k] = AsyncOpenAI(base_url=k[0], api_key=k[1], **({"timeout": timeout} if timeout else {}))
+        _clients[k] = AsyncOpenAI(base_url=k[0], api_key=k[1], max_retries=RETRIES, **({"timeout": timeout} if timeout else {}))
     return _clients[k]
 
 
@@ -189,9 +192,19 @@ def explain(e: Exception, base_url: str = "") -> str:
         return i18n.t("连接超时：{url}", url=base_url)
     if isinstance(e, openai.APIConnectionError):
         return i18n.t("连不上 {url}", url=base_url)
+    if isinstance(e, openai.InternalServerError):
+        return i18n.t("模型服务那边临时出了故障（{code}），一般过一会儿就好，稍后再试一次", code=e.status_code)
     if isinstance(e, openai.APIStatusError):
         return i18n.t("出错了（{code}）：{detail}", code=e.status_code, detail=detail)
     return f"{type(e).__name__}: {str(e)[:200]}"
+
+
+def brief(e: Exception) -> str:
+    """对话和任务里报错时用：调模型出的错翻成人话（不带英文原文和 request_id），别的错误原样。"""
+    if not isinstance(e, openai.APIError):
+        return str(e)
+    url = getattr(getattr(e, "request", None), "url", None)
+    return explain(e, f"{url.scheme}://{url.host}" if url else "")
 
 
 # ---------- 模型列表 ----------

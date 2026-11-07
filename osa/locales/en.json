@@ -134,6 +134,7 @@
   "写入 {path}": "Write {path}",
   "写入失败": "Couldn't write the file",
   "出错了（{code}）：{detail}": "Error ({code}): {detail}",
+  "模型服务那边临时出了故障（{code}），一般过一会儿就好，稍后再试一次": "The model service is having a temporary problem ({code}). It usually recovers shortly; try again in a moment",
   "出错了：{e}": "Something went wrong: {e}",
   "出错：{error}": "Error: {error}",
   "分片参数不对": "Invalid shard settings",

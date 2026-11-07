@@ -14,12 +14,14 @@
 reply 的样子：{"bot": 等回信的 Bot, "chat": 它在哪个对话里等, "depth": 深度, "then": 它那一轮自己欠谁回信（没有为 None）}
 """
 import asyncio
+import logging
 import time
-from . import bots, i18n, memory
+from . import bots, i18n, memory, providers
 
 MAX_DEPTH = 5
 notify = None   # 由 server 设置：async (event) -> None
 _queued: dict[tuple, dict] = {}   # 排着队还没开始的一轮：(Bot, 对话, 来由, 欠谁回信) -> turn
+log = logging.getLogger(__name__)
 
 
 def _name(bot_id: int | None) -> str:
@@ -100,8 +102,9 @@ async def _wake(bot_id: int, chat_id: int, turn: dict):
         else:
             await router.runtime(bot_id).respond(chat_id, turn)
     except Exception as e:
+        log.exception("对话 %s 里 Bot %s 处理私信时出错", chat_id, bot_id)
         if notify:
-            await notify({"type": "error", "chat_id": chat_id, "message": i18n.t("{name} 出错了：{e}", name=_name(bot_id), e=e)})
+            await notify({"type": "error", "chat_id": chat_id, "message": i18n.t("{name} 出错了：{e}", name=_name(bot_id), e=providers.brief(e))})
     finally:
         if _queued.get(key) is turn:   # 群里没轮到它（比如已经不在群里）
             del _queued[key]

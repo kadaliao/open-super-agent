@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import mimetypes
 import os
 import posixpath
@@ -1528,7 +1529,8 @@ async def safe_handle(chat: dict, text: str, via: str = ""):
         else:
             await rt.runtime(chat["bot_ids"][0]).handle_user(text, via, chat["id"])
     except Exception as e:
-        await broadcast({"type": "error", "chat_id": chat["id"], "message": i18n.t("出错了：{e}", e=e)})
+        logging.getLogger(__name__).exception("对话 %s 出错", chat["id"])
+        await broadcast({"type": "error", "chat_id": chat["id"], "message": i18n.t("出错了：{e}", e=providers.brief(e))})
 
 
 channels.handle = safe_handle

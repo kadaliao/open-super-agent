@@ -6,7 +6,7 @@ import json
 import time
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, dm, i18n, library, memories, memory, routines, search, skills, tasklog
+from . import approvals, bots, dm, i18n, library, memories, memory, providers, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -257,7 +257,7 @@ class Router:
                 except Exception as e:
                     if owed:
                         await dm.answer(self.bot_id, owed, i18n.t("（{name} 处理时出错：{error}）",
-                                                                  name=(self.bot or {}).get("name", "Bot"), error=e), chat_id)
+                                                                  name=(self.bot or {}).get("name", "Bot"), error=providers.brief(e)), chat_id)
                     raise
                 # 欠着回信：没派任务、也没再私信别人的话，这一轮的回复就是回信（派了的由任务结果、对方回信接着送）
                 if owed and not self._turn_tasks and not self._turn_dms:
@@ -620,7 +620,7 @@ class Router:
             await self._done(task)
             return
         except Exception as e:
-            task.status, task.result = "failed", i18n.t("任务失败：{error}", error=e)
+            task.status, task.result = "failed", i18n.t("任务失败：{error}", error=providers.brief(e))
         await tasklog.close(task, task.status, task.result if task.status == "failed" else "")
         if task.status == "done" and task.quiet_ok and routines.is_quiet(task.result):
             # 定时任务这次没有新内容：不发结果（也就不推送、不发到聊天软件），派发的那条在对话里和上下文里都不再出现

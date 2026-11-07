@@ -9,13 +9,15 @@
 - 群里的 Bot 私信了群外的 Bot（见 dm.py），回信回到群里时，它按 "dm" 排进来接着说。
 """
 import asyncio
+import logging
 import re
 import time
-from . import bots, i18n, memory
+from . import bots, i18n, memory, providers
 
 MAX_TURNS = 8
 EVERYONE = ("everyone", "所有人", "全体成员")
 notify = None   # 由 server 设置：async (event) -> None
+log = logging.getLogger(__name__)
 
 
 class Group:
@@ -46,8 +48,10 @@ class Group:
             try:
                 await router.runtime(bot_id).respond(self.chat_id, turn if why == "dm" else {"depth": turn.get("depth", 0)})
             except Exception as e:
+                log.exception("群聊 %s 里 Bot %s 出错", self.chat_id, bot_id)
                 if notify:
-                    await notify({"type": "error", "chat_id": self.chat_id, "message": i18n.t("{name} 出错了：{e}", name=_name(bot_id), e=e)})
+                    await notify({"type": "error", "chat_id": self.chat_id,
+                                  "message": i18n.t("{name} 出错了：{e}", name=_name(bot_id), e=providers.brief(e))})
             # 交出去的工作排在最前面，按交接的先后
             queue = [(b, "handoff") for b in self.handoffs] + [q for q in queue if q[0] not in self.handoffs]
         self.handoffs = []

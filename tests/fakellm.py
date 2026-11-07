@@ -61,12 +61,19 @@ class FakeLLM:
     def __init__(self):
         self.requests: list[tuple[str, str, dict]] = []   # (角色, Bot 名字, 请求体)
         self.scripts: dict[str, list] = {}
+        self.failures: list[int] = []   # 接下来的对话请求依次直接返回这些状态码（模拟服务那边出故障）
+        self.failed = 0                 # 已经按 failures 报错了几次
+        self.transport = httpx.MockTransport(self._handle)
         self.client = AsyncOpenAI(base_url="http://fake.llm/v1", api_key="test",
-                                  http_client=httpx.AsyncClient(transport=httpx.MockTransport(self._handle)))
+                                  http_client=httpx.AsyncClient(transport=self.transport))
 
     def script(self, who: str, *replies):
         """who：router、router:名字、worker、reviewer、other。"""
         self.scripts.setdefault(who, []).extend(replies)
+
+    def fail(self, *codes: int):
+        """接下来的几次对话请求依次返回这些状态码，不消耗剧本。"""
+        self.failures.extend(codes)
 
     def bodies(self, role: str, name: str = "") -> list[dict]:
         return [b for r, n, b in self.requests if r == role and (not name or n == name)]
@@ -81,6 +88,10 @@ class FakeLLM:
     def _handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("/chat/completions"):
+            if self.failures:
+                self.failed += 1
+                return httpx.Response(self.failures.pop(0), json={"error": {
+                    "message": "Internal Server Error (request_id: fake-0000)", "type": "server_error"}})
             body = json.loads(request.content)
             role, name = role_of(body)
             self.requests.append((role, name, body))
