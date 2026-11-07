@@ -75,3 +75,18 @@ cd src-tauri && cargo test --lib                      # 地址、配对链接、
   - 启动参数 `-OSAAutotest YES`：开推送时用不弹窗的临时授权；`-OSARelay http://127.0.0.1:8790` 换成本机的推送中转；
   - 往 App 的 `Documents/autotest.js` 里写 JS，App 会在页面里执行它（`xcrun simctl get_app_container <设备> com.kadaliao.opensuperagent data`）；
   - 通知扩展把最后一条推送的解密结果写进 App Group 的 `last-push.json`。`simctl push` 不会调用通知扩展，要用苹果的 sandbox 推送才行。
+
+## 发布（TestFlight / App Store）
+
+在这台 Mac 上打包上传，还没有 CI：
+
+```bash
+mobile/scripts/release-ios.sh <构建号>            # 打包、导出 ipa、检查权限和版本号、altool validate
+mobile/scripts/release-ios.sh <构建号> --upload   # 再上传到 App Store Connect，处理完自动发给 TestFlight 的 Internal 组
+```
+
+- 版本号跟着 `mobile/package.json`（和服务端、桌面版一样）；构建号每次上传都要加 1，同一个版本号下不能重复。
+- 签名用手动方式：Apple Distribution 证书（从钥匙串导进一个临时钥匙串，打完就删）和两份 App Store 描述文件
+  “Open Super Agent App Store”“Open Super Agent NotificationService App Store”，写在 `gen/apple/project.yml` 的 release 配置里，
+  导出用 `mobile/scripts/ExportOptions-appstore.plist`。描述文件 2027-11-07 到期，到期前在开发者网站重新生成并装到本机。
+- 上传用 App Store Connect API key（Developer 角色就够上传）。打包时不要设 `APPLE_API_*`：Tauri 会改用自动签名，通知扩展的权限会丢。

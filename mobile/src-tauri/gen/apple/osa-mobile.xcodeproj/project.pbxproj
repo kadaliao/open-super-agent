@@ -229,18 +229,18 @@
 			path = ../../src;
 			sourceTree = "<group>";
 		};
-		"TEMP_AAEFA9E0-317D-41EC-8126-934D59E45A5F" /* arm64 */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = arm64;
-			sourceTree = "<group>";
-		};
-		"TEMP_B4B1C918-4AF4-474A-AB4E-B20629BEA81F" /* x86_64 */ = {
+		"TEMP_5D5FBAA1-EB22-4A12-93BA-1A03D162FEBA" /* x86_64 */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = x86_64;
+			sourceTree = "<group>";
+		};
+		"TEMP_A9730A7A-2C3D-4C6F-8E47-23FEA041AF6F" /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = arm64;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -443,6 +443,8 @@
 					arm64,
 				);
 				CODE_SIGN_ENTITLEMENTS = ../../../ios/NotificationService/NotificationService.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = HMDAVG9B8J;
 				INFOPLIST_FILE = ../../../ios/NotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -452,6 +454,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.kadaliao.opensuperagent.NotificationService;
 				PRODUCT_NAME = NotificationService;
+				PROVISIONING_PROFILE_SPECIFIER = "Open Super Agent NotificationService App Store";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
@@ -642,7 +645,8 @@
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "osa-mobile_iOS/osa-mobile_iOS.entitlements";
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "HMDAVG9B8J";
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
@@ -659,6 +663,7 @@
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.kadaliao.opensuperagent;
 				PRODUCT_NAME = "Open Super Agent";
+				PROVISIONING_PROFILE_SPECIFIER = "Open Super Agent App Store";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;

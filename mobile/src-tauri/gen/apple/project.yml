@@ -85,6 +85,12 @@ targets:
         LIBRARY_SEARCH_PATHS[arch=arm64]: $(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: true
         EXCLUDED_ARCHS[sdk=iphoneos*]: x86_64
+      configs:
+        # 发 TestFlight / App Store 的包用手动签名：Apple Distribution 证书和开发者网站上的 App Store 描述文件（mobile/scripts/release-ios.sh）
+        release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: Open Super Agent App Store
       groups: [app]
     dependencies:
       - target: NotificationService
@@ -134,6 +140,11 @@ targets:
         SWIFT_VERSION: "5.0"
         ARCHS: [arm64]
         SKIP_INSTALL: true
+      configs:
+        release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: Open Super Agent NotificationService App Store
     dependencies:
       - package: WebPushCrypto
     postBuildScripts:
