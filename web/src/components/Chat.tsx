@@ -9,6 +9,7 @@ import { ask } from './Dialog'
 import { Icon } from '../icons'
 import { Attachments, mediaUrl, splitMarks, type ViewerItem } from './Media'
 import { imagePrice, setAsAvatar } from './AvatarTools'
+import { LinkEmbed, textEmbeds } from './Embeds'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -76,7 +77,7 @@ function BotMessage({ bot, m, children, showName, reply }: { bot?: Bot; m: Messa
       <div className="msg-body">
         <Speaker bot={bot} show={showName} />
         <Thinking text={m.meta.thinking} seconds={m.meta.thought_s} />
-        <Markdown text={m.content} />
+        <Markdown text={m.content} embeds />
         <Attachments items={m.meta.attachments} />
         {children}
         <ThreadLink m={m} reply={reply} />
@@ -175,7 +176,7 @@ function ResultMessage({ bot, m, goal, showName, reply }: { bot?: Bot; m: Messag
         <div className={`result-head ${status}`}>
           {status === 'failed' ? t('任务失败') : t('任务完成')} · #{taskKind(m).taskId}{m.meta.elapsed ? ` · ${t('用时 {time}', { time: secs(m.meta.elapsed) })}` : ''}
         </div>
-        <div className={open ? '' : 'clamp'}><Markdown text={text} /></div>
+        <div className={open ? '' : 'clamp'}><Markdown text={text} embeds /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
         <Attachments items={m.meta.attachments} />
         <ThreadLink m={m} reply={reply} />
@@ -299,7 +300,7 @@ function DmReply({ m, bot, to, reply }: { m: Message; bot?: Bot; to?: Bot; reply
       <div className="msg-body">
         <div className="speaker">{bot?.name || t('已删除的 Bot')}</div>
         <div className={'result-head' + (bad ? ' failed' : '')}>↩ {t('回了 {name} 的私信', { name: to?.name || t('已删除的 Bot') })}{m.meta.task_id ? ' · ' + t('任务 #{id}', { id: m.meta.task_id }) : ''}</div>
-        <div className={open ? '' : 'clamp'}><Markdown text={m.content} /></div>
+        <div className={open ? '' : 'clamp'}><Markdown text={m.content} embeds /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
         <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} />
@@ -354,6 +355,7 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
             {items.length > 0 && <Attachments items={items} />}
             {(text || !items.length) && <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble">{text}</div></div>}
             {!text && items.length > 0 && m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
+            {text && textEmbeds(text).map(u => <div key={u} className="user-embed"><LinkEmbed href={u} fallback={null} /></div>)}
             <ThreadLink m={m} reply={reply} />
             {reply && <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text || m.content} /><ReplyBtn m={m} reply={reply} /></div>}
           </div>

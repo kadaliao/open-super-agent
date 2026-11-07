@@ -68,6 +68,7 @@ osa/
     apps/          每个应用一份清单（<名字>.yaml），格式见 docs/apps.md；本机还会读 data/apps/
     checks.py      添加应用前的检查（邮箱先试登录一次）
   tools.py         内置工具：web_search、fetch_url
+  unfurl.py        链接卡片：服务器取网页的标题、摘要、配图（og:*），不抓内网，缓存在 unfurls 表；YouTube 走 oEmbed
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明；导出成文件、分享链接、从文件或链接导入
   templates.py     Bot 模板：检查、内置模板（templates/*.yaml）、从 Bot 导出、分享、安装
   search.py        按意思检索记忆和页面：中文两字一组的 FTS5、可选的 embedding、排名融合、search_memory 工具
@@ -110,6 +111,7 @@ web/src/
 | `channels` | 聊天软件连接：平台、绑定的对话（`chat_id`）、配对的私聊（`peer`）、配对码；token / App Secret 在保险库的 `channel_<id>` |
 | `settings` | 界面里改过的设置；`language` 是界面语言（zh / en）；`image_model` 是画图用的模型（以前叫 `avatar_model`）；`vision_tests` 是设置里“测试”测出来的哪些模型能看图 |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
+| `unfurls` | 链接卡片的缓存：网址、取到的标题 / 摘要 / 配图 / 站点名 / 图标（JSON）、成功没有、取的时间；成功的留 7 天，失败的 1 小时 |
 
 ## 设计约定
 
@@ -326,6 +328,19 @@ web/src/
   用户也能在对话里说“画吧”（`resolve_approval`）。冒充任务的写法照 `Router._direct`；卡片照旧只进私聊，群里、讨论串里有提示。
 - 画好的原图存进 `media`，对话里记一条 `role=task`、`kind=image` 的消息（`meta` 带 `prompt`、`model`、`provider`、`price`、`attachments`），
   显示成 Bot 发的图片，能下载、设为头像。上下文里是一句“你画好了一张图……”；推送、聊天软件、讨论串的“N 条回复”都算它。
+
+### 链接卡片和嵌入
+- 只展开**单独占一段**的链接（一段里只有一个裸网址，或只有一个 `[文字](网址)`），句子里的链接照旧；一条消息最多 3 个。
+  Markdown 里由一个 rehype 步骤（`markEmbeds`）给前 3 个标上 `dataEmbed`，段落组件据此换成卡片。只在说完的对话消息里开
+  （Bot 的回复、任务结果、私信回信），流式输出、资料库页面、任务过程里不开。你自己发的消息是纯文字，单独一行的网址显示在气泡下面。
+- **YouTube**（`watch?v=`、`youtu.be/`、`shorts/`）先显示 `i.ytimg.com` 的封面，点了才换成 `youtube-nocookie.com/embed/<id>?autoplay=1` 的 iframe；
+  **B 站**（`BV…`）封面来自网页卡片（图片有防盗链，`<img referrerPolicy="no-referrer">`，不能用 CSS 背景图），点了加载 `player.bilibili.com`；
+  **X**（`/<用户>/status/<id>`）直接放官方的嵌入页 `platform.twitter.com/embed/Tweet.html`，不在我们的页面里加载 `widgets.js`，
+  高度听它发来的 postMessage：`{"twttr.embed": {"method": "twttr.private.resize", "params": [{"height": …}]}}`（2026-11 实测）。
+  这些 iframe 都带 `sandbox`（能跑脚本、弹窗，不能把整个页面跳走）。
+- **其他网页**：`GET /api/unfurl?url=` 由服务器去抓，每一跳都过 `tools.blocked`（不抓本机和内网），8 秒、最多读 512 KB，只看 HTML 的 `<head>`。
+  YouTube 的 og:title 在 700 多 KB 以后，所以 YouTube 改用 oEmbed。站内链接不展开。抓不到就退回普通链接。
+- 主应用以后要是加 CSP，记得放行 `www.youtube-nocookie.com`、`player.bilibili.com`、`platform.twitter.com` 的 frame，以及卡片配图（任意 https 图片）。
 
 ### 模型接口（DeepSeek）
 - 思考模式下，如果请求带了工具，历史回复的 `reasoning_content` 必须原样传回，所以它存在消息的 `meta.reasoning` 里。

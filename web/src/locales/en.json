@@ -1072,5 +1072,8 @@
   "{n} 张": [
     "{n} image",
     "{n} images"
-  ]
+  ],
+  "播放": "Play",
+  "B 站": "Bilibili",
+  "在 X 上打开": "Open on X"
 }

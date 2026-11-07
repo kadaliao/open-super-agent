@@ -19,7 +19,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, avatars, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
-from . import prices, providers, search, settings, skills, tasklog, teach, templates, vault
+from . import prices, providers, search, settings, skills, tasklog, teach, templates, unfurl, vault
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -274,6 +274,13 @@ async def media_file(mid: str, download: bool = False):
 async def media_page(mid: str):
     """同一张图片，给聊天软件里的链接用：不是 /api/ 开头，没登录时会先跳去登录页，登录后回到这里。"""
     return _media_response(mid)
+
+
+@app.get("/api/unfurl")
+async def unfurl_link(url: str = ""):
+    """链接卡片：网页的标题、摘要、配图、站点名和图标。抓不到、不让抓（本机和内网地址）的返回 ok=false，前端显示普通链接。"""
+    data = await unfurl.get(url)
+    return {"ok": True, **data} if data else {"ok": False}
 
 
 # ---------- 群聊 ----------

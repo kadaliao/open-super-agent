@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { t } from '../i18n'
 import { openImage } from './Media'
+import { LinkEmbed, MAX_EMBEDS, parseEmbed } from './Embeds'
 
 function CodeBlock(props: any) {
   const { children, ...rest } = props
@@ -43,8 +44,30 @@ export function soleLink(node: any): { href: string } | null {
   return a && typeof a.properties?.href === 'string' ? { href: a.properties.href } : null
 }
 
-// 单独一段的音频、视频链接换成播放器，链接留在下面
+// 单独一段的链接（前 MAX_EMBEDS 个）标上 dataEmbed，显示成卡片或播放器；代码块、表格里的不管
+function markEmbeds() {
+  return (tree: any) => {
+    let n = 0
+    const walk = (node: any) => {
+      for (const c of node.children || []) {
+        if (n >= MAX_EMBEDS || c.type !== 'element') continue
+        if (c.tagName === 'p') {
+          const one = soleLink(c)
+          const path = one ? pathOf(one.href) : ''
+          if (one && !AUDIO.test(path) && !VIDEO.test(path) && parseEmbed(one.href)) {
+            c.properties = { ...c.properties, dataEmbed: one.href }
+            n++
+          }
+        } else if (!['pre', 'table', 'code'].includes(c.tagName)) walk(c)
+      }
+    }
+    walk(tree)
+  }
+}
+
+// 单独一段的音频、视频链接换成播放器，链接留在下面；标了 dataEmbed 的换成卡片或嵌入
 function Para({ node, children, ...p }: any) {
+  if (node?.properties?.dataEmbed) return <LinkEmbed href={node.properties.dataEmbed} fallback={<p {...p}>{children}</p>} />
   const one = soleLink(node)
   const path = one ? pathOf(one.href) : ''
   if (one && AUDIO.test(path)) return <div className="md-media"><audio controls preload="metadata" src={one.href} /><div className="md-media-cap">{children}</div></div>
@@ -52,10 +75,11 @@ function Para({ node, children, ...p }: any) {
   return <p {...p}>{children}</p>
 }
 
-const Markdown = memo(function Markdown({ text }: { text: string }) {
+// embeds：单独一段的链接展开成卡片、播放器（对话里说完的消息才开；流式输出、资料库、任务过程里不开）
+const Markdown = memo(function Markdown({ text, embeds }: { text: string; embeds?: boolean }) {
   return (
     <div className="md">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }]]}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }], ...(embeds ? [markEmbeds] : [])]}
         components={{ pre: CodeBlock, a: Link, img: Img, p: Para }}>
         {text}
       </ReactMarkdown>
