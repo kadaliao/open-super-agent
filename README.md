@@ -56,7 +56,7 @@
 
 ## 快速开始
 
-在 Mac 上最快的办法是装**桌面 App**：到 [发布页](https://github.com/kadaliao/open-super-agent/releases) 下载对应芯片的 dmg，打开后选“在这台电脑上运行”。
+在 Mac 上最快的办法是装**桌面 App**：到 [发布页](https://github.com/kadaliao/open-super-agent/releases) 下载对应芯片的 dmg，或者 `brew install --cask kadaliao/tap/open-super-agent`，打开后选“在这台电脑上运行”。
 
 放到服务器上一直开着，用 Docker Compose，只需要装 Docker：
 

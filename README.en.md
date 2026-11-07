@@ -56,7 +56,7 @@ OpenMausBot, a similar project, makes different trade-offs; see [Compared with O
 
 ## Quick start
 
-On a Mac, the quickest way is the **desktop app**: download the dmg for your chip from the [releases page](https://github.com/kadaliao/open-super-agent/releases), open it and choose "Run on this computer".
+On a Mac, the quickest way is the **desktop app**: download the dmg for your chip from the [releases page](https://github.com/kadaliao/open-super-agent/releases), or run `brew install --cask kadaliao/tap/open-super-agent`. Open it and choose "Run on this computer".
 
 To keep it always on a server, use Docker Compose; you only need Docker:
 

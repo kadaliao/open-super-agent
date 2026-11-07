@@ -153,6 +153,7 @@ docker rm -f osa-computer       # 删掉旧容器，下次使用时会用新镜�
    `desktop/package.json` 和 `desktop/package-lock.json`（同样用 `npm version`；桌面 App 的版本号读它，和 tag 不一致时打包会失败）。
 3. 提交“chore: 发布 vx.y.z”，打带注释的 tag，push 提交和 tag。CI 会打桌面 App 的安装包，传到这个版本的 release。
 4. `gh release create` 写说明：一段概述、升级提醒、完整对比链接，后面附 CHANGELOG 里这一版的内容（相对链接换成指向这个 tag 的绝对链接）。
+5. CI 传完 dmg 后，更新 Homebrew 的 cask，见 [桌面 App → 发布](desktop.md#发布)。
 
 ## 常见问题
 

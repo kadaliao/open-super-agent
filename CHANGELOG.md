@@ -15,6 +15,7 @@
 ### 新增
 - **主 Bot 能新建 Bot**：跟主 Bot 说要一个什么样的 Bot，它写好名字、职责和技能，弹卡片请你确认，你点“新建”才建，建好在侧栏出现。
   只有主 Bot 能建；别的 Bot 需要新 Bot 时私信主 Bot，同样要你确认。卡片也会发到聊天软件，不能“总是允许”
+- 桌面 App 能用 Homebrew 装了：`brew install --cask kadaliao/tap/open-super-agent`
 ### 修复
 - macOS / iPhone App 和 Safari 里，用拼音输入法按回车选字（或把拼音原样上屏）会把消息直接发出去。所有按回车提交的输入框都改了
 - 桌面 App 连着服务器时，电脑面板写“本机 Chrome（没找到 Chrome）”，看着像是这台 Mac 没装 Chrome。现在写“服务器上的 Chrome / Docker”，

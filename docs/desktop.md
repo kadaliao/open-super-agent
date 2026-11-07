@@ -2,6 +2,14 @@
 
 macOS 的桌面 App，Apple 芯片和 Intel 都有。Windows 版以后再做。
 
+到 [发布页](https://github.com/kadaliao/open-super-agent/releases) 下载对应芯片的 dmg，或者用 Homebrew：
+
+```bash
+brew install --cask kadaliao/tap/open-super-agent
+```
+
+App 自己会检查更新，所以 `brew upgrade` 默认跳过它。`brew uninstall --cask --zap open-super-agent` 会连数据一起删。
+
 <p align="center"><img src="images/macos-app.png" width="860" alt="桌面 App：左边是 Bot 列表，中间的对话里有后台任务和等你确认的卡片，右边是 Bot 正在操作的 Chrome"></p>
 
 ## 两种用法
@@ -61,6 +69,7 @@ cd desktop && npx tauri build --bundles app  # 带自动更新包时要设 TAURI
 打 `v*` 的 tag 时，`.github/workflows/desktop.yml` 打两个 dmg 和自动更新包，传到这个版本的 release，
 再更新 `desktop-updates` 这个 release 里的 `latest.json`（装好的 App 从这里看有没有新版，不要删）。tag 里带 `-` 的（比如 `v0.7.0-preview.1`）发成 pre-release。
 `desktop/package.json` 的版本号要和 tag 一致，不然打包会失败。
+正式版（不带 `-`）发出后，再改 [kadaliao/homebrew-tap](https://github.com/kadaliao/homebrew-tap) 里的 `Casks/open-super-agent.rb`：`version` 和两个 `sha256`（`gh release view vx.y.z --json assets` 能看到每个 dmg 的 sha256）。
 
 仓库的 Secrets：
 
