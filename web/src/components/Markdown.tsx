@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { t } from '../i18n'
 import { openImage } from './Media'
-import { LinkEmbed, MAX_EMBEDS, parseEmbed } from './Embeds'
+import { LinkEmbed, MAX_EMBEDS, isMedia, parseEmbed } from './Embeds'
 
 function CodeBlock(props: any) {
   const { children, ...rest } = props
@@ -44,24 +44,43 @@ export function soleLink(node: any): { href: string } | null {
   return a && typeof a.properties?.href === 'string' ? { href: a.properties.href } : null
 }
 
-// 单独一段的链接（前 MAX_EMBEDS 个）标上 dataEmbed，显示成卡片或播放器；代码块、表格里的不管
+// 要展开的链接（按顺序，前 MAX_EMBEDS 个，同一个只展开一次）标上 dataEmbed，显示成卡片或播放器：
+// - 单独一段的链接：原地换掉
+// - 句子里、列表里的视频和推文链接：在它所在的那一块（段落、列表、引用）后面加一段
+// 代码块、表格里的不管
+const SKIP = ['pre', 'table', 'code']
 function markEmbeds() {
   return (tree: any) => {
-    let n = 0
-    const walk = (node: any) => {
+    const seen = new Set<string>()
+    const take = (href: string) => (seen.size < MAX_EMBEDS && !seen.has(href) ? (seen.add(href), true) : false)
+    const sole = (node: any) => {
       for (const c of node.children || []) {
-        if (n >= MAX_EMBEDS || c.type !== 'element') continue
-        if (c.tagName === 'p') {
-          const one = soleLink(c)
-          const path = one ? pathOf(one.href) : ''
-          if (one && !AUDIO.test(path) && !VIDEO.test(path) && parseEmbed(one.href)) {
-            c.properties = { ...c.properties, dataEmbed: one.href }
-            n++
-          }
-        } else if (!['pre', 'table', 'code'].includes(c.tagName)) walk(c)
+        if (c.type !== 'element' || SKIP.includes(c.tagName)) continue
+        if (c.tagName !== 'p') { sole(c); continue }
+        const one = soleLink(c)
+        const path = one ? pathOf(one.href) : ''
+        if (one && !AUDIO.test(path) && !VIDEO.test(path) && parseEmbed(one.href) && take(one.href))
+          c.properties = { ...c.properties, dataEmbed: one.href }
       }
     }
-    walk(tree)
+    const inline = (node: any, out: string[]) => {
+      for (const c of node.children || []) {
+        if (c.type !== 'element' || SKIP.includes(c.tagName) || c.properties?.dataEmbed) continue
+        const href = c.tagName === 'a' ? c.properties?.href : null
+        if (typeof href === 'string' && isMedia(href)) out.push(href)
+        else inline(c, out)
+      }
+      return out
+    }
+    const kids: any[] = []
+    for (const top of tree.children || []) {
+      kids.push(top)
+      if (top.type !== 'element' || SKIP.includes(top.tagName)) continue
+      sole({ children: [top] })
+      for (const href of inline({ children: [top] }, []))
+        if (take(href)) kids.push({ type: 'element', tagName: 'p', properties: { dataEmbed: href }, children: [] })
+    }
+    tree.children = kids
   }
 }
 
@@ -75,7 +94,7 @@ function Para({ node, children, ...p }: any) {
   return <p {...p}>{children}</p>
 }
 
-// embeds：单独一段的链接展开成卡片、播放器（对话里说完的消息才开；流式输出、资料库、任务过程里不开）
+// embeds：链接展开成卡片、播放器（对话里说完的消息才开；流式输出、资料库、任务过程里不开）
 const Markdown = memo(function Markdown({ text, embeds }: { text: string; embeds?: boolean }) {
   return (
     <div className="md">

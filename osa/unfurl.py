@@ -1,16 +1,17 @@
-"""链接卡片：对话里单独一段的网页链接，服务器去取标题、摘要、配图、站点名和图标，前端画成书签卡片（像 Notion 的嵌入）。
+"""链接卡片：对话里要展开的网页链接，服务器去取标题、摘要、配图、站点名和图标，前端画成书签卡片（像 Notion 的嵌入）。
 
 - 和 fetch_url 一样先过 tools.blocked：不抓本机和内网地址，每一跳跳转都查。超时 8 秒，最多读 512 KB，只看 HTML。
 - 解析 og:*、twitter:*、<title>、<meta name=description>、<link rel=icon>。没有标题的不算成功，前端退回普通链接。
 - 结果缓存在 unfurls 表：成功的留 7 天，失败的留 1 小时。同一个地址同时有几个请求时只抓一次。
 - YouTube、B 站、X 的播放器和推文由前端直接嵌入（见 web/src/components/Embeds.tsx），这里只给 B 站封面、YouTube 标题这类信息。
+- 短链接（b23.tv、t.co……）跳到视频或推文页时不再往下抓，回 {"embed": 落地地址}，前端按那个地址显示播放器或推文。
 """
 import asyncio
 import json
 import re
 import time
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 import httpx
 from . import tools
 from .memory import conn
@@ -119,6 +120,20 @@ async def _oembed(c: httpx.AsyncClient, url: str) -> dict | None:
             "image": _abs(url, d.get("thumbnail_url")), "site": "YouTube", "icon": "https://www.youtube.com/favicon.ico"}
 
 
+# 前端能直接嵌入的页面（和 Embeds.tsx 的 parseEmbed 对应）
+_EMBED = re.compile(r"^https?://((www|m|mobile|music)\.)?(bilibili\.com/video/BV|youtube\.com/(watch\?|shorts/|live/)|youtu\.be/"
+                    r"|(x|twitter)\.com/[^/?#]+/status(es)?/\d)", re.I)
+_KEEP_QS = {"v", "t", "p"}   # 视频的落地地址只留编号、开始时间、分 P，去掉分享来源、设备号这些
+
+
+def _landing(url: str) -> dict:
+    u = urlsplit(url)
+    tweet = u.hostname and re.search(r"(^|\.)(x|twitter)\.com$", u.hostname)   # 推文的 s、t 都是分享来源
+    qs = "" if tweet else urlencode([(k, v) for k, v in parse_qsl(u.query) if k in _KEEP_QS])
+    url = urlunsplit((u.scheme, u.netloc, u.path, qs, ""))
+    return {"url": url, "title": "", "description": "", "image": "", "site": "", "icon": "", "embed": url}
+
+
 async def _fetch(url: str) -> dict | None:
     async with httpx.AsyncClient(timeout=TIMEOUT, headers=UA, follow_redirects=False, transport=_TRANSPORT) as c:
         if _YOUTUBE.match(url):
@@ -129,6 +144,8 @@ async def _fetch(url: str) -> dict | None:
             async with c.stream("GET", url) as r:
                 if r.is_redirect and r.headers.get("location"):
                     url = urljoin(str(r.url), r.headers["location"])
+                    if _EMBED.match(url):
+                        return _landing(url)
                     continue
                 if r.status_code >= 400 or "html" not in r.headers.get("content-type", "html").lower():
                     return None

@@ -330,9 +330,14 @@ web/src/
   显示成 Bot 发的图片，能下载、设为头像。上下文里是一句“你画好了一张图……”；推送、聊天软件、讨论串的“N 条回复”都算它。
 
 ### 链接卡片和嵌入
-- 只展开**单独占一段**的链接（一段里只有一个裸网址，或只有一个 `[文字](网址)`），句子里的链接照旧；一条消息最多 3 个。
-  Markdown 里由一个 rehype 步骤（`markEmbeds`）给前 3 个标上 `dataEmbed`，段落组件据此换成卡片。只在说完的对话消息里开
-  （Bot 的回复、任务结果、私信回信），流式输出、资料库页面、任务过程里不开。你自己发的消息是纯文字，单独一行的网址显示在气泡下面。
+- 哪些链接展开（一条消息最多 3 个，同一个只展开一次，代码块、表格里的不管）：
+  - Bot 的消息：**单独占一段**的链接（一段里只有一个裸网址，或只有一个 `[文字](网址)`）原地换成卡片或播放器；
+    写在句子、列表里的 YouTube、B 站、X 链接，在它所在的那一块（段落、列表、引用）后面加一个播放器或推文；句子里的普通网页链接照旧。
+    Markdown 里由一个 rehype 步骤（`markEmbeds`）给要展开的段落标上 `dataEmbed`，或插一个空段落带 `dataEmbed`，段落组件据此换成卡片。
+    只在说完的对话消息里开（Bot 的回复、任务结果、私信回信），流式输出、资料库页面、任务过程里不开。
+  - 你自己发的消息是纯文字：里面所有网址（不管在不在句子里）都显示在气泡下面，气泡里的网址也能点（`findLinks`：只认 ASCII 字符，
+    紧挨着的中文和中文标点不算进去）。
+  - Router 的提示词里说了界面会自动展开链接，免得 Bot 派任务去下载封面、自己做卡片。
 - **YouTube**（`watch?v=`、`youtu.be/`、`shorts/`）先显示 `i.ytimg.com` 的封面，点了才换成 `youtube-nocookie.com/embed/<id>?autoplay=1` 的 iframe；
   **B 站**（`BV…`）封面来自网页卡片（图片有防盗链，`<img referrerPolicy="no-referrer">`，不能用 CSS 背景图），点了加载 `player.bilibili.com`；
   **X**（`/<用户>/status/<id>`）直接放官方的嵌入页 `platform.twitter.com/embed/Tweet.html`，不在我们的页面里加载 `widgets.js`，
@@ -340,6 +345,8 @@ web/src/
   这些 iframe 都带 `sandbox`（能跑脚本、弹窗，不能把整个页面跳走）。
 - **其他网页**：`GET /api/unfurl?url=` 由服务器去抓，每一跳都过 `tools.blocked`（不抓本机和内网），8 秒、最多读 512 KB，只看 HTML 的 `<head>`。
   YouTube 的 og:title 在 700 多 KB 以后，所以 YouTube 改用 oEmbed。站内链接不展开。抓不到就退回普通链接。
+  短链接（`b23.tv`、`t.co`……）跳到视频或推文页时不再往下抓，回 `{"embed": 落地地址}`（视频只留编号、开始时间、分 P，推文去掉全部参数），
+  前端按落地地址显示播放器或推文。B 站拦机房 IP 时这样也能用：`b23.tv` 本身不拦。
 - 主应用以后要是加 CSP，记得放行 `www.youtube-nocookie.com`、`player.bilibili.com`、`platform.twitter.com` 的 frame，以及卡片配图（任意 https 图片）。
 
 ### 模型接口（DeepSeek）

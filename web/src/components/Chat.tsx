@@ -9,7 +9,7 @@ import { ask } from './Dialog'
 import { Icon } from '../icons'
 import { Attachments, mediaUrl, splitMarks, type ViewerItem } from './Media'
 import { imagePrice, setAsAvatar } from './AvatarTools'
-import { LinkEmbed, textEmbeds } from './Embeds'
+import { LinkEmbed, Linkify, textEmbeds } from './Embeds'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -353,7 +353,7 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
         <div key={m.id} className="msg user">
           <div className="user-col">
             {items.length > 0 && <Attachments items={items} />}
-            {(text || !items.length) && <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble">{text}</div></div>}
+            {(text || !items.length) && <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble"><Linkify text={text} /></div></div>}
             {!text && items.length > 0 && m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
             {text && textEmbeds(text).map(u => <div key={u} className="user-embed"><LinkEmbed href={u} fallback={null} /></div>)}
             <ThreadLink m={m} reply={reply} />

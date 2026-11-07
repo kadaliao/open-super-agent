@@ -83,6 +83,8 @@ Bot 回复里的图片、文件、音视频好好显示。
 
 1. **哪些链接展开**：只展开单独占一段的链接（一段里只有一个裸网址，或只有一个 `[文字](网址)`），句子里的链接照旧；
    一条消息最多展开 3 个。用户自己发的消息也展开（2026-11-07 定）。
+   上线后改了（2026-11-07）：用户发链接时习惯写在句子里（“我是来看的。https://youtu.be/…”），只认单独一段等于没展开。
+   现在你自己发的消息里所有链接都展开；Bot 的消息里句子中的视频、推文链接也展开，放在那一段后面。b23.tv 这类短链接也认。
 2. **YouTube**（`watch?v=`、`youtu.be/`、`shorts/`）：先显示封面 `https://i.ytimg.com/vi/<id>/hqdefault.jpg` 和播放按钮，
    点了才换成 `https://www.youtube-nocookie.com/embed/<id>?autoplay=1` 的 iframe。不点就不连 YouTube。
 3. **B 站**（`BV…`）：点了加载 `https://player.bilibili.com/player.html?bvid=<id>&autoplay=0`；封面用下面的网页卡片信息。

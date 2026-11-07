@@ -1,4 +1,4 @@
-"""链接卡片：解析 og 信息、不抓内网、跳转每一跳都查、只读开头、缓存（失败的也缓存一会儿）。"""
+"""链接卡片：解析 og 信息、不抓内网、跳转每一跳都查、只读开头、缓存（失败的也缓存一会儿）、短链接落到视频推文上。"""
 import time
 import httpx
 import pytest
@@ -35,6 +35,10 @@ def web(monkeypatch):
             assert req.url.params["url"] == "https://youtu.be/dQw4w9WgXcQ"
             return httpx.Response(200, json={"title": "Never Gonna  Give You Up", "author_name": "Rick Astley",
                                              "thumbnail_url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"})
+        if req.url.host == "b23.tv":
+            return httpx.Response(302, headers={"location": "https://m.bilibili.com/video/BV1GJ411x7h7?p=2&share_source=copy&bbid=XY123&ts=1"})
+        if req.url.host == "t.co":
+            return httpx.Response(301, headers={"location": "https://x.com/jack/status/20?s=46&t=abc"})
         if path == "/pdf":
             return httpx.Response(200, headers={"content-type": "application/pdf"}, content=b"%PDF")
         if path == "/huge":
@@ -67,6 +71,15 @@ async def test_redirects_checked_each_hop(web):
     assert not any("169.254" in u for u in web)               # 内网那一跳没发出去
     assert await unfurl.get("http://127.0.0.1:8765/api/bootstrap") is None
     assert not any("127.0.0.1" in u for u in web)
+
+
+async def test_short_links_land_on_embeds(web):
+    d = await unfurl.get("https://b23.tv/AbCdEfG")
+    assert d["embed"] == "https://m.bilibili.com/video/BV1GJ411x7h7?p=2"   # 分享来源、设备号去掉，分 P 留着
+    assert not any("bilibili.com" in u for u in web)                     # 落地页不用再抓
+    assert (await unfurl.get("https://t.co/xyz"))["embed"] == "https://x.com/jack/status/20"
+    assert (await server.unfurl_link("https://b23.tv/AbCdEfG"))["ok"] is True
+    assert "embed" not in await unfurl.get("https://site.example.invalid/hop")   # 普通跳转照旧抓落地页
 
 
 async def test_only_html_and_only_the_head(web):
