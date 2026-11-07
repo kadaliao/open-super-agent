@@ -191,3 +191,28 @@ def test_vision_test_result_is_remembered(monkeypatch):
     assert media.can_see("p", "m")
     media.remember_test("p", "m", "unsure")   # 拿不准的不改
     assert media.can_see("p", "m")
+
+
+async def test_model_rejecting_images_falls_back(llm, events, make_bot, monkeypatch):
+    """以为能看图、服务却回 400：这一轮把图片换成文字重试，记下这个模型不能看图。"""
+    import openai
+    from osa.config import CFG
+    a = make_bot("Picky")
+    mid = media.save(providers._png(5, 5, (1, 2, 3)), "p.png")["id"]
+    real = llm.client.chat.completions.create
+
+    async def picky(**kw):
+        if any(isinstance(m.get("content"), list) for m in kw["messages"]):
+            raise openai.BadRequestError("image_url is not supported", body=None,
+                                         response=httpx.Response(400, request=httpx.Request("POST", "http://fake.llm/v1")))
+        return await real(**kw)
+    monkeypatch.setattr(llm.client.chat.completions, "create", picky)
+    monkeypatch.setattr(media, "can_see", lambda *_: True)
+    llm.script("router:Picky", "看不了图，只看到文字")
+    await server.safe_handle(bots.chat(a["chat_id"]), "这是什么",
+                             attachments=media.clean_attachments([{"media": mid, "path": "uploads/p.png"}]))
+    await until(lambda: find(a["chat_id"], role="assistant"), what="回复")
+    r = CFG["roles"]["router"]
+    assert media.tested(r["provider"], r["model"]) is False
+    last = llm.bodies("router", "Picky")[-1]["messages"][-1]["content"]
+    assert isinstance(last, str) and "这个模型不收图片" in last and "以下是系统附上的当前状态" in last

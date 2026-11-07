@@ -5,6 +5,8 @@
   所以只收 PNG / JPEG / WebP，不收 SVG 这种能带脚本的格式。
 - 没人用的图片放一天后清掉：刚传上来、还没点保存的不能删。
 - 生图走兼容 OpenAI 的 /images/generations。硅基流动的参数名和返回格式不一样（image_size、images[].url），单独处理。
+- 用哪个模型画（settings 表的 image_model）和对话里画图共用：设置 → 模型 → 画图 里选，生成头像时换了也记下来。
+  以前叫 avatar_model，读不到新的就读旧的。每画一张在 llm_usage 记一行（role=image，0 token，费用按 pricing.images）。
 """
 import base64
 import hashlib
@@ -12,7 +14,7 @@ import json
 import re
 import time
 import httpx
-from . import i18n, providers
+from . import i18n, prices, providers
 from .config import CFG
 from .memory import conn
 
@@ -21,6 +23,7 @@ conn.commit()
 
 MAX_BYTES = 512 * 1024          # 256×256 的 PNG 一般一两百 KB
 MAX_GENERATED = 20 << 20        # 生图服务给回来的原图
+_TRANSPORT = None               # 测试时换成假的
 KEEP_S = 86400
 URL = re.compile(r"^/avatars/([0-9a-f]{24})$")
 
@@ -95,12 +98,30 @@ def _rank(model: str) -> int:
 
 
 def _choice() -> dict:
-    r = conn.execute("select value from settings where key='avatar_model'").fetchone()
+    r = conn.execute("select value from settings where key='image_model'").fetchone() or \
+        conn.execute("select value from settings where key='avatar_model'").fetchone()
     return json.loads(r[0]) if r else {}
 
 
+def choose(provider: str, model: str):
+    """记下画图用哪个模型（provider 为空就是不指定，用排在最前面的）。"""
+    conn.execute("insert or replace into settings values('image_model', ?)", (json.dumps({"provider": provider, "model": model}),))
+    conn.commit()
+
+
+def choice() -> dict:
+    """设置里选的画图模型：{provider, model}，没选过是空的。"""
+    c = _choice()
+    return {"provider": c.get("provider") or "", "model": c.get("model") or ""}
+
+
+async def current() -> dict | None:
+    """现在画图用的模型（选过的还能用就用它，否则排在最前面的），一个都没有返回 None。"""
+    return (await models())["default"]
+
+
 async def models() -> dict:
-    """已经配好的模型服务里能画图的模型，和上次用的那个。"""
+    """已经配好的模型服务里能画图的模型（带每张的价格，不知道是 None），和上次用的那个。"""
     out = []
     for name in CFG["providers"]:
         if not providers.usable(name):
@@ -110,7 +131,7 @@ async def models() -> dict:
         except ValueError:
             continue
         title = providers.describe(name)["title"]
-        out += [{"provider": name, "title": title, "model": m} for m in r.get("models") or []
+        out += [{"provider": name, "title": title, "model": m, "price": prices.image_price(name, m)} for m in r.get("models") or []
                 if IMAGE_MODEL.search(m) and "edit" not in m.lower()]
     out.sort(key=lambda x: (_rank(x["model"]), x["provider"], x["model"]))
     c = _choice()
@@ -128,11 +149,26 @@ def _error(r: httpx.Response) -> str:
     return f"HTTP {r.status_code}" + (f"：{msg}" if msg else "")
 
 
+def record(provider: str, model: str):
+    """画了一张：费用统计里记一行（0 token，费用按每张的价格，不知道的按 0）。"""
+    conn.execute("insert into llm_usage values(?,?,?,?,?,?,?,?)",
+                 (time.time(), "image", model, None, 0, 0, 0, prices.image_price(provider, model) or 0.0))
+    conn.commit()
+
+
 async def generate(prompt: str, provider: str, model: str) -> str:
-    """让生图模型画一张，返回原图的 data URL（浏览器再裁成 256 像素传回来）。"""
+    """让生图模型画一张头像，返回原图的 data URL（浏览器再裁成 256 像素传回来）。"""
+    if not (prompt or "").strip():
+        raise ValueError(i18n.t("写一句想要什么样的头像"))
+    b, mime = await draw(prompt, provider, model)
+    return f"data:{mime};base64," + base64.b64encode(b).decode()
+
+
+async def draw(prompt: str, provider: str, model: str) -> tuple[bytes, str]:
+    """让生图模型画一张，返回 (原图, mime)。用了哪个模型记下来，下次默认用它。"""
     prompt = (prompt or "").strip()[:1000]
     if not prompt:
-        raise ValueError(i18n.t("写一句想要什么样的头像"))
+        raise ValueError(i18n.t("写一句想要画什么"))
     if provider not in CFG["providers"] or not providers.usable(provider):
         raise ValueError(i18n.t("没有这个模型服务：{name}", name=provider))
     if not model or not IMAGE_MODEL.search(model):
@@ -144,7 +180,7 @@ async def generate(prompt: str, provider: str, model: str) -> str:
         body = {"model": model, "prompt": prompt, "image_size": size, "batch_size": 1}
     else:
         body = {"model": model, "prompt": prompt, "n": 1, "size": "1024x1024"}
-    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as c:
+    async with httpx.AsyncClient(timeout=180, follow_redirects=True, transport=_TRANSPORT) as c:
         try:
             r = await c.post(f"{base}/images/generations", json=body, headers={"Authorization": f"Bearer {key}"} if key else {})
         except httpx.TimeoutException:
@@ -167,6 +203,6 @@ async def generate(prompt: str, provider: str, model: str) -> str:
     mime = _mime(b)
     if not mime or len(b) > MAX_GENERATED:
         raise ValueError(i18n.t("画图服务没有返回图片"))
-    conn.execute("insert or replace into settings values('avatar_model', ?)", (json.dumps({"provider": provider, "model": model}),))
-    conn.commit()
-    return f"data:{mime};base64," + base64.b64encode(b).decode()
+    record(provider, model)
+    choose(provider, model)
+    return b, mime

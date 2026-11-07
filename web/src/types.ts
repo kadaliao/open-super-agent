@@ -81,6 +81,7 @@ export type Settings = {
   computer_backends: { id: string; ok: boolean }[]      // 这台机器上能用哪些
   computer_host_shell: boolean
   embedding: { provider: string; model: string }
+  image_model: { provider: string; model: string }   // 画图用哪个模型（对话里画图、生成头像共用），空的是用排在最前面的
   model_info: Record<string, ModelInfo>   // 键是 服务/模型
   prices: { source: string; updated: number; error: string; rate: number; currency: string; models: number }
   problem: string                         // 对话或后台任务的模型没法用的原因；能用是空

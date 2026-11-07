@@ -138,7 +138,7 @@ function Usage() {
       <h4>{t('近 30 天每日')}</h4>
       <div className="bars">{u.by_day.map((d: any) => <div key={d.day} title={`${d.day}  ${f(d.cost)}`} style={{ height: `${Math.max(2, (d.cost / max) * 100)}%` }} />)}</div>
       <div className="two-col">
-        <div><h4>{t('按用途')}</h4>{u.by_role.map((r: any) => <div className="kv" key={r.role + r.model}><span>{ROLE_NAMES[r.role] || r.role} · {r.model}</span><span>{f(r.cost)}</span></div>)}</div>
+        <div><h4>{t('按用途')}</h4>{u.by_role.map((r: any) => <div className="kv" key={r.role + r.model}><span>{ROLE_NAMES[r.role] || r.role} · {r.model}{r.role === 'image' ? ' · ' + t('{n} 张', { n: r.calls }) : ''}</span><span>{f(r.cost)}</span></div>)}</div>
         <div><h4>{t('按任务（最近 20 个）')}</h4>{u.by_task.map((tk: any) => <div className="kv" key={tk.id}><span>#{tk.id} {tk.goal}</span><span>{f(tk.cost)}</span></div>)}</div>
       </div>
       <Prices />

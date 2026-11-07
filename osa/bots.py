@@ -197,7 +197,7 @@ def thread(parent: int, root: int) -> dict:
 
 # 讨论串里算作“回复”的消息：用户和 Bot 说的话、任务结果；派任务、交接这类记录不算
 _REPLY = ("(m.role = 'user' or (m.role = 'assistant' and m.content != '') "
-          "or json_extract(m.meta, '$.kind') in ('result', 'dm_reply'))")
+          "or json_extract(m.meta, '$.kind') in ('result', 'dm_reply', 'image'))")
 
 
 def thread_summaries(parent: int, roots: list[int]) -> dict[int, dict]:

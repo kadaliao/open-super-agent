@@ -4,9 +4,10 @@
 import asyncio
 import json
 import time
+import openai
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, dm, i18n, library, media, memories, memory, providers, routines, search, skills, tasklog
+from . import approvals, bots, dm, i18n, images, library, media, memories, memory, providers, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -25,6 +26,8 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
   需要先查资料再写的，派任务并在 goal 里写明“最后用 save_page 保存成页面”。
 {attach_rule}
 - 要把电脑里的文件（截图、画好的图、做好的表格和文档）交给用户时用 send_file，图片会直接显示在对话里；不要自己拼下载链接。
+- 用户要你画图、生成一张图片时用 generate_image，把画面描述写具体（默认会先弹卡片请用户确认，上面有价格）；
+  没有画图模型时照实告诉用户去设置里添加，不要假装画了，也不要派任务去画。
 - 用户要求定期 / 每天 / 每隔一段时间做某事，或收到外部事件时做某事，用 create_routine 建定时任务；
   建好后告诉用户什么时候运行、可以在右栏“定时”里暂停或修改。
 - 用户问进度用 list_tasks；要取消用 cancel_task；需要早先对话原文用 recall。
@@ -157,6 +160,7 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
     library.SAVE_PAGE,
     library.READ_PAGE,
     media.SEND_FILE,
+    images.GENERATE_IMAGE,
     search.SEARCH_TOOL,
     {"type": "function", "function": {"name": "list_tasks", "description": "查看任务状态",
         "parameters": {"type": "object", "properties": {}}}},
@@ -280,9 +284,19 @@ class Router:
         tools = ROUTER_TOOLS + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
             ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else [])
         cid = self.chat["id"]
-        stream = await client.chat.completions.create(
-            model=model, messages=msgs, stream=True, **({"tools": tools} if use_tools else {}),
-            stream_options={"include_usage": True}, **call_kwargs("router"))
+        def create():
+            return client.chat.completions.create(
+                model=model, messages=msgs, stream=True, **({"tools": tools} if use_tools else {}),
+                stream_options={"include_usage": True}, **call_kwargs("router"))
+        try:
+            stream = await create()
+        except openai.BadRequestError:
+            # 以为能看图、服务却不收图片：这一轮把图片换成文字再试一次，记下这个模型不能看图，免得之后每轮都报错
+            if not media.strip_images(msgs):
+                raise
+            r = CFG["roles"]["router"]
+            media.remember_test(r["provider"], r["model"], "no")
+            stream = await create()
         content, reasoning, calls, usage = "", "", {}, None
         async for chunk in stream:
             if chunk.usage:
@@ -521,6 +535,8 @@ class Router:
                 return f"没发：{e}"
             self._turn_files.append(att)
             return media.sent_text(att)
+        if name == "generate_image":
+            return await images.generate(self.bot, self.chat["id"], self.chat_id, str(args.get("prompt") or ""), self.add)
         if name == "look_at_screen":
             return await self._look()
         if name in DIRECT_PC:

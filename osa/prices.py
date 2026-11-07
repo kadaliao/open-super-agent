@@ -127,6 +127,23 @@ def _manual(model: str):
     return CFG["pricing"]["models"].get(model)
 
 
+def image_price(provider: str, model: str) -> float | None:
+    """画一张图多少钱（pricing.images，单位和 currency 一样）；本机的算 0，没写的返回 None。"""
+    from .providers import _local
+    base = ((CFG["providers"].get(provider) or {}).get("base_url") or "").lower()
+    if _local(base):
+        return 0.0
+    tail = model.rsplit("/", 1)[-1].lower()
+    for host, table in (CFG["pricing"].get("images") or {}).items():
+        if host.lower() not in base and host != provider:
+            continue
+        for name, price in (table or {}).items():
+            n = str(name).lower()
+            if n == model.lower() or ("/" not in n and n == tail):   # 写完整 id，或者只写最后一段
+                return float(price)
+    return None
+
+
 def lookup(provider: str | None, model: str) -> dict:
     """界面上显示用：单价（元 / 百万 token）、能不能看图、是不是 embedding、单价从哪来。"""
     from .providers import _local

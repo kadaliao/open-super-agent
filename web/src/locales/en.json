@@ -1041,5 +1041,36 @@
   "移除": "Remove",
   "在新标签页打开": "Open in new tab",
   "电脑里的文件": "File on the computer",
-  "打开（电脑没开会先开机）": "Open (starts the computer if it is off)"
+  "打开（电脑没开会先开机）": "Open (starts the computer if it is off)",
+  "价格未知": "Price unknown",
+  "{price} / 张": "{price} per image",
+  "设为 {name} 的头像": "Use as {name}'s avatar",
+  "已设为 {name} 的头像": "Now {name}'s avatar",
+  "设为群头像": "Use as group avatar",
+  "已设为群头像": "Now the group avatar",
+  "已允许画图": "Image approved",
+  "，以后不再询问": ", won't ask again",
+  "画图已取消": "Image cancelled",
+  "没画": "Not drawn",
+  "{name} 想画一张图": "{name} wants to make an image",
+  "模型：{model}": "Model: {model}",
+  "价格：{price}": "Price: {price}",
+  "不画了": "Don't draw",
+  "画吧": "Go ahead",
+  "以后画图不再询问，可在设置 → 确认规则里撤销": "Don't ask before drawing again. You can undo this in Settings → Approval rules",
+  "{name} 想画一张图，等你确认，卡片在它的私聊里": "{name} wants to make an image and needs your OK. The card is in its direct chat",
+  "画图": "Images",
+  "你让 Bot 画图、生成头像时用。每次画之前都会先问你（卡片上写着价格），可以点“总是允许”。": "Used when you ask a Bot to draw something or generate an avatar. You're asked before each image (the card shows the price), or click “Always allow”.",
+  "画图模型": "Image model",
+  "{n} 个能画图的模型": [
+    "{n} image model",
+    "{n} image models"
+  ],
+  "自动（{model}）": "Automatic ({model})",
+  "按张的价格写在 config.yaml 的 pricing.images 里": "Per-image prices are set in pricing.images in config.yaml",
+  "还没有能画图的模型。添加硅基流动（Kolors 免费）、OpenAI、智谱这类有画图模型的服务就能用。": "No image models yet. Add a service with image models, such as SiliconFlow (Kolors is free), OpenAI or Zhipu.",
+  "{n} 张": [
+    "{n} image",
+    "{n} images"
+  ]
 }

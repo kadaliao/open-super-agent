@@ -155,6 +155,8 @@ def message_for(event: dict) -> tuple[str, str, str, str] | None:
         kind = (m.get("meta") or {}).get("kind")
         if m.get("role") == "assistant" and m.get("content"):
             return _bot_name(m.get("bot_id")), _plain(m["content"])[:120], url, f"chat-{cid}"
+        if m.get("role") == "task" and kind == "image":
+            return i18n.t("{who} 画好了一张图", who=_bot_name(m.get("bot_id"))), (m.get("meta") or {}).get("prompt", "")[:120], url, f"chat-{cid}"
         if m.get("role") == "task" and kind == "result":
             ok = (m.get("meta") or {}).get("status") == "done"
             who = _bot_name(m.get("bot_id"))

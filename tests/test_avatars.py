@@ -78,8 +78,7 @@ def image_providers(monkeypatch):
             return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(PNG).decode()}]})
         return httpx.Response(404)
 
-    real = httpx.AsyncClient
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handle), **kw))
+    monkeypatch.setattr(avatars, "_TRANSPORT", httpx.MockTransport(handle))
     return seen
 
 
@@ -108,10 +107,11 @@ async def test_models_list(image_providers, monkeypatch):
     async def fake_models(name, refresh=False):
         return {"ok": True, "models": lists.get(name, [])}
     monkeypatch.setattr(providers, "models", fake_models)
-    memory.conn.execute("delete from settings where key='avatar_model'")
+    memory.conn.execute("delete from settings where key in ('avatar_model', 'image_model')")
 
     r = await server.avatar_models()
     assert [(m["provider"], m["model"]) for m in r["models"]] == [("sf", "Kwai-Kolors/Kolors"), ("oai", "gpt-image-1"), ("sf", "Qwen/Qwen-Image")]
+    assert [m["price"] for m in r["models"]] == [0, None, 0.3]   # 按张的价格：硅基流动写在 config.yaml 里，别家不知道
     assert r["default"]["model"] == "Kwai-Kolors/Kolors"
 
     await server.generate_avatar({"prompt": "一只猫", "provider": "oai", "model": "gpt-image-1"})   # 记住上次用的

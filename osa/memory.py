@@ -170,6 +170,9 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
             else:
                 text = f"（系统通知：{name(b)} 把工作交给了 {name(to)}）{defang(meta.get('note') or c)}"
             msgs.append({"role": "user", "content": text})
+        elif r == "task" and meta.get("kind") == "image":   # generate_image 画好的图
+            whose = name(b) if others and b else "你"
+            msgs.append({"role": "user", "content": f"（系统通知：{whose}画好了一张图，已经显示给用户。描述：{defang(meta.get('prompt') or c)}）"})
         elif r == "task" and meta.get("kind") in ("dm", "dm_reply"):
             msgs.append({"role": "user", "content": _dm_line(meta, defang(c), b, me, name)})
         elif r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式
@@ -262,7 +265,7 @@ def usage_stats() -> dict:
         return {"cost": round(r[0], 4), "cache_hit": r[1], "cache_miss": r[2], "output": r[3], "calls": r[4],
                 "cache_rate": round(r[1] / (r[1] + r[2]), 3) if r[1] + r[2] else 0}
 
-    by_role = conn.execute("""select role, model, sum(cost), sum(cache_hit+cache_miss+output) from llm_usage
+    by_role = conn.execute("""select role, model, sum(cost), sum(cache_hit+cache_miss+output), count(*) from llm_usage
         where ts >= ? group by role, model order by 3 desc""", (now - 30 * 86400,)).fetchall()
     by_task = conn.execute("""select u.task_id, sum(u.cost), sum(u.cache_hit+u.cache_miss+u.output), m.content
         from llm_usage u left join messages m on m.id = u.task_id where u.task_id is not null
@@ -272,7 +275,7 @@ def usage_stats() -> dict:
     return {
         "currency": CFG["pricing"]["currency"],
         "today": total(day0), "week": total(now - 7 * 86400), "month": total(now - 30 * 86400),
-        "by_role": [{"role": r, "model": m, "cost": round(c, 4), "tokens": t} for r, m, c, t in by_role],
+        "by_role": [{"role": r, "model": m, "cost": round(c, 4), "tokens": t, "calls": n} for r, m, c, t, n in by_role],
         "by_task": [{"id": i, "cost": round(c, 4), "tokens": t, "goal": (g or "").removeprefix("[任务已派发] ")[:60]}
                     for i, c, t, g in by_task],
         "by_day": [{"day": d, "cost": round(c, 4)} for d, c in by_day],

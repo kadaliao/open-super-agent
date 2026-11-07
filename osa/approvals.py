@@ -78,6 +78,7 @@ def delete_rule(rid: int):
 
 PC_ASK = {"browser_upload", "computer_write_file", "browser_submit"}   # 本机电脑默认先问的电脑工具
 PC_TOOLS = PC_ASK | {"computer_shell"}
+ASK = {"generate_image"}   # 默认每次都问的（画图要花钱）；点“总是允许”后不再问
 
 
 def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
@@ -93,6 +94,8 @@ def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
             return False, f"规则「{r['pattern']}」自动允许"
     if tool in PC_TOOLS:
         return backend == "host" and tool in PC_ASK, "默认策略"
+    if tool in ASK:
+        return True, "默认策略"
     from . import mcp_hub
     return (tool in mcp_hub.CONFIRM), "默认策略"
 

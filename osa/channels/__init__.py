@@ -281,6 +281,8 @@ def render(m: dict, group: bool) -> str | None:
         if meta.get("elapsed"):
             head += i18n.t("（用时 {d}）", d=_duration(meta["elapsed"]))
         return f"**{head}**" + (f" · {name}" if group else "") + f"\n\n{body}" + files
+    if kind == "image":
+        return i18n.t("🎨 {name} 画好了一张图：{prompt}", name=name, prompt=meta.get("prompt") or "") + files
     if kind == "cancel":
         return "⏹ " + content.strip("[]")
     if kind == "handoff":
@@ -318,6 +320,15 @@ def card_for(ev: dict) -> dict:
         when = "\n" + i18n.t("后台任务，{time} 前没确认按拒绝处理。", time=time.strftime("%H:%M", time.localtime(ev["expires"])))
     buttons = [(i18n.t("允许一次"), "ok", "primary"), (i18n.t("拒绝"), "no", "danger")]
     task_line = i18n.t("任务 #{id}：{goal}", id=ev.get("task_id"), goal=goal) + origin + when
+    if tool == "generate_image":   # 画图：写清楚画什么、用哪个模型、多少钱
+        try:
+            d = json.loads(ev.get("args") or "{}")
+        except ValueError:
+            d = {}
+        body = f"{d.get('描述') or args}\n\n" + i18n.t("模型：{model}", model=d.get("模型", "")) + " · " + \
+            i18n.t("价格：{price}", price=d.get("价格", "")) + origin
+        return {"id": ev["id"], "kind": "approval", "title": i18n.t("🎨 {name} 想画一张图", name=who), "body": body,
+                "buttons": buttons + [(i18n.t("总是允许"), "always", "")], "link": None, "done": ""}
     if tool == "ask_approval":   # Worker 自己要求确认的一步：直接写要做的事；“总是允许”对它没有意义
         try:
             what = json.loads(args).get("操作") or args

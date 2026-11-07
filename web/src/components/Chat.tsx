@@ -7,7 +7,8 @@ import Markdown from './Markdown'
 import { locale, t, tn } from '../i18n'
 import { ask } from './Dialog'
 import { Icon } from '../icons'
-import { Attachments, splitMarks } from './Media'
+import { Attachments, mediaUrl, splitMarks, type ViewerItem } from './Media'
+import { imagePrice, setAsAvatar } from './AvatarTools'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -80,6 +81,37 @@ function BotMessage({ bot, m, children, showName, reply }: { bot?: Bot; m: Messa
         {children}
         <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} /><ReplyBtn m={m} reply={reply} /></div>
+      </div>
+    </div>
+  )
+}
+
+// generate_image 画好的图（kind=image）：图片、描述、模型和价格；可以下载、设为头像
+function ImageMessage({ bot, m, chat, showName, reply }: { bot?: Bot; m: Message; chat: ChatT; showName?: boolean; reply?: Reply }) {
+  const cur = useStore(s => s.settings?.prices.currency) || '¥'
+  const [done, setDone] = useState('')
+  const att = (m.meta.attachments || [])[0]
+  const avatar = async (target: Parameters<typeof setAsAvatar>[1], label: string) => {
+    if (!att?.media) return
+    try { await setAsAvatar(mediaUrl(att.media), target); setDone(label) } catch (e: any) { setDone(e.message) }
+  }
+  const actions: ViewerItem['actions'] = [
+    ...(bot ? [{ label: t('设为 {name} 的头像', { name: bot.name }), run: () => avatar({ bot }, t('已设为 {name} 的头像', { name: bot.name })) }] : []),
+    ...(chat.kind === 'group' ? [{ label: t('设为群头像'), run: () => avatar({ chat: chat.id }, t('已设为群头像')) }] : []),
+  ]
+  return (
+    <div className="msg bot">
+      {bot && <BotAvatar avatar={bot.avatar} size={28} />}
+      <div className="msg-body">
+        <Speaker bot={bot} show={showName} />
+        <Attachments items={m.meta.attachments} actions={() => actions} />
+        <div className="img-caption" title={m.meta.prompt}>🎨 {m.meta.prompt}</div>
+        <div className="img-meta">{m.meta.model}{m.meta.price !== undefined ? ' · ' + imagePrice(m.meta.price, cur) : ''}{done && <> · <b>{done}</b></>}</div>
+        <ThreadLink m={m} reply={reply} />
+        <div className="msg-actions"><span>{time(m.ts)}</span>
+          {att?.media && <a className="ghost-btn" href={mediaUrl(att.media) + '?download=1'} download={att.name}>{t('下载')}</a>}
+          {actions.map(a => <button key={a.label} className="ghost-btn" onClick={a.run}>{a.label}</button>)}
+          <CopyBtn text={m.meta.prompt || ''} /><ReplyBtn m={m} reply={reply} /></div>
       </div>
     </div>
   )
@@ -182,8 +214,31 @@ function HelpCard({ a }: { a: Approval }) {
   )
 }
 
+// 画图前的确认（generate_image）：参数是 {描述, 模型, 价格}
+function DrawCard({ a }: { a: Approval }) {
+  let d: Record<string, string> = {}
+  try { d = JSON.parse(a.args) } catch { /* 显示原文 */ }
+  const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
+  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('已允许画图') + (a.always ? t('，以后不再询问') : '')
+    : a.status === 'cancelled' ? '✕ ' + t('画图已取消') : '✕ ' + t('没画')}</div>
+  return (
+    <div className="approval-card draw">
+      <div className="approval-title">🎨 {t('{name} 想画一张图', { name: bot?.name || 'Bot' })}<Origin a={a} /></div>
+      <div className="draw-prompt">{d['描述'] ?? a.args}</div>{/* i18n-ignore：工具参数的键 */}
+      <div className="muted small">{t('模型：{model}', { model: d['模型'] || '' })} · {t('价格：{price}', { price: d['价格'] || '' })}</div>{/* i18n-ignore：工具参数的键 */}
+      <div className="approval-actions">
+        <span className="grow" />
+        <button className="btn" onClick={() => approve(a.id, false)}>{t('不画了')}</button>
+        <button className="btn" onClick={() => approve(a.id, true)}>{t('画吧')}</button>
+        <button className="btn primary" title={t('以后画图不再询问，可在设置 → 确认规则里撤销')} onClick={() => approve(a.id, true, '', true)}>{t('总是允许')}</button>
+      </div>
+    </div>
+  )
+}
+
 function ApprovalCard({ a }: { a: Approval }) {
   if (a.kind === 'help') return <HelpCard a={a} />
+  if (a.tool === 'generate_image') return <DrawCard a={a} />
   const [note, setNote] = useState('')
   const done = a.status && a.status !== 'pending'
   const label: Record<string, string> = { approved: a.always ? t('已允许，以后自动允许') : t('已允许'), rejected: t('已拒绝'), expired: t('超时未确认，按拒绝处理'), cancelled: t('任务已取消') }
@@ -313,6 +368,7 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
     if (k.kind === 'dispatch') return attached.has(m.id) || m.meta.quiet || tasks[m.id]?.quiet ? null : task(m.id)
     if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group} reply={reply}
       goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />   // i18n-ignore：存在消息里的标记
+    if (k.kind === 'image') return <ImageMessage key={m.id} bot={speaker(m)} m={m} chat={chat} showName={group} reply={reply} />
     if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
     if (k.kind === 'dm') return <DmLine key={m.id} m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />
     if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
@@ -355,7 +411,9 @@ export function PendingApprovals({ here, from }: { here: (a: Approval) => boolea
       const b = bots.find(x => x.id === a.bot_id)
       return (
         <div key={a.id} className="elsewhere">
-          <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id }) : t('{name} 的任务 #{id} 需要你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })}</span>
+          <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
+            : a.tool === 'generate_image' ? t('{name} 想画一张图，等你确认，卡片在它的私聊里', { name: b?.name || '' })
+            : t('{name} 的任务 #{id} 需要你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })}</span>
           {b && <button className="btn" onClick={() => openChat(b.chat_id)}>{t('去处理')}</button>}
         </div>
       )

@@ -526,5 +526,16 @@
   "头像图片不存在，重新上传一次": "The avatar image is missing. Please upload it again",
   "图片太大了（最多 {n} MB）": "Image too large (max {n} MB)",
   "只支持 PNG、JPG、WebP、GIF 图片": "Only PNG, JPG, WebP and GIF images are supported",
-  "发文件：{path}": "Send file: {path}"
+  "发文件：{path}": "Send file: {path}",
+  "写一句想要画什么": "Describe what to draw",
+  "🎨 {name} 画好了一张图：{prompt}": "🎨 {name} made an image: {prompt}",
+  "{price} / 张": "{price} per image",
+  "价格未知": "Price unknown",
+  "免费": "Free",
+  "在对话里画图": "Drawing in the chat",
+  "[没画成：{error}]": "[Image failed: {error}]",
+  "{who} 画好了一张图": "{who} made an image",
+  "🎨 {name} 想画一张图": "🎨 {name} wants to make an image",
+  "价格：{price}": "Price: {price}",
+  "模型：{model}": "Model: {model}"
 }

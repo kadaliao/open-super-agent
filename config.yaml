@@ -60,6 +60,14 @@ pricing:
     deepseek-flash:  {cache_hit: [0.04, 0.02], input: [2, 1],   output: [8, 4]}       # [高峰, 空闲]
     deepseek-v4-pro: {cache_hit: [0.30, 0.15], input: [9, 4.5], output: [27, 13.5]}
   # 本机和内网的模型按 0 计
+  # 画图：元 / 张。models.dev 没有按张的价格，只能写在这里：先按服务商（接口地址里有这个词，或者就是服务的名字），
+  # 再按模型名字（不分大小写，前面的 Kwai-Kolors/ 这类前缀可以不写）。没写的显示“价格未知”，费用按 0 记，次数照记
+  images:
+    siliconflow:               # 2026-11 抄自硅基流动官网
+      Kolors: 0
+      Z-Image-Turbo: 0.1
+      Qwen-Image: 0.3
+      Z-Image: 0.3
 
 # 旧版触发器：只在首次启动时导入成主 Bot 的定时任务，之后请在界面右栏“定时”里管理
 triggers:

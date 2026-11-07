@@ -57,6 +57,7 @@ osa/
   library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
   bots.py          Bot 和对话的增删改查、旧数据迁移
   media.py         对话里的图片和附件：media 表、消息的 meta.attachments、给能看图的模型带上图片、send_file、清理没人用的
+  images.py        对话里画图：generate_image 工具、画之前的确认卡片（在后台等，不卡住 Router）、画好的图发进对话
   avatars.py       头像图片：上传的和 AI 画的（兼容 OpenAI 的 /images/generations，硅基流动单独处理）、公开访问、清理没人用的
   settings.py      界面里改的设置（覆盖 config.yaml）
   i18n.py          界面语言：t() 按中文原文查 locales/en.json；python -m osa.i18n 检查前后端的翻译
@@ -101,13 +102,13 @@ web/src/
 | `avatars` | 头像图片（256 像素的 PNG / JPEG / WebP），`id` 是内容哈希，`/avatars/<id>` 不登录也能看（分享页要用）；没人用的一天后清掉 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等；`attachments` 是附件（见下面 `media`） |
 | `media` | 对话里的图片（PNG / JPEG / WebP / GIF，浏览器缩到 1600 像素左右），`id` 是内容哈希，带文件名、大小、宽高；`/api/media/<id>` 要登录。消息的 `meta.attachments` 引用它：`[{name, size, path?, media?, mime?, w?, h?}]`，`path` 是电脑里的文件。没人引用的一天后清掉 |
-| `llm_usage` | 每次模型调用的 token 数和费用 |
+| `llm_usage` | 每次模型调用的 token 数和费用；画图记 `role=image`、0 token，费用按 `pricing.images` 的每张价格 |
 | `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；只留最近 `memory.task_log_days` 天 |
 | `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |
 | `channels` | 聊天软件连接：平台、绑定的对话（`chat_id`）、配对的私聊（`peer`）、配对码；token / App Secret 在保险库的 `channel_<id>` |
-| `settings` | 界面里改过的设置；`language` 是界面语言（zh / en） |
+| `settings` | 界面里改过的设置；`language` 是界面语言（zh / en）；`image_model` 是画图用的模型（以前叫 `avatar_model`）；`vision_tests` 是设置里“测试”测出来的哪些模型能看图 |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
 
 ## 设计约定
@@ -316,6 +317,15 @@ web/src/
 - Bot 发文件用 `send_file(path)`（Router 和任务都有，Heavy 的研究员没有）：图片存进 `media` 直接显示，其他文件是卡片，点开走 `/api/files/download`。
   Router 发的挂在这一轮的回复下面，任务发的挂在任务结果下面。不让模型自己拼下载链接。
 - 聊天软件里先发链接（`/media/<id>`、`/files/download?path=`）：不是 `/api/` 开头，没登录会先跳去登录页。
+- 以为能看图、服务却回 400 时，`Router._stream` 把这一轮的图片换成文字重试，并记下这个模型不能看图（`media.strip_images`）。
+
+### 对话里画图
+- `generate_image(prompt)` 只给 Router。用设置 → 模型 → 画图 选的模型（`avatars.current()`，和生成头像共用），一个都没有就让 Bot 照实说。
+- 默认每次先问（`approvals.ASK`），点“总是允许”生成一条 `generate_image` 的允许规则。要问的时候不让 Router 干等：
+  工具马上返回“等用户确认”，卡片和画图放在后台（`images.generate` 里的 `wait_and_draw`），Router 这一轮照常说完、不占着锁，
+  用户也能在对话里说“画吧”（`resolve_approval`）。冒充任务的写法照 `Router._direct`；卡片照旧只进私聊，群里、讨论串里有提示。
+- 画好的原图存进 `media`，对话里记一条 `role=task`、`kind=image` 的消息（`meta` 带 `prompt`、`model`、`provider`、`price`、`attachments`），
+  显示成 Bot 发的图片，能下载、设为头像。上下文里是一句“你画好了一张图……”；推送、聊天软件、讨论串的“N 条回复”都算它。
 
 ### 模型接口（DeepSeek）
 - 思考模式下，如果请求带了工具，历史回复的 `reasoning_content` 必须原样传回，所以它存在消息的 `meta.reasoning` 里。

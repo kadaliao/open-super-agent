@@ -7,6 +7,7 @@ import { money, PriceTag, Section, useToast } from './settingsKit'
 import { BrandIcon, modelBrand, providerBrand } from './BrandIcon'
 import { BRANDS } from '../brandIcons'
 import { ask } from './Dialog'
+import { imagePrice, type ImageModel } from './AvatarTools'
 
 // 设置 → 模型：先加模型服务（地址 + API Key），再给每项工作选模型
 
@@ -17,7 +18,7 @@ export const ROLES: RoleDef[] = [
   { key: 'reviewer', name: t('Heavy 汇总'), desc: t('Heavy 模式里，把几个并行任务的结果汇总成一份。') },
   { key: 'filter', name: t('整理和过滤'), desc: t('判断定时任务收到的事件要不要处理、把导入的记忆拆成条目。便宜的就行。') },
 ]
-export const ROLE_NAMES: Record<string, string> = { ...Object.fromEntries(ROLES.map(r => [r.key, r.name])), embedding: t('按意思检索'), test: t('测试模型') }
+export const ROLE_NAMES: Record<string, string> = { ...Object.fromEntries(ROLES.map(r => [r.key, r.name])), embedding: t('按意思检索'), test: t('测试模型'), image: t('画图') }
 
 // ---------- 各个服务的模型列表：打开页面时拉一次，服务端缓存 10 分钟 ----------
 type Lists = Record<string, ModelList | undefined>
@@ -44,6 +45,7 @@ export function useLists(providers: Provider[]) {
 const usedBy = (s: S, name: string) => [
   ...Object.entries(s.roles).filter(([, v]) => v.provider === name).map(([k]) => ROLE_NAMES[k] || k),
   ...(s.embedding.provider === name ? [t('按意思检索')] : []),
+  ...(s.image_model?.provider === name ? [t('画图')] : []),
 ]
 const host = (url: string) => url.replace(/^https?:\/\//, '')
 
@@ -83,6 +85,9 @@ export default function ModelSettings() {
         </Section>
         <Section title={t('按意思检索记忆和资料库')} desc={t('Bot 找以前的记忆和页面时用。不选也能按关键词找（中文按两个字一组）；选一个 embedding 模型后，说法不同、意思相近的也能找到。')}>
           <EmbeddingCard />
+        </Section>
+        <Section title={t('画图')} desc={t('你让 Bot 画图、生成头像时用。每次画之前都会先问你（卡片上写着价格），可以点“总是允许”。')}>
+          <ImageModelCard />
         </Section>
       </>}
     </ListsCtx.Provider>
@@ -271,6 +276,40 @@ export function TestButton({ t: test }: { t: ReturnType<typeof useTest> }) {
     {test.res?.ok && <span className="test-ok"><Icon name="check" size={14} />{test.res.dim ? t('能用 · {s} 秒 · {dim} 维', { s: sec, dim: test.res.dim }) : t('能用 · {s} 秒', { s: sec })}</span>}
     <button className="btn tiny" disabled={test.busy} onClick={test.run}><Icon name="zap" size={13} />{test.busy ? t('测试中…') : t('测试')}</button>
   </>
+}
+
+function ImageModelCard() {
+  const s = useStore(x => x.settings) as S
+  const toast = useToast()
+  const [list, setList] = useState<ImageModel[] | null>(null)
+  const [auto, setAuto] = useState<ImageModel | null>(null)
+  const load = () => api('/api/avatars/models').then(r => { setList(r.models); setAuto(r.models[0] || null) }).catch(() => setList([]))
+  useEffect(() => { load() }, [s.providers.map(p => p.name).join()])
+  const key = (m: { provider: string; model: string }) => m.provider + '\n' + m.model
+  const cur = s.image_model?.provider ? key(s.image_model) : ''
+  const save = async (v: string) => {
+    const [provider, model] = v ? v.split('\n') : ['', '']
+    try {
+      setSettings(await api('/api/settings', { method: 'PUT', body: { image_model: { provider, model } } }))
+      toast(t('已保存'))
+    } catch (err: any) { toast(err.message, true) }
+  }
+  const chosen = list?.find(m => key(m) === cur) || (!cur ? auto : null)
+  return (
+    <div className="role-card">
+      <div className="role-top">
+        <div className="role-text"><b>{t('画图模型')}</b><span>{list === null ? t('正在找能画图的模型…') : list.length ? t('{n} 个能画图的模型', { n: list.length }) : ''}</span></div>
+        {list && list.length > 0 && (
+          <select value={cur} onChange={e => save(e.target.value)} title={t('用哪个模型画')}>
+            <option value="">{auto ? t('自动（{model}）', { model: auto.model }) : t('自动')}</option>
+            {list.map(m => <option key={key(m)} value={key(m)}>{m.model} · {m.title}</option>)}
+            {cur && !list.some(m => key(m) === cur) && <option value={cur}>{s.image_model.model}</option>}
+          </select>)}
+      </div>
+      {chosen && <div className="role-meta"><span className="chip" title={t('按张的价格写在 config.yaml 的 pricing.images 里')}>{imagePrice(chosen.price, s.prices.currency)}</span></div>}
+      {list && !list.length && <p className="muted small hint">{t('还没有能画图的模型。添加硅基流动（Kolors 免费）、OpenAI、智谱这类有画图模型的服务就能用。')}</p>}
+    </div>
+  )
 }
 
 function EmbeddingCard() {

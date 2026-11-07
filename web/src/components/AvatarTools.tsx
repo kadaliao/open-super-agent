@@ -1,8 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../store'
 import { t } from '../i18n'
+import type { Avatar } from '../types'
 
-type ImageModel = { provider: string; title: string; model: string }
+// 能画图的模型（GET /api/avatars/models）。price：每张多少钱（config.yaml 的 pricing.images），不知道是 null
+export type ImageModel = { provider: string; title: string; model: string; price: number | null }
+export const imagePrice = (p: number | null | undefined, cur = '¥') =>
+  p === null || p === undefined ? t('价格未知') : p === 0 ? t('免费') : t('{price} / 张', { price: cur + p })
+
+// 把一张图（比如对话里画的）设为 Bot 或群聊的头像：裁成 256 像素的正方形存成头像，再改 Bot / 群聊
+export async function setAsAvatar(src: string, target: { bot?: { id: number; avatar: Avatar }; chat?: number }) {
+  const url = await store(await squareImage(src))
+  if (target.bot) await api(`/api/bots/${target.bot.id}`, { method: 'PATCH', body: { avatar: { ...target.bot.avatar, image: url } } })
+  else if (target.chat) await api(`/api/chats/${target.chat}`, { method: 'PATCH', body: { image: url } })
+}
 
 // 图片取中间的正方形、缩到 256 像素，转成 data URL。不支持编码 WebP 的浏览器（Safari）用 PNG
 export async function squareImage(src: string, size = 256): Promise<string> {
@@ -96,7 +107,7 @@ function AiAvatar({ prompt: initial, onImage }: { prompt: string; onImage: (url:
       <textarea rows={3} value={prompt} maxLength={1000} onChange={e => setPrompt(e.target.value)} placeholder={t('想要什么样的头像')} />
       <div className="ai-row">
         <select value={pick} onChange={e => setPick(e.target.value)} title={t('用哪个模型画')}>
-          {models.map(m => <option key={key(m)} value={key(m)}>{m.model} · {m.title}</option>)}
+          {models.map(m => <option key={key(m)} value={key(m)}>{m.model} · {m.title} · {imagePrice(m.price)}</option>)}
         </select>
         <button className={'btn' + (result ? '' : ' primary')} disabled={!!busy || !prompt.trim()} onClick={draw}>
           {busy === 'draw' ? t('正在画…') : result ? t('再画一张') : t('生成')}</button>

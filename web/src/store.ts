@@ -375,7 +375,7 @@ function notifyOS(chatId: number, m: Message | null, text?: string, threadRoot?:
 // 桌面 App 用系统通知：Bot 的回复、任务结果、等你确认的操作，和服务端推送的规则一样。
 // 窗口在不在前台由外壳判断（WebKit 的 hasFocus 在 App 里不准）：正看着这个对话时不打扰
 function notifyDesktop(chatId: number, m: Message | null, text?: string) {
-  if (m && m.role !== 'assistant' && m.meta?.kind !== 'result') return
+  if (m && m.role !== 'assistant' && m.meta?.kind !== 'result' && m.meta?.kind !== 'image') return
   const chat = state.chats.find(c => c.id === chatId)
   desktop!.notify(chat?.title || 'Open Super Agent', text || (m?.content || '').replace(/[#*`>_~\[\]]/g, '').slice(0, 120), chatId, chatId === state.active)
 }

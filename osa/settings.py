@@ -1,7 +1,7 @@
 """界面上可修改的设置，存在数据库里，覆盖 config.yaml 的同名项。模型服务（地址、密钥）在 providers.py。"""
 import json
 import time
-from . import computer, i18n, prices, providers
+from . import avatars, computer, i18n, prices, providers
 from .config import CFG
 from .memory import conn
 
@@ -84,6 +84,7 @@ def public() -> dict:
         "computer_backends": computer.available(),
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
+        "image_model": avatars.choice(),   # 画图用哪个模型（对话里画图、生成头像共用），没选过是空的
         "model_info": {f"{p}/{m}": _info(p, m) for p, m in used},
         "prices": prices.info(),
         "problem": problem(),
@@ -135,6 +136,14 @@ def save(data: dict) -> dict:
         if provider and not model:
             raise ValueError(i18n.t("选了服务就要填 embedding 模型的名字"))
         o["embedding"] = {"provider": provider, "model": model}
+    if "image_model" in data:
+        e = data["image_model"] or {}
+        provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:200]
+        if provider and provider not in CFG["providers"]:
+            raise ValueError(i18n.t("没有这个模型服务：{name}", name=provider))
+        if provider and not avatars.IMAGE_MODEL.search(model):
+            raise ValueError(i18n.t("{model} 不是画图的模型", model=model))
+        avatars.choose(provider, model)
     conn.execute("insert or replace into settings values('overrides', ?)", (json.dumps(o),))
     conn.commit()
     apply()

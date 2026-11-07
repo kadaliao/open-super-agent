@@ -83,12 +83,12 @@ def _clean_name(name: str, mime: str) -> str:
     return name or "image." + mime.split("/")[1].replace("jpeg", "jpg")
 
 
-def save(data: bytes, name: str = "") -> dict:
+def save(data: bytes, name: str = "", limit: int = MAX_BYTES) -> dict:
     """存一张图片，返回它的信息（id、mime、name、size、w、h）。不是支持的图片格式就报错。"""
     if not data:
         raise ValueError(i18n.t("没收到图片"))
-    if len(data) > MAX_BYTES:
-        raise ValueError(i18n.t("图片太大了（最多 {n} MB）", n=MAX_BYTES >> 20))
+    if len(data) > limit:
+        raise ValueError(i18n.t("图片太大了（最多 {n} MB）", n=limit >> 20))
     mime = sniff(data)
     if not mime:
         raise ValueError(i18n.t("只支持 PNG、JPG、WebP、GIF 图片"))
@@ -216,6 +216,17 @@ def can_see(provider: str = "", model: str = "") -> bool:
     if t is not None:
         return t
     return bool(prices.lookup(provider, model).get("vision"))
+
+
+def strip_images(msgs: list[dict]) -> bool:
+    """把消息里的图片换成一句文字（模型不收图片时用）。有图片被换掉返回 True。"""
+    hit = False
+    for m in msgs:
+        if isinstance(m.get("content"), list) and any(p.get("type") == "image_url" for p in m["content"]):
+            text = "\n\n".join(p.get("text") or "" for p in m["content"] if p.get("type") == "text")
+            m["content"] = text + "\n（附带的图片没发给你：这个模型不收图片）"
+            hit = True
+    return hit
 
 
 def image_part(mid: str) -> dict | None:
