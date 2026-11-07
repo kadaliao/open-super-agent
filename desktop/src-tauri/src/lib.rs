@@ -20,9 +20,10 @@ use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
 /// 页面加载前放进去的 window.osaDesktop（网页里的 web/src/desktop.ts 会用它）。
-/// 只有当前服务器的地址拿到了调用这几个命令的授权，别的网页即使有这个对象也调不动
+/// 只有当前服务器的网页界面拿到了调用这几个命令的授权，别的网页即使有这个对象也调不动。
+/// 来源是 null 的（被 CSP sandbox 隔离的页面，比如 Bot 生成的报告页）不放
 const BRIDGE: &str = r#"(function () {
-  if (window.osaDesktop || window.top !== window || !/^https?:$/.test(location.protocol)) return;
+  if (window.osaDesktop || window.top !== window || !/^https?:$/.test(location.protocol) || location.origin === 'null') return;
   var call = function (cmd, args) {
     try {
       window.__TAURI_INTERNALS__.invoke(cmd, args).catch(function (e) {
@@ -168,6 +169,14 @@ fn open_server(app: &AppHandle, origin: Url, first: Option<Url>) {
     }
 }
 
+/// 网页界面自己会落到的路径（`/`、`/apps`、`/library`、`/library/pages/12`，见 web/src/App.tsx）。
+/// 服务器上别的页面（Bot 生成的报告页 /api/pages/1/raw、分享页 /s/…）不给授权，免得它们里面的脚本调 App 的命令
+const UI_PATHS: &str = r"/:p(|apps/?|library/?|library/pages/\d+/?)";
+
+fn server_pattern(origin: &Url) -> String {
+    format!("{}{UI_PATHS}", origin.origin().ascii_serialization())
+}
+
 fn grant(app: &AppHandle, origin: &Url) {
     let key = origin.origin().ascii_serialization();
     let st = state(app);
@@ -176,7 +185,7 @@ fn grant(app: &AppHandle, origin: &Url) {
         return;
     }
     let cap = CapabilityBuilder::new(format!("server-{}", granted.len()))
-        .remote(format!("{key}/*"))
+        .remote(server_pattern(origin))
         .local(false)
         .window("main")
         .permission("allow-desktop-notify")
@@ -540,4 +549,25 @@ pub fn run() {
         RunEvent::Reopen { .. } => show_main(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::utils::acl::RemoteUrlPattern;
+
+    #[test]
+    fn only_the_web_ui_gets_the_bridge() {
+        let origin = Url::parse("https://h.example:8443/").unwrap();
+        let p: RemoteUrlPattern = server_pattern(&origin).parse().unwrap();
+        let ok = |u: &str| p.test(&Url::parse(u).unwrap());
+        for u in ["/", "/?chat=3&thread=4", "/apps", "/library", "/library/", "/library/pages/12"] {
+            assert!(ok(&format!("https://h.example:8443{u}")), "{u} should be allowed");
+        }
+        for u in ["/api/pages/1/raw", "/api/shared/x/raw", "/s/abc", "/appsx", "//api", "/library/pages/1/raw", "/login"] {
+            assert!(!ok(&format!("https://h.example:8443{u}")), "{u} should be denied");
+        }
+        assert!(!ok("https://other.example/"));
+        assert!(!ok("http://h.example:8443/"));
+    }
 }

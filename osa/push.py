@@ -7,6 +7,7 @@
 """
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import re
@@ -28,6 +29,7 @@ conn.commit()
 
 SUBJECT = (CFG.get("push") or {}).get("subject") or "https://github.com/kadaliao/open-super-agent"
 _key: ec.EllipticCurvePrivateKey | None = None
+_transport: httpx.AsyncBaseTransport | None = None   # 测试时换成假的推送服务
 
 
 def b64u(data: bytes) -> str:
@@ -105,11 +107,19 @@ def count() -> int:
     return conn.execute("select count(*) from push_subs").fetchone()[0]
 
 
-async def _send_one(c: httpx.AsyncClient, ep: str, p256dh: str, auth: str, data: bytes, urgency: str) -> str:
+def topic(tag: str) -> str:
+    """RFC 8030 的 Topic 头：同一个 tag 的新推送替换推送服务里还没送到的旧推送（手机 App 的中转据此替换已显示的通知）。
+    最多 32 个 URL 安全的 base64 字符；用哈希，推送服务看不到对话编号。"""
+    return b64u(hashlib.sha256(tag.encode()).digest())[:32]
+
+
+async def _send_one(c: httpx.AsyncClient, ep: str, p256dh: str, auth: str, data: bytes, urgency: str, tag: str) -> str:
+    headers = {"Authorization": vapid_header(ep), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
+               "TTL": "86400", "Urgency": urgency}
+    if tag:
+        headers["Topic"] = topic(tag)
     try:
-        r = await c.post(ep, content=encrypt(data, p256dh, auth), headers={
-            "Authorization": vapid_header(ep), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-            "TTL": "86400", "Urgency": urgency})
+        r = await c.post(ep, content=encrypt(data, p256dh, auth), headers=headers)
     except httpx.HTTPError as e:
         return i18n.t("发送失败：{e}", e=e)
     if r.status_code in (404, 410):
@@ -118,13 +128,17 @@ async def _send_one(c: httpx.AsyncClient, ep: str, p256dh: str, auth: str, data:
     return "ok" if r.status_code < 300 else i18n.t("推送服务返回 {code}：{text}", code=r.status_code, text=r.text[:200])
 
 
-async def send(title: str, body: str, url: str = "/", tag: str = "", urgency: str = "normal") -> list[str]:
+async def send(title: str, body: str, url: str = "/", tag: str = "", urgency: str = "normal", badge: int | None = None) -> list[str]:
+    """badge：现在有几个操作等你确认，手机 App 显示在图标上（网页不用）。"""
     subs = conn.execute("select endpoint, p256dh, auth from push_subs").fetchall()
     if not subs:
         return []
-    data = json.dumps({"title": title, "body": body[:200], "url": url, "tag": tag}, ensure_ascii=False).encode()
-    async with httpx.AsyncClient(timeout=15) as c:
-        return list(await asyncio.gather(*[_send_one(c, ep, k, a, data, urgency) for ep, k, a in subs]))
+    payload = {"title": title[:80], "body": body[:200], "url": url, "tag": tag}
+    if badge is not None:
+        payload["badge"] = badge
+    data = json.dumps(payload, ensure_ascii=False).encode()
+    async with httpx.AsyncClient(timeout=15, transport=_transport) as c:
+        return list(await asyncio.gather(*[_send_one(c, ep, k, a, data, urgency, tag) for ep, k, a in subs]))
 
 
 # ---------- 什么时候推 ----------

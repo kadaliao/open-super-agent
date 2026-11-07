@@ -13,6 +13,8 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
+/* 刘海和灵动岛：手机 App 和添加到主屏幕后，页面从屏幕最顶上开始画，固定在顶上的东西要让出状态栏（普通浏览器里这个值是 0） */
+#root { padding-top: env(safe-area-inset-top); }
 body { overflow: hidden; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
 button:disabled { cursor: default; opacity: .45; }
@@ -251,7 +253,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .app, .app.with-panel { grid-template-columns: 1fr; }
   .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 84vw; max-width: 320px; z-index: 40; transform: translateX(-100%); transition: transform .2s; }
   .side-open .sidebar { transform: none; } .app.side-open > .side-mask { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 35; }
-  .app > .mobile-menu { display: grid; position: fixed; top: 11px; left: 8px; z-index: 10; }
+  .app > .mobile-menu { display: grid; position: fixed; top: calc(11px + env(safe-area-inset-top)); left: 8px; z-index: 10; }
+  .sidebar, .app.with-panel .panel { padding-top: env(safe-area-inset-top); }
   .chat-head { padding-left: 46px; }
   .app.with-panel .panel { width: 100vw; }
   .thread { padding: 16px 14px 8px; } .composer-wrap { padding: 6px 10px calc(10px + env(safe-area-inset-bottom)); }
@@ -505,6 +508,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .m-sheet { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
 }
 @media (max-width: 420px) { .m-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .m-sheet, .set-modal, .onb { padding-top: env(safe-area-inset-top); } }
+@media (max-width: 700px) { .modal.medium { padding-top: env(safe-area-inset-top); } }
 
 /* 设置 → 聊天软件 */
 .msg.user .via { align-self: flex-end; font-size: 11.5px; color: var(--fg3); margin: 0 8px 4px 0; white-space: nowrap; }
@@ -916,3 +921,6 @@ a.file-card:hover { border-color: var(--fg3); }
 .msg.user .user-embed { width: min(520px, 100%); margin-top: 6px; }
 .msg.user .user-embed .lk-card, .msg.user .user-embed .emb { margin: 0 0 0 auto; }
 @media (max-width: 520px) { .lk-img { width: 30%; } .lk-text { padding: 8px 10px; } }
+
+/* 设置 → 手机 App：配对二维码，白底黑码，深色界面里相机也认得出 */
+.qr { display: block; width: 220px; height: 220px; margin: 14px 0 6px; border-radius: 10px; image-rendering: pixelated; }

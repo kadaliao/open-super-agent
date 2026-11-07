@@ -4,6 +4,7 @@ import type { App, CatalogItem } from '../types'
 import { BrandIcon } from './BrandIcon'
 import { t, tc, tn } from '../i18n'
 import { ask } from './Dialog'
+import { desktop } from '../desktop'
 
 const HOW: Record<string, string> = { oauth: t('登录即用'), token: t('填一个密钥'), none: t('免配置') }
 // 登录授权的应用也可能要先填几项（比如自己建的 OAuth 客户端），填好再登录
@@ -33,10 +34,13 @@ const standalone = () => matchMedia('(display-mode: standalone)').matches || (na
 // before：打开授权页之前要先做的事（保存配置之类）。弹窗必须在点击时同步打开，不然会被浏览器拦掉
 async function oauthConnect(name: string, fresh: boolean, done: (err?: string) => void, before?: () => Promise<void>) {
   const url = `/oauth/start/${encodeURIComponent(name)}`
-  const w = standalone() ? null : window.open(before ? '' : url, 'osa-oauth', 'width=540,height=720')
+  // 手机 App 里没有弹窗：在 App 弹出的一页里授权，那一页关掉（授权完成后会自己关）时看结果
+  const sheet = desktop?.openSheet
+  const w = standalone() || sheet ? null : window.open(before ? '' : url, 'osa-oauth', 'width=540,height=720')
   if (before) {
     try { await before() } catch (e: any) { w?.close(); return done(e.message) }
   }
+  if (sheet) { await sheet(url).catch(() => {}); return check(name, fresh, done) }
   if (!w) { location.href = url; return }
   if (before) w.location.href = url
   // 授权完成页先发 osa-app 过来，再自己关掉。桌面 App 里弹窗不一定能自己关，所以收到消息也算完成
@@ -46,17 +50,22 @@ async function oauthConnect(name: string, fresh: boolean, done: (err?: string) =
     finished = true
     clearInterval(timer); window.removeEventListener('message', onMessage)
     setTimeout(() => { try { if (!w.closed) w.close() } catch { /* 已经关了 */ } }, 1500)
-    await new Promise(r => setTimeout(r, 600))
-    const a: App | undefined = (await refreshApps()).apps.find((x: App) => x.name === name)
-    if (!a || a.connected || a.state === 'connecting') return done()
-    if (a.state === 'login') await api(`/api/apps/${name}/cancel`, { method: 'POST' }).catch(() => {})
-    if (fresh) await api(`/api/apps/${name}`, { method: 'DELETE' }).catch(() => {})
-    // 取消了、超时没完成的，统一说“没有完成授权”（服务端的状态文字可能是中文或英文）
-    done(a.status && !/取消|没有完成|Authorization canceled|not completed/.test(a.status) ? a.status : t('没有完成授权'))   // i18n-ignore：匹配服务端的状态文字
+    await check(name, fresh, done)
   }
   const onMessage = (e: MessageEvent) => { if (e.origin === location.origin && e.data?.type === 'osa-app') finish() }
   window.addEventListener('message', onMessage)
   const timer = setInterval(() => { if (w.closed) finish() }, 500)
+}
+
+// 授权窗口关掉以后：连上了就好；没连上的撤掉登录，新添加的整个删掉
+async function check(name: string, fresh: boolean, done: (err?: string) => void) {
+  await new Promise(r => setTimeout(r, 600))
+  const a: App | undefined = (await refreshApps()).apps.find((x: App) => x.name === name)
+  if (!a || a.connected || a.state === 'connecting') return done()
+  if (a.state === 'login') await api(`/api/apps/${name}/cancel`, { method: 'POST' }).catch(() => {})
+  if (fresh) await api(`/api/apps/${name}`, { method: 'DELETE' }).catch(() => {})
+  // 取消了、超时没完成的，统一说“没有完成授权”（服务端的状态文字可能是中文或英文）
+  done(a.status && !/取消|没有完成|Authorization canceled|not completed/.test(a.status) ? a.status : t('没有完成授权'))   // i18n-ignore：匹配服务端的状态文字
 }
 
 // ---------- 页面 ----------

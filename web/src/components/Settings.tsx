@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { encode } from 'uqr'
 import { api, setSettings, useStore } from '../store'
+import { desktop, phone } from '../desktop'
 import { Icon } from '../icons'
 import { lang, locale, syncLang, t, tc, tn } from '../i18n'
 import type { Rule, Settings as S } from '../types'
@@ -13,7 +15,7 @@ import { ask } from './Dialog'
 const GROUPS: { name: string; items: [string, string, string][] }[] = [
   { name: t('模型与费用'), items: [['models', t('模型'), 'sparkles'], ['usage', t('费用'), 'coins'], ['limits', t('限制与预算'), 'gauge']] },
   { name: t('安全'), items: [['rules', t('确认规则'), 'shield'], ['vault', t('保险库'), 'key']] },
-  { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell']] },
+  { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell'], ['mobile', t('手机 App'), 'smartphone']] },
   { name: t('数据'), items: [['triggers', t('定时任务'), 'clock'], ['backup', t('备份与迁移'), 'archive']] },
 ]
 const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k, v])))
@@ -70,7 +72,8 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
               {title === 'vault' && <Vault />}
               {title === 'triggers' && <Triggers />}
               {title === 'channels' && <Channels />}
-              {title === 'notify' && <Notifications />}
+              {title === 'notify' && (desktop?.push ? <PhoneNotifications /> : <Notifications />)}
+              {title === 'mobile' && <MobileApp />}
               {title === 'backup' && <Backup />}
             </div>
           </div>
@@ -250,6 +253,91 @@ function Notifications() {
       <p className="muted small">{t('手机上可以把它当应用用：Safari 点“分享 → 添加到主屏幕”，Chrome 点菜单里的“添加到主屏幕”或“安装应用”。')}</p>
     </div>
   )
+}
+
+// 手机 App 里的推送：由 App 向推送中转登记，服务器把它当成又一个推送订阅
+function PhoneNotifications() {
+  const [key, setKey] = useState('')
+  const [sub, setSub] = useState<{ endpoint: string } | null>(null)
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const push = desktop!.push!
+  useEffect(() => {
+    api('/api/push').then(async r => { setKey(r.key); setSub(await push.current(r.key)) }).catch((e: any) => setMsg(e.message))
+  }, [])
+  const on = async () => {
+    setBusy(true); setMsg('')
+    try {
+      const s = await push.subscribe(key)
+      await api('/api/push/subscribe', { method: 'POST', body: { subscription: s } })
+      setSub(s); setMsg(t('已开启'))
+    } catch (e: any) { setMsg(e.message || String(e)) }
+    setBusy(false)
+  }
+  const off = async () => {
+    if (!sub) return
+    await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {})
+    await push.unsubscribe(key).catch(() => {})
+    setSub(null); setMsg(t('已关闭'))
+  }
+  const test = async () => {
+    setMsg('')
+    try { const r = await api('/api/push/test', { method: 'POST' }); setMsg(r.results.every((x: string) => x === 'ok') ? t('已发出，几秒内应该收到') : r.results.join(lang === 'en' ? '; ' : '；')) }
+    catch (e: any) { setMsg(e.message) }
+  }
+  return (
+    <div>
+      <p className="muted">{t('App 不在前台时（比如手机锁屏），需要你确认、请你帮忙、任务做完和 Bot 的回复会推送到这台手机。电脑上开着这个页面时不推。')}</p>
+      <div className="row-actions">
+        {sub ? <><span className="pill ok">{t('这台手机已开启')}</span><button className="btn" onClick={test}>{t('发一条测试')}</button><button className="btn" onClick={off}>{tc('push', '关闭')}</button></>
+          : <button className="btn primary" disabled={busy || !key} onClick={on}>{busy ? t('开启中…') : t('在这台手机上开启推送')}</button>}
+      </div>
+      {msg && <p className="muted small">{msg}</p>}
+      <p className="muted small">{t('推送经过 Open Super Agent 的推送中转发给苹果，内容在服务器上加密，只有这台手机能解开，中转看不到。')}</p>
+    </div>
+  )
+}
+
+// 手机 App：电脑上显示二维码，用 iPhone 相机一扫就连上这台服务器并登录；App 里显示连着哪台服务器
+function MobileApp() {
+  const [pair, setPair] = useState<{ ticket: string; expires_in: number } | null>(null)
+  const [err, setErr] = useState('')
+  const local = /^(localhost|127\.|\[::1\])|\.localhost$/.test(location.hostname)
+  const refresh = () => { setErr(''); api('/api/pair', { method: 'POST' }).then(setPair).catch((e: any) => setErr(e.message)) }
+  useEffect(() => { if (!phone && !local) refresh() }, [])
+  useEffect(() => {   // 票过期前换一张
+    if (!pair?.expires_in) return
+    const timer = setTimeout(refresh, (pair.expires_in - 10) * 1000)
+    return () => clearTimeout(timer)
+  }, [pair])
+  const link = pair && `opensuperagent://pair?u=${encodeURIComponent(location.origin)}${pair.ticket ? '&t=' + pair.ticket : ''}`
+  if (phone) return (
+    <div>
+      <p className="muted">{t('这台手机连着 {server}。', { server: location.host })}</p>
+      <div className="row-actions"><button className="btn" onClick={() => desktop!.switchServer?.()}>{t('切换服务器')}</button></div>
+    </div>
+  )
+  return (
+    <div>
+      <p className="muted">{t('在 iPhone 上装好 Open Super Agent App，用系统相机扫下面的二维码，就能连上这台服务器并自动登录。也可以在 App 里手动填这个地址：{server}', { server: location.origin })}</p>
+      {local ? <p className="error-line">{t('手机打不开 localhost。请用手机能打开的地址（局域网 IP、Tailscale 或域名）打开这个页面，再来这里扫码。')}</p>
+        : err ? <p className="error-line">{err}</p>
+        : link && <QrCode text={link} />}
+      {pair && <p className="muted small">{pair.ticket ? t('二维码 5 分钟内有效，只能用一次，相当于一次登录，别发给别人。') : t('这台服务器没开登录，扫码直接连上。')}
+        {pair.ticket && <> <button className="link-btn" onClick={refresh}>{t('换一张')}</button></>}</p>}
+    </div>
+  )
+}
+
+function QrCode({ text }: { text: string }) {
+  const path = useMemo(() => {
+    const qr = encode(text, { ecc: 'M', border: 2 })
+    let d = ''
+    qr.data.forEach((row, y) => row.forEach((on, x) => { if (on) d += `M${x},${y}h1v1h-1z` }))
+    return { d, size: qr.size }
+  }, [text])
+  return <svg className="qr" viewBox={`0 0 ${path.size} ${path.size}`} shapeRendering="crispEdges" role="img" aria-label={t('配对二维码')}>
+    <rect width={path.size} height={path.size} fill="#fff" /><path d={path.d} fill="#000" /></svg>
 }
 
 function Rules() {

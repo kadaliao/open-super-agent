@@ -31,6 +31,7 @@ MAX_AGE = 30 * 86400          # 登录保持 30 天
 RENEW_BELOW = 15 * 86400      # 剩不到 15 天时，下一次请求自动续期
 FAIL_WINDOW, MAX_FAILS = 600, 5   # 同一个 IP 10 分钟内输错 5 次，暂停登录到窗口结束
 TICKET_TTL = 30              # 桌面 App 自动登录用的票，30 秒内有效，只能用一次
+PAIR_TTL = 300               # 手机 App 扫码配对用的票，5 分钟内有效，只能用一次
 
 # 前端构建产物里不含数据的文件：登录页和分享页要用
 PUBLIC_FILES = {"/manifest.json", "/sw.js", "/favicon.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"}
@@ -302,12 +303,27 @@ async def login_ticket(request: Request):
         await asyncio.sleep(1)
         raise HTTPException(401, i18n.t("密码不对"))
     _fails.pop(ip, None)
+    return {"ticket": mint_ticket(TICKET_TTL), "expires_in": TICKET_TTL}
+
+
+def mint_ticket(ttl: int) -> str:
+    """发一张 ttl 秒内有效、只能用一次的登录票，用 GET /login/ticket?t= 兑换成登录 cookie。"""
     now = time.time()
     for k in [k for k, exp in _tickets.items() if exp < now]:
         del _tickets[k]
     ticket = secrets.token_urlsafe(32)
-    _tickets[ticket] = now + TICKET_TTL
-    return {"ticket": ticket, "expires_in": TICKET_TTL}
+    _tickets[ticket] = now + ttl
+    return ticket
+
+
+@router.post("/api/pair")
+async def pair():
+    """手机 App 扫码配对：已经登录的页面换一张 5 分钟内有效、只能用一次的票，放进二维码。
+    App 打开 GET /login/ticket?t=票，种上普通的登录 cookie。要登录才能调（不在公开路径里），别的网站发不来（来源检查）。
+    没开登录时不需要票。"""
+    if not enabled():
+        return {"ticket": "", "expires_in": 0}
+    return {"ticket": mint_ticket(PAIR_TTL), "expires_in": PAIR_TTL}
 
 
 @router.get("/login/ticket")

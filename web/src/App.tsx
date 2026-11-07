@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openLibrary, openThread, useStore } from './store'
+import { bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, useStore } from './store'
+import { desktop } from './desktop'
 import Chat from './components/Chat'
 import ThreadPanel from './components/Thread'
 import Library from './components/Library'
@@ -71,14 +72,15 @@ export default function App() {
   // 点了推送通知：Service Worker 把通知里的地址（/?chat=12）发过来
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    const h = (e: MessageEvent) => {
-      if (e.data?.type !== 'open') return
-      const q = new URL(e.data.url, location.origin).searchParams
-      const chat = Number(q.get('chat')), root = Number(q.get('thread'))   // 讨论串里的消息：?chat=12&thread=34
-      if (chat && getState().chats.some(c => c.id === chat)) openChat(chat).then(() => { if (root) openThread(chat, root) })
-    }
+    const h = (e: MessageEvent) => { if (e.data?.type === 'open') openFromUrl(e.data.url) }
     navigator.serviceWorker.addEventListener('message', h)
     return () => navigator.serviceWorker.removeEventListener('message', h)
+  }, [])
+  // 手机 App：App 开着时点了推送通知
+  useEffect(() => {
+    const h = (e: Event) => openFromUrl(String((e as CustomEvent).detail || ''))
+    window.addEventListener('osa-open-url', h)
+    return () => window.removeEventListener('osa-open-url', h)
   }, [])
 
   // 别处要打开设置的某一页（比如对话里“去配置模型”）；设置里点“新手引导”再看一遍引导
@@ -105,6 +107,7 @@ export default function App() {
       if (deep) { openLibrary(deep[1] ? Number(deep[1]) : null); history.replaceState(null, '', '/') }
       if (apps) { openApps(); history.replaceState(null, '', '/') }
       connect()
+      desktop?.takePendingOpen?.().then(url => { if (url) openFromUrl(url) })   // 手机 App 是点通知启动的
     })
     if ('Notification' in window && Notification.permission === 'default') {
       // 引导开着的时候先不问，免得一点服务商就弹出浏览器的权限框

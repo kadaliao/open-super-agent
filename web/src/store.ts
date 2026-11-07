@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
 import type { App, Approval, Attachment, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadSummary } from './types'
 import { notice } from './components/Dialog'
-import { desktop } from './desktop'
+import { desktop, phone } from './desktop'
 
 type State = {
   ready: boolean
@@ -103,6 +103,26 @@ export async function bootstrap() {
     const opened = openChat(active)
     if (active === fromUrl && threadRoot) opened.then(() => openThread(active, threadRoot))
   }
+  syncPush()
+}
+
+// 打开站内地址指向的对话：推送通知里的地址是 /?chat=12，讨论串里的消息是 /?chat=12&thread=34
+export async function openFromUrl(url: string) {
+  const q = new URL(url, location.origin).searchParams
+  const chat = Number(q.get('chat')), root = Number(q.get('thread'))
+  if (!chat || !state.chats.some(c => c.id === chat)) return
+  await openChat(chat)
+  if (root) openThread(chat, root)
+}
+
+// 手机 App：开着推送的话，每次打开都把订阅交给服务器一遍。中转或服务器的推送密钥变了时，App 会重新登记出新的订阅
+async function syncPush() {
+  if (!desktop?.push) return
+  try {
+    const { key } = await api('/api/push')
+    const sub = await desktop.push.current(key)
+    if (sub) await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub } })
+  } catch { /* 下次打开再试 */ }
 }
 
 export const setTeachDraft = (d: TeachDraft | null) => set({ teachDraft: d })
@@ -242,7 +262,19 @@ let ws: WebSocket | null = null
 const reportVisibility = () => {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'visibility', visible: document.visibilityState === 'visible' }))
 }
-document.addEventListener('visibilitychange', reportVisibility)
+// 手机 App 退到后台超过 30 秒，系统可能已经把连接掐了而页面不知道：回到前台时直接换一条新连接
+let hiddenAt = 0
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+  else if (phone && ws && hiddenAt && Date.now() - hiddenAt > 30_000) {
+    const old = ws
+    old.onclose = null; old.onmessage = null
+    try { old.close() } catch { /* 已经断了 */ }
+    connect()
+    return
+  }
+  reportVisibility()
+})
 
 export function connect() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws')
@@ -364,6 +396,7 @@ function handle(d: any) {
 
 // threadRoot：消息在讨论串里，点通知时打开那个讨论串
 function notifyOS(chatId: number, m: Message | null, text?: string, threadRoot?: number) {
+  if (phone) return   // 手机 App 在前台时看得到；退到后台由服务端推送
   if (desktop) return notifyDesktop(chatId, m, text)
   if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return
   if (localStorage.getItem('osa.push') === '1') return   // 这台设备开了推送，由服务端推，免得重复

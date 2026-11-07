@@ -41,7 +41,8 @@ async def broadcast(event: dict):
             watching.pop(ws, None)
     # 没有任何页面正被看着时，需要你知道的事推送到手机
     if not any(watching.get(ws, True) for ws in clients) and (msg := push.message_for(event)) and push.count():
-        asyncio.create_task(push.send(*msg, urgency="high" if event.get("type") == "approval" else "normal"))
+        asyncio.create_task(push.send(*msg, urgency="high" if event.get("type") == "approval" else "normal",
+                                      badge=len(approvals.pending)))
 
 rt.notify = broadcast
 approvals.notify = broadcast
