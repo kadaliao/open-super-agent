@@ -472,6 +472,22 @@ fn toggle_main(app: &AppHandle) {
     }
 }
 
+/// 只在调试版里：自动测试的通道（终端里没法点窗口）。数据目录下的 autotest.js 出现时，在主窗口的页面里执行它再删掉
+#[cfg(debug_assertions)]
+fn start_autotest(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(500));
+        let f = store::home().join("autotest.js");
+        if let Ok(js) = std::fs::read_to_string(&f) {
+            let _ = std::fs::remove_file(&f);
+            if let Some(w) = main_window(&app) {
+                let _ = w.eval(js);
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let hidden = std::env::args().any(|a| a == "--hidden"); // 开机自动启动时不弹窗口，在菜单栏里待着
@@ -514,6 +530,8 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             build_main(&handle, !hidden)?;
+            #[cfg(debug_assertions)]
+            start_autotest(&handle);
             tray::create(&handle)?;
             start_update_loop(&handle);
             // ⌘⇧空格（Windows 上 Ctrl+Shift+空格）呼出或藏起窗口；被别的程序占了就算了
