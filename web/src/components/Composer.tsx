@@ -57,7 +57,9 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
     setText(at ? text.replace(/@([^\s@]*)$/, `@${name} `) : `/${name} `); setPick(0); ref.current?.focus()
   }
 
-  useEffect(() => { ref.current?.focus() }, [chatId])
+  // 切换对话、加完附件后把光标放进输入框：只在用鼠标、触控板的设备上。手机上一 focus 就弹键盘，挡住半个对话
+  const focusIfPointer = () => { if (matchMedia('(pointer: fine)').matches) ref.current?.focus() }
+  useEffect(focusIfPointer, [chatId])
   useEffect(() => {
     if (inThread) return
     const fill = (e: Event) => { setText((e as CustomEvent).detail); ref.current?.focus() }
@@ -93,7 +95,7 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
   const attach = async (files: FileList | null) => {
     setUpErr('')
     await Promise.all(Array.from(files || []).map(attachOne))
-    ref.current?.focus()
+    focusIfPointer()
   }
   const drop = (key: string) => setAtts(a => {
     a.filter(x => x.key === key).forEach(x => x.preview && URL.revokeObjectURL(x.preview))
