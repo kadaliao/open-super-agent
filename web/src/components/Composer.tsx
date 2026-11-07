@@ -218,7 +218,7 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
       </div>
       {listening && <div className="composer-hint">{t('正在听…说完点 ■ 停止，确认文字后再发送')}</div>}
       {(uploading || upErr) && <div className={'composer-hint' + (upErr ? ' bad' : '')}>{upErr || t('正在上传 {name}…（第一次会先开机）', { name: uploading!.name })}</div>}
-      <div className="composer-hint">{busy ? t('{name} 正在回复…你可以继续发消息', { name: busy })
+      <div className={'composer-hint' + (busy ? '' : ' keys')}>{busy ? t('{name} 正在回复…你可以继续发消息', { name: busy })
         : inThread ? t('Enter 发送 · Shift+Enter 换行 · Esc 关闭') : group ? t('Enter 发送 · Shift+Enter 换行 · @ 指定 Bot 或应用 · @所有人') : t('Enter 发送 · Shift+Enter 换行 · @ 指定应用 · / 调用技能')}</div>
     </div>
   )

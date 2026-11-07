@@ -117,6 +117,11 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .approval-title { font-weight: 600; margin-bottom: 2px; }
 .approval-args { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 .approval-actions { display: flex; gap: 8px; } .approval-actions input { flex: 1; min-width: 0; }
+/* 卡片窄的时候（手机上，或者电脑上右边开着面板）：意见输入框占一整行，按钮排在下面 */
+.approval-card { container-type: inline-size; }
+@container (max-width: 520px) {
+  .approval-actions { flex-wrap: wrap; } .approval-actions input { flex-basis: 100%; } .approval-actions .btn { flex: 1; }
+}
 
 /* 欢迎页 */
 .welcome { text-align: center; padding: 10vh 0 20px; }
@@ -142,7 +147,9 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .md h1, .md h2, .md h3, .md h4 { margin: 1.1em 0 .45em; line-height: 1.35; } .md h1 { font-size: 1.35em; } .md h2 { font-size: 1.2em; } .md h3 { font-size: 1.05em; }
 .md blockquote { margin: .6em 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--fg2); }
 .md table { border-collapse: collapse; margin: .7em 0; display: block; overflow-x: auto; font-size: 14px; }
-.md th, .md td { border: 1px solid var(--line); padding: 5px 10px; } .md th { background: var(--bg2); }
+.md th, .md td { border: 1px solid var(--line); padding: 5px 10px; word-break: normal; overflow-wrap: break-word; } .md th { background: var(--bg2); }   /* 单词不从中间断开；表格太宽就横向滑动 */
+/* 窄屏上列太多时别把每列挤成一个字宽：保留最小宽度，表格横向滑动 */
+@media (max-width: 760px) { .md th, .md td { min-width: 6.5em; } }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .code-wrap { position: relative; margin: .7em 0; }
 .code-wrap pre { background: #16161a; color: #e6e6e6; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; overflow-x: auto; font-size: 13px; margin: 0; }
@@ -219,6 +226,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .panel-tabs button.on { background: var(--bg2); color: var(--fg); font-weight: 600; }
 .pc-panel { display: flex; flex-direction: column; gap: 10px; }
 .pc-bar { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.pc-bar > * { white-space: nowrap; flex-shrink: 0; } .pc-bar > select, .pc-bar > .grow { flex-shrink: 1; min-width: 0; }   /* 窄屏上文字别折成两行，挤的话让电脑类型的下拉框变窄 */
 .pc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg3); }
 .pc-dot.running { background: var(--good); } .pc-dot.starting { background: var(--warn); animation: pulse 1s infinite; }
 .pc-dot.paused { background: var(--warn); } .pc-dot.error { background: var(--bad); }
@@ -324,6 +332,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .attach { width: 36px; height: 36px; border-radius: 50%; color: var(--fg2); font-size: 20px; flex: none; }
 .attach:hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
 .composer-hint.bad { color: var(--bad); }
+@media (pointer: coarse) { .composer-hint.keys { display: none; } }   /* 手机上没有 Enter、Shift 这些键 */
 
 /* ---------- 资料库 ---------- */
 .side-nav { display: flex; align-items: center; gap: 10px; margin: 0 8px 4px; padding: 8px 12px; border-radius: 12px; color: var(--fg2); font-size: 14.5px; text-align: left; }

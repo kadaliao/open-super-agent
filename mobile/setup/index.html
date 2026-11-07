@@ -23,6 +23,7 @@ button.primary{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)
 .err{color:var(--bad);font-size:14px;margin:0}
 .server{font-weight:600;word-break:break-all;color:var(--fg)}
 section{display:flex;flex-direction:column;gap:14px}
+.stack{display:flex;flex-direction:column;gap:10px}   /* 不能写在标签的 style 里：Tauri 的 CSP 会挡掉内联样式 */
 [hidden]{display:none!important}
 </style>
 </head>
@@ -40,7 +41,7 @@ section{display:flex;flex-direction:column;gap:14px}
     <div class="card">
       <h2 data-t="urlTitle"></h2>
       <p data-t="urlDesc"></p>
-      <form id="remote" style="display:flex;flex-direction:column;gap:10px">
+      <form id="remote" class="stack">
         <input id="url" type="url" inputmode="url" placeholder="https://osa.example.com" autocomplete="url" autocapitalize="off" spellcheck="false">
         <button class="primary" type="submit" data-t="connectBtn"></button>
       </form>

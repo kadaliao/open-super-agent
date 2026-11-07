@@ -25,6 +25,7 @@ pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:brea
 .spin{width:22px;height:22px;margin:0 auto 10px;border:2px solid var(--line);border-top-color:var(--fg);border-radius:50%;animation:s 0.9s linear infinite}
 @keyframes s{to{transform:rotate(360deg)}}
 .links{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.sp10{height:10px}.sp12{height:12px}.sp14{height:14px}.err.big{text-align:center;font-size:15px}   /* 不能写在标签的 style 里：Tauri 的 CSP 会挡掉内联样式 */
 [hidden]{display:none!important}
 </style>
 </head>
@@ -35,13 +36,13 @@ pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:brea
 
   <section id="choose" hidden>
     <p class="sub" data-t="choose"></p>
-    <div style="height:14px"></div>
+    <div class="sp14"></div>
     <div class="card">
       <h2 data-t="localTitle"></h2>
       <p data-t="localDesc"></p>
       <div class="row"><button class="primary" id="local" data-t="localBtn"></button></div>
     </div>
-    <div style="height:12px"></div>
+    <div class="sp12"></div>
     <div class="card">
       <h2 data-t="remoteTitle"></h2>
       <p data-t="remoteDesc"></p>
@@ -51,7 +52,7 @@ pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:brea
       </form>
       <p class="err" id="remoteErr" hidden></p>
     </div>
-    <div style="height:12px"></div>
+    <div class="sp12"></div>
     <div class="links"><button id="back" hidden data-t="back"></button></div>
   </section>
 
@@ -61,10 +62,10 @@ pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:brea
   </section>
 
   <section id="failed" hidden>
-    <p class="err" data-t="failed" style="text-align:center;font-size:15px"></p>
-    <div style="height:10px"></div>
+    <p class="err big" data-t="failed"></p>
+    <div class="sp10"></div>
     <pre id="message"></pre>
-    <div style="height:14px"></div>
+    <div class="sp14"></div>
     <div class="links">
       <button class="primary" id="retry" data-t="retry"></button>
       <button id="other" data-t="other"></button>
