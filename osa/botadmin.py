@@ -262,7 +262,7 @@ def _footprint(b: dict) -> dict:
     from . import router
     n_msgs = conn.execute("select count(*) from messages where chat_id=?", (b["chat_id"],)).fetchone()[0] if b["chat_id"] else 0
     in_groups = [c for c in bots.list_chats() if c["kind"] == "group" and b["id"] in c["bot_ids"]]
-    return {"会删掉": {"消息": n_msgs, "技能": len(_own_skills(b["id"])), "定时任务": len(routines.list_for(b["id"])),
+    return {"会删掉": {"消息": n_msgs, "技能": len(_own_skills(b["id"])), "定时任务和事件": len(routines.list_for(b["id"])),
                     "记忆": len(memories.list_for(b["id"])["own"])},
             "群聊": [c["title"] for c in in_groups],
             "在做的任务": sum(1 for t in router.TASKS.values() if t.bot_id == b["id"] and t.status == "running")}
@@ -423,7 +423,9 @@ def _overview(me: dict) -> str:
         tags = [x for x in ("主 Bot" if b["is_primary"] else "", "就是你" if b["id"] == me["id"] else "") if x]
         _, last = _chat_stats(b)
         role = (b["instructions"] or "职责没写明").replace("\n", " ")
-        stats = [f"技能 {len(_own_skills(b['id']))} 个", f"定时任务 {len(routines.list_for(b['id']))} 个"]
+        rs = routines.list_for(b["id"])
+        ne = sum(1 for r in rs if routines.is_event(r))
+        stats = [f"技能 {len(_own_skills(b['id']))} 个", f"定时任务 {len(rs) - ne} 个"] + ([f"事件 {ne} 个"] if ne else [])
         if g := _groups_of(b["id"]):
             stats.append(f"在 {len(g)} 个群里")
         if r := _running_tasks(b["id"]):
@@ -456,9 +458,10 @@ def _detail(b: dict, me: dict) -> str:
     if shared:
         parts.append("所有 Bot 共用的技能：" + " ".join("/" + s["name"] for s in shared))
     rs = routines.list_for(b["id"])
-    parts.append("定时任务：" + ("\n" + "\n".join(
-        f"- #{r['id']} {r['name']}（{routines.describe(r['trigger'], in_lang='zh')}{'' if r['enabled'] else '，已暂停'}）：{r['prompt'][:100]}"
-        for r in rs) if rs else "无"))
+    for label, part in (("定时任务", [r for r in rs if not routines.is_event(r)]), ("事件", [r for r in rs if routines.is_event(r)])):
+        parts.append(f"{label}：" + ("\n" + "\n".join(
+            f"- #{r['id']} {r['name']}（{routines.describe(r['trigger'], in_lang='zh')}{'' if r['enabled'] else '，已暂停'}）：{r['prompt'][:100]}"
+            for r in part) if part else "无"))
     gs = _groups_of(b["id"])
     parts.append("所在群聊：" + ("、".join(f"「{c['title']}」" + ("（协调者）" if c["lead"] == b["id"] else "") for c in gs) or "无"))
     ts = _running_tasks(b["id"])

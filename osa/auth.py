@@ -168,8 +168,10 @@ class AuthMiddleware:
         if (scope["type"] == "websocket" or method not in ("GET", "HEAD", "OPTIONS")) and not _same_origin(headers):
             return await _deny(scope, send, 403, i18n.t("跨站请求被拒绝"))
         if not enabled():
-            # 设了 webhook token 的，token 本身就挡住了浏览器（自定义请求头跨站发不出来），外面的地址可以照常调
-            if not (path.startswith("/hooks/") and os.environ.get("OSA_WEBHOOK_TOKEN")) and not host_ok(headers.get("host")):
+            # 设了 webhook token 的，token 本身就挡住了浏览器（自定义请求头跨站发不出来），外面的地址可以照常调；
+            # 事件自己的地址 /hooks/<随机密钥> 也一样：不知道密钥的网页凑不出这个地址
+            hook = path.startswith("/hooks/") and (os.environ.get("OSA_WEBHOOK_TOKEN") or len(path) - len("/hooks/") >= 16)
+            if not hook and not host_ok(headers.get("host")):
                 return await _deny(scope, send, 403, i18n.t(
                     "没有放行这个地址（{host}）：没设登录密码时，只接受本机、IP 地址和 Tailscale 的地址。要用这个地址访问，"
                     "请设置 OSA_PASSWORD 打开登录，或者把它加进 config.yaml 的 server.allowed_hosts",

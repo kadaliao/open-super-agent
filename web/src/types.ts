@@ -132,16 +132,43 @@ export type Skill = {
   share_token: string | null
 }
 export type SkillDraft = { name: string; description: string; body: string; apps: { name: string; title: string; connected: boolean }[]; exists: boolean }
+export type EventTrigger = {
+  kind: 'event'; source: string; params: Record<string, any>; every?: number
+  include: string[]; exclude: string[]; llm_filter: string; key?: string; path?: string
+}
 export type Trigger =
+  | { kind: 'once'; at: string }
   | { kind: 'daily'; times: string[]; days: number[] }
+  | { kind: 'monthly'; month_days: number[]; times: string[] }
   | { kind: 'every'; minutes: number }
-  | { kind: 'webhook'; include: string[]; exclude: string[]; llm_filter: string }
+  | EventTrigger
 export type RoutineRun = {
   id: number; ts: number; source: string; status: string; task_id: number | null; detail: string; finished: number | null
+}
+// 事件的状态：要轮询的上次什么时候看的、出没出错；排队等处理的条数；push 的地址
+export type EventState = {
+  checked: number | null; error: string; fails: number; has_sample: boolean; pending: number
+  mode: 'push' | 'poll' | 'internal' | ''; hook: string; missing: boolean
 }
 export type Routine = {
   id: number; bot_id: number; name: string; prompt: string; skill: string; trigger: Trigger; enabled: boolean
   next_run: number | null; running: boolean; last_run: RoutineRun | null
+  category: 'schedule' | 'event'; event?: EventState; note?: string
+  describe?: string   // 触发方式的一句话（服务端按界面语言写好；事件的来源说明只有服务端知道）
+}
+export type SourceField = {
+  key: string; label: string; type: 'text' | 'textarea' | 'url' | 'number' | 'select' | 'multi' | 'bool' | 'secret' | 'list'
+  required?: boolean; placeholder?: string; default?: any; help?: string; min?: number; max?: number
+  options?: { value: string; label: string }[]
+}
+export type Scenario = {
+  source: string; title: string; description: string; name: string; params: Record<string, any>; prompt: string
+  include: string[]; exclude: string[]; llm_filter: string; every?: number
+}
+export type EventSource = {
+  id: string; title: string; description: string; mode: 'push' | 'poll' | 'internal'; category: string; icon: string
+  fields: SourceField[]; every: number; min_every: number; setup: string; plugin: string; unavailable: string
+  scenarios: Scenario[]
 }
 export type Memory = {
   id: number; bot_id: number | null; shared: boolean; kind: 'note' | 'work'; text: string; source: string; created: number; updated: number

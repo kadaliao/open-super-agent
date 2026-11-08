@@ -5,6 +5,7 @@ import { t, tc } from '../i18n'
 import BotAvatar, { SHAPE_NAMES } from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { RoutinesPanel, SkillsPanel } from './Routines'
+import { EventsPanel } from './Events'
 import { MemoryPanel } from './Memories'
 import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } from './Templates'
 import { TasksPanel } from './Tasks'
@@ -96,6 +97,7 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
           <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>{t('资料库')}</button>
           <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>{t('技能')}</button>
           <button className={tab === 'routines' ? 'on' : ''} onClick={() => setTab('routines')}>{t('定时')}</button>
+          <button className={tab === 'events' ? 'on' : ''} onClick={() => setTab('events')}>{t('事件')}</button>
           <button className={tab === 'memory' ? 'on' : ''} onClick={() => setTab('memory')}>{t('记忆')}</button>
           <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}>{tc('tab', '详情')}</button>
         </div>
@@ -107,6 +109,7 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
         : tab === 'library' ? <div className="panel-body"><BotLibraryPanel key={bot.id} bot={bot} /></div>
         : tab === 'skills' ? <div className="panel-body"><SkillsPanel key={bot.id} bot={bot} /></div>
         : tab === 'routines' ? <div className="panel-body"><RoutinesPanel key={bot.id} bot={bot} /></div>
+        : tab === 'events' ? <div className="panel-body"><EventsPanel key={bot.id} bot={bot} /></div>
         : tab === 'memory' ? <div className="panel-body"><MemoryPanel key={bot.id} bot={bot} /></div>
         : <BotPanelInner key={bot.id} bot={bot} tasks={Object.values(tasks).filter(x => x.bot_id === bot.id)} onClose={onClose} />}
     </aside>

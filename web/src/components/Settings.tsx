@@ -20,7 +20,8 @@ const GROUPS: { name: string; items: [string, string, string][] }[] = [
   { name: t('模型与费用'), items: [['models', t('模型'), 'sparkles'], ['usage', t('费用'), 'coins'], ['limits', t('限制与预算'), 'gauge']] },
   { name: t('安全'), items: [['rules', t('确认规则'), 'shield'], ['vault', t('保险库'), 'key']] },
   { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell'], ['mobile', t('手机 App'), 'smartphone']] },
-  { name: t('数据'), items: [['triggers', t('定时任务'), 'clock'], ['backup', t('备份与迁移'), 'archive']] },
+  { name: t('自动化'), items: [['triggers', t('定时任务'), 'clock'], ['events', t('事件'), 'zap']] },
+  { name: t('数据'), items: [['backup', t('备份与迁移'), 'archive']] },
   { name: t('扩展'), items: [['plugins', t('插件'), 'puzzle']] },
 ]
 const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k, v])))
@@ -29,6 +30,7 @@ const DESC: Record<string, string> = {
   usage: t('花了多少钱：按天、按用途、按任务统计。'),
   limits: t('防止任务跑太久、花太多。改完离开输入框就保存。'),
   triggers: t('所有 Bot 的定时任务，在这里就能开关。'),
+  events: t('所有 Bot 的事件：某件事发生时（收到 webhook、订阅源有新文章、网页变了……）Bot 处理一次。在这里就能开关。'),
   plugins: t('在服务里运行的 Python 代码：给 Bot 加工具，在有消息、任务做完时做点事。写法见 docs/plugins.md。'),
 }
 const LIMIT_NAMES: Record<string, [string, string]> = {
@@ -78,7 +80,8 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
               {title === 'usage' && <Usage />}
               {title === 'rules' && <Rules />}
               {title === 'vault' && <Vault />}
-              {title === 'triggers' && <Triggers onClose={onClose} />}
+              {title === 'triggers' && <Triggers key="schedule" category="schedule" onClose={onClose} />}
+              {title === 'events' && <Triggers key="event" category="event" onClose={onClose} />}
               {title === 'channels' && <Channels />}
               {title === 'notify' && (desktop?.push ? <PhoneNotifications /> : <Notifications />)}
               {title === 'mobile' && <MobileApp />}
@@ -193,13 +196,14 @@ function Prices() {
   )
 }
 
-// 所有 Bot 的定时任务，按 Bot 分组，每个都能直接开关；点“管理”去那个 Bot 的右栏“定时”里改
-function Triggers({ onClose }: { onClose: () => void }) {
+// 所有 Bot 的定时任务（或事件），按 Bot 分组，每个都能直接开关；点“管理”去那个 Bot 的右栏“定时”“事件”里改
+function Triggers({ onClose, category }: { onClose: () => void; category: 'schedule' | 'event' }) {
   const [list, setList] = useState<Routine[] | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
   const bots = useStore(x => x.bots)
   const toast = useToast()
-  const load = () => api<Routine[]>('/api/routines').then(setList).catch((e: any) => toast(e.message, true))
+  const ev = category === 'event'
+  const load = () => api<Routine[]>('/api/routines').then(rs => setList(rs.filter(r => r.category === category))).catch((e: any) => toast(e.message, true))
   useEffect(() => {
     load()
     window.addEventListener('osa-routines', load)
@@ -214,13 +218,14 @@ function Triggers({ onClose }: { onClose: () => void }) {
     } catch (e: any) { toast(e.message, true) }
     setBusy(null)
   }
-  const manage = (botId: number) => { onClose(); window.dispatchEvent(new CustomEvent('osa-open-bot', { detail: { botId, tab: 'routines' } })) }
+  const manage = (botId: number) => { onClose(); window.dispatchEvent(new CustomEvent('osa-open-bot', { detail: { botId, tab: ev ? 'events' : 'routines' } })) }
   if (!list) return <div className="muted">{t('加载中…')}</div>
   const on = list.filter(r => r.enabled).length
   const groups = bots.map(b => ({ bot: b, items: list.filter(r => r.bot_id === b.id) })).filter(g => g.items.length)
   return (
     <div>
-      <p className="muted small">{list.length ? t('{n} 个定时任务，{on} 个开着。关掉的不会再按时运行，打开后从下一个时间点继续。', { n: list.length, on }) : ''}</p>
+      <p className="muted small">{!list.length ? '' : ev ? t('{n} 个事件，{on} 个开着。关掉的事件来了也不处理。', { n: list.length, on })
+        : t('{n} 个定时任务，{on} 个开着。关掉的不会再按时运行，打开后从下一个时间点继续。', { n: list.length, on })}</p>
       {groups.length ? groups.map(({ bot, items }) => (
         <div key={bot.id} className="rt-group">
           <div className="rt-group-head">
@@ -233,8 +238,9 @@ function Triggers({ onClose }: { onClose: () => void }) {
               <div key={r.id} className={'set-row rt-row' + (r.enabled ? '' : ' off')}>
                 <span>
                   <b>{r.name}</b>
-                  <span>{describe(r.trigger)}
-                    {r.enabled && r.next_run ? ' · ' + t('下次 {when}', { when: when(r.next_run) }) : r.trigger.kind === 'webhook' ? ` · POST /hooks/${r.name}` : ''}
+                  <span>{describe(r.trigger, r.describe)}
+                    {!ev && r.enabled && r.next_run ? ' · ' + t('下次 {when}', { when: when(r.next_run) }) : ''}
+                    {r.event?.error ? <> · <span className="run-failed">{t('出错：{error}', { error: r.event.error.slice(0, 60) })}</span></> : ''}
                     {r.running && ' · ' + t('运行中')}
                     {r.last_run && <> · <span className={'run-' + r.last_run.status}>{t('上次 {when} {status}', { when: when(r.last_run.ts), status: STATUS[r.last_run.status] || r.last_run.status })}</span></>}
                   </span>
@@ -247,7 +253,8 @@ function Triggers({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       )) : <div className="muted small">{t('暂无')}</div>}
-      <p className="muted small">{t('定时任务属于各个 Bot：在对话里说“每天 9 点帮我……”，或者在右栏 Bot 详情的“定时”里新建和管理。 webhook 类的地址是 POST /hooks/名字。')}</p>
+      <p className="muted small">{ev ? t('事件属于各个 Bot：在对话里说“这个网页有变化就告诉我”，或者在右栏 Bot 详情的“事件”里新建和管理。')
+        : t('定时任务属于各个 Bot：在对话里说“每天 9 点帮我……”，或者在右栏 Bot 详情的“定时”里新建和管理。')}</p>
     </div>
   )
 }

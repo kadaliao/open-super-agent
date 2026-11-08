@@ -10,7 +10,7 @@
 | `DEEPSEEK_API_KEY` | 否 | 默认配置用的 DeepSeek 的 key。也可以不设，在 设置 → 模型 里填 |
 | `OSA_PASSWORD` | 部署到公网时必需 | 登录密码，设置后要先登录才能用；不设置则不用登录，只适合本机或内网 |
 | `INSTABOX_API_KEY` | 否 | 设置后，电脑改用 Instabox 云主机 |
-| `OSA_WEBHOOK_TOKEN` | 否 | webhook 鉴权；没设置时只接受本机发来的请求 |
+| `OSA_WEBHOOK_TOKEN` | 否 | 旧版 webhook 地址 `/hooks/<名字>` 的鉴权；没设置时旧地址只接受本机发来的请求。新的事件地址自带密钥，不用它（见 [事件](events.md)） |
 | `OSA_ALLOWED_HOSTS` | 否 | 没设 `OSA_PASSWORD` 时，额外放行的访问地址，逗号分隔，和 `server.allowed_hosts` 一样（见 [登录](#登录)） |
 | `OSA_CONFIG` | 否 | 配置文件路径，默认 `config.yaml` |
 | `OSA_COOKIE` | 否 | 登录 cookie 的名字，默认 `osa_session`。同一台机器上跑两个服务时起不同的名字，免得互相把登录顶掉（cookie 不分端口） |
@@ -55,7 +55,7 @@ roles:
   router:   { provider: deepseek, model: deepseek-flash }   # 对话
   worker:   { provider: deepseek, model: deepseek-flash }   # 后台任务
   reviewer: { provider: deepseek, model: deepseek-flash }   # Heavy 模式里负责汇总
-  filter:   { provider: deepseek, model: deepseek-flash }   # 定时任务 webhook 事件的过滤、导入记忆
+  filter:   { provider: deepseek, model: deepseek-flash }   # 判断事件要不要处理、导入记忆
 ```
 
 API Key 先看保险库（界面上填的），没有再看 `api_key_env` 写的环境变量。在界面上删掉填的 key，就回到用环境变量。
@@ -222,29 +222,30 @@ mcp_servers:
 
 - **确认规则**（设置 → 确认规则）：按工具全名匹配，支持 `*`，如 `filesystem__*`。“先问我”优先于“自动允许”；都不命中时按应用的 `confirm` 策略。确认卡片上点“总是允许”会自动加一条规则。
   对话里画图（`generate_image`）默认每次都问，卡片上写着描述、模型和价格；点“总是允许”以后就不问了。
-- **过期**：只有定时 / webhook 触发的后台任务，卡片在 `approval_timeout_s` 后按拒绝处理；对话里的任务一直等。
+- **过期**：只有定时任务和事件触发的后台任务，卡片在 `approval_timeout_s` 后按拒绝处理；对话里的任务一直等。
 - **保险库**（设置 → 保险库）：Fernet 加密存在 SQLite。主密钥取 `OSA_VAULT_KEY`，没设置时自动生成 `data/vault.key`（权限 600）。换主密钥后旧密钥解不开，需要重新录入。
 
-## 定时任务
+## 定时任务和事件
 
-定时任务属于各个 Bot，在右栏“定时”里管理，或在对话里说“每天 9 点帮我……”；查看、修改、暂停、删除也都能在对话里说。触发后直接派一个后台任务，结果发到 Bot 的对话里。
+定时任务属于各个 Bot，在右栏“定时”里管理，或在对话里说“每天 9 点帮我……”“明天下午 3 点提醒我……”；查看、修改、暂停、删除也都能在对话里说。
+触发后直接派一个后台任务，结果发到 Bot 的对话里。
 
+- **某个时间点一次**：提醒用，跑过就不再跑。
 - **每天 / 每周几**：一个或多个 `HH:MM`，可选周几（不选就是每天）。
+- **每月几号**：一个或多个日子和时间，这个月没有的日子（31 号）在月底那天跑。
 - **每隔一段时间**：至少 5 分钟。
-- **Webhook**：外部系统 POST 到 `/hooks/<名字>`。可以设关键词（至少包含一个 / 包含就忽略），以及一句话规则让 `filter` 角色的模型判断要不要处理。
 
-每个 Bot 最多 50 个，每个保留最近 20 次运行记录；上一次还没跑完时这一次跳过。服务停着时错过的定时只补跑一次。
+某件事发生时才跑的（收到 webhook、订阅源有新文章、网页变了、收到邮件、价格到了线……）是**事件**，在右栏“事件”里，见 [事件](events.md)。
+以前的“webhook 定时任务”升级后自动变成事件，旧地址照旧能用。
 
-**没有新内容就不打扰**：到点运行和 webhook 触发时，Bot 判断这次没有值得告诉你的新东西（没有新邮件、和上次一样、事件不需要处理），
+定时任务和事件每个 Bot 合计最多 50 个，每个保留最近 20 次运行记录；定时任务上一次还没跑完时这一次跳过（事件是排队）。服务停着时错过的定时只补跑一次。
+
+**没有新内容就不打扰**：到点运行和事件触发时，Bot 判断这次没有值得告诉你的新东西（没有新邮件、和上次一样、事件不需要处理），
 结果只写 `[无新内容]`。这时不发结果、不推送、不发到聊天软件，对话里也不显示这个任务，只在运行记录里记一笔“没有新内容”。
 按时间触发的还会带上上次有内容的那次结果（最多 2000 字）给 Bot 对比，已经告诉过你的不再重复。
 这两段只给后台任务看，不显示在任务卡片上。点“测试”时照常发出结果，也不和上次比。
 旧版 `config.yaml` 里的 `triggers` 会在首次启动时导入成主 Bot 的定时任务，之后改配置文件不再生效。
 
-```bash
-curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
-  -H "X-OSA-Token: $OSA_WEBHOOK_TOKEN" -d '{"issue":{"title":"Bug: ..."}}'
-```
 
 ## 手机、语音与推送
 
@@ -341,12 +342,12 @@ uv run python -m osa.backup restore ~/backups/osa-backup-20261106-0835.osabak
 
 设置环境变量 `OSA_PASSWORD` 后，打开页面会先要求输入密码。登录保持 30 天，期间用着会自动续期；设置 → 右上角“退出登录”。
 
-- 不用登录就能访问的只有：登录页、分享链接（页面 `/s/<token>`、技能 `/skill/<token>`、Bot 模板 `/template/<token>`）、webhook（`/hooks/*`，用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
+- 不用登录就能访问的只有：登录页、分享链接（页面 `/s/<token>`、技能 `/skill/<token>`、Bot 模板 `/template/<token>`）、webhook（`/hooks/*`：事件的地址自带随机密钥，旧版地址用 `OSA_WEBHOOK_TOKEN` 鉴权）、前端的静态文件。
 - 同一个 IP 10 分钟内输错 5 次，之后 10 分钟内不能再登录。
 - 桌面 App 自动登录用一次性的票：`POST /login/ticket` 带上 `Authorization: Bearer <密码>`，换一张 30 秒内有效、只能用一次的票，再打开 `/login/ticket?t=<票>&next=/` 就登录了。输错和登录页一起限速。
 - 手机 App 扫码登录也用这种票：已经登录的页面 `POST /api/pair` 换一张 5 分钟内有效、只能用一次的票，放进 设置 → 手机 App 的二维码里。
 - 不管开没开登录，别的网站发来的 WebSocket 和写请求（包括 webhook）都会被拒绝：浏览器会带上那个网站的地址（Origin），所以你在浏览器里打开的网页没法替你给 Bot 发消息、点确认。curl、脚本和 webhook 服务发来的请求不带这个，不受影响。
-- **没设密码时，只接受用这些地址访问**：`localhost`、IP 地址（`127.0.0.1`、`192.168.x.x`、Tailscale 的 `100.x.x.x`）、`*.local`、`*.ts.net`。用别的名字访问（比如局域网里的机器名、自己的域名）会看到“没有放行这个地址”，在 `config.yaml` 的 `server.allowed_hosts` 里加上它（支持 `*.example.com`），或者用环境变量 `OSA_ALLOWED_HOSTS`；更好的办法是设 `OSA_PASSWORD`，设了密码就不检查这一项。这一条是为了防 DNS rebinding：别人把自己的域名解析到 127.0.0.1，你一打开他的网页，他就能借你的浏览器读写本机的服务。设了 `OSA_WEBHOOK_TOKEN` 时，webhook 不受这一条限制。
+- **没设密码时，只接受用这些地址访问**：`localhost`、IP 地址（`127.0.0.1`、`192.168.x.x`、Tailscale 的 `100.x.x.x`）、`*.local`、`*.ts.net`。用别的名字访问（比如局域网里的机器名、自己的域名）会看到“没有放行这个地址”，在 `config.yaml` 的 `server.allowed_hosts` 里加上它（支持 `*.example.com`），或者用环境变量 `OSA_ALLOWED_HOSTS`；更好的办法是设 `OSA_PASSWORD`，设了密码就不检查这一项。这一条是为了防 DNS rebinding：别人把自己的域名解析到 127.0.0.1，你一打开他的网页，他就能借你的浏览器读写本机的服务。事件自己的地址（`/hooks/<随机密钥>`）和设了 `OSA_WEBHOOK_TOKEN` 时的旧地址不受这一条限制。
 - 会话签名用的密钥在 `data/session.key`（权限 600）。改密码或删掉这个文件，所有设备都要重新登录。
 - 放在反向代理（Caddy、nginx）后面时，启动 uvicorn 要加 `--proxy-headers --forwarded-allow-ips 127.0.0.1`，
   这样限速按真实 IP 计算，cookie 也会带上 `Secure`。

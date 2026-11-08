@@ -135,7 +135,7 @@ async def test_primary_bot_manages_every_bots_routines(events, make_bot):
 
     every = await routines.tool_list(me, {})
     assert every.index("「Chief（你）」的定时任务") < every.index("「Scout」的定时任务")   # 自己的在前
-    assert f"#{r1['id']}" in every and f"#{r2['id']}" in every and "没有定时任务的 Bot：" in every and "Idle" in every
+    assert f"#{r1['id']}" in every and f"#{r2['id']}" in every and "没有定时任务和事件的 Bot：" in every and "Idle" in every
     only = await routines.tool_list(me, {"bot": "scout"})
     assert f"#{r1['id']}" in only and f"#{mine['id']}" not in only
     assert "Idle还没有定时任务" in await routines.tool_list(me, {"bot": "Idle"})
@@ -171,7 +171,7 @@ async def test_router_has_routine_tools_worker_does_not(llm, events, make_bot):
     body = llm.bodies("router", "Timer")[-1]
     mine = {"create_routine", "list_routines", "update_routine", "delete_routine"}
     assert mine <= {t["function"]["name"] for t in body["tools"]}
-    assert f"#{r['id']} 周报" in body["messages"][0]["content"]          # 提示词里的列表带编号，能直接用
+    assert f"#{r['id']} 定时任务「周报」" in body["messages"][0]["content"]          # 提示词里的列表带编号，能直接用
     worker = {s["function"]["name"] for s in registry.schemas(registry.WORKER, {"scope": registry.WORKER, "pages": True})}
     assert not mine & worker                                              # 定时任务跑在 Worker 里，不让它自己改
     bots.delete(a["id"])

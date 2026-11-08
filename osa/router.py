@@ -39,9 +39,10 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
   没有画图模型时照实告诉用户去设置里添加，不要假装画了，也不要派任务去画。
 - 网页界面会把链接自动展开成播放器、推文卡片或网页卡片：用户发来的链接已经展开在消息下面，直接回应用户想做什么；
   你要给用户看视频、推文、网页，直接贴原链接。不要为此派任务去截图、下载封面或自己做卡片。
-- 用户要求定期 / 每天 / 每隔一段时间做某事，或收到外部事件时做某事，用 create_routine 建定时任务；
-  建好后告诉用户什么时候运行，以后要改、暂停或删掉直接跟你说就行。
-  用户要看、改、暂停 / 恢复、删除定时任务时用 list_routines、update_routine、delete_routine（按 # 编号，你自己的见下面“你的定时任务”）；
+- 用户要求在某个时间点（提醒）、每天 / 每周 / 每月、每隔一段时间做某事，用 create_routine 建定时任务；
+  要求某件事发生时做某事（收到 webhook、GitHub 有新 issue、订阅源有新文章、网页变了、收到邮件、价格到了、明天要下雨……），
+  用 create_event 建事件。建好后告诉用户什么时候运行 / 盯着什么，以后要改、暂停或删掉直接跟你说就行。
+  用户要看、改、暂停 / 恢复、删除时用 list_routines、update_routine、delete_routine（按 # 编号，你自己的见下面“你的定时任务和事件”）；
   改要求前先用 list_routines 看原文。只是先不跑就暂停，用户明确要删才删。
 - 用户问进度用 list_tasks；要取消用 cancel_task；需要早先对话原文用 recall。
 - 用户提到以前说过的事、以前做过的报告或页面，而提示词里没有时，用 search_memory 按意思查记忆和资料库；要看页面全文用 read_page。
@@ -74,7 +75,7 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 你的技能（用户用 /名字 调用）：
 {skills}
 
-你的定时任务：
+你的定时任务和事件：
 {routines}
 
 你的长期记忆（每次对话都带着，按这些偏好做事；#后面是编号）：
@@ -130,9 +131,9 @@ PRIMARY_RULE = """- 你是主 Bot，负责管理所有 Bot（包括你自己）�
   · 修改：update_bot，只填要改的（名字、职责、头像、技能、要删的技能）。改职责前先用 get_bot 看原文，
     instructions 写改完的全文：只改用户要改的地方，其余一字不差照抄，不要顺手精简或重写。
     记忆是各个 Bot 自己的，update_bot 改不了。
-  · 定时任务：所有 Bot 的你都直接管，不用私信它们，也不弹卡片。list_routines 不填 bot 看所有 Bot 的（带 # 编号），
+  · 定时任务和事件：所有 Bot 的你都直接管，不用私信它们，也不弹卡片。list_routines 不填 bot 看所有 Bot 的（带 # 编号），
     update_routine、delete_routine 按编号改、删谁的都行（“全部暂停”这类同样的改动用 ids 一次改完），
-    create_routine 填 bot 给别的 Bot 建：它以自己的身份、用自己的技能跑，要求按它的职责写。
+    create_routine、create_event 填 bot 给别的 Bot 建：它以自己的身份、用自己的技能跑，要求按它的职责写。
   · 删除：delete_bot，只在用户明确要删时用，reason 写清楚为什么。别的 Bot 请你删时，卡片上会写是它请求的，用户决定。
   · 新建、修改、删除每次都会弹卡片请用户确认，工具马上返回；有了结果你会接着说一轮，答应过的后续到时再做。
     不要让用户自己去设置里做。
@@ -140,7 +141,7 @@ PRIMARY_RULE = """- 你是主 Bot，负责管理所有 Bot（包括你自己）�
 OTHER_RULE = ("- 管理 Bot 的事归主 Bot「{primary}」：用户要新建、删除 Bot，或者要改别的 Bot，或者你觉得该有个专门的 Bot 时，"
               "用 message_bot 私信它（它就在这个群里的话用 handoff），把要做什么写完整，由它请用户确认后去做。"
               "改你自己（名字、职责、头像、技能）用 update_bot，同样会弹卡片请用户确认。不要让用户自己去设置里做。"
-              "定时任务你只能管自己的，要动别的 Bot 的也找主 Bot（它直接改，不用确认）。\n")
+              "定时任务和事件你只能管自己的，要动别的 Bot 的也找主 Bot（它直接改，不用确认）。\n")
 
 REPLY_TURN = """
 
@@ -700,8 +701,8 @@ class Router:
         return task
 
     def _routine_list(self) -> str:
-        return "\n".join(f"- #{r['id']} {r['name']}（{routines.describe(r['trigger'], in_lang='zh')}{'' if r['enabled'] else '，已暂停'}）"
-                         for r in routines.list_for(self.bot_id)) or "暂无"
+        return "\n".join(f"- #{r['id']} {routines.noun(r)}「{r['name']}」（{routines.describe(r['trigger'], in_lang='zh')}"
+                         f"{'' if r['enabled'] else '，已暂停'}）" for r in routines.list_for(self.bot_id)) or "暂无"
 
     def _task_list(self) -> str:
         return "\n".join(f"#{t.id} [{'等待确认' if t.waiting_approval else t.status}] {t.mode} 步数={t.steps} {t.goal[:50]}"

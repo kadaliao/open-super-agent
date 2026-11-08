@@ -16,11 +16,15 @@ const DAYS = [tc('weekday', '一'), tc('weekday', '二'), tc('weekday', '三'), 
 const LIST = lang === 'en' ? ', ' : '、'   // 列举用的分隔符
 export const STATUS: Record<string, string> = {
   running: t('运行中'), done: t('完成'), failed: t('失败'), cancelled: t('已取消'), skipped: t('跳过'), filtered: t('被过滤'),
-  quiet: t('没有新内容'),
+  quiet: t('没有新内容'), ignored: t('不处理'),
 }
-const SOURCE: Record<string, string> = { schedule: tc('source', '定时'), webhook: 'webhook', test: t('测试') }
+export const SOURCE: Record<string, string> = { schedule: tc('source', '定时'), webhook: t('收到推送'), event: tc('source', '事件'), test: t('测试') }
 
-export function describe(tr: Trigger) {
+// 触发方式的一句话。事件的说明（来源 + 盯着什么）由服务端写好，放在 text 里
+export function describe(tr: Trigger, text?: string) {
+  if (tr.kind === 'event') return text || t('事件')
+  if (tr.kind === 'once') return t('{at} 一次', { at: tr.at })
+  if (tr.kind === 'monthly') return t('每月 {days} 号 {times}', { days: tr.month_days.join(LIST), times: tr.times.join(LIST) })
   if (tr.kind === 'every') {
     const h = tr.minutes / 60
     return tr.minutes % 60 ? t('每 {n} 分钟', { n: tr.minutes }) : h === 1 ? t('每 1 小时') : t('每 {n} 小时', { n: h })
@@ -33,7 +37,7 @@ export function describe(tr: Trigger) {
     if (wd === '6,7') return t('每周六、日 {times}', { times })
     return t('每周{days} {times}', { days: tr.days.map(x => DAYS[x - 1]).join(LIST), times })
   }
-  return t('收到 webhook 时')
+  return ''
 }
 
 // ---------- 技能 ----------
@@ -240,7 +244,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   const [edit, setEdit] = useState<Partial<Routine> | null>(null)
   const [open, setOpen] = useState<number | null>(null)
   const [err, setErr] = useState('')
-  const load = () => api(`/api/bots/${bot.id}/routines`).then(setList)
+  const load = () => api<Routine[]>(`/api/bots/${bot.id}/routines`).then(rs => setList(rs.filter(r => r.category !== 'event')))
   useEffect(() => {
     load()
     const h = (e: Event) => { const id = (e as CustomEvent).detail; if (id == null || id === bot.id) load() }
@@ -255,7 +259,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   return (
     <div>
       <div className="section-head"><h4>{t('定时任务')}</h4><button className="btn" onClick={() => setEdit({})}>＋ {t('新建')}</button></div>
-      <p className="muted small">{t('到点或收到 webhook 时，{name} 会在后台做一次，结果发到对话里。也可以直接在对话里说“每天 9 点帮我……”。', { name: bot.name })}</p>
+      <p className="muted small">{t('到点时，{name} 会在后台做一次，结果发到对话里。也可以直接在对话里说“每天 9 点帮我……”“明天下午 3 点提醒我……”。某件事发生时才做的，放在“事件”里。', { name: bot.name })}</p>
       {err && <div className="error-line">{err}</div>}
       {!list ? <div className="muted">{t('加载中…')}</div> : list.length ? list.map(r => (
         <div key={r.id} className={'routine' + (r.enabled ? '' : ' off')}>
@@ -265,7 +269,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
           </div>
           <div className="muted small">
             {r.skill && <>{t('技能 /{name}', { name: r.skill })} · </>}
-            {r.enabled && r.next_run ? t('下次 {when}', { when: when(r.next_run) }) : r.trigger.kind === 'webhook' ? `POST /hooks/${r.name}` : ''}
+            {r.enabled && r.next_run ? t('下次 {when}', { when: when(r.next_run) }) : r.trigger.kind === 'once' && !r.next_run ? t('已经跑过') : ''}
             {r.last_run && <> · {t('上次 {when} {status}', { when: when(r.last_run.ts), status: STATUS[r.last_run.status] || r.last_run.status })}</>}
           </div>
           <div className="app-actions">
@@ -281,7 +285,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   )
 }
 
-function Runs({ id }: { id: number }) {
+export function Runs({ id }: { id: number }) {
   const [runs, setRuns] = useState<RoutineRun[] | null>(null)
   useEffect(() => {
     const load = () => api(`/api/routines/${id}/runs`).then(setRuns)
@@ -304,6 +308,14 @@ function Runs({ id }: { id: number }) {
   )
 }
 
+// 明天这个时候（“某个时间点一次”默认值），格式和 <input type="datetime-local"> 一样
+const tomorrow = () => {
+  const d = new Date(Date.now() + 86400_000), p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T09:00`
+}
+
+type ScheduleKind = 'once' | 'daily' | 'monthly' | 'every'
+
 function RoutineEditor({ bot, routine, onDone }: { bot: Bot; routine: Partial<Routine>; onDone: () => void }) {
   const skills = useStore(s => s.skills[bot.id])
   useEffect(() => { if (!skills) loadSkills(bot.id) }, [bot.id])
@@ -311,19 +323,19 @@ function RoutineEditor({ bot, routine, onDone }: { bot: Bot; routine: Partial<Ro
   const [name, setName] = useState(routine.name || '')
   const [prompt, setPrompt] = useState(routine.prompt || '')
   const [skill, setSkill] = useState(routine.skill || '')
-  const [kind, setKind] = useState<Trigger['kind']>(t0.kind)
+  const [kind, setKind] = useState<ScheduleKind>(t0.kind)
+  const [at, setAt] = useState(t0.at ? t0.at.replace(' ', 'T') : tomorrow())
   const [times, setTimes] = useState((t0.times || ['09:00']).join(', '))
   const [days, setDays] = useState<number[]>(t0.days || [])
+  const [mdays, setMdays] = useState((t0.month_days || [1]).join(', '))
   const [minutes, setMinutes] = useState(String(t0.minutes || 60))
-  const [include, setInclude] = useState((t0.include || []).join(', '))
-  const [exclude, setExclude] = useState((t0.exclude || []).join(', '))
-  const [filter, setFilter] = useState(t0.llm_filter || '')
   const [err, setErr] = useState('')
   const split = (s: string) => s.split(/[,，\s]+/).filter(Boolean)
   const save = async () => {
-    const trigger = kind === 'daily' ? { kind, times: split(times), days }
-      : kind === 'every' ? { kind, minutes: Number(minutes) }
-      : { kind, include: split(include), exclude: split(exclude), llm_filter: filter }
+    const trigger = kind === 'once' ? { kind, at: at.replace('T', ' ') }
+      : kind === 'daily' ? { kind, times: split(times), days }
+      : kind === 'monthly' ? { kind, times: split(times), month_days: split(mdays).map(Number) }
+      : { kind, minutes: Number(minutes) }
     try {
       const data = { name, prompt, skill, trigger }
       if (routine.id) await api(`/api/routines/${routine.id}`, { method: 'PUT', body: data })
@@ -338,7 +350,7 @@ function RoutineEditor({ bot, routine, onDone }: { bot: Bot; routine: Partial<Ro
   return (
     <div>
       <h4>{routine.id ? t('编辑定时任务') : t('新建定时任务')}</h4>
-      <label className="field">{t('名字')}<input value={name} maxLength={40} placeholder={kind === 'webhook' ? t('会出现在网址里，例如 github') : t('例如：早报')} onChange={e => setName(e.target.value)} /></label>
+      <label className="field">{t('名字')}<input value={name} maxLength={40} placeholder={t('例如：早报')} onChange={e => setName(e.target.value)} /></label>
       <label className="field">{t('每次做什么')}<textarea rows={4} value={prompt} placeholder={t('例如：整理今天 AI 领域的 5 条新闻，附链接')} onChange={e => setPrompt(e.target.value)} /></label>
       <label className="field">{t('按技能做（可选）')}
         <select value={skill} onChange={e => setSkill(e.target.value)}>
@@ -347,12 +359,18 @@ function RoutineEditor({ bot, routine, onDone }: { bot: Bot; routine: Partial<Ro
         </select>
       </label>
       <label className="field">{t('什么时候')}
-        <select value={kind} onChange={e => setKind(e.target.value as Trigger['kind'])}>
+        <select value={kind} onChange={e => setKind(e.target.value as ScheduleKind)}>
+          <option value="once">{t('某个时间点一次（提醒）')}</option>
           <option value="daily">{t('每天 / 每周固定时间')}</option>
+          <option value="monthly">{t('每月几号')}</option>
           <option value="every">{t('每隔一段时间')}</option>
-          <option value="webhook">{t('收到 webhook 时')}</option>
         </select>
       </label>
+      {kind === 'once' && <label className="field">{t('时间')}<input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} /></label>}
+      {kind === 'monthly' && <>
+        <label className="field">{t('每月几号（多个用逗号分开，这个月没有的在月底跑）')}<input value={mdays} placeholder="1, 15" onChange={e => setMdays(e.target.value)} /></label>
+        <label className="field">{t('时间（多个用逗号分开）')}<input value={times} placeholder="09:00" onChange={e => setTimes(e.target.value)} /></label>
+      </>}
       {kind === 'daily' && <>
         <label className="field">{t('时间（多个用逗号分开）')}<input value={times} placeholder="09:00, 18:00" onChange={e => setTimes(e.target.value)} /></label>
         <div className="day-row">
@@ -364,12 +382,6 @@ function RoutineEditor({ bot, routine, onDone }: { bot: Bot; routine: Partial<Ro
         </div>
       </>}
       {kind === 'every' && <label className="field">{t('间隔（分钟，至少 5）')}<input type="number" min={5} value={minutes} onChange={e => setMinutes(e.target.value)} /></label>}
-      {kind === 'webhook' && <>
-        <p className="muted small">{t('地址：POST /hooks/{name}。设置了 OSA_WEBHOOK_TOKEN 时请求头 X-OSA-Token 要一致，否则只接受本机请求。', { name: name || tc('url', '名字') })}</p>
-        <label className="field">{t('至少包含其中一个词（可选）')}<input value={include} placeholder="issue, bug" onChange={e => setInclude(e.target.value)} /></label>
-        <label className="field">{t('包含就忽略（可选）')}<input value={exclude} placeholder="dependabot" onChange={e => setExclude(e.target.value)} /></label>
-        <label className="field">{t('让模型判断要不要处理（可选）')}<textarea rows={2} value={filter} placeholder={t('只有报告 bug 的才处理')} onChange={e => setFilter(e.target.value)} /></label>
-      </>}
       {err && <div className="error-line">{err}</div>}
       <div className="row-actions">
         <button className="btn primary" onClick={save}>{t('保存')}</button>

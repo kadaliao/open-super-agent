@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
-from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
+from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, events, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
 from . import mcpapps, observe, outputs, plugins, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from .computer import link
 from .computer.base import HOSTS
@@ -1130,18 +1130,35 @@ async def pin_file(data: dict = Body(...)):
     return {"ok": True, "pins": library.pins()}
 
 
-# ---------- 定时任务 ----------
+# ---------- 定时任务和事件 ----------
 def _routine_or_404(rid: int) -> dict:
     r = routines.get(rid)
     if not r:
-        raise HTTPException(404, i18n.t("没有这个定时任务"))
+        raise HTTPException(404, i18n.t("没有这个定时任务或事件"))
     return r
 
 
 @app.get("/api/routines")
 async def all_routines():
-    """所有 Bot 的定时任务（设置里的一览，能在那里开关）。"""
+    """所有 Bot 的定时任务和事件（设置里的一览，能在那里开关）。"""
     return routines.list_for()
+
+
+@app.get("/api/event-sources")
+async def event_sources():
+    """“新建事件”里能选的来源（内置的和插件提供的）、它们的参数和常见用法。"""
+    return events.catalog()
+
+
+def _remember_origin(request: Request):
+    """第一次建 webhook 类的事件时记下网页地址：Bot 在对话里告诉用户地址时要用完整的。"""
+    if not channels.public_url():
+        origin = request.headers.get("origin") or ""
+        if origin.startswith(("http://", "https://")) and "localhost" not in origin and "127.0.0.1" not in origin:
+            try:
+                channels.set_public_url(origin)
+            except ValueError:
+                pass
 
 
 @app.get("/api/bots/{bot_id}/routines")
@@ -1151,8 +1168,9 @@ async def list_routines(bot_id: int):
 
 
 @app.post("/api/bots/{bot_id}/routines")
-async def create_routine(bot_id: int, data: dict = Body(...)):
+async def create_routine(bot_id: int, request: Request, data: dict = Body(...)):
     _bot_or_404(bot_id)
+    _remember_origin(request)
     try:
         r = routines.save(bot_id, data)
     except (ValueError, TypeError) as e:
@@ -1175,17 +1193,31 @@ async def update_routine(rid: int, data: dict = Body(...)):
 @app.post("/api/routines/{rid}/{action}")
 async def routine_action(rid: int, action: str):
     r = _routine_or_404(rid)
+    note = ""
     if action in ("pause", "resume"):
         r = routines.set_enabled(rid, action == "resume")
     elif action == "test":
-        res = await routines.fire(r, "test", "（这是一次手动测试运行）" if r["trigger"]["kind"] == "webhook" else "")
-        if not res["accepted"]:
-            _err(ValueError(res["reason"]))
+        if routines.is_event(r):
+            # 要轮询的先真去看一次；没有新的就拿最近看到的一条（或示例）跑一遍
+            res = await events.test(r)
+            note = "" if res.get("accepted") else res.get("reason", "")
+            if res.get("queued"):
+                note = i18n.t("上一次还没跑完，排队了")
+        else:
+            res = await routines.fire(r, "test")
+            if not res["accepted"]:
+                _err(ValueError(res["reason"]))
         r = routines.get(rid)
+    elif action == "check" and routines.is_event(r):
+        res = await events.poll(r, now=True)
+        note = i18n.t("有新的，已经交给 Bot") if res.get("accepted") else res.get("reason", "")
+        r = routines.get(rid)
+    elif action == "rekey" and r["trigger"].get("key"):
+        r = routines.rekey(rid)
     else:
         raise HTTPException(404, i18n.t("未知操作"))
     await broadcast({"type": "routines_changed", "bot_id": r["bot_id"]})
-    return r
+    return r | ({"note": note} if note else {})
 
 
 @app.delete("/api/routines/{rid}")
@@ -1808,26 +1840,52 @@ async def status():
 
 
 # ---------- Webhook ----------
+async def _hook_body(request: Request) -> bytes:
+    if int(request.headers.get("content-length") or 0) > events.MAX_BODY:
+        raise HTTPException(413, i18n.t("内容太大"))
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > events.MAX_BODY:
+            raise HTTPException(413, i18n.t("内容太大"))
+    return body
+
+
 @app.post("/hooks/{name}")
 async def hook(name: str, request: Request):
-    """外部事件入口。设置了 OSA_WEBHOOK_TOKEN 时，请求头 X-OSA-Token 必须一致；没设置时只接受本机请求。"""
-    token = os.environ.get("OSA_WEBHOOK_TOKEN")
-    if token:
-        if request.headers.get("x-osa-token") != token:
-            raise HTTPException(401, i18n.t("token 不对"))
-    elif request.client.host not in ("127.0.0.1", "::1") or any(
-            h in request.headers for h in ("x-forwarded-for", "forwarded", "tailscale-user-login")):
-        # 经反向代理（如 tailscale serve）转发的请求来源也显示为本机，按外部请求处理
-        raise HTTPException(403, i18n.t("未设置 OSA_WEBHOOK_TOKEN 时只接受本机请求"))
-    r = routines.by_hook(name)
-    if not r or not r["enabled"]:
-        raise HTTPException(404, i18n.t("没有启用的 webhook 定时任务：{name}", name=name))
-    body = (await request.body()).decode(errors="replace")
+    """外部事件入口（不用登录）。
+    新地址 /hooks/<密钥>：每个事件自己的随机密钥，地址本身就是凭据。
+    旧地址 /hooks/<名字>（以前的 webhook 定时任务）：设置了 OSA_WEBHOOK_TOKEN 时请求头 X-OSA-Token 必须一致，没设置时只接受本机请求。"""
+    r = events.by_key(name) if len(name) >= 16 else None
+    if not r:
+        token = os.environ.get("OSA_WEBHOOK_TOKEN")
+        if token:
+            if request.headers.get("x-osa-token") != token:
+                raise HTTPException(401, i18n.t("token 不对"))
+        elif request.client.host not in ("127.0.0.1", "::1") or any(
+                h in request.headers for h in ("x-forwarded-for", "forwarded", "tailscale-user-login")):
+            # 经反向代理（如 tailscale serve）转发的请求来源也显示为本机，按外部请求处理
+            raise HTTPException(403, i18n.t("未设置 OSA_WEBHOOK_TOKEN 时只接受本机请求"))
+        r = events.by_path(name)
+    if not r:
+        raise HTTPException(404, i18n.t("没有这个事件地址"))
+    body = await _hook_body(request)
     try:
-        body = json.dumps(json.loads(body), ensure_ascii=False, indent=1)
-    except Exception:
-        pass
-    return await routines.fire(r, "webhook", body[:20000])
+        out = await events.on_push(r, dict(request.headers), body, dict(request.query_params))
+    except PermissionError as e:
+        raise HTTPException(401, str(e))
+    if "challenge" in out:
+        return out
+    await broadcast({"type": "routines_changed", "bot_id": r["bot_id"]})
+    return {"ok": True, **out}
+
+
+@app.get("/hooks/{name}")
+async def hook_check(name: str):
+    """有的服务填地址时先用 GET 试一下通不通。"""
+    if len(name) < 16 or not events.by_key(name):
+        raise HTTPException(404, i18n.t("没有这个事件地址"))
+    return {"ok": True}
 
 
 # ---------- 实时通道 ----------

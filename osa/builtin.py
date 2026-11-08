@@ -1,4 +1,5 @@
-"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、发文件、画图、定时任务；给插件用的 llm、messenger。
+"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、发文件、画图、定时任务和事件；给插件用的 llm、messenger；
+内置的事件来源（osa/sources/）。
 
 每个工具只在这里写一次，Router 和 Worker 都从注册表（registry.py）找；在哪些场合给模型用、要不要走确认规则，都在 Tool 上写明。
 电脑工具、Router 自己的几个、botadmin 还没迁过来（见 registry.py 开头）。
@@ -61,15 +62,17 @@ def load():
     ctx.tool(Tool("generate_image", images.GENERATE_IMAGE, _generate_image, where=frozenset({ROUTER})))
     ctx.tool(Tool("search_memory", search.SEARCH_TOOL, lambda c: search.tool(c.bot_id, c.args),
                   progress=lambda a: i18n.t("查记忆和资料库：{query}", query=str(a.get("query", ""))[:40])))
-    # 定时任务：只在对话里用（Worker 跑的就是定时任务，不让它自己改）。自己的随便管，主 Bot 管所有 Bot 的
+    # 定时任务和事件：只在对话里用（Worker 跑的就是它们，不让它自己改）。自己的随便管，主 Bot 管所有 Bot 的
     router = frozenset({ROUTER})
     ctx.tool(Tool("create_routine", routines.CREATE_ROUTINE, lambda c: routines.tool_create(c.bot, c.args), where=router))
+    ctx.tool(Tool("create_event", routines.CREATE_EVENT, lambda c: routines.tool_create_event(c.bot, c.args), where=router))
     ctx.tool(Tool("list_routines", routines.LIST_ROUTINES, lambda c: routines.tool_list(c.bot, c.args), where=router))
     ctx.tool(Tool("update_routine", routines.UPDATE_ROUTINE, lambda c: routines.tool_update(c.bot, c.args), where=router))
     ctx.tool(Tool("delete_routine", routines.DELETE_ROUTINE, lambda c: routines.tool_delete(c.bot, c.args), where=router))
     # 给插件用的服务（插件在 META 的 inject 里写要哪个），见 services.py
-    from . import services
+    from . import services, sources
     services.register(ctx)
+    sources.register(ctx)
 
 
 async def _sync(v):

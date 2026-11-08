@@ -11,6 +11,8 @@
   工具的实现不用知道有 WebSocket 这回事。
 - 服务：provide(name, value) 把一个对象按名字登记出去（内置的 llm、messenger，插件自己提供的），插件在 META 里 inject 要用的；
   依赖谁、谁先加载、提供者停了依赖它的先停，这些在 plugins.py。
+- 事件来源：source(Source(...)) 登记一种“某件事发生了”的来源（收到 webhook、订阅源有新文章、网页变了……），
+  用户在 Bot 的“事件”里选它、填参数，事件来了 Bot 在后台处理一次。调度、过滤、派任务在 events.py。
 - 插件不能改 Agent 的循环（调模型、调工具的那一圈）：只能注册工具、订阅事件（只读）、提供和使用服务。
   试过在调模型、调工具前后开钩子，去掉了：提示词缓存、defang、Router 要快这些约定插件都能悄悄破坏，出了问题很难查。
 
@@ -65,9 +67,54 @@ class Tool:
         return scope in self.where and (self.when is None or self.when(env))
 
 
+PUSH, POLL, INTERNAL = "push", "poll", "internal"
+
+
+@dataclass
+class Source:
+    """事件来源。事件是 dict：{"id": 去重用（可选）, "title": 一行标题, "text": 给 Bot 看的详情, "url": 链接（可选）}。
+
+    三种：
+    - push：外面发过来（POST /hooks/<密钥>）。parse(req, params) -> 事件列表，或者一句话（这次不处理的原因，比如 GitHub 的 ping）。
+      req = {"headers": 小写的请求头, "body": bytes, "json": 解析好的 JSON 或 None, "query": 网址参数}。
+    - poll：osa 每隔几分钟去看一次。async check(params, state) -> (事件列表, 新 state)。state 第一次是 None；
+      第一次看到的默认只记下现状、不报（fire_first=True 的来源除外，比如价格一开始就到了线）。state 要能存成 JSON。
+    - internal：osa 自己的事件（registry 里 fire / emit 的，比如 task_done）。on 写事件名，match(params, **事件参数) -> 事件列表。
+
+    fields 是给用户填的参数，网页按它画表单、服务端按它检查：
+      {"key", "label", "type": text / textarea / url / number / select / multi / bool / secret / list,
+       "required", "placeholder", "default", "options": [{"value", "label"}], "help", "min", "max"}
+    secret 类型存进保险库，参数里只留 "vault:名字"；list 是一行一个（或逗号分开）的文字列表。
+    文字（title、description、label、help、场景）写中文，英文写进 locales/en.json。
+    """
+    id: str
+    title: str
+    description: str
+    mode: str                                           # push | poll | internal
+    fields: list = field(default_factory=list)
+    category: str = "通用"                               # 网页上分组：开发、资讯、生活、金融、系统、通用
+    icon: str = ""                                      # 网页上的小图标（一个 emoji）
+    check: Callable | None = None                       # poll
+    parse: Callable | None = None                       # push
+    on: str = ""                                        # internal：订阅哪个事件
+    match: Callable | None = None                       # internal
+    every: int = 30                                     # poll：默认多少分钟看一次
+    min_every: int = 5                                  # poll：最短间隔
+    fire_first: bool = False                            # poll：第一次看到的也报
+    validate: Callable | None = None                    # (params) -> params：通用检查之后再做自己的检查，不对就 raise ValueError
+    summary: Callable | None = None                     # (params) -> 一句话说明这个事件盯着什么，比如“少数派的 RSS”
+    setup: str = ""                                     # push：怎么在对方那里填地址（{url} 换成这个事件的地址）
+    sample: dict | None = None                          # 点“测试”时用的示例事件
+    scenarios: list = field(default_factory=list)       # 常见用法：{"title", "description", "name", "params", "prompt", "include", "exclude", "llm_filter"}
+    available: Callable | None = None                   # () -> 不能用的原因，能用返回空
+    owner: str = "builtin"
+
+
 TOOLS: dict[str, Tool] = {}
 _LISTENERS: dict[str, list[Callable]] = {}
 SERVICES: dict[str, tuple[str, Any, str]] = {}   # 名字 -> (谁提供的, 对象, 一句话说明)
+SOURCES: dict[str, Source] = {}
+internal_hook: Callable | None = None            # events.py 设置：internal 来源的事件到了交给它
 
 
 class Context:
@@ -123,6 +170,29 @@ class Context:
             if SERVICES.get(name, (None,))[0] == self.name:
                 del SERVICES[name]
         return self.effect(undo)
+
+    def source(self, src: Source) -> Callable[[], None]:
+        """登记一种事件来源。和工具一样不覆盖别人的同名来源。停用时已经建好的事件还在，只是暂时不会触发。"""
+        if src.mode not in (PUSH, POLL, INTERNAL):
+            raise ValueError(f"事件来源 {src.id} 的 mode 只能是 push / poll / internal")
+        if (src.mode == POLL and not src.check) or (src.mode == PUSH and not src.parse) or \
+                (src.mode == INTERNAL and not (src.on and src.match)):
+            raise ValueError(f"事件来源 {src.id}：poll 要写 check，push 要写 parse，internal 要写 on 和 match")
+        src.owner = self.name
+        if (old := SOURCES.get(src.id)) and old.owner != self.name:
+            raise ValueError(f"事件来源 {src.id} 已经由 {old.owner} 登记了，换个名字")
+        SOURCES[src.id] = src
+
+        def undo():
+            if SOURCES.get(src.id) is src:
+                del SOURCES[src.id]
+        self.effect(undo)
+        if src.mode == INTERNAL:
+            def relay(**kw):
+                if internal_hook:
+                    return internal_hook(src.id, kw)
+            self.on(src.on, relay)
+        return undo
 
     def dispose(self):
         while self._disposers:

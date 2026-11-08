@@ -24,7 +24,7 @@ type BotRow = { bot_id: number; cost: number; tokens: number; calls: number; err
 type ModelRow = { provider: string; model: string; cost: number; tokens: number; output: number; cache_rate: number
   calls: number; errors: number; ttft: number | null; speed: number | null }
 type ToolRow = { name: string; calls: number; errors: number; rejected: number; avg_s: number | null }
-type RoutineRow = { id: number; bot_id: number; name: string; enabled: boolean; trigger: Trigger; next_run: number | null; running: boolean
+type RoutineRow = { id: number; bot_id: number; name: string; enabled: boolean; trigger: Trigger; describe?: string; category?: string; next_run: number | null; running: boolean
   last_run: RoutineRun | null; runs: number; done: number; failed: number; cancelled: number; interrupted: number; quiet: number; cost: number }
 type TaskRow = { id: number; ts: number; goal: string; status: string; elapsed: number | null; steps: number | null; quiet: boolean
   chat_id: number; bot_id: number | null; routine: string | null; cost: number; tokens: number }
@@ -405,7 +405,7 @@ function Routines({ s, name, onChange }: { s: Stats; name: (id: number | null) =
   }
   return (
     <section className="ob-card">
-      <div className="ob-card-head"><h4>{t('定时任务')}</h4><span className="muted small">{t('这段时间里跑了几次、结果怎样；开关和右栏“定时”里的一样')}</span></div>
+      <div className="ob-card-head"><h4>{t('定时任务和事件')}</h4><span className="muted small">{t('这段时间里跑了几次、结果怎样；开关和右栏“定时”“事件”里的一样')}</span></div>
       {err && <div className="error-line">{err}</div>}
       <div className="ob-scroll">
         <table className="ob-table">
@@ -413,9 +413,9 @@ function Routines({ s, name, onChange }: { s: Stats; name: (id: number | null) =
           <tbody>
             {s.routines.map(r => (
               <tr key={r.id} className={r.enabled ? '' : 'off'}>
-                <td><span className="ob-name"><b>{r.name}</b><span className="muted small">{name(r.bot_id)} · {describe(r.trigger)}</span></span>
-                  <span className="muted small">{r.enabled && r.next_run ? t('下次 {when}', { when: when(r.next_run) }) : !r.enabled ? t('已暂停') : ''}
-                    {r.last_run && <>{r.enabled && r.next_run ? ' · ' : ''}<span className={'run-' + r.last_run.status}>{t('上次 {when} {status}', { when: when(r.last_run.ts), status: STATUS[r.last_run.status] || r.last_run.status })}</span></>}</span></td>
+                <td><span className="ob-name"><b>{r.category === 'event' && <span className="tag ev-tag">{t('事件')}</span>}{r.name}</b><span className="muted small">{name(r.bot_id)} · {describe(r.trigger, r.describe)}</span></span>
+                  <span className="muted small">{r.enabled && r.next_run && r.category !== 'event' ? t('下次 {when}', { when: when(r.next_run) }) : !r.enabled ? t('已暂停') : ''}
+                    {r.last_run && <>{r.enabled && r.next_run && r.category !== 'event' ? ' · ' : ''}<span className={'run-' + r.last_run.status}>{t('上次 {when} {status}', { when: when(r.last_run.ts), status: STATUS[r.last_run.status] || r.last_run.status })}</span></>}</span></td>
                 <td>{r.runs || '—'}</td>
                 <td>{r.done - r.quiet || '—'}</td>
                 <td className={r.failed + r.interrupted ? 'bad' : ''}>{r.failed + r.interrupted || '—'}</td>

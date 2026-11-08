@@ -71,12 +71,18 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - **Drawing**: say "draw a ...", and the Bot first shows a card with the prompt, model and price; once you allow it, the image arrives in seconds. Download it or use it as an avatar.
 - **Link cards**: links in chat expand. YouTube and Bilibili play inline when clicked, posts on X show as embeds, and other pages show a title, summary and image.
 
-## Routines
+## Routines and events
 
-- Each Bot has its own routines: daily / on weekdays at a set time, every N minutes, or on a webhook.
-- Pause, resume and test them; the last 20 runs are kept. Settings → Routines lists every Bot's routines with an on/off switch for each.
-- Create one by saying "every day at 9, ...". You can also just ask "what routines do I have", "move the brief to 8:30 on weekdays", "pause the github one" or "delete it", including from a chat app. The main Bot manages every Bot's routines ("pause all routines"); other Bots manage only their own.
-- Webhook events go through keyword filters, then a cheap model decides whether to act.
+- Each Bot has its own routines: once at a set time (reminders), daily / on weekdays, on days of the month, or every N minutes.
+- **Events** run when something happens instead of at a time. Sources: an incoming webhook, GitHub webhooks, a new post in a feed,
+  a web page changing (or a word appearing / disappearing), a site going down, a GitHub repo getting a release or a new issue (no webhook needed),
+  new email, a calendar event about to start, rain or a cold snap tomorrow, a stock / crypto / FX price crossing a line, new files in a folder,
+  a background task failing — and plugins can add more (free Epic games, earthquakes, public IP changes). Pick a ready-made use case and the form fills itself in.
+  See [Events](events.md) (Chinese).
+- Each event has its own webhook address, and the address is the secret, so GitHub, forms and monitoring tools can call it directly.
+  Events go through keyword filters, then a cheap model decides whether to act; several at once are handled in one run, and ones that arrive mid-run are queued, not dropped.
+- Pause, resume and test them; the last 20 runs are kept. Settings → Automation lists every Bot's routines and events with an on/off switch for each.
+- Create one by saying "every day at 9, ..." or "tell me when this page changes". You can also just ask "what routines do I have", "move the brief to 8:30 on weekdays", "pause the github one" or "delete it", including from a chat app. The main Bot manages every Bot's routines and events ("pause all routines"); other Bots manage only their own.
 
 ## Safety and cost
 

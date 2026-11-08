@@ -10,7 +10,7 @@
    │ Router：每个 Bot 一个（router.py）              │                                  │
    │  · 和用户对话、派发任务、看屏幕、做简单电脑操作      │  Worker：ReAct 循环（worker.py）   │
    │  · 工具：dispatch / cancel_task / recall /      │  Watchdog：巡检（watchdog.py）     │
-   │    remember / forget / save_page /              │  Routines：定时与 webhook          │
+   │    remember / forget / save_page /              │  Routines：定时与事件              │
    │    look_at_screen / browser_* / computer_*      │                                  │
    └──────────────────────────────────────────────┴────────────────────────────────┘
               │                     │                          │
@@ -78,7 +78,9 @@ osa/
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明；导出成文件、分享链接、从文件或链接导入
   templates.py     Bot 模板：检查、内置模板（templates/*.yaml）、从 Bot 导出、分享、安装
   search.py        按意思检索记忆和页面：中文两字一组的 FTS5、可选的 embedding、排名融合、search_memory 工具
-  routines.py      定时任务：触发方式、调度、webhook 过滤、运行记录、旧 triggers 导入
+  routines.py      定时任务和事件的共用部分：触发方式、调度、运行记录、Bot 管它们的工具、旧 triggers 导入
+  events.py        事件：来源目录、参数检查、webhook 地址、轮询、过滤、排队（见 docs/events.md）
+  sources/         内置的事件来源（webhook、GitHub、订阅源、网页、邮件、日程、天气、行情……）
   watchdog.py      任务巡检
   config.py        读取 config.yaml，按角色创建模型客户端
   computer/
@@ -147,7 +149,7 @@ web/src/
 - 给 Router 的“（系统通知：……）”只是普通文字。别的 Bot 的发言、私信和回信、交接备注、任务结果都可能带着网页、邮件里的原文，
   所以 `memory.context` 组装上下文时用 `memory.defang` 把里面的“系统通知”“系统附上的当前状态”“系统附图”改成“转述的‘……’”，系统自己写的前缀不动。
   用户自己说的话不改。新加一种来自别处的消息进上下文时，记得也过一遍 `defang`。
-- webhook 的正文进任务目标时（`routines.goal_for`）包在 `<<<事件原文开始>>>` 和 `<<<事件原文结束>>>` 之间，注明是数据不是指令，正文里冒充的边界先去掉。
+- 事件的原文（webhook、网页、邮件）进任务目标时（`routines.goal_for`）包在 `<<<事件原文开始>>>` 和 `<<<事件原文结束>>>` 之间，注明是数据不是指令，正文里冒充的边界先去掉。
 
 ### 电脑
 - **所有 Bot 共用一台电脑，几个任务可以同时用。** 任务第一次用浏览器时占一个位置（`Computer.claim`，最多 `computer.parallel` 个，多了排队），

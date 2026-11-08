@@ -271,7 +271,7 @@ async def test_delete_after_approval(llm, events, boss, make_bot):
     c = await until(lambda: card("delete_bot"), what="确认卡片")
     d = __import__("json").loads(c["args"])
     assert c["once"] and d["Bot"] == "Gone9" and d["原因"] == "用户说不用了"
-    assert d["会删掉"] == {"消息": 0, "技能": 1, "定时任务": 1, "记忆": 1} and d["群聊"] == ["三人组"] and d["在做的任务"] == 0
+    assert d["会删掉"] == {"消息": 0, "技能": 1, "定时任务和事件": 1, "记忆": 1} and d["群聊"] == ["三人组"] and d["在做的任务"] == 0
     assert bots.get(w["id"])
 
     approvals.resolve(c["id"], True)

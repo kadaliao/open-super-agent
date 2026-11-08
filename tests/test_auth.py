@@ -94,6 +94,9 @@ async def test_allowed_hosts(no_password, monkeypatch):
 
 async def test_webhook_with_token_works_from_any_address(no_password, monkeypatch):
     assert await outcome(method="POST", path="/hooks/github", host="hooks.example.org") == 403
+    # 事件自己的地址（随机密钥）不用 token 也能从外面调：不知道密钥凑不出这个地址
+    assert await outcome(method="POST", path="/hooks/QmcLDBjvjgeasnvh3GYWVF_w", host="hooks.example.org") == 200
+    assert await outcome(method="POST", path="/hooks/QmcLDBjvjgeasnvh3GYWVF_w", origin="https://evil.example") == 403
     monkeypatch.setenv("OSA_WEBHOOK_TOKEN", "t")                                         # token 由接口自己检查
     assert await outcome(method="POST", path="/hooks/github", host="hooks.example.org") == 200
     assert await outcome(path="/api/bootstrap", host="hooks.example.org") == 403

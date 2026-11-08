@@ -265,7 +265,7 @@ function SavePageBtn({ bot, text, goal, taskId }: { bot?: Bot; text: string; goa
     setBusy(true)
     try {
       const h1 = text.match(/^#\s+(.+)$/m)?.[1]
-      const title = (h1 || goal.split('\n').find(l => l.trim()) || t('任务 #{id} 的结果', { id: taskId ?? '' })).replace(/^\[定时任务 [^\]]+\]\s*/, '').slice(0, 60)   // i18n-ignore：去掉存在消息里的标记
+      const title = (h1 || goal.split('\n').find(l => l.trim()) || t('任务 #{id} 的结果', { id: taskId ?? '' })).replace(/^\[(定时任务|事件) [^\]]+\]\s*/, '').slice(0, 60)   // i18n-ignore：去掉存在消息里的标记
       const p = await api('/api/pages', { method: 'POST', body: { bot_id: bot?.id, title, content: text, task_id: taskId } })
       setSaved(p.id)
     } finally { setBusy(false) }
@@ -389,7 +389,7 @@ function BotAdminCard({ a }: { a: Approval }) {
   )
   const lost = d['会删掉'] || {}   // i18n-ignore：工具参数的键
   const what = [lost['消息'] ? t('私聊里的 {n} 条消息', { n: lost['消息'] }) : '', lost['技能'] ? t('{n} 个技能', { n: lost['技能'] }) : '',   // i18n-ignore：工具参数的键
-    lost['定时任务'] ? t('{n} 个定时任务', { n: lost['定时任务'] }) : '', lost['记忆'] ? t('它自己的 {n} 条记忆', { n: lost['记忆'] }) : ''].filter(Boolean)   // i18n-ignore：工具参数的键
+    lost['定时任务和事件'] ?? lost['定时任务'] ? t('{n} 个定时任务和事件', { n: lost['定时任务和事件'] ?? lost['定时任务'] }) : '', lost['记忆'] ? t('它自己的 {n} 条记忆', { n: lost['记忆'] }) : ''].filter(Boolean)   // i18n-ignore：工具参数的键
   const skillRows: [string, string[]][] = [[t('新技能：'), d['新技能']], [t('改技能：'), d['改技能']], [t('删技能：'), d['删技能']]]   // i18n-ignore：工具参数的键
   const actions: Record<string, [string, string]> = { create_bot: [t('不建了'), t('新建')], update_bot: [t('不改了'), t('修改')], delete_bot: [t('不删了'), t('删除')] }
   const [no, yes] = actions[a.tool]
@@ -424,7 +424,7 @@ function BotAdminCard({ a }: { a: Approval }) {
       {a.tool === 'delete_bot' && <>
         {target && <div className="botadmin-row"><BotAvatar avatar={target.avatar} size={22} /><b>{target.name}</b></div>}
         {d['原因'] && <div className="newbot-role">{d['原因']}</div>}{/* i18n-ignore：工具参数的键 */}
-        <div className="small">{what.length ? t('会一起删掉：{what}', { what: what.join(t('、')) }) : t('它还没有聊天记录、技能、定时任务和记忆')}</div>
+        <div className="small">{what.length ? t('会一起删掉：{what}', { what: what.join(t('、')) }) : t('它还没有聊天记录、技能、定时任务、事件和记忆')}</div>
         {!!d['群聊']?.length && <div className="small">{t('会退出群聊：{groups}', { groups: d['群聊'].map((g: string) => `「${g}」`).join(t('、')) })}</div>}{/* i18n-ignore：工具参数的键 */}
         {!!d['在做的任务'] && <div className="small">{t('正在做的 {n} 个任务会停掉', { n: d['在做的任务'] })}</div>}{/* i18n-ignore：工具参数的键 */}
         <div className="muted small">{t('删了不能恢复。')}</div>

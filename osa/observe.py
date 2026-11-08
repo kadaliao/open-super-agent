@@ -19,7 +19,7 @@ from . import routines, tasklog
 DAY, WEEK = 86400, 7 * 86400
 RANGES = {"today": 1, "7d": 7, "30d": 30, "all": None}
 TOP = 30          # 最近的任务、问题各列多少条
-ROUTINE = re.compile(r"^\[任务已派发\] \[定时任务 (.+?)\] ")   # i18n-ignore：存在消息里的标记
+ROUTINE = re.compile(r"^\[任务已派发\] \[(?:定时任务|事件) (.+?)\] ")   # i18n-ignore：存在消息里的标记
 UNKNOWN = -1      # 没记录是哪个 Bot 的调用
 
 
@@ -191,6 +191,7 @@ def _routines(bot: int | None, tasks: list[dict], costs: dict) -> list[dict]:
         mine = [t for t in tasks if t["routine"] == r["name"] and t["bot_id"] == r["bot_id"]]
         n = {k: sum(1 for t in mine if t["status"] == k) for k in ("done", "failed", "cancelled", "interrupted")}
         out.append({"id": r["id"], "bot_id": r["bot_id"], "name": r["name"], "enabled": r["enabled"], "trigger": r["trigger"],
+                    "describe": r["describe"], "category": r["category"],
                     "next_run": r["next_run"], "running": r["running"], "last_run": r["last_run"],
                     "runs": len(mine), **n, "quiet": sum(1 for t in mine if t["quiet"]),
                     "cost": round(sum(costs.get(t["id"], (0, 0))[0] for t in mine), 4)})
