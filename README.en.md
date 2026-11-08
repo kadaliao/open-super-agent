@@ -13,9 +13,9 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 [简体中文](README.md) · English
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="Demo: asking Nova to write a weekend trip checklist in the TextEdit window on the right. It first shows a card asking whether it may use the whole computer, then clicks into TextEdit and writes the list while the computer panel shows the screen live" width="860"></a>
+<a href="docs/images/promo.mp4"><img src="docs/images/demo.webp" alt="Feature tour: link cards and videos in chat, a side thread on one message, background tasks you can watch, a Bot filling in a form on its own computer, asking before key actions, a group of Bots splitting the work, Bots messaging each other, drawing a poster from one sentence, scheduled tasks, 40 connected apps, skills learned from one demo, remembered preferences, and every cost" width="860"></a>
 
-<sub>A Bot using your Mac: asks first → writes a checklist in TextEdit → replies (model wait times sped up; Chinese UI) · <a href="docs/images/demo.mp4">HD MP4</a></sub>
+<sub>Feature tour (silent, sped up; Chinese UI): link cards · threads · background tasks · the Bot's computer · ask first · groups · Bot DMs · drawing · schedules · apps · skills · memory · costs · <a href="docs/images/promo.mp4">full 2-minute promo (Chinese voice-over)</a></sub>
 
 </div>
 
@@ -51,7 +51,7 @@ See [Features](docs/features.en.md) for the full list.
   <img src="docs/images/ios-approval.png" width="200" alt="iPhone app: an approval card with allow once, always allow and deny">
   <img src="docs/images/ios-computer.png" width="200" alt="iPhone app: watching the Bot computer live, ready to take over">
 </p>
-<p align="center"><sub>Top: the macOS desktop app. Bottom: the iPhone app (TestFlight): chat · background task · approval · the Bot's computer. Screenshots show the Chinese UI.</sub></p>
+<p align="center"><sub>Top: the macOS desktop app (<a href="docs/images/mac-control.mp4">watch a Bot use the whole Mac</a>). Bottom: the iPhone app (TestFlight): chat · background task · approval · the Bot's computer. Screenshots show the Chinese UI.</sub></p>
 
 OpenMausBot, a similar project, makes different trade-offs; see [Compared with OpenMausBot](docs/comparison.en.md).
 

@@ -13,9 +13,9 @@
 
 简体中文 · [English](README.en.md)
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="演示：让 Nova 在右边打开的文本编辑里写一份周末出游清单。它先弹卡片问你能不能操作整台电脑，同意后点进文本编辑把清单写进去，电脑面板上实时看得到屏幕" width="860"></a>
+<a href="docs/images/promo.mp4"><img src="docs/images/demo.webp" alt="功能一览：对话里的链接卡片和视频、针对一条消息开讨论串、后台任务边做边看、Bot 用自己的电脑填表、关键操作先问你、几个 Bot 拉群分工、Bot 之间私信、一句话画海报、定时任务、连接 40 个应用、教一遍就会的技能、记住你的偏好、每一笔花费" width="860"></a>
 
-<sub>Bot 用你的 Mac：先问你 → 点进文本编辑写清单 → 回复（等待模型的部分已加速）· <a href="docs/images/demo.mp4">看高清版 MP4</a></sub>
+<sub>功能一览（无声，已加速）：链接卡片 · 讨论串 · 后台任务 · Bot 的电脑 · 先问再做 · 群聊 · Bot 私信 · 画图 · 定时任务 · 应用 · 技能 · 记忆 · 费用 · <a href="docs/images/promo.mp4">看完整宣传片（2 分钟，有配音）</a></sub>
 
 </div>
 
@@ -51,7 +51,7 @@
   <img src="docs/images/ios-approval.png" width="200" alt="iPhone App：确认卡片，允许一次、总是允许或拒绝">
   <img src="docs/images/ios-computer.png" width="200" alt="iPhone App：实时看 Bot 电脑的画面，随时接手">
 </p>
-<p align="center"><sub>上：macOS 桌面 App。下：iPhone App（TestFlight 内测），对话 · 后台任务 · 确认卡片 · 看 Bot 的电脑</sub></p>
+<p align="center"><sub>上：macOS 桌面 App（<a href="docs/images/mac-control.mp4">看 Bot 操作整台 Mac 的录屏</a>）。下：iPhone App（TestFlight 内测），对话 · 后台任务 · 确认卡片 · 看 Bot 的电脑</sub></p>
 
 同类项目 OpenMausBot 的取舍不一样，见 [和 OpenMausBot 比](docs/comparison.md)。
 
