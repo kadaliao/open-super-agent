@@ -2,7 +2,7 @@
 
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.10.0] - 2026-11-08
 ### 新增
 - **手机上从屏幕左边缘往右滑返回上一层**，和 iPhone 自带的返回手势一样跟着手指走，松手时滑过三分之一或甩得够快就返回，不然弹回去：
   关掉讨论串、Bot 面板、设置、看大图、确认框、新建 Bot 的上一步，资料库的页面回到列表；没有别的层时把对话列表（侧栏）拉出来。
@@ -384,7 +384,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.9.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/kadaliao/open-super-agent/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kadaliao/open-super-agent/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kadaliao/open-super-agent/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kadaliao/open-super-agent/compare/v0.6.1...v0.7.0

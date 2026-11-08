@@ -69,7 +69,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 0.9.0
+        CFBundleShortVersionString: 0.10.0
         CFBundleVersion: "1"
     entitlements:
       path: osa-mobile_iOS/osa-mobile_iOS.entitlements
@@ -127,7 +127,7 @@ targets:
       path: ../../../ios/NotificationService/Info.plist   # XcodeGen 按下面的内容生成，别直接改那个文件
       properties:
         CFBundleDisplayName: Open Super Agent
-        CFBundleShortVersionString: 0.9.0
+        CFBundleShortVersionString: 0.10.0
         CFBundleVersion: "1"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
