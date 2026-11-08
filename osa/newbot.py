@@ -4,16 +4,20 @@
 - 和画图一样不让 Router 干等：工具马上返回，卡片和新建在后台进行；用户也能在对话里说“建吧”（resolve_approval）。
 - 别的 Bot 需要新 Bot 时私信主 Bot（提示词里写着），由主 Bot 调这个工具，所以卡片总在主 Bot 的私聊里。
 - 建好后在调用的那个对话里记一条（kind=bot_created，界面上能点过去），侧栏马上出现新 Bot。
+- 有了结果（建好、用户没同意、没建成）就叫醒主 Bot 在那个对话里接着说一轮，它才知道结果，
+  好去做答应过的事（比如私信新 Bot 交代事情）。用户没同意又没附意见、也没有 Bot 等着的，不叫醒。
+  是别的 Bot 私信托它建的，那一轮的回复不当场送回，等有了结果，叫醒的这一轮的回复作为回信送回去（同 dispatch）。
 """
 import asyncio
 from types import SimpleNamespace
-from . import approvals, bots, i18n, skills
+from . import approvals, bots, dm, i18n, skills
 
 TOOL = "create_bot"
 MAX_SKILLS = 10
 CREATE_BOT = {"type": "function", "function": {
     "name": TOOL,
-    "description": "新建一个 Bot。会先弹卡片请用户确认（上面有名字、职责和技能），用户同意后自动建好，你不用再回来。",
+    "description": "新建一个 Bot。会先弹卡片请用户确认（上面有名字、职责和技能），用户同意后自动建好；"
+                   "有了结果（建好、用户没同意、没建成）你会接着说一轮，建好后要做的事（比如私信它交代事情）到时再做。",
     "parameters": {"type": "object", "properties": {
         "name": {"type": "string", "description": "名字，最多 40 个字，不能和现有的 Bot 重名"},
         "instructions": {"type": "string", "description": "它的职责和做事方式，写完整：负责什么、怎么做、有哪些硬性约束。"
@@ -72,9 +76,11 @@ async def _make(name: str, instructions: str, items: list[dict], chat_id: int, p
     return b
 
 
-async def create(bot: dict, chat_id: int, private_chat_id: int, args: dict, post, emit) -> str:
+async def create(bot: dict, chat_id: int, private_chat_id: int, args: dict, post, emit,
+                 owed: dict | None = None, depth: int = 0) -> str:
     """create_bot 工具。bot：谁在建（主 Bot）；chat_id：建好的消息发到哪个对话；private_chat_id：卡片发到哪（它的私聊）。
-    post 是 Router.add：(role, content, chat_id, **meta)；emit 是 Router.emit。"""
+    post 是 Router.add：(role, content, chat_id, **meta)；emit 是 Router.emit。
+    owed、depth：主 Bot 这一轮欠谁回信、私信深度（见 dm.py），有了结果叫醒它时带上。"""
     if not bot.get("is_primary"):
         return f"没建：只有主 Bot（{bots.primary_name()}）能新建 Bot，用 message_bot 私信它，把名字和职责写清楚"
     try:
@@ -86,21 +92,34 @@ async def create(bot: dict, chat_id: int, private_chat_id: int, args: dict, post
                            goal=i18n.t("新建 Bot"), background=False, waiting_approval=None)
     shown = {"名字": name, "职责": instructions, "技能": [f"/{s['name']}：{s['description'] or s['body'][:60]}" for s in items]}
 
+    async def tell(text: str):
+        """叫醒主 Bot 在这个对话里接着说一轮（见 dm.wake），它从最近的系统通知里看到结果。"""
+        await dm.wake(bot["id"], chat_id, {"reply": owed, "depth": depth,
+                                           "woke": {"kind": "newbot", "from": bot["id"], "text": text}})
+
     async def wait_and_make():
         ok, note = await approvals.request(fake, TOOL, shown, once=True)
         if not ok:   # 记一笔：下一轮模型知道用户没同意（和附带的意见），不会以为建好了
             text = i18n.t("[没新建 Bot「{name}」：{note}]", name=name, note=note) if note else \
                 i18n.t("[没新建 Bot「{name}」]", name=name)
             await post("task", text, chat_id, kind="note")
+            if note or owed:   # 用户附了意见要它改，或者有 Bot 等着结果
+                await tell(text)
             return
         try:
             _check(name, instructions, items)   # 等确认的时候可能有人建了同名的
-            await _make(name, instructions, items, chat_id, post, emit)
+            b = await _make(name, instructions, items, chat_id, post, emit)
         except ValueError as e:
-            await post("task", i18n.t("[没建成 Bot「{name}」：{error}]", name=name, error=e), chat_id, kind="note")
+            text = i18n.t("[没建成 Bot「{name}」：{error}]", name=name, error=e)
+            await post("task", text, chat_id, kind="note")
+            await tell(text)
+            return
+        await tell(i18n.t("[已新建 Bot「{name}」]", name=b["name"]))
 
     t = asyncio.create_task(wait_and_make())
     _running.add(t)
     t.add_done_callback(_running.discard)
-    return (f"已弹出确认卡片（新建 Bot「{name}」），卡片在你的私聊里；用户同意后会自动建好，你不用再回来。"
-            "简短告诉用户确认一下就行，不要说已经建好。")
+    after = f"，到时你的回复会作为回信发给 {dm._name(owed['bot'])}" if owed else ""
+    return (f"已弹出确认卡片（新建 Bot「{name}」），卡片在你的私聊里；用户同意后会自动建好。"
+            f"有了结果你会接着说一轮{after}，建好后要做的事（比如私信它交代事情）到时再做。"
+            "现在简短告诉用户确认一下就行，不要说已经建好。")

@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import approvals, i18n, library, media, memories, memory, mcp_hub, search, tasklog, tools
+from . import approvals, dsml, i18n, library, media, memories, memory, mcp_hub, search, tasklog, tools
 from .computer import tools as ctools
 
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
@@ -75,6 +75,16 @@ async def _reply(task: Task, log: tasklog.Log, role: str, client, model: str, ms
                                                   **({"tools": tools_} if tools_ else {}), **call_kwargs(role))
     content, reasoning, calls, usage = "", "", {}, None
     think = text = None
+    sent = 0   # 正文写进任务过程到哪了：DeepSeek 写进正文的工具调用（见 dsml.py）不写
+
+    async def say(piece: str):
+        nonlocal text
+        if think:
+            await log.finish(think)
+        if not text or text["status"] != "running":
+            text = await log.start("text")
+        await log.append(text, piece)
+
     async for chunk in stream:
         task.last_progress = time.time()   # 还在出字就算有进展，Watchdog 不会当成卡住
         if chunk.usage:
@@ -89,11 +99,9 @@ async def _reply(task: Task, log: tasklog.Log, role: str, client, model: str, ms
             await log.append(think, rc)
         if d.content:
             content += d.content
-            if think:
-                await log.finish(think)
-            if not text or text["status"] != "running":
-                text = await log.start("text")
-            await log.append(text, d.content)
+            if (n := dsml.visible(content)) > sent:
+                await say(content[sent:n])
+                sent = n
         for tc in d.tool_calls or []:
             c = calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
             c["id"] = tc.id or c["id"]
@@ -101,6 +109,11 @@ async def _reply(task: Task, log: tasklog.Log, role: str, client, model: str, ms
                 c["name"] += tc.function.name or ""
                 c["args"] += tc.function.arguments or ""
     memory.record_usage(role, model, usage, task.id)
+    content, leaked = dsml.split(content)
+    if len(content) > sent:   # 压着的结尾不是标记，或者标记后面还有话
+        await say(content[sent:])
+    if not calls and tools_:
+        calls = dict(enumerate(leaked))
     if think:
         await log.finish(think)
     if text:

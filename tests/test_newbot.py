@@ -1,5 +1,6 @@
 """主 Bot 新建 Bot：只有主 Bot 有 create_bot，每次都弹卡片（不能“总是允许”），同意才建、带上技能，
-拒绝留一笔；参数不对不弹卡片；别的 Bot 的提示词让它去找主 Bot。"""
+拒绝留一笔；参数不对不弹卡片；别的 Bot 的提示词让它去找主 Bot。
+有了结果主 Bot 会被叫醒接着说一轮（能去私信新 Bot）；别的 Bot 托它建的，结果作为回信送回去。"""
 import pytest
 from conftest import find, settle, until
 from fakellm import Call, system_of
@@ -34,6 +35,10 @@ def card():
     return next((x for x in approvals.pending.values() if x["tool"] == "create_bot"), None)
 
 
+def last_user(body: dict) -> str:
+    return next(str(m.get("content")) for m in reversed(body["messages"]) if m["role"] == "user")
+
+
 async def test_only_primary_can_create(llm, events, boss, make_bot):
     other = make_bot("Helper7")
     llm.script("router:Helper7", Call("create_bot", {"name": "Sneaky", "instructions": "x"}), "好")
@@ -52,8 +57,10 @@ async def test_create_after_approval(llm, events, boss):
     cid = boss["chat_id"]
     llm.script("router:Boss", Call("create_bot", {
         "name": "Quark7", "instructions": "专门找资源，存进夸克网盘",
-        "skills": [{"name": "quark7", "description": "找资源存网盘", "body": "1. 找资源\n2. 存进网盘"}]}), "请在卡片上确认")
+        "skills": [{"name": "quark7", "description": "找资源存网盘", "body": "1. 找资源\n2. 存进网盘"}]}), "请在卡片上确认",
+        Call("message_bot", {"to": "Quark7", "text": "交代一下：夸克要扫码登录"}), "已经交代给 Quark7 了")
     await server.safe_handle(bots.chat(cid), "帮我建一个 Bot 叫 Quark7，专门找资源存网盘")
+    assert "有了结果你会接着说一轮" in tool_outputs(llm.bodies("router", "Boss")[-1])[0]
     c = await until(card, what="确认卡片")
     assert c["chat_id"] == cid and c.get("once")
     assert "Quark7" in c["args"] and "专门找资源" in c["args"] and "/quark7" in c["args"]
@@ -71,6 +78,14 @@ async def test_create_after_approval(llm, events, boss):
     assert events.of("bots_changed")
     assert not [r for r in approvals.rules() if r["pattern"] == "create_bot"]
 
+    # 建好后主 Bot 被叫醒：知道建好了，去做答应过的事（私信新 Bot）
+    dm = await until(lambda: find(q["chat_id"], kind="dm", text="夸克要扫码登录"), what="主 Bot 私信新 Bot")
+    assert dm[0]["bot_id"] == boss["id"]
+    woke = llm.bodies("router", "Boss")[2]   # 前两次是用户那一轮（调工具、再说话）
+    assert "请求新建的 Bot 有结果了" in last_user(woke) and "已新建 Bot「Quark7」" in str(woke["messages"])
+    assert find(cid, role="assistant", text="已经交代给 Quark7 了")
+    await settle()
+
 
 async def test_reject_leaves_a_note(llm, events, boss):
     cid = boss["chat_id"]
@@ -80,6 +95,39 @@ async def test_reject_leaves_a_note(llm, events, boss):
     approvals.resolve(c["id"], False, "名字换一个")
     note = await until(lambda: find(cid, kind="note", text="Nope7"), what="没建的记录")
     assert "名字换一个" in note[0]["content"] and not bots.by_name("Nope7")
+    # 附了意见：叫醒主 Bot，好按意见改了再提
+    await until(lambda: len(llm.bodies("router", "Boss")) == 3, what="主 Bot 被叫醒")
+    assert "请求新建的 Bot 有结果了" in last_user(llm.bodies("router", "Boss")[2])
+
+
+async def test_reject_without_note_stays_quiet(llm, events, boss):
+    cid = boss["chat_id"]
+    llm.script("router:Boss", Call("create_bot", {"name": "Nope8", "instructions": "随便"}), "等你确认")
+    await server.safe_handle(bots.chat(cid), "建个 Nope8")
+    approvals.resolve((await until(card, what="确认卡片"))["id"], False)
+    await until(lambda: find(cid, kind="note", text="Nope8"), what="没建的记录")
+    await settle()
+    assert len(llm.bodies("router", "Boss")) == 2   # 只有用户那一轮（调工具、再说话）。用户只是不要，没什么要主 Bot 接着说的
+
+
+async def test_requested_by_other_bot_gets_result(llm, events, boss, make_bot):
+    """别的 Bot 私信主 Bot 要一个新 Bot：卡片弹出时不回信，有了结果再把主 Bot 那一轮的回复作为回信送回去。"""
+    other = make_bot("Asker8")
+    llm.script("router:Asker8", Call("message_bot", {"to": "Boss", "text": "需要一个管网盘的 Bot，叫 Quark8"}),
+               "已经请 Boss 建了", "Quark8 建好了")
+    llm.script("router:Boss", Call("create_bot", {"name": "Quark8", "instructions": "管网盘"}), "卡片弹出来了，等用户确认",
+               "Quark8 建好了，可以私信它")
+    await server.safe_handle(bots.chat(other["chat_id"]), "让 Boss 建个管网盘的 Bot")
+    c = await until(card, what="确认卡片")
+    await settle()
+    assert "回信发给 Asker8" in tool_outputs(llm.bodies("router", "Boss")[-1])[0]
+    assert not find(other["chat_id"], kind="dm_reply")   # 还没结果：不回信
+
+    approvals.resolve(c["id"], True)
+    reply = await until(lambda: find(other["chat_id"], kind="dm_reply"), what="回信")
+    assert "Quark8 建好了，可以私信它" in reply[0]["content"] and bots.by_name("Quark8")
+    assert "Asker8 私信请你建的" in last_user(llm.bodies("router", "Boss")[-1])
+    await until(lambda: find(other["chat_id"], role="assistant", text="Quark8 建好了"), what="Asker8 收到回信后接着说")
 
 
 async def test_bad_args_no_card(llm, events, boss, make_bot):

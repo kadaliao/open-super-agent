@@ -3,12 +3,11 @@
 一个 Bot 一个 Router，既在私聊里说话，也在它所在的群聊里说话；每一轮都明确是在哪个对话里。"""
 import asyncio
 import json
-import re
 import time
 import openai
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, dm, i18n, images, library, media, memories, memory, newbot, providers, routines, search, skills, tasklog
+from . import approvals, bots, dm, dsml, i18n, images, library, media, memories, memory, newbot, providers, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -123,6 +122,15 @@ REPLY_SHOWN = ("回信已经显示在对话里了，不用整段复述：说清�
 REPLY_OWED = ("你这一轮的回复会自动作为回信发给 {owed}，它看不到 {name} 的回信，把它要的内容写全；"
               "还需要别人帮忙可以继续派任务或私信。")
 
+# 用户在新建 Bot 的卡片上点了之后（见 newbot.py）
+NEWBOT_TURN = """
+
+这一轮不是用户说的话：你用 create_bot 请求新建的 Bot 有结果了，见最近的系统通知。
+- 建好了：之前答应过建好后要做的事（比如私信它交代注意事项、请它开始干活），现在就用 message_bot 去做；没有的话简短告诉用户一声。
+- 用户没同意：附了意见就按意见改好，再用 create_bot 重新提；没附意见就简短说一声，不要自己重提。
+- 没建成：说明原因。"""
+NEWBOT_OWED = "\n这个 Bot 是 {owed} 私信请你建的：你这一轮的回复会自动作为回信发给它，把结果写清楚，它看不到这里的系统通知。"
+
 MESSAGE_BOT = {"type": "function", "function": {"name": "message_bot",
     "description": "私信另一个 Bot，请它帮忙做事。它在自己的私聊里处理，回信会自动回到当前对话，你到时再接着说",
     "parameters": {"type": "object", "properties": {
@@ -193,9 +201,6 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
         "parameters": {"type": "object", "properties": {}}}},
 ]
 
-
-# 关掉工具时 DeepSeek 偶尔把想调的工具写成正文（<｜DSML｜…> 标记），不给用户看
-TOOL_LEAK = re.compile(r"<[｜|]+DSML[｜|]+.*", re.S)
 
 TASKS: dict[int, Task] = {}       # 所有 Bot 的任务，Watchdog 统一巡检
 RUNTIMES: dict[int, "Router"] = {}
@@ -290,8 +295,9 @@ class Router:
                         await dm.answer(self.bot_id, owed, i18n.t("（{name} 处理时出错：{error}）",
                                                                   name=(self.bot or {}).get("name", "Bot"), error=providers.brief(e)), chat_id)
                     raise
-                # 欠着回信：没派任务、也没再私信别人的话，这一轮的回复就是回信（派了的由任务结果、对方回信接着送）
-                if owed and not self._turn_tasks and not self._turn_dms:
+                # 欠着回信：没派任务、没再私信别人、也没在等新建 Bot 的卡片的话，这一轮的回复就是回信
+                # （派了的由任务结果、对方回信、新建的结果接着送）
+                if owed and not self._turn_tasks and not self._turn_dms and not self._turn_waits:
                     await dm.answer(self.bot_id, owed, shown or i18n.t("（没有回复内容）"), chat_id)
             finally:
                 self.turn = {}
@@ -323,6 +329,7 @@ class Router:
             media.remember_test(r["provider"], r["model"], "no")
             stream = await create()
         content, reasoning, calls, usage = "", "", {}, None
+        sent = 0   # 正文推送到哪了：DeepSeek 写进正文的工具调用（见 dsml.py）不推送
         async for chunk in stream:
             if chunk.usage:
                 usage = chunk.usage
@@ -334,7 +341,9 @@ class Router:
                 await self.emit({"type": "stream", "sid": sid, "thinking": rc}, cid)
             if d.content:
                 content += d.content
-                await self.emit({"type": "stream", "sid": sid, "delta": d.content}, cid)
+                if (n := dsml.visible(content)) > sent:
+                    await self.emit({"type": "stream", "sid": sid, "delta": content[sent:n]}, cid)
+                    sent = n
             for tc in d.tool_calls or []:
                 c = calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
                 c["id"] = tc.id or c["id"]
@@ -342,7 +351,12 @@ class Router:
                     c["name"] += tc.function.name or ""
                     c["args"] += tc.function.arguments or ""
         memory.record_usage("router", model, usage)
-        return content, reasoning, [calls[k] for k in sorted(calls)]
+        content, leaked = dsml.split(content)
+        if len(content) > sent:   # 压着的结尾不是标记，或者标记后面还有话
+            await self.emit({"type": "stream", "sid": sid, "delta": content[sent:]}, cid)
+        if calls or not use_tools:
+            leaked = []
+        return content, reasoning, [calls[k] for k in sorted(calls)] or leaked
 
     def _group_block(self, chat: dict) -> str:
         if chat["kind"] != "group":
@@ -362,6 +376,9 @@ class Router:
         woke = self.turn.get("woke")
         if not woke:
             return ""
+        if woke["kind"] == "newbot":
+            o = bots.get(self.turn["reply"]["bot"]) if self.turn.get("reply") else None
+            return NEWBOT_TURN + (NEWBOT_OWED.format(owed=o["name"]) if o else "")
         name = bots.get(woke["from"])["name"] if bots.get(woke["from"]) else "已删除的 Bot"
         if woke["kind"] == "dm":
             return DM_TURN.format(name=name)
@@ -406,6 +423,7 @@ class Router:
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
         self._turn_dms = 0                # 本轮发出的私信
+        self._turn_waits = 0              # 本轮弹出的新建 Bot 卡片：有了结果会再叫醒这个 Bot
         self._turn_files = []             # 本轮 send_file 发的文件，挂在这条回复下面显示
         shown, thinking, shots = "", "", []
         await self.emit({"type": "stream_start", "sid": sid}, cid)
@@ -441,7 +459,7 @@ class Router:
                 msgs.append({"role": "user", "content": "（系统：这一轮能调用工具的次数用完了。现在不要再调用任何工具，"
                              "直接用文字告诉用户做到哪一步了；没做完的，告诉用户下一条消息里你会派任务接着做。）"})
                 content, reasoning, _ = await self._stream(client, model, msgs, sid, started, use_tools=False)
-                shown, thinking = TOOL_LEAK.sub("", content), thinking + reasoning
+                shown, thinking = content, thinking + reasoning
         finally:
             await self.emit({"type": "stream_end", "sid": sid}, cid)
         await self.add("assistant", shown.strip(), cid, reasoning=reasoning, thinking=thinking,
@@ -571,7 +589,11 @@ class Router:
         if name == "generate_image":
             return await images.generate(self.bot, self.chat["id"], self.chat_id, str(args.get("prompt") or ""), self.add)
         if name == "create_bot":
-            return await newbot.create(self.bot, self.chat["id"], self.chat_id, args, self.add, self.emit)
+            out = await newbot.create(self.bot, self.chat["id"], self.chat_id, args, self.add, self.emit,
+                                      self.turn.get("reply"), self.turn.get("depth", 0))
+            if out.startswith("已弹出"):
+                self._turn_waits += 1
+            return out
         if name == "look_at_screen":
             return await self._look()
         if name in DIRECT_PC or name in ctools.DESKTOP:

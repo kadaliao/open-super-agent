@@ -161,6 +161,8 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
             else:
                 msgs.append({"role": "user", "content": note})
         others = viewer is not None and b != viewer
+        if r == "assistant" or meta.get("kind") == "result":
+            c = _no_leak(c)
         if r == "task" and meta.get("kind") == "handoff" and viewer is not None:
             to = meta.get("to")
             if to == viewer:
@@ -203,6 +205,15 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
                          and (p := media.image_part(a["media"]))]
             msgs.append({"role": "user", "content": [{"type": "text", "text": c}, *parts] if parts else c})
     return msgs
+
+
+def _no_leak(c: str) -> str:
+    """修好之前，DeepSeek 写进正文的工具调用（见 dsml.py）会原样存下来。传回给模型前去掉，免得它照着学。"""
+    from . import dsml
+    text, calls = dsml.split(c)
+    if not calls:
+        return text
+    return text or f"（这里想调用 {'、'.join(x['name'] for x in calls)}，但写成了文字，没有执行）"
 
 
 def _dm_line(meta: dict, c: str, sender: int | None, me: int | None, name) -> str:

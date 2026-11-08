@@ -47,7 +47,7 @@ async def send(sender: int, to: dict, text: str, origin: int, owed: dict | None,
     reply = {"bot": sender, "chat": origin, "depth": depth + 1, "then": owed}
     await _message(origin, text, sender, kind="dm", to=to["id"])
     await _message(to["chat_id"], text, sender, kind="dm", to=to["id"], chat=origin)   # chat：从哪个对话发来的
-    asyncio.create_task(_wake(to["id"], to["chat_id"], {"reply": reply, "depth": depth + 1,
+    asyncio.create_task(wake(to["id"], to["chat_id"], {"reply": reply, "depth": depth + 1,
                                                        "woke": {"kind": "dm", "from": sender, "text": text}}))
     return f"已私信 {to['name']}。它的回信会自动回到这个对话，到时你会接着说一轮，现在不用等"
 
@@ -62,7 +62,7 @@ async def answer(sender: int, reply: dict, text: str, from_chat: int, **meta):
     cid = reply["chat"] if chat and (chat["kind"] != "group" or to["id"] in chat["bot_ids"]) else to["chat_id"]
     await _message(from_chat, i18n.t("[已回复 {name}]", name=to["name"]), sender, kind="dm_reply", to=to["id"], sent=True, chat=cid)
     await _message(cid, text, sender, kind="dm_reply", to=to["id"], **meta)
-    asyncio.create_task(_wake(to["id"], cid, {"reply": reply["then"], "depth": reply["depth"],
+    asyncio.create_task(wake(to["id"], cid, {"reply": reply["then"], "depth": reply["depth"],
                                              "woke": {"kind": "reply", "from": sender, "text": text}}))
 
 
@@ -84,8 +84,9 @@ def same(a: dict | None, b: dict | None) -> bool:
     return _owed(a) == _owed(b)
 
 
-async def _wake(bot_id: int, chat_id: int, turn: dict):
-    """让 bot_id 在 chat_id 里说一轮。turn 是这一轮的来由：{"reply", "depth", "woke"}。"""
+async def wake(bot_id: int, chat_id: int, turn: dict):
+    """让 bot_id 在 chat_id 里说一轮。turn 是这一轮的来由：{"reply", "depth", "woke"}。
+    woke 的 kind：dm（收到私信）、reply（收到回信）、newbot（它请求新建的 Bot 有了结果，见 newbot.py）。"""
     from . import groups, router
     chat = bots.chat(chat_id)
     if not chat or not bots.get(bot_id):   # 等着的时候 Bot 或对话被删了
