@@ -22,6 +22,7 @@
 		ACDC2E8F5EDED9C1732E9245 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C559BEE3FABEB8169988AF5 /* UIKit.framework */; };
 		BDFD0C01984F0DA2EE840EE8 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD0FD576EFEBABF3030C9B82 /* NotificationService.swift */; };
 		C668DED749A5F154C0B92317 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = F9BA5928C83D2184861A9AAE /* InfoPlist.strings */; };
+		CF3311221EC4816C218B84F2 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = CDA181725B78D837676DEECD /* AppIcon.icon */; };
 		DF69C9B65A8315DECD31957E /* WebPushCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = F0813BFA4923C2B93720851F /* WebPushCrypto */; };
 		F69813615C6C45B45C74046B /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 86BE6563665D29ABBD000F64 /* QuartzCore.framework */; };
 /* End PBXBuildFile section */
@@ -72,6 +73,7 @@
 		AA5286F0FC6AE5D43843BB16 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		B6258D14ED999639B0A3E36F /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		CC8C5332B2441EA0F9C50A55 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		CDA181725B78D837676DEECD /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		D91C60C1DD592BF38C609498 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DC2F86B028B66CCD6B3C1EA9 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		E874536CCD5500A5C036242E /* WebPushCrypto */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WebPushCrypto; path = ../../../swift/WebPushCrypto; sourceTree = SOURCE_ROOT; };
@@ -130,6 +132,15 @@
 			path = Sources;
 			sourceTree = "<group>";
 		};
+		69287DDA77C984AE589155D7 /* icons */ = {
+			isa = PBXGroup;
+			children = (
+				CDA181725B78D837676DEECD /* AppIcon.icon */,
+			);
+			name = icons;
+			path = "../../../../desktop/src-tauri/icons";
+			sourceTree = "<group>";
+		};
 		84460A030B62E7D27A4063CC = {
 			isa = PBXGroup;
 			children = (
@@ -137,6 +148,7 @@
 				D91C60C1DD592BF38C609498 /* Assets.xcassets */,
 				ECA32390B81B94037BEB0ECD /* LaunchScreen.storyboard */,
 				24F4AE7B48C0430DE03E2B8E /* Externals */,
+				69287DDA77C984AE589155D7 /* icons */,
 				F3C954ABA123F64339DBFE43 /* NotificationService */,
 				867A81B50992995D6F797B49 /* osa-mobile_iOS */,
 				3504B5EF3A51080530548E51 /* Packages */,
@@ -229,18 +241,18 @@
 			path = ../../src;
 			sourceTree = "<group>";
 		};
-		"TEMP_5D5FBAA1-EB22-4A12-93BA-1A03D162FEBA" /* x86_64 */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = x86_64;
-			sourceTree = "<group>";
-		};
-		"TEMP_A9730A7A-2C3D-4C6F-8E47-23FEA041AF6F" /* arm64 */ = {
+		"TEMP_D727D2C0-1565-4E9B-A489-8D1068911DFE" /* arm64 */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = arm64;
+			sourceTree = "<group>";
+		};
+		"TEMP_E3628676-EB31-4DA6-B8CF-7A6C2030DE0E" /* x86_64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = x86_64;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -334,6 +346,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CF3311221EC4816C218B84F2 /* AppIcon.icon in Resources */,
 				3AA8F59B9FF9073A70142F19 /* Assets.xcassets in Resources */,
 				C668DED749A5F154C0B92317 /* InfoPlist.strings in Resources */,
 				862110B68E5BCFF9D0F22506 /* LaunchScreen.storyboard in Resources */,

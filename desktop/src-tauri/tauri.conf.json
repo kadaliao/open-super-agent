@@ -29,7 +29,10 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "minimumSystemVersion": "12.0"
+      "minimumSystemVersion": "12.0",
+      "files": {
+        "Resources/Assets.car": "icons/Assets.car"
+      }
     },
     "resources": {
       "../build/runtime/": "runtime/",

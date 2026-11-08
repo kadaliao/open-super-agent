@@ -146,6 +146,12 @@ docker rm -f osa-computer       # 删掉旧容器，下次使用时会用新镜�
 和网页打交道的也是 `web/src/desktop.ts`：手机版的 `window.osaDesktop` 多了 `platform: 'ios'`、`push`、`openSheet`、`switchServer`、`takePendingOpen`。
 推送中转是 `osa/relay.py`，测试在 `tests/test_relay.py`（假的苹果推送服务，不连网）。
 
+## App 图标
+
+Mac 和 iPhone 共用一个 Icon Composer 图标 `desktop/src-tauri/icons/AppIcon.icon`（用 Xcode 自带的 Icon Composer 打开改）。
+iPhone 版打包时 Xcode 自己编译它；Mac 版要在改完后跑 `desktop/scripts/build-icon.sh`，把生成的 `Assets.car` 和 `icon.icns` 一起提交
+（要 Xcode 26，CI 上没有）。
+
 ## 发版
 
 1. `CHANGELOG.md` 把 [未发布] 改成新版本号和日期，底部加上比较链接。
