@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
-from . import approvals, auth, avatars, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
+from . import approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
 from . import prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from .computer import link
 from .computer.base import HOSTS
@@ -145,9 +145,6 @@ async def update_bot(bot_id: int, data: dict = Body(...)):
         b = bots.update(bot_id, **data)
     except ValueError as e:
         _err(e)
-    if data.get("name"):
-        memory.conn.execute("update chats set title=? where id=?", (b["name"], b["chat_id"]))
-        memory.conn.commit()
     await broadcast({"type": "bots_changed"})
     return b
 
@@ -161,20 +158,10 @@ async def make_primary(bot_id: int):
 
 @app.delete("/api/bots/{bot_id}")
 async def delete_bot(bot_id: int):
-    for t in list(rt.TASKS.values()):
-        if t.bot_id == bot_id and t.status == "running":
-            rt.cancel(t.id, i18n.t("Bot 已删除"))
-    chat_id = (bots.get(bot_id) or {}).get("chat_id")
     try:
-        bots.delete(bot_id)
+        await botadmin.remove(bot_id)   # 共享的用户事实保留；页面留在资料库里
     except ValueError as e:
         _err(e)
-    routines.delete_for_bot(bot_id)
-    memories.delete_for_bot(bot_id)   # 共享的用户事实保留；页面留在资料库里
-    memory.conn.execute("delete from skills where bot_id=?", (bot_id,))
-    memory.conn.commit()
-    rt.RUNTIMES.pop(bot_id, None)
-    channels.chat_removed(chat_id)
     await broadcast({"type": "bots_changed"})
     return {"ok": True}
 

@@ -951,6 +951,10 @@ a.file-card:hover { border-color: var(--fg3); }
 .img-meta { font-size: 12px; color: var(--fg3); margin-top: 2px; }
 .img-meta b { color: var(--good); font-weight: 600; }
 .draw-prompt { margin: 8px 0 6px; padding: 8px 12px; border-left: 3px solid var(--warn); background: var(--bg); border-radius: 0 8px 8px 0; white-space: pre-wrap; word-break: break-word; }
+.approval-card.botadmin.danger { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad) 5%, var(--bg)); }
+.botadmin-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+.newbot-role.diff del { color: var(--bad); text-decoration: line-through; background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.newbot-role.diff ins { color: var(--good); text-decoration: none; background: color-mix(in srgb, var(--good) 14%, transparent); }
 .newbot-role { margin: 8px 0 6px; padding: 8px 12px; border-left: 3px solid var(--link); background: var(--bg); border-radius: 0 8px 8px 0; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto; }
 
 /* 链接卡片和嵌入：YouTube、B 站、X、网页书签 */

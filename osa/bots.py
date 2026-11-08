@@ -78,15 +78,26 @@ def clean_avatar(avatar, n: int = 0) -> dict:
     return out
 
 
+def _next_id() -> int:
+    """新 Bot 的编号，删掉的 Bot 的编号不再用：bots 表没有 AUTOINCREMENT，删了最新的 Bot 再建，编号会和它一样，
+    它留在群聊里的发言、资料库里的页面就算到新 Bot 头上了。用过的最大编号记在 settings 的 bot_id_hw。"""
+    hw = conn.execute("select value from settings where key='bot_id_hw'").fetchone()
+    used = conn.execute("select max(coalesce((select max(id) from bots), 0), "
+                        "coalesce((select max(bot_id) from messages), 0))").fetchone()[0]
+    bid = max(int(hw[0]) if hw else 0, used or 0) + 1
+    conn.execute("insert or replace into settings(key, value) values('bot_id_hw', ?)", (str(bid),))
+    return bid
+
+
 def create(name: str, avatar: dict | None = None, instructions: str = "", is_primary: bool = False) -> dict:
     n = conn.execute("select count(*) from bots").fetchone()[0]
     if n >= MAX_BOTS:
         raise ValueError(i18n.t("最多 {n} 个 Bot", n=MAX_BOTS))
     avatar = clean_avatar(avatar, n)
     now = time.time()
-    cur = conn.execute("insert into bots(name, avatar, instructions, is_primary, created) values(?,?,?,?,?)",
-                       (name.strip()[:40] or i18n.t("未命名"), json.dumps(avatar), instructions, int(is_primary), now))
-    bid = cur.lastrowid
+    bid = _next_id()
+    conn.execute("insert into bots(id, name, avatar, instructions, is_primary, created) values(?,?,?,?,?,?)",
+                 (bid, name.strip()[:40] or i18n.t("未命名"), json.dumps(avatar), instructions, int(is_primary), now))
     conn.execute("insert into chats(kind, title, bot_ids, updated) values('direct', ?, ?, ?)",
                  (name, json.dumps([bid]), now))
     conn.commit()
@@ -94,9 +105,13 @@ def create(name: str, avatar: dict | None = None, instructions: str = "", is_pri
 
 
 def update(bot_id: int, **fields) -> dict:
-    for k in ("name", "instructions"):
-        if k in fields and fields[k] is not None:
-            conn.execute(f"update bots set {k}=? where id=?", (str(fields[k])[:4000], bot_id))
+    """改名字、职责、头像（没给或给 None 的不改）。改名字时私聊的标题跟着改。"""
+    if fields.get("name") is not None:
+        name = str(fields["name"]).strip()[:40] or i18n.t("未命名")
+        conn.execute("update bots set name=? where id=?", (name, bot_id))
+        conn.execute("update chats set title=? where kind='direct' and bot_ids=?", (name, json.dumps([bot_id])))
+    if fields.get("instructions") is not None:
+        conn.execute("update bots set instructions=? where id=?", (str(fields["instructions"])[:4000], bot_id))
     if fields.get("avatar"):
         conn.execute("update bots set avatar=? where id=?", (json.dumps(clean_avatar(fields["avatar"], bot_id)), bot_id))
     conn.commit()

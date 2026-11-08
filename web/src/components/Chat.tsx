@@ -343,24 +343,74 @@ function DrawCard({ a }: { a: Approval }) {
   )
 }
 
-// 主 Bot 要新建 Bot（create_bot）：参数是 {名字, 职责, 技能}；每次都要确认，没有“总是允许”
-function NewBotCard({ a }: { a: Approval }) {
-  let d: { 名字?: string; 职责?: string; 技能?: string[] } = {}   // i18n-ignore：工具参数的键
+// 新建、修改、删除 Bot（create_bot / update_bot / delete_bot，见 botadmin.py）：每次都要确认，没有“总是允许”。
+// 参数的键是中文：新建 {名字, 职责, 技能, 头像}；修改 {Bot, 编号, 新名字, 职责, 职责改动, 头像, 新技能, 改技能, 删技能}；
+// 删除 {Bot, 编号, 原因, 会删掉, 群聊, 在做的任务}；别的 Bot 托它做的还有 请求方
+type BotCardArgs = Record<string, any>
+type Named = (name: string) => string
+const BOT_DONE: Record<string, [Named, Named]> = {   // 卡片有了结果：(同意了, 没同意)
+  create_bot: [name => t('已同意新建 Bot「{name}」', { name }), name => t('没新建 Bot「{name}」', { name })],
+  update_bot: [name => t('已同意修改 Bot「{name}」', { name }), name => t('没修改 Bot「{name}」', { name })],
+  delete_bot: [name => t('已同意删除 Bot「{name}」', { name }), name => t('没删除 Bot「{name}」', { name })],
+}
+
+function BotAdminCard({ a }: { a: Approval }) {
+  let d: BotCardArgs = {}
   try { d = JSON.parse(a.args) } catch { /* 显示原文 */ }
   const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
-  const name = d['名字'] || ''   // i18n-ignore：工具参数的键
-  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('已同意新建 Bot「{name}」', { name })
-    : '✕ ' + t('没新建 Bot「{name}」', { name })}</div>
+  const target = useStore(s => s.bots.find(b => b.id === d['编号']))   // i18n-ignore：工具参数的键
+  const [note, setNote] = useState('')
+  const name: string = d['名字'] || d['Bot'] || ''   // i18n-ignore：工具参数的键
+  const who = bot?.name || 'Bot'
+  if (a.status && a.status !== 'pending') {
+    const [yes, no] = BOT_DONE[a.tool]
+    return <div className="sys-line">{a.status === 'approved' ? '✓ ' + yes(name) : '✕ ' + no(name)}</div>
+  }
+  const lost = d['会删掉'] || {}   // i18n-ignore：工具参数的键
+  const what = [lost['消息'] ? t('私聊里的 {n} 条消息', { n: lost['消息'] }) : '', lost['技能'] ? t('{n} 个技能', { n: lost['技能'] }) : '',   // i18n-ignore：工具参数的键
+    lost['定时任务'] ? t('{n} 个定时任务', { n: lost['定时任务'] }) : '', lost['记忆'] ? t('它自己的 {n} 条记忆', { n: lost['记忆'] }) : ''].filter(Boolean)   // i18n-ignore：工具参数的键
+  const skillRows: [string, string[]][] = [[t('新技能：'), d['新技能']], [t('改技能：'), d['改技能']], [t('删技能：'), d['删技能']]]   // i18n-ignore：工具参数的键
+  const actions: Record<string, [string, string]> = { create_bot: [t('不建了'), t('新建')], update_bot: [t('不改了'), t('修改')], delete_bot: [t('不删了'), t('删除')] }
+  const [no, yes] = actions[a.tool]
   return (
-    <div className="approval-card newbot">
-      <div className="approval-title">🤖 {t('{name} 想新建一个 Bot：{bot}', { name: bot?.name || 'Bot', bot: name })}<Origin a={a} /></div>
-      <div className="newbot-role">{d['职责'] ?? a.args}</div>{/* i18n-ignore：工具参数的键 */}
-      {!!d['技能']?.length && <div className="muted small">{t('一起带上的技能：')}{d['技能'].join(' · ')}</div>}{/* i18n-ignore：工具参数的键 */}
-      <div className="muted small">{t('建好后在它私聊的右栏里能改名字、头像和职责')}</div>
+    <div className={'approval-card botadmin' + (a.tool === 'delete_bot' ? ' danger' : '')}>
+      <div className="approval-title">
+        {a.tool === 'create_bot' ? '🤖 ' + t('{name} 想新建一个 Bot：{bot}', { name: who, bot: name })
+          : a.tool === 'update_bot' ? '✏️ ' + t('{name} 想修改 Bot「{bot}」', { name: who, bot: name })
+          : '🗑 ' + t('{name} 想删除 Bot「{bot}」', { name: who, bot: name })}<Origin a={a} />
+      </div>
+      {d['请求方'] && <div className="muted small">{t('{name} 私信请它做的', { name: d['请求方'] })}</div>}{/* i18n-ignore：工具参数的键 */}
+      {a.tool === 'create_bot' && <>
+        {d['头像'] && <div className="botadmin-row"><span className="muted">{t('头像')}</span><BotAvatar avatar={d['头像']} size={22} /></div>}{/* i18n-ignore：工具参数的键 */}
+        <div className="newbot-role">{d['职责'] ?? a.args}</div>{/* i18n-ignore：工具参数的键 */}
+        {!!d['技能']?.length && <div className="muted small">{t('一起带上的技能：')}{d['技能'].join(' · ')}</div>}{/* i18n-ignore：工具参数的键 */}
+        <div className="muted small">{t('建好后可以再让主 Bot 改，也能在它私聊的右栏里改')}</div>
+      </>}
+      {a.tool === 'update_bot' && <>
+        {d['新名字'] && <div className="botadmin-row"><span className="muted">{t('名字')}</span><span>{name} → <b>{d['新名字']}</b></span></div>}{/* i18n-ignore：工具参数的键 */}
+        {d['头像'] && <div className="botadmin-row"><span className="muted">{t('头像')}</span>{/* i18n-ignore：工具参数的键 */}
+          {target && <BotAvatar avatar={target.avatar} size={22} />}→<BotAvatar avatar={d['头像']} size={22} />{/* i18n-ignore：工具参数的键 */}
+          {d['不再用图片头像'] && <span className="muted small">{t('不再用原来的图片')}</span>}</div>}{/* i18n-ignore：工具参数的键 */}
+        {d['职责改动'] && <>{/* i18n-ignore：工具参数的键 */}
+          <div className="muted small">{t('职责：划掉的是删掉的，标绿的是加上的')}</div>
+          <div className="newbot-role diff">{(d['职责改动'] as [number, string][]).map(([sign, text], i) =>   // i18n-ignore：工具参数的键
+            sign < 0 ? <del key={i}>{text}</del> : sign > 0 ? <ins key={i}>{text}</ins> : <span key={i}>{text}</span>)}</div>
+        </>}
+        {skillRows.filter(([, xs]) => xs?.length).map(([label, xs]) =>
+          <div key={label} className="small">{label}{xs.map(x => <div key={x} className="muted">{x}</div>)}</div>)}
+      </>}
+      {a.tool === 'delete_bot' && <>
+        {target && <div className="botadmin-row"><BotAvatar avatar={target.avatar} size={22} /><b>{target.name}</b></div>}
+        {d['原因'] && <div className="newbot-role">{d['原因']}</div>}{/* i18n-ignore：工具参数的键 */}
+        <div className="small">{what.length ? t('会一起删掉：{what}', { what: what.join(t('、')) }) : t('它还没有聊天记录、技能、定时任务和记忆')}</div>
+        {!!d['群聊']?.length && <div className="small">{t('会退出群聊：{groups}', { groups: d['群聊'].map((g: string) => `「${g}」`).join(t('、')) })}</div>}{/* i18n-ignore：工具参数的键 */}
+        {!!d['在做的任务'] && <div className="small">{t('正在做的 {n} 个任务会停掉', { n: d['在做的任务'] })}</div>}{/* i18n-ignore：工具参数的键 */}
+        <div className="muted small">{t('删了不能恢复。')}</div>
+      </>}
       <div className="approval-actions">
-        <span className="grow" />
-        <button className="btn" onClick={() => approve(a.id, false)}>{t('不建了')}</button>
-        <button className="btn primary" onClick={() => approve(a.id, true)}>{t('新建')}</button>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder={t('不同意的话附一句意见，它会按意见改了重提')} />
+        <button className="btn" onClick={() => approve(a.id, false, note)}>{no}</button>
+        <button className={'btn ' + (a.tool === 'delete_bot' ? 'danger' : 'primary')} onClick={() => approve(a.id, true)}>{yes}</button>
       </div>
     </div>
   )
@@ -389,7 +439,7 @@ function DesktopCard({ a }: { a: Approval }) {
 function ApprovalCard({ a }: { a: Approval }) {
   if (a.kind === 'help') return <HelpCard a={a} />
   if (a.tool === 'generate_image') return <DrawCard a={a} />
-  if (a.tool === 'create_bot') return <NewBotCard a={a} />
+  if (a.tool in BOT_DONE) return <BotAdminCard a={a} />
   if (a.tool === 'desktop') return <DesktopCard a={a} />
   const [note, setNote] = useState('')
   const done = a.status && a.status !== 'pending'
@@ -527,10 +577,11 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
     if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
       {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChat(m.meta.chat)}>{t('去看')}</button></>}</div>
     if (k.kind === 'dm_reply') return <DmReply key={m.id} m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} reply={reply} />
-    if (k.kind === 'bot_created') {
-      const nb = botOf(m.meta.new_bot)
+    if (k.kind === 'bot_created' || k.kind === 'bot_updated' || k.kind === 'bot_deleted') {
+      const nb = k.kind !== 'bot_deleted' ? botOf(m.meta.new_bot ?? m.meta.bot) : undefined
       return <div key={m.id} className="sys-line">🤖 {m.content.replace(/^\[|\]$/g, '')}
-        {nb?.chat_id && <> · <button className="link-btn" onClick={() => openChat(nb.chat_id)}>{t('去和它聊')}</button></>}</div>
+        {nb?.chat_id && nb.chat_id !== chat.id && <> · <button className="link-btn" onClick={() => openChat(nb.chat_id)}>
+          {k.kind === 'bot_created' ? t('去和它聊') : t('去看看')}</button></>}</div>
     }
     if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>
     if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>   // i18n-ignore：存在消息里的标记
@@ -572,6 +623,8 @@ export function PendingApprovals({ here, from }: { here: (a: Approval) => boolea
           <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.tool === 'generate_image' ? t('{name} 想画一张图，等你确认，卡片在它的私聊里', { name: b?.name || '' })
             : a.tool === 'create_bot' ? t('{name} 想新建一个 Bot，等你确认，卡片在它的私聊里', { name: b?.name || '' })
+            : a.tool === 'update_bot' ? t('{name} 想修改一个 Bot，等你确认，卡片在它的私聊里', { name: b?.name || '' })
+            : a.tool === 'delete_bot' ? t('{name} 想删除一个 Bot，等你确认，卡片在它的私聊里', { name: b?.name || '' })
             : t('{name} 的任务 #{id} 需要你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })}</span>
           {b && <button className="btn" onClick={() => openChat(b.chat_id)}>{t('去处理')}</button>}
         </div>

@@ -17,8 +17,14 @@ The README lists the highlights; this is the full list. For setup see [Configura
   - Approval requests stay in each Bot's private chat.
 - **Bots message each other**: no group needed. A Bot can DM another Bot for help ("ask Postman whether there's mail from Anthropic").
   The other Bot works in its own chat, and the result comes back to the original conversation automatically.
-- **The main Bot creates Bots**: tell the main Bot "make a Bot that finds resources and saves them to my cloud drive". It writes the name, role and skills,
-  shows you a card, and creates the Bot only when you click Create. Other Bots that need a new Bot ask the main Bot, and you still confirm.
+- **The main Bot manages Bots**: ask it in chat to look up, create, edit or delete any Bot.
+  - Look up: "which Bots do I have?", "what skills and routines does Radar have?" It reads each Bot's full profile before answering.
+  - Create: "make a Bot that finds resources and saves them to my cloud drive". It writes the name, role, avatar and skills.
+  - Edit: "add a rule to Radar's role: AI news only", "rename Researcher to Deep". Name, role, avatar and skills can all change; when editing a role
+    it only touches what you asked for, and the card strikes through removed text and highlights added text. For another Bot's routines, the main Bot asks that Bot to set them up.
+  - Delete: the card lists what goes with it (chat history, skills, routines, its own memories, which groups it leaves). This can't be undone.
+  - Creating, editing and deleting always show a card first and happen only when you approve. Decline with a note and it revises and asks again.
+  Other Bots can edit themselves; to create, delete or edit another Bot they ask the main Bot, and you still confirm.
 - **Background tasks**: workers run long jobs while you keep chatting. **Heavy mode** has several workers do the same job, then cross-review and merge.
 - **Memory**:
   - Each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots.

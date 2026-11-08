@@ -7,7 +7,7 @@ import time
 import openai
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, bots, dm, dsml, i18n, images, library, media, memories, memory, newbot, providers, routines, search, skills, tasklog
+from . import approvals, botadmin, bots, dm, dsml, i18n, images, library, media, memories, memory, providers, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -105,14 +105,24 @@ DM_TURN = """
 你这一轮的回复会自动作为回信发给 {name}，写给它看：能直接答就直接答；要查证、多步的就 dispatch，任务结果会自动发给 {name}，
 不用你再回来；做不了就说明原因。不要再用 message_bot 回复 {name}。"""
 
-# 新建 Bot：只有主 Bot 有 create_bot（每次都弹卡片请用户确认），别的 Bot 要新 Bot 时找主 Bot
-PRIMARY_RULE = ("- 你是主 Bot，只有你能新建 Bot：用户要一个新 Bot，或者别的 Bot 私信你说需要一个新 Bot 时，用 create_bot 建"
-                "（会先弹卡片请用户确认）。先看“其他 Bot”里有没有已经能做这件事的，有就别重复建；"
-                "职责写完整，专门的做法作为 skills 一起交给它，不要存成你自己的技能。"
-                "要用的 Bot 不在“其他 Bot”里，就是还没建（哪怕记忆里写着建过）：用 create_bot 建，不要让用户自己去设置里建。\n")
-OTHER_RULE = ("- 新建 Bot 只有主 Bot「{primary}」能做：用户要你建一个 Bot，或者你觉得该有个专门的 Bot 时，"
-              "用 message_bot 私信它（它就在这个群里的话用 handoff），把名字、职责和做法写完整，由它请用户确认后新建。"
-              "不要让用户自己去设置里建。\n")
+# 管理 Bot（见 botadmin.py）：主 Bot 能查看、新建、修改、删除所有 Bot；别的 Bot 只能改自己，其余找主 Bot。
+# 新建、修改、删除每次都弹卡片请用户确认
+PRIMARY_RULE = """- 你是主 Bot，负责管理所有 Bot（包括你自己）。用户要建、改、删 Bot，或者别的 Bot 私信你请你做这些时：
+  · 查看：get_bot。不填 name 看所有 Bot 的概况，填 name 看它的完整职责、技能、定时任务、所在群聊。
+  · 新建：create_bot。先看“其他 Bot”里有没有已经能做这件事的，有就改它（加技能、补职责），别重复建；
+    职责写完整，专门的做法作为 skills 一起交给它，不要存成你自己的技能。
+    要用的 Bot 不在“其他 Bot”里，就是还没建（哪怕记忆里写着建过）：用 create_bot 建。
+  · 修改：update_bot，只填要改的（名字、职责、头像、技能、要删的技能）。改职责前先用 get_bot 看原文，
+    instructions 写改完的全文：只改用户要改的地方，其余一字不差照抄，不要顺手精简或重写。
+    定时任务和记忆是各个 Bot 自己的，update_bot 改不了：要给别的 Bot 建定时任务，用 message_bot 私信它，
+    写清楚什么时候跑、每次做什么，让它自己用 create_routine 建（你的 create_routine 只给你自己建）。
+  · 删除：delete_bot，只在用户明确要删时用，reason 写清楚为什么。别的 Bot 请你删时，卡片上会写是它请求的，用户决定。
+  · 新建、修改、删除每次都会弹卡片请用户确认，工具马上返回；有了结果你会接着说一轮，答应过的后续到时再做。
+    不要让用户自己去设置里做。
+"""
+OTHER_RULE = ("- 管理 Bot 的事归主 Bot「{primary}」：用户要新建、删除 Bot，或者要改别的 Bot，或者你觉得该有个专门的 Bot 时，"
+              "用 message_bot 私信它（它就在这个群里的话用 handoff），把要做什么写完整，由它请用户确认后去做。"
+              "改你自己（名字、职责、头像、技能）用 update_bot，同样会弹卡片请用户确认。不要让用户自己去设置里做。\n")
 
 REPLY_TURN = """
 
@@ -122,14 +132,14 @@ REPLY_SHOWN = ("回信已经显示在对话里了，不用整段复述：说清�
 REPLY_OWED = ("你这一轮的回复会自动作为回信发给 {owed}，它看不到 {name} 的回信，把它要的内容写全；"
               "还需要别人帮忙可以继续派任务或私信。")
 
-# 用户在新建 Bot 的卡片上点了之后（见 newbot.py）
-NEWBOT_TURN = """
+# 用户在新建、修改、删除 Bot 的卡片上点了之后（见 botadmin.py）
+BOTADMIN_TURN = """
 
-这一轮不是用户说的话：你用 create_bot 请求新建的 Bot 有结果了，见最近的系统通知。
-- 建好了：之前答应过建好后要做的事（比如私信它交代注意事项、请它开始干活），现在就用 message_bot 去做；没有的话简短告诉用户一声。
-- 用户没同意：附了意见就按意见改好，再用 create_bot 重新提；没附意见就简短说一声，不要自己重提。
-- 没建成：说明原因。"""
-NEWBOT_OWED = "\n这个 Bot 是 {owed} 私信请你建的：你这一轮的回复会自动作为回信发给它，把结果写清楚，它看不到这里的系统通知。"
+这一轮不是用户说的话：你请求的新建 / 修改 / 删除 Bot 有结果了，见最近的系统通知。
+- 做成了：之前答应过做成后要做的事（比如私信新 Bot 交代注意事项、请它开始干活），现在就用 message_bot 去做；没有的话简短告诉用户一声。
+- 用户没同意：附了意见就按意见改好，用同一个工具重新提；没附意见就简短说一声，不要自己重提。
+- 没做成：说明原因。"""
+BOTADMIN_OWED = "\n这是 {owed} 私信请你做的：你这一轮的回复会自动作为回信发给它，把结果写清楚，它看不到这里的系统通知。"
 
 MESSAGE_BOT = {"type": "function", "function": {"name": "message_bot",
     "description": "私信另一个 Bot，请它帮忙做事。它在自己的私聊里处理，回信会自动回到当前对话，你到时再接着说",
@@ -295,7 +305,7 @@ class Router:
                         await dm.answer(self.bot_id, owed, i18n.t("（{name} 处理时出错：{error}）",
                                                                   name=(self.bot or {}).get("name", "Bot"), error=providers.brief(e)), chat_id)
                     raise
-                # 欠着回信：没派任务、没再私信别人、也没在等新建 Bot 的卡片的话，这一轮的回复就是回信
+                # 欠着回信：没派任务、没再私信别人、也没在等管理 Bot 的卡片的话，这一轮的回复就是回信
                 # （派了的由任务结果、对方回信、新建的结果接着送）
                 if owed and not self._turn_tasks and not self._turn_dms and not self._turn_waits:
                     await dm.answer(self.bot_id, owed, shown or i18n.t("（没有回复内容）"), chat_id)
@@ -313,7 +323,7 @@ class Router:
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
         tools = ROUTER_TOOLS + ctools.desk_schemas() + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
-            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + ([newbot.CREATE_BOT] if self.bot["is_primary"] else [])
+            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + botadmin.tools_for(self.bot)
         cid = self.chat["id"]
         def create():
             return client.chat.completions.create(
@@ -376,9 +386,9 @@ class Router:
         woke = self.turn.get("woke")
         if not woke:
             return ""
-        if woke["kind"] == "newbot":
+        if woke["kind"] == "botadmin":
             o = bots.get(self.turn["reply"]["bot"]) if self.turn.get("reply") else None
-            return NEWBOT_TURN + (NEWBOT_OWED.format(owed=o["name"]) if o else "")
+            return BOTADMIN_TURN + (BOTADMIN_OWED.format(owed=o["name"]) if o else "")
         name = bots.get(woke["from"])["name"] if bots.get(woke["from"]) else "已删除的 Bot"
         if woke["kind"] == "dm":
             return DM_TURN.format(name=name)
@@ -423,7 +433,7 @@ class Router:
         sid, started = f"s{time.time_ns()}", time.time()
         self._turn_tasks = []             # 本轮派发的任务，挂在这条回复下面显示
         self._turn_dms = 0                # 本轮发出的私信
-        self._turn_waits = 0              # 本轮弹出的新建 Bot 卡片：有了结果会再叫醒这个 Bot
+        self._turn_waits = 0              # 本轮弹出的新建 / 修改 / 删除 Bot 的卡片：有了结果会再叫醒这个 Bot
         self._turn_files = []             # 本轮 send_file 发的文件，挂在这条回复下面显示
         shown, thinking, shots = "", "", []
         await self.emit({"type": "stream_start", "sid": sid}, cid)
@@ -588,8 +598,8 @@ class Router:
             return media.sent_text(att)
         if name == "generate_image":
             return await images.generate(self.bot, self.chat["id"], self.chat_id, str(args.get("prompt") or ""), self.add)
-        if name == "create_bot":
-            out = await newbot.create(self.bot, self.chat["id"], self.chat_id, args, self.add, self.emit,
+        if name in botadmin.TOOLS:
+            out = await botadmin.call(name, self.bot, self.chat["id"], self.chat_id, args, self.add, self.emit,
                                       self.turn.get("reply"), self.turn.get("depth", 0))
             if out.startswith("已弹出"):
                 self._turn_waits += 1

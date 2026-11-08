@@ -173,14 +173,16 @@ def delete(cid: int):
 
 def chat_removed(chat_id: int):
     """绑定的 Bot 或群聊被删了：改成和主 Bot 对话。"""
+    bound = [r for r in rows() if r["chat_id"] == chat_id]
+    if not bound:
+        return
     to = bots.primary()["chat_id"]
-    for r in rows():
-        if r["chat_id"] == chat_id:
-            conn.execute("update channels set chat_id=? where id=?", (to, r["id"]))
-            conn.commit()
-            _refresh(r["id"])
-            if (ch := RUNNING.get(r["id"])) and r["peer"]:
-                ch.say(i18n.t("原来绑定的对话被删除了，改成和「{title}」对话。", title=_chat_title(to)))
+    for r in bound:
+        conn.execute("update channels set chat_id=? where id=?", (to, r["id"]))
+        conn.commit()
+        _refresh(r["id"])
+        if (ch := RUNNING.get(r["id"])) and r["peer"]:
+            ch.say(i18n.t("原来绑定的对话被删除了，改成和「{title}」对话。", title=_chat_title(to)))
     changed()
 
 
@@ -293,7 +295,44 @@ def render(m: dict, group: bool) -> str | None:
         return None if meta.get("sent") else i18n.t("**↩️ {name} 回信**", name=name) + f"\n\n{content}"
     if kind == "note":
         return "ℹ️ " + content.strip("[]")
+    if kind in ("bot_created", "bot_updated", "bot_deleted"):
+        return "🤖 " + content.strip("[]")
     return None
+
+
+def _bot_card(tool: str, d: dict, who: str, args: str) -> tuple[str, str]:
+    """新建、修改、删除 Bot 的卡片：(标题, 正文)。d 是卡片参数（见 botadmin.py）。"""
+    sep = i18n.t("、")
+    if tool == "create_bot":
+        skills = "\n".join(d.get("技能") or [])
+        return i18n.t("🤖 {name} 想新建一个 Bot", name=who), \
+            f"**{d.get('名字', '')}**\n{(d.get('职责') or args)[:600]}" + (f"\n\n{skills[:400]}" if skills else "")
+    bot = d.get("Bot", "")
+    if tool == "update_bot":
+        lines = []
+        if d.get("新名字"):
+            lines.append(i18n.t("名字改成：{name}", name=d["新名字"]))
+        if d.get("职责"):
+            lines.append(i18n.t("职责改成：") + "\n" + d["职责"][:600])
+        if d.get("头像"):
+            lines.append(i18n.t("换头像"))
+        for key, label in (("新技能", i18n.t("新技能：")), ("改技能", i18n.t("改技能：")), ("删技能", i18n.t("删技能："))):
+            if d.get(key):
+                lines.append(label + " " + " ".join(x.split("：")[0] for x in d[key]))
+        return i18n.t("✏️ {name} 想修改 Bot「{bot}」", name=who, bot=bot), "\n\n".join(lines) or args
+    n = d.get("会删掉") or {}
+    lost = [t for t in (i18n.t("私聊里的 {n} 条消息", n=n["消息"]) if n.get("消息") else "",
+                        i18n.t("{n} 个技能", n=n["技能"]) if n.get("技能") else "",
+                        i18n.t("{n} 个定时任务", n=n["定时任务"]) if n.get("定时任务") else "",
+                        i18n.t("它自己的 {n} 条记忆", n=n["记忆"]) if n.get("记忆") else "") if t]
+    lines = [d["原因"]] if d.get("原因") else []
+    lines.append(i18n.t("会一起删掉：{what}", what=sep.join(lost)) if lost else i18n.t("它还没有聊天记录、技能、定时任务和记忆"))
+    if d.get("群聊"):
+        lines.append(i18n.t("会退出群聊：{groups}", groups=sep.join(f"「{g}」" for g in d["群聊"])))
+    if d.get("在做的任务"):
+        lines.append(i18n.t("正在做的 {n} 个任务会停掉", n=d["在做的任务"]))
+    lines.append(i18n.t("删了不能恢复。"))
+    return i18n.t("🗑 {name} 想删除 Bot「{bot}」", name=who, bot=bot), "\n".join(lines)
 
 
 def card_for(ev: dict) -> dict:
@@ -329,14 +368,15 @@ def card_for(ev: dict) -> dict:
             i18n.t("价格：{price}", price=d.get("价格", "")) + origin
         return {"id": ev["id"], "kind": "approval", "title": i18n.t("🎨 {name} 想画一张图", name=who), "body": body,
                 "buttons": buttons + [(i18n.t("总是允许"), "always", "")], "link": None, "done": ""}
-    if tool == "create_bot":   # 主 Bot 要新建 Bot：名字、职责、技能；只能一次一次地允许
+    if tool in ("create_bot", "update_bot", "delete_bot"):   # 新建、修改、删除 Bot：只能一次一次地允许
         try:
             d = json.loads(ev.get("args") or "{}")
         except ValueError:
             d = {}
-        skills = "\n".join(d.get("技能") or [])
-        body = f"**{d.get('名字', '')}**\n{(d.get('职责') or args)[:600]}" + (f"\n\n{skills[:400]}" if skills else "") + origin
-        return {"id": ev["id"], "kind": "approval", "title": i18n.t("🤖 {name} 想新建一个 Bot", name=who), "body": body,
+        title, body = _bot_card(tool, d, who, args)
+        if d.get("请求方"):
+            body += "\n\n" + i18n.t("（{name} 私信请它做的）", name=d["请求方"])
+        return {"id": ev["id"], "kind": "approval", "title": title, "body": body + origin,
                 "buttons": buttons, "link": None, "done": ""}
     if tool == "ask_approval":   # Worker 自己要求确认的一步：直接写要做的事；“总是允许”对它没有意义
         try:

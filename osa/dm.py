@@ -86,7 +86,7 @@ def same(a: dict | None, b: dict | None) -> bool:
 
 async def wake(bot_id: int, chat_id: int, turn: dict):
     """让 bot_id 在 chat_id 里说一轮。turn 是这一轮的来由：{"reply", "depth", "woke"}。
-    woke 的 kind：dm（收到私信）、reply（收到回信）、newbot（它请求新建的 Bot 有了结果，见 newbot.py）。"""
+    woke 的 kind：dm（收到私信）、reply（收到回信）、botadmin（它请求的新建 / 修改 / 删除 Bot 有了结果，见 botadmin.py）。"""
     from . import groups, router
     chat = bots.chat(chat_id)
     if not chat or not bots.get(bot_id):   # 等着的时候 Bot 或对话被删了

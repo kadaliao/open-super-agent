@@ -105,6 +105,10 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
   研究员的私聊里出现同一封来信、它派任务（卡片上写“做完把结果回给 …”），任务做完后回信出现在主 Bot 的对话里，主 Bot 再说一轮。
   在界面上停掉研究员的任务，主 Bot 应该收到“没做完，已取消：用户在界面上取消”，照实告诉用户而不是自己重做。
   在群里 @ 主 Bot 让群外的 Bot 做事，回信应该回到群里。
+- **管理 Bot**：在主 Bot 的私聊里依次说“我有哪些 Bot，X 配了哪些技能”“给 X 的职责加一条……”“把 X 改名叫 Y”“删掉 Y”。
+  应该先看到它用 get_bot 看过资料再回答；修改、删除各弹一张卡片（`approvals.pending` 里 tool 是 `update_bot` / `delete_bot`），
+  修改卡片的 `职责改动` 里只有要改的那句是 -1 / 1，其余是 0；同意后对话里出现 `bot_updated` / `bot_deleted`，主 Bot 接着说一轮。
+  拒绝时附一句意见，它应该按意见改了重提。在 X 的私聊里让它改别的 Bot，应该被拒、让它私信主 Bot。
 - **演示一遍**：`POST /api/bots/<id>/teach/start` 开始后，可以在电脑里直接跑浏览器控制脚本模拟用户操作：
   `echo '{"op":"open","url":"https://example.com"}' | docker exec -i osa-computer env DISPLAY=:1 python3 /tmp/osa-cdp-*.py`；
   再 `POST /api/teach/stop` 拿到 `steps` 和 `draft`，存成技能后在对话里 `/名字` 重放。

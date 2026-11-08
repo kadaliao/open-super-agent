@@ -1078,7 +1078,6 @@
   "没新建 Bot「{name}」": "Didn't create bot \"{name}\"",
   "{name} 想新建一个 Bot：{bot}": "{name} wants to create a new bot: {bot}",
   "一起带上的技能：": "Skills it comes with: ",
-  "建好后在它私聊的右栏里能改名字、头像和职责": "After it's created, change its name, avatar and role in the right panel of its chat",
   "不建了": "Don't create",
   "去和它聊": "Chat with it",
   "{name} 想新建一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to create a new bot. Confirm on the card in its direct chat",
@@ -1121,5 +1120,42 @@
   "{n} 条新消息": [
     "{n} new message",
     "{n} new messages"
-  ]
+  ],
+  "删了不能恢复。": "This can't be undone.",
+  "会一起删掉：{what}": "Also deletes: {what}",
+  "它还没有聊天记录、技能、定时任务和记忆": "It has no chat history, skills, routines or memories yet",
+  "会退出群聊：{groups}": "Leaves group chats: {groups}",
+  "正在做的 {n} 个任务会停掉": [
+    "Its {n} running task will be stopped",
+    "Its {n} running tasks will be stopped"
+  ],
+  "新技能：": "New skills: ",
+  "改技能：": "Changed skills: ",
+  "删技能：": "Removed skills: ",
+  "私聊里的 {n} 条消息": [
+    "{n} message in its chat",
+    "{n} messages in its chat"
+  ],
+  "它自己的 {n} 条记忆": [
+    "{n} memory of its own",
+    "{n} memories of its own"
+  ],
+  "头像": "Avatar",
+  "已同意修改 Bot「{name}」": "Approved editing bot \"{name}\"",
+  "没修改 Bot「{name}」": "Didn't edit bot \"{name}\"",
+  "已同意删除 Bot「{name}」": "Approved deleting bot \"{name}\"",
+  "没删除 Bot「{name}」": "Didn't delete bot \"{name}\"",
+  "不改了": "Don't change",
+  "修改": "Apply changes",
+  "不删了": "Keep it",
+  "{name} 想修改 Bot「{bot}」": "{name} wants to edit bot \"{bot}\"",
+  "{name} 想删除 Bot「{bot}」": "{name} wants to delete bot \"{bot}\"",
+  "{name} 私信请它做的": "{name} asked for this in a direct message",
+  "建好后可以再让主 Bot 改，也能在它私聊的右栏里改": "Once it's created, ask the main bot to change it, or edit it in the right panel of its chat",
+  "不再用原来的图片": "replaces the uploaded image",
+  "职责：划掉的是删掉的，标绿的是加上的": "Role: struck-through text is removed, green text is added",
+  "不同意的话附一句意见，它会按意见改了重提": "Add a note if you decline, and it will revise and ask again",
+  "去看看": "Take a look",
+  "{name} 想修改一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to edit a bot. Confirm on the card in its chat",
+  "{name} 想删除一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to delete a bot. Confirm on the card in its chat"
 }

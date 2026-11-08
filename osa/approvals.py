@@ -103,8 +103,10 @@ def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
 
 
 # ---------- 确认请求 ----------
-async def request(task, tool: str, args: dict, kind: str = "approval", once: bool = False) -> tuple[bool, str]:
-    """创建确认请求并等待用户决定。返回 (是否允许, 用户附言)。once：只能一次一次地允许（卡片上没有“总是允许”）。"""
+async def request(task, tool: str, args: dict, kind: str = "approval", once: bool = False,
+                  limit: int = 3000) -> tuple[bool, str]:
+    """创建确认请求并等待用户决定。返回 (是否允许, 用户附言)。once：只能一次一次地允许（卡片上没有“总是允许”）。
+    limit：卡片上的参数（JSON）最多多长，超出的截掉。"""
     global last_done
     aid = next(_ids)
     fut = asyncio.get_running_loop().create_future()
@@ -114,7 +116,7 @@ async def request(task, tool: str, args: dict, kind: str = "approval", once: boo
     th = memory.thread_of(task.chat_id)
     item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": chat_id,
             "origin_chat_id": th[0] if th else task.chat_id, **({"origin_thread": task.chat_id} if th else {}), "tool": tool,
-            "goal": task.goal[:80], "args": json.dumps(args, ensure_ascii=False, indent=1)[:3000], "ts": time.time(),
+            "goal": task.goal[:80], "args": json.dumps(args, ensure_ascii=False, indent=1)[:limit], "ts": time.time(),
             "expires": time.time() + timeout if timeout else None, "future": fut, **({"once": True} if once else {})}
     pending[aid] = item
     task.waiting_approval = aid
@@ -157,6 +159,16 @@ def cancel_for_task(task_id: int):
     for aid, item in list(pending.items()):
         if item["task_id"] == task_id and not item["future"].done():
             item["future"].set_result((False, "任务已取消"))
+            if notify:
+                asyncio.create_task(notify({"type": "approval", "id": aid, "status": "cancelled",
+                                            "chat_id": item["chat_id"]}))
+
+
+def cancel_for_bot(bot_id: int):
+    """Bot 被删了：它还在等的确认请求都按拒绝处理。"""
+    for aid, item in list(pending.items()):
+        if item["bot_id"] == bot_id and not item["future"].done():
+            item["future"].set_result((False, "Bot 已删除"))
             if notify:
                 asyncio.create_task(notify({"type": "approval", "id": aid, "status": "cancelled",
                                             "chat_id": item["chat_id"]}))

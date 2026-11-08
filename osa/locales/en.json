@@ -576,5 +576,54 @@
   "你的 Mac 断开了": "Your Mac disconnected",
   "借用的 Mac 不能用终端": "A lent Mac can't run terminal commands",
   "演示服务器上不能借用你的电脑": "The demo server can't borrow your computer",
-  "这台电脑不能让 Bot 操作整个屏幕（只有 Mac 可以）": "This computer can't let bots use the whole screen (only a Mac can)"
+  "这台电脑不能让 Bot 操作整个屏幕（只有 Mac 可以）": "This computer can't let bots use the whole screen (only a Mac can)",
+  "删了不能恢复。": "This can't be undone.",
+  "会一起删掉：{what}": "Also deletes: {what}",
+  "它还没有聊天记录、技能、定时任务和记忆": "It has no chat history, skills, routines or memories yet",
+  "会退出群聊：{groups}": "Leaves group chats: {groups}",
+  "正在做的 {n} 个任务会停掉": [
+    "Its {n} running task will be stopped",
+    "Its {n} running tasks will be stopped"
+  ],
+  "新技能：": "New skills: ",
+  "改技能：": "Changed skills: ",
+  "删技能：": "Removed skills: ",
+  "私聊里的 {n} 条消息": [
+    "{n} message in its chat",
+    "{n} messages in its chat"
+  ],
+  "{n} 个技能": [
+    "{n} skill",
+    "{n} skills"
+  ],
+  "{n} 个定时任务": [
+    "{n} routine",
+    "{n} routines"
+  ],
+  "它自己的 {n} 条记忆": [
+    "{n} memory of its own",
+    "{n} memories of its own"
+  ],
+  "头像": "avatar",
+  "修改 Bot": "Edit a bot",
+  "删除 Bot": "Delete a bot",
+  "[已修改 Bot「{name}」：{what}]": "[Updated bot \"{name}\": {what}]",
+  "[没修改 Bot「{name}」]": "[Didn't update bot \"{name}\"]",
+  "[没修改 Bot「{name}」：{note}]": "[Didn't update bot \"{name}\": {note}]",
+  "[没改成 Bot「{name}」：{error}]": "[Couldn't update bot \"{name}\": {error}]",
+  "[已删除 Bot「{name}」]": "[Deleted bot \"{name}\"]",
+  "[没删除 Bot「{name}」]": "[Didn't delete bot \"{name}\"]",
+  "[没删除 Bot「{name}」：{note}]": "[Didn't delete bot \"{name}\": {note}]",
+  "[没删成 Bot「{name}」：{error}]": "[Couldn't delete bot \"{name}\": {error}]",
+  "名字改成 {name}": "renamed to {name}",
+  "职责": "role",
+  "技能": "skills",
+  "🗑 {name} 想删除 Bot「{bot}」": "🗑 {name} wants to delete bot \"{bot}\"",
+  "✏️ {name} 想修改 Bot「{bot}」": "✏️ {name} wants to edit bot \"{bot}\"",
+  "名字改成：{name}": "New name: {name}",
+  "换头像": "New avatar",
+  "职责改成：": "New role:",
+  "（{name} 私信请它做的）": "({name} asked for this in a direct message)",
+  "{who} 想修改一个 Bot": "{who} wants to edit a bot",
+  "{who} 想删除一个 Bot": "{who} wants to delete a bot"
 }
