@@ -1279,5 +1279,9 @@
   "加载更多": "Load more",
   "多久开始回复": "Time to first word",
   "之后每秒 {n} token": "then {n} tokens/s",
-  "对话里的回复": "Replies in chats"
+  "对话里的回复": "Replies in chats",
+  "小应用": "Applet",
+  "打开": "Open",
+  "资料库里的页面": "Page in the library",
+  "来自小应用「{title}」": "From the applet \"{title}\""
 }

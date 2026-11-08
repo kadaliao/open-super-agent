@@ -573,7 +573,9 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
         <div key={m.id} className="msg user">
           <div className="user-col">
             {items.length > 0 && <Attachments items={items} />}
-            {(text || !items.length) && <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}<div className="bubble"><Linkify text={text} /></div></div>}
+            {(text || !items.length) && <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
+              {m.meta.applet && <button className="via link-btn" onClick={() => openLibrary(m.meta.applet.id)}>{t('来自小应用「{title}」', { title: m.meta.applet.title })}</button>}
+              <div className="bubble"><Linkify text={text} /></div></div>}
             {!text && items.length > 0 && m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
             {text && textEmbeds(text).map(u => <div key={u} className="user-embed"><LinkEmbed href={u} fallback={null} /></div>)}
             <ThreadLink m={m} reply={reply} />

@@ -5,6 +5,7 @@ import rehypeHighlight from 'rehype-highlight'
 import { t } from '../i18n'
 import { openImage } from './Media'
 import { LinkEmbed, MAX_EMBEDS, isMedia, parseEmbed } from './Embeds'
+import { PageEmbed } from './Applet'
 
 function CodeBlock(props: any) {
   const { children, ...rest } = props
@@ -37,6 +38,7 @@ function Link({ node, href, ...p }: any) {
   return <a {...p} href={href} target="_blank" rel="noreferrer" />
 }
 
+const isPage = (href: string) => /^\/library\/pages\/\d+$/.test(href)   // 站内的页面：小应用原地显示，普通页面显示成卡片（Applet.tsx）
 const AUDIO = /\.(mp3|m4a|wav|ogg|oga|opus|aac|flac)$/i
 const VIDEO = /\.(mp4|webm|mov|m4v|ogv)$/i
 const pathOf = (href: string) => { try { return new URL(href, location.href).pathname } catch { return href || '' } }
@@ -69,7 +71,7 @@ function markEmbeds() {
         if (c.tagName !== 'p') { sole(c); continue }
         const one = soleLink(c)
         const path = one ? pathOf(one.href) : ''
-        if (one && !AUDIO.test(path) && !VIDEO.test(path) && parseEmbed(one.href) && take(one.href))
+        if (one && (isPage(one.href) || (!AUDIO.test(path) && !VIDEO.test(path) && parseEmbed(one.href))) && take(one.href))
           c.properties = { ...c.properties, dataEmbed: one.href }
       }
     }
@@ -77,7 +79,7 @@ function markEmbeds() {
       for (const c of node.children || []) {
         if (c.type !== 'element' || SKIP.includes(c.tagName) || c.properties?.dataEmbed) continue
         const href = c.tagName === 'a' ? c.properties?.href : null
-        if (typeof href === 'string' && isMedia(href)) out.push(href)
+        if (typeof href === 'string' && (isMedia(href) || isPage(href))) out.push(href)   // 站内页面写在句子里也展开（小应用要能直接用）
         else inline(c, out)
       }
       return out
@@ -96,7 +98,11 @@ function markEmbeds() {
 
 // 单独一段的音频、视频链接换成播放器，链接留在下面；标了 dataEmbed 的换成卡片或嵌入
 function Para({ node, children, ...p }: any) {
-  if (node?.properties?.dataEmbed) return <LinkEmbed href={node.properties.dataEmbed} fallback={<p {...p}>{children}</p>} />
+  if (node?.properties?.dataEmbed) {
+    const href = node.properties.dataEmbed
+    if (isPage(href)) return <PageEmbed href={href} fallback={<p {...p}>{children}</p>} />
+    return <LinkEmbed href={href} fallback={<p {...p}>{children}</p>} />
+  }
   const one = soleLink(node)
   const path = one ? pathOf(one.href) : ''
   if (one && AUDIO.test(path)) return <div className="md-media"><audio controls preload="metadata" src={one.href} /><div className="md-media-cap">{children}</div></div>
