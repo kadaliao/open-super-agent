@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, chatById, loadOlder, markThreadSeen, openChat, openLibrary, openThread, pinChat, showTask, useStore } from '../store'
+import { api, approve, chatById, loadOlder, markThreadSeen, openChat, openChatOrThread, openLibrary, openThread, pinChat, showTask, useStore } from '../store'
 import type { Approval, Bot, Chat as ChatT, Message, Task, ThreadInfo } from '../types'
 import { plain } from '../plain'
 import BotAvatar from './BotAvatar'
@@ -503,7 +503,7 @@ function DmLine({ m, from, to, here }: { m: Message; from?: Bot; to?: Bot; here:
       {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || t('已删除的 Bot')}</b>
       <span className="muted">{t('私信')}</span>
       {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || t('已删除的 Bot')}</b>
-      {there && <button className="link-btn small" onClick={() => openChat(there)}>{m.meta.chat && m.meta.chat !== here ? t('去发信的对话') : t('去看 {name}', { name: to?.name || '' })}</button>}
+      {there && <button className="link-btn small" onClick={() => openChatOrThread(there)}>{m.meta.chat && m.meta.chat !== here ? t('去发信的对话') : t('去看 {name}', { name: to?.name || '' })}</button>}
       <span className={'handoff-text' + (open ? '' : ' clamp3')}>{m.content}</span>
       {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开')}</button>}
     </div>
@@ -594,7 +594,7 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
     if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
     if (k.kind === 'dm') return <DmLine key={m.id} m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />
     if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
-      {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChat(m.meta.chat)}>{t('去看')}</button></>}</div>
+      {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChatOrThread(m.meta.chat)}>{t('去看')}</button></>}</div>
     if (k.kind === 'dm_reply') return <DmReply key={m.id} m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} reply={reply} />
     if (k.kind === 'bot_created' || k.kind === 'bot_updated' || k.kind === 'bot_deleted') {
       const nb = k.kind !== 'bot_deleted' ? botOf(m.meta.new_bot ?? m.meta.bot) : undefined

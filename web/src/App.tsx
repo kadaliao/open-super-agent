@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, openNotified, setSettings, useStore } from './store'
+import { api, bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, openChatOrThread, setSettings, useStore } from './store'
 import { desktop } from './desktop'
 import Chat from './components/Chat'
 import ThreadPanel from './components/Thread'
@@ -76,7 +76,7 @@ export default function App() {
   useEffect(() => {
     const h = (e: Event) => {
       const id = Number((e as CustomEvent).detail)
-      if (id) openNotified(id)
+      if (id) openChatOrThread(id)
     }
     window.addEventListener('osa-open-chat', h)
     return () => window.removeEventListener('osa-open-chat', h)

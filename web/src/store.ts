@@ -440,8 +440,9 @@ function notifyDesktop(chatId: number, m: Message | null, text?: string, threadI
   desktop!.notify(title, text || (m?.content || '').replace(/[#*`>_~\[\]]/g, '').slice(0, 120), threadId ?? chatId, chatId === state.active)
 }
 
-// 点了系统通知（桌面 App 发回的 id）：是对话就打开对话，是讨论串就打开它所在的对话和这个讨论串
-export async function openNotified(id: number) {
+// 打开一个对话或讨论串：是对话就打开对话，是讨论串就打开它所在的对话和这个讨论串。
+// 系统通知（桌面 App 发回的 id）和消息里的“去看”都用它，因为指向的可能是讨论串，讨论串不在侧栏的对话列表里
+export async function openChatOrThread(id: number) {
   if (state.chats.some(c => c.id === id)) return openChat(id)
   const th = state.threads[id] || await api<ThreadInfo>(`/api/threads/${id}`).catch(() => null)   // 页面重新加载过、早看过了
   if (th && state.chats.some(c => c.id === th.parent)) { await openChat(th.parent); openThread(th.parent, th.root) }
