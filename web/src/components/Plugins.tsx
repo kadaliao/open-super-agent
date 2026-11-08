@@ -11,9 +11,26 @@ type Plugin = {
   name: string; title: string; description: string; version: string; author: string; kind: 'file' | 'folder'
   enabled: boolean; loaded: boolean; changed: boolean; error: string; tools: string[]
   config: Record<string, unknown>; default_config: Record<string, unknown>; from_catalog: boolean; update: boolean
+  provide: string[]; inject: string[]; cycle: string[]
+  waiting: { service: string; by: string[] }[]           // 启用了、在等的服务，by 是能提供它的插件（core 是内置的）
+  dependents: { name: string; loaded: boolean }[]        // 要用它提供的服务的插件
 }
-type Item = { name: string; title: string; description: string; version: string; author: string; installed: boolean }
-type Data = { locked: string; dir: string; plugins: Plugin[]; catalog: Item[] }
+type Item = { name: string; title: string; description: string; version: string; author: string; installed: boolean; provide: string[]; inject: string[] }
+type Service = { name: string; describe: string }
+type Data = { locked: string; dir: string; plugins: Plugin[]; catalog: Item[]; services: Service[] }
+
+// 提供 / 用到的服务，一行写清楚：启用前就能看出它要用模型（花钱）、会往对话里发消息
+function Wiring({ provide, inject, core }: { provide: string[]; inject: string[]; core: Service[] }) {
+  const desc = (s: string) => core.find(c => c.name === s)?.describe
+  if (!provide.length && !inject.length) return null
+  return (
+    <span className="muted small plugin-wiring">
+      {inject.length > 0 && <span>{t('用到：')}{inject.map(s => <code key={s} title={desc(s) || ''}>{s}</code>)}
+        {inject.some(desc) && <> （{inject.filter(desc).map(s => desc(s)).join('；')}）</>}</span>}
+      {provide.length > 0 && <span>{t('提供：')}{provide.map(s => <code key={s}>{s}</code>)}</span>}
+    </span>
+  )
+}
 
 export default function Plugins() {
   const [d, setD] = useState<Data | null>(null)
@@ -32,19 +49,19 @@ export default function Plugins() {
       <p className="muted">{tn('插件是放在 {dir} 里的 Python 代码，和服务在同一个进程里运行，能做服务能做的一切（读写这台机器上的文件、访问网络）。只启用你看过、信得过的。启用时会记下文件的指纹，文件改过就不再加载，要你看过改动再启用一次。', { dir: <code>{d.dir}</code> })}</p>
       {d.locked && <div className="error-line">{d.locked}</div>}
       <Section title={t('已安装')}>
-        {d.plugins.length ? <div className="set-rows">{d.plugins.map(p => <Row key={p.name} p={p} locked={!!d.locked} reload={load} />)}</div>
+        {d.plugins.length ? <div className="set-rows">{d.plugins.map(p => <Row key={p.name} p={p} all={d.plugins} core={d.services} locked={!!d.locked} reload={load} />)}</div>
           : <div className="muted small">{t('还没有插件。从下面的插件市场装一个，或者把 .py 文件放进上面的文件夹。')}</div>}
       </Section>
       <Section title={t('插件市场')} desc={t('随项目发布、审查过的插件。装上以后还要你看过代码、自己启用。')}>
         <div className="set-rows">
-          {d.catalog.map(c => <CatalogRow key={c.name} c={c} update={updates.has(c.name)} locked={!!d.locked} reload={load} />)}
+          {d.catalog.map(c => <CatalogRow key={c.name} c={c} core={d.services} update={updates.has(c.name)} locked={!!d.locked} reload={load} />)}
         </div>
       </Section>
     </div>
   )
 }
 
-function Row({ p, locked, reload }: { p: Plugin; locked: boolean; reload: () => void }) {
+function Row({ p, all, core, locked, reload }: { p: Plugin; all: Plugin[]; core: Service[]; locked: boolean; reload: () => void }) {
   const toast = useToast()
   const [open, setOpen] = useState<'' | 'source' | 'config'>('')
   const [busy, setBusy] = useState(false)
@@ -55,6 +72,8 @@ function Row({ p, locked, reload }: { p: Plugin; locked: boolean; reload: () => 
   }
   const toggle = async (on: boolean) => {
     if (on && !(await ask(t('启用插件「{name}」？它会在服务里运行，能读写这台机器上的文件、访问网络。确认你看过它的代码。', { name: p.title || p.name }), { ok: t('启用') }))) return
+    const running = p.dependents.filter(d => d.loaded).map(d => titleOf(all, d.name))
+    if (!on && running.length && !(await ask(t('「{names}」用到它提供的服务，会跟着停下；重新启用它以后会自动恢复。', { names: running.join('」「') }), { ok: t('停用') }))) return
     run(() => api(`/api/plugins/${p.name}/${on ? 'enable' : 'disable'}`, { method: 'POST' }), on ? t('已启用') : t('已停用'))
   }
   const remove = async () => {
@@ -63,6 +82,8 @@ function Row({ p, locked, reload }: { p: Plugin; locked: boolean; reload: () => 
   }
   const status = p.changed ? <span className="chip warn">{t('文件改过了，看过后重新启用')}</span>
     : p.error ? <span className="chip bad">{t('出错')}</span>
+    : p.cycle.length ? <span className="chip bad">{t('循环依赖')}</span>
+    : p.waiting.length ? <span className="chip warn">{t('等待依赖')}</span>
     : p.loaded ? <span className="chip ok">{t('运行中')}</span>
     : <span className="chip faint">{p.enabled ? t('没加载') : t('已停用')}</span>
   return (
@@ -72,6 +93,11 @@ function Row({ p, locked, reload }: { p: Plugin; locked: boolean; reload: () => 
         {p.description && <span>{p.description}</span>}
         <span className="muted small"><code>{p.name}</code>{p.kind === 'folder' ? ' · ' + t('文件夹') : ''}
           {p.tools.length > 0 && <> · {t('工具：{names}', { names: p.tools.join('、') })}</>}</span>
+        <Wiring provide={p.provide} inject={p.inject} core={core} />
+        {p.waiting.map(w => <span key={w.service} className="plugin-wait">{w.by.length
+          ? tn('等服务 {s}：先启用 {who}', { s: <code>{w.service}</code>, who: w.by.map(n => `「${titleOf(all, n)}」`).join(t('或')) })
+          : tn('等服务 {s}：没有装能提供它的插件', { s: <code>{w.service}</code> })}</span>)}
+        {p.cycle.length > 0 && <span className="plugin-wait bad">{t('循环依赖：{path}，这几个永远等不到对方，改掉其中一个的 inject', { path: p.cycle.map(n => titleOf(all, n)).join(' → ') })}</span>}
         {p.error && <pre className="plugin-err">{p.error}</pre>}
         <span className="plugin-actions">
           <button className="link-btn" onClick={() => setOpen(open === 'source' ? '' : 'source')}>{open === 'source' ? t('收起代码') : t('查看代码')}</button>
@@ -83,7 +109,9 @@ function Row({ p, locked, reload }: { p: Plugin; locked: boolean; reload: () => 
         {open === 'config' && <Config p={p} onSaved={reload} />}
       </span>
       <label className="switch" title={p.enabled ? t('停用') : t('启用')}>
-        <input type="checkbox" checked={p.enabled && !p.changed} disabled={busy || (locked && !p.enabled)} onChange={e => toggle(e.target.checked)} /><span />
+        {/* 确认框是异步的：点完开关、在框里决定之前，浏览器已经把勾改了；用 key 让它按服务端的状态重新画 */}
+        <input key={String(p.enabled && !p.changed)} type="checkbox" checked={p.enabled && !p.changed} disabled={busy || (locked && !p.enabled)}
+          onChange={e => toggle(e.target.checked)} /><span />
       </label>
     </div>
   )
@@ -115,7 +143,7 @@ function Config({ p, onSaved }: { p: Plugin; onSaved: () => void }) {
   )
 }
 
-function CatalogRow({ c, update, locked, reload }: { c: Item; update: boolean; locked: boolean; reload: () => void }) {
+function CatalogRow({ c, core, update, locked, reload }: { c: Item; core: Service[]; update: boolean; locked: boolean; reload: () => void }) {
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const install = async () => {
@@ -129,6 +157,7 @@ function CatalogRow({ c, update, locked, reload }: { c: Item; update: boolean; l
       <span>
         <b>{c.title || c.name}{c.version && <span className="muted small"> · {c.version}</span>}</b>
         {c.description && <span>{c.description}</span>}
+        <Wiring provide={c.provide} inject={c.inject} core={core} />
         <span className="plugin-actions"><button className="link-btn" onClick={() => setOpen(!open)}>{open ? t('收起代码') : t('查看代码')}</button></span>
         {open && <Source url={`/api/plugins/${c.name}/source?catalog=1`} />}
       </span>
@@ -137,3 +166,5 @@ function CatalogRow({ c, update, locked, reload }: { c: Item; update: boolean; l
     </div>
   )
 }
+
+const titleOf = (all: Plugin[], name: string) => (name === 'core' ? t('内置') : all.find(p => p.name === name)?.title || name)

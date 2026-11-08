@@ -1311,5 +1311,17 @@
   "安装": "Install",
   "扩展": "Extensions",
   "插件": "Plugins",
-  "在服务里运行的 Python 代码：给 Bot 加工具，在有消息、任务做完时做点事。写法见 docs/plugins.md。": "Python code that runs inside the server: give bots new tools, or act when messages arrive and tasks finish. See docs/plugins.md."
+  "在服务里运行的 Python 代码：给 Bot 加工具，在有消息、任务做完时做点事。写法见 docs/plugins.md。": "Python code that runs inside the server: give bots new tools, or act when messages arrive and tasks finish. See docs/plugins.md.",
+  "来自插件「{name}」": "From the plugin \"{name}\"",
+  "插件 {name}": "Plugin {name}",
+  "用到：": "Uses: ",
+  "提供：": "Provides: ",
+  "「{names}」用到它提供的服务，会跟着停下；重新启用它以后会自动恢复。": "\"{names}\" use services it provides and will stop too. They come back on their own when you enable it again.",
+  "循环依赖": "Circular dependency",
+  "等待依赖": "Waiting for a dependency",
+  "等服务 {s}：先启用 {who}": "Waiting for {s}: enable {who} first",
+  "或": " or ",
+  "等服务 {s}：没有装能提供它的插件": "Waiting for {s}: no installed plugin provides it",
+  "循环依赖：{path}，这几个永远等不到对方，改掉其中一个的 inject": "Circular dependency: {path}. These will wait for each other forever; change the inject of one of them",
+  "内置": "Built-in"
 }

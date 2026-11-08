@@ -9,6 +9,10 @@
   （MCP 应用断开时就是这么把它的工具收走的）。插件的边界就是 Context。
 - 事件也在这里：on(event, fn) / emit(event, **kw)。服务端用它把“页面变了”“小应用数据变了”广播给网页，
   工具的实现不用知道有 WebSocket 这回事。
+- 服务：provide(name, value) 把一个对象按名字登记出去（内置的 llm、messenger，插件自己提供的），插件在 META 里 inject 要用的；
+  依赖谁、谁先加载、提供者停了依赖它的先停，这些在 plugins.py。
+- 插件不能改 Agent 的循环（调模型、调工具的那一圈）：只能注册工具、订阅事件（只读）、提供和使用服务。
+  试过在调模型、调工具前后开钩子，去掉了：提示词缓存、defang、Router 要快这些约定插件都能悄悄破坏，出了问题很难查。
 
 还没迁过来的：电脑工具（computer/tools.py，和任务、窗口、控制权绑得紧，自成一套）、Router 自己的几个（dispatch、cancel_task 这类
 要改 Router 状态的）、botadmin（要弹卡片、叫醒 Bot）。它们仍由 Router / Worker 直接处理，注册表是最后一道。
@@ -63,6 +67,7 @@ class Tool:
 
 TOOLS: dict[str, Tool] = {}
 _LISTENERS: dict[str, list[Callable]] = {}
+SERVICES: dict[str, tuple[str, Any, str]] = {}   # 名字 -> (谁提供的, 对象, 一句话说明)
 
 
 class Context:
@@ -108,6 +113,17 @@ class Context:
                 _LISTENERS[event].remove(fn)
         return self.effect(undo)
 
+    def provide(self, name: str, value, describe: str = "") -> Callable[[], None]:
+        """按名字登记一个服务。别的 Context 已经登记过这个名字就报错（和工具一样不覆盖）。"""
+        if (old := SERVICES.get(name)) and old[0] != self.name:
+            raise ValueError(f"服务 {name} 已经由 {old[0]} 提供了")
+        SERVICES[name] = (self.name, value, describe)
+
+        def undo():
+            if SERVICES.get(name, (None,))[0] == self.name:
+                del SERVICES[name]
+        return self.effect(undo)
+
     def dispose(self):
         while self._disposers:
             try:
@@ -138,6 +154,17 @@ def by_group() -> dict[str, list[Tool]]:
         if t.group:
             out.setdefault(t.group, []).append(t)
     return out
+
+
+def service(name: str):
+    return SERVICES[name][1] if name in SERVICES else None
+
+
+def listening(event: str) -> bool:
+    """有没有插件在听这个事件：没有的话，发事件前那些准备工作（查 Bot、拼参数）都可以省掉。"""
+    return bool(_LISTENERS.get(event))
+
+
 
 
 _firing: set = set()

@@ -620,6 +620,11 @@ const botAdmin = ({ m, kind, botOf, chat }: CardProps) => {
 registerCard('bot_created', botAdmin)
 registerCard('bot_updated', botAdmin)
 registerCard('bot_deleted', botAdmin)
+// 插件以 Bot 的名义发进对话的消息（osa/services.py 的 messenger）：像 Bot 的回复，下面标着是哪个插件发的
+registerCard('plugin', ({ m, bot, group, reply }) => (
+  <BotMessage bot={bot} m={m} showName={group} reply={reply}>
+    <div className="muted small">{t('来自插件「{name}」', { name: m.meta.plugin || '' })}</div>
+  </BotMessage>))
 registerCard('reset', () => <div className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>)
 registerCard('trigger', ({ m }) => <div className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>)   // i18n-ignore：存在消息里的标记
 

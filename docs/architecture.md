@@ -256,7 +256,12 @@ web/src/
   加上设置、数据目录、日志、读保险库；停用、删除、重新加载都是 `dispose()`。
 - **启用记 sha256，加载时比对**，不一样就不加载：这是“Bot 不能让自己写的代码进进程”的那道闸，改插件相关代码时别绕过它。
   只有设置页（用户）能启用，不要给 Bot 加管插件的工具。服务器锁、演示服务器上整个关掉。
-- `registry.fire` 发的事件不等监听器（`user_message`、`task_done`），在对话、任务这种不能被插件拖慢的地方用它；要等结果的才用 `emit`。
+- `registry.fire` 发的事件不等监听器（`user_message`、`task_done`、`tool_done`），在对话、任务这种不能被插件拖慢的地方用它；要等结果的才用 `emit`。
+  发之前先 `registry.listening(...)`，没人听就连参数都不拼。
+- **服务和依赖**：`META` 的 `provide` / `inject`；缺服务的插件在 `_waiting` 里等，提供者加载后 `_wake` 叫醒；`unload` 一个提供者时
+  先卸载用它服务的插件（还启用着的回到等待）。内置服务在 `services.py`（`llm`、`messenger`），插件拿到的是 `bind(插件名)` 之后的那份。
+- **插件不能改 Agent 的循环**：试过调模型、调工具前后的钩子，去掉了（原因见计划文档）。别再给 Router / Worker 加让插件改请求、改结果的口子，
+  要扩展就加只读事件或者新的工具、服务。
 
 ### 应用自带的界面（MCP Apps）
 - 设计见 [小应用计划](plans/applets.md#第-3-步的设计mcp-apps-宿主)。工具的 `_meta.ui.resourceUri` 指向 `ui://` 资源；

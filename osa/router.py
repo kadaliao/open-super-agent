@@ -509,7 +509,15 @@ class Router:
                 return m
         return None
 
-    async def _tool(self, name: str, args: dict) -> str:
+    async def _tool(self, name: str, args: dict):
+        """调一个工具；调完发 tool_done 事件（只读，插件能看不能改，不等它们）。"""
+        out = await self._call_tool(name, args)
+        if registry.listening("tool_done"):
+            registry.fire("tool_done", scope="router", bot=self.bot, chat_id=self.chat["id"], task=None, name=name,
+                          args=dict(args), result=out[0] if isinstance(out, tuple) else out, status="done")
+        return out
+
+    async def _call_tool(self, name: str, args: dict):
         if name == "dispatch":
             if self._over_budget():
                 return "今日 token 预算已用完，没有派发。请告诉用户。"

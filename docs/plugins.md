@@ -59,6 +59,8 @@ def apply(ctx):
 | `ctx.secret(value)` | 设置里写 `"vault:名字"` 的值从保险库取。webhook 地址、token 别明文写在设置里 |
 | `ctx.data_dir` | 插件自己放文件的目录（`data/plugins/.<名字>.data`，要用先 `mkdir`），删插件时一起删 |
 | `ctx.log` | 日志（`ctx.log.warning(...)`），出现在服务的日志里 |
+| `ctx.services` | `META` 的 `inject` 里写了的服务，按名字取：`ctx.services["messenger"]`，见下面 |
+| `ctx.provide(name, value)` | 把一个对象作为服务提供给别的插件，名字要先写进 `META` 的 `provide` |
 
 `apply` 抛异常时，已经登记的会全部撤销，错误显示在设置页上。插件自己开的线程、改过的全局状态 osa 管不到，用 `ctx.effect` 登记清理。
 
@@ -91,14 +93,60 @@ Tool(
 |---|---|---|
 | `user_message` | `chat`（对话）、`text`、`via`（从哪个聊天软件来，网页上是空） | 用户发来一条消息（网页、聊天软件、群聊） |
 | `task_done` | `task`（`id`、`goal`、`status`：done 或 failed、`bot_id`、`chat_id`……）、`bot`、`result` | 后台任务（包括定时任务）做完或失败、结果发进对话之后。取消的、定时任务这次没有新内容的不发 |
+| `tool_done` | `scope`（router / worker）、`bot`、`chat_id`、`task`（后台任务里才有）、`name`、`args`、`result`（给模型的文字）、`status` | Bot 调完一个工具（对话里、后台任务里都算）。只读：拿到的是拷贝，改了不影响任何东西 |
 | `pages_changed` | 无 | 资料库的页面变了 |
 | `page_data` | `page_id`、`data` | 小应用的数据变了 |
 | `plugins_changed` | 无 | 插件装了、启用、停用、删了 |
 
-`user_message`、`task_done` 是“发出去不等”的：监听器慢不会拖慢对话。监听器里的异常记进日志，不影响别的监听器。
+`user_message`、`task_done`、`tool_done` 是“发出去不等”的：监听器慢不会拖慢对话。监听器里的异常记进日志，不影响别的监听器。
 监听器的参数以后可能会加，写成 `def on_done(task, bot, result, **_)` 留个 `**_`。
 
-## 依赖
+## 服务和插件之间的依赖
+
+插件可以把自己的东西（函数、对象）作为服务提供出去，别的插件声明要用它。在 `META` 里写清楚，设置页不执行代码就能看出谁依赖谁：
+
+```python
+# data/plugins/glossary.py：提供服务
+META = {"title": "术语表", "provide": ["glossary"], "config": {"terms": {"OSA": "open-super-agent"}}}
+
+def apply(ctx):
+    ctx.provide("glossary", lambda word: ctx.config["terms"].get(word))
+```
+
+```python
+# data/plugins/explain.py：用别人的服务
+from osa.registry import ROUTER, Tool
+META = {"title": "解释缩写", "inject": ["glossary"]}
+
+def apply(ctx):
+    lookup = ctx.services["glossary"]
+    async def run(call):
+        return lookup(call.args.get("word", "")) or "术语表里没有"
+    ctx.tool(Tool("explain", {...}, run, where=frozenset({ROUTER})))
+```
+
+- 要用的服务还没有（提供它的插件没装、没启用、出错了），这个插件**先不加载**，设置页上标“等待依赖”，写着要先启用谁。
+  提供者一加载好，等着的自动加载，不用再点。
+- 提供者停了（停用、删除、重新加载、改设置）：**用它服务的插件先停下**，回到等待；提供者回来后自动恢复。
+  停用提供者时设置页会先问你，列出哪些会跟着停。
+- 两个插件互相等对方的服务（成环）永远加载不了，设置页上标“循环依赖”和那一圈是谁。
+- 服务名不能抢：别人已经提供了同名服务的话，加载失败。
+
+### 内置的服务
+
+| 服务 | 用法 | 说明 |
+|---|---|---|
+| `llm` | `await ctx.services["llm"].complete("一句话" 或 messages, system=None, role="worker")` | 调这台服务配好的模型（`role` 选用对话还是后台任务的模型）。算进每天的 token 预算，用完了报错；费用记在“插件 名字”下，观测页能看到 |
+| `messenger` | `await ctx.services["messenger"].post("文字", bot=None, chat_id=None)` | 以某个 Bot 的名义往对话里发一条消息（`bot` 是 id 或名字，不给就是主 Bot；`chat_id` 不给就是它的私聊）。消息下面标着来自哪个插件；Bot 看到的是一条系统通知，里面冒充“系统通知”的文字会被改成“转述的”，网页、订阅源里的原文带不跑它 |
+
+## 插件不能做的
+
+插件**不能改 Agent 本身的循环**：调模型之前改发出去的内容、调工具之前改参数或拦下、调完改结果，这些都不开放。
+试过开这几个口子，又去掉了：提示词前缀逐字不变才能命中缓存、外部文字要过 defang、Router 要几秒内回话，这些约定插件都能悄悄破坏，
+出了问题表现为“变贵了”“变慢了”“Bot 被网页里的话带跑了”，很难查到是哪个插件。要观察 Bot 做了什么用 `tool_done` 事件（只读）；
+要禁止某个工具用设置里的确认规则。
+
+## 第三方包
 
 插件只能用 Python 标准库和 osa 自己装了的包（`httpx`、`pyyaml`、`cryptography`、`openai`、`mcp`……）。
 桌面 App 自带的运行环境装不了别的包；用 Docker 或源码部署的可以自己往环境里装，但换台机器就要再装一遍。要用别的语言或者一堆依赖，写成 [应用](apps.md)。
@@ -109,11 +157,13 @@ Tool(
 点“安装”把它复制到 `data/plugins`，仍然要你看过代码、自己启用；市场里出了新版本显示“更新”，换上新版本后要重新启用。
 不支持从任意网址安装插件。
 
-现在有两个：
+现在有三个：
 
 - **日期计算**（`date_calc`）：相差几天、几个工作日，加减天数和月数，星期几。大模型算日期常出错，装上以后对话里直接能算对。
 - **任务完成推送到群机器人**（`task_webhook`）：后台任务做完或失败时推到飞书、钉钉、企业微信、Slack、Discord 的群机器人，或任意接收 JSON 的地址。
   设置里填 `url`（建议 `vault:名字`）和 `kind`。
+- **订阅 RSS**（`rss_watch`）：定时看几个 RSS / Atom 订阅源，有新文章就以 Bot 的名义发到它的对话里。不调模型、不花钱，用的是内置的 `messenger` 服务。
+  设置里填 `feeds`（地址列表）、`bot`（名字，不填是主 Bot）、`every_minutes`（至少 10）。第一次只记下现有的文章，不发。
 
 想把自己的插件放进市场：放进 `osa/catalog/plugins/`，加上测试（参考 `tests/test_plugins.py` 里的 `test_date_calc_logic`），提 PR。
 不收：要绕过验证码或人机校验的、偷偷往外发数据的、要额外装包的。

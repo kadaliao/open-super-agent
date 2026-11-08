@@ -1,4 +1,4 @@
-"""内置工具的注册：网页、资料库、小应用数据、按意思检索、发文件、画图、定时任务。
+"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、发文件、画图、定时任务；给插件用的 llm、messenger。
 
 每个工具只在这里写一次，Router 和 Worker 都从注册表（registry.py）找；在哪些场合给模型用、要不要走确认规则，都在 Tool 上写明。
 电脑工具、Router 自己的几个、botadmin 还没迁过来（见 registry.py 开头）。
@@ -67,6 +67,9 @@ def load():
     ctx.tool(Tool("list_routines", routines.LIST_ROUTINES, lambda c: routines.tool_list(c.bot, c.args), where=router))
     ctx.tool(Tool("update_routine", routines.UPDATE_ROUTINE, lambda c: routines.tool_update(c.bot, c.args), where=router))
     ctx.tool(Tool("delete_routine", routines.DELETE_ROUTINE, lambda c: routines.tool_delete(c.bot, c.args), where=router))
+    # 给插件用的服务（插件在 META 的 inject 里写要哪个），见 services.py
+    from . import services
+    services.register(ctx)
 
 
 async def _sync(v):

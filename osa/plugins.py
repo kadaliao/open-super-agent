@@ -14,6 +14,10 @@
   插件自己开的线程、改过的全局状态管不到，要用 ctx.effect 登记清理。
 - 备份不带插件文件（只带启用状态和设置）：换机器后把文件拷过去，再启用一次。
 
+插件之间的依赖（Cordis 的“空间”那一半）：META 里 provide 写自己提供的服务名、inject 写要用的服务名（内置的 llm、messenger，
+或者别的插件提供的）。要用的服务还没有就先不加载，标成“等待”；提供者加载好了，等它的自动加载。提供者停了（停用、重新加载、出错），
+依赖它的先停下、回到等待，提供者回来后自动恢复。互相依赖成环的永远等不到，设置页上标出来。
+
 应用市场一样的“插件市场”是 osa/catalog/plugins 里随项目发布、经过审查的插件：点“安装”复制到 data/plugins，仍要用户启用。
 不支持从任意网址安装。
 """
@@ -37,6 +41,7 @@ from .memory import conn
 DIR = DATA / "plugins"
 CATALOG = ROOT / "osa" / "catalog" / "plugins"
 NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+SERVICE = re.compile(r"^[a-z][a-z0-9_.]{0,47}$")
 MAX_SOURCE = 300_000
 MAX_CONFIG = 20_000
 APPLY_TIMEOUT = 15
@@ -48,17 +53,31 @@ conn.commit()
 
 _loaded: dict[str, "PluginContext"] = {}
 _errors: dict[str, str] = {}
+_waiting: dict[str, list[str]] = {}   # 启用了、在等服务的插件 -> 还缺的服务
 
 
 class PluginContext(registry.Context):
     """插件拿到的 ctx：registry.Context 的全部，加上自己的设置、数据目录、日志和读保险库。"""
 
-    def __init__(self, name: str, config: dict):
+    def __init__(self, name: str, config: dict, provides: list[str] | None = None, injects: list[str] | None = None):
         super().__init__(f"plugin:{name}")
         self.plugin = name
         self.config = config
         self.data_dir = DIR / f".{name}.data"     # 插件自己放文件的地方（删插件时一起删）
         self.log = logging.getLogger(f"osa.plugin.{name}")
+        self.provides = list(provides or [])
+        self.injects = list(injects or [])
+        # 要用的服务：有 bind 的（内置的 llm、messenger）给这个插件绑一份，记账、标来源用
+        self.services = {}
+        for n in self.injects:
+            v = registry.service(n)
+            self.services[n] = v.bind(name) if hasattr(v, "bind") else v
+
+    def provide(self, name: str, value, describe: str = ""):
+        """提供一个服务。名字要先写进 META 的 provide：设置页不执行代码就能看出谁依赖谁。"""
+        if name not in self.provides:
+            raise ValueError(f"服务 {name} 要先写进 META 的 provide")
+        return super().provide(name, value, describe)
 
     def secret(self, value):
         """设置里写 "vault:名字" 的值从保险库取（webhook 地址、token 不用明文写在设置里）。"""
@@ -112,7 +131,8 @@ def source(entry: Path) -> str:
 
 def describe(entry: Path) -> dict:
     """不执行代码，从语法树里读 META 和 apply。"""
-    out = {"title": "", "description": "", "version": "", "author": "", "config": {}, "has_apply": False, "syntax_error": ""}
+    out = {"title": "", "description": "", "version": "", "author": "", "config": {}, "provide": [], "inject": [],
+           "has_apply": False, "syntax_error": ""}
     try:
         text = entry.read_text(errors="replace")
         if len(text) > MAX_SOURCE:
@@ -137,6 +157,10 @@ def describe(entry: Path) -> dict:
                         out[k] = meta[k][:300]
                 if isinstance(meta.get("config"), dict):
                     out["config"] = meta["config"]
+                for k in ("provide", "inject"):
+                    v = meta.get(k)
+                    if isinstance(v, list):
+                        out[k] = list(dict.fromkeys(x for x in v if isinstance(x, str) and SERVICE.match(x)))
     t = out["title"]
     if t and out["description"].startswith((t + "：", t + ":")):   # 说明开头重复了标题（“日期计算：……”）
         out["description"] = out["description"][len(t) + 1:].strip()
@@ -174,7 +198,14 @@ def info(name: str) -> dict:
     ctx = _loaded.get(name)
     tools = sorted(t.name for t in registry.TOOLS.values() if t.owner == f"plugin:{name}")
     cat = _entry(CATALOG, name)
+    graph = _graph()
+    providers = _providers(graph)
+    waiting = [{"service": s, "by": providers.get(s, [])} for s in _waiting.get(name, [])] if name in _waiting else []
+    dependents = sorted(n for n, (_, inj) in graph.items() if n != name and set(inj) & set(meta.get("provide") or []))
     return {"name": name, **{k: meta.get(k) for k in ("title", "description", "version", "author")},
+            "provide": meta.get("provide") or [], "inject": meta.get("inject") or [], "waiting": waiting,
+            "dependents": [{"name": d, "loaded": d in _loaded} for d in dependents], "cycle": _cycle(name, graph, providers),
+
             "kind": "folder" if entry and entry.name == "__init__.py" else "file",
             "enabled": row["enabled"], "loaded": ctx is not None,
             "changed": bool(row["enabled"] and row["sha256"] and sha != row["sha256"]),
@@ -183,13 +214,54 @@ def info(name: str) -> dict:
             "from_catalog": bool(cat), "update": bool(cat and entry and digest(cat) != sha)}
 
 
+def _graph() -> dict[str, tuple[list[str], list[str]]]:
+    """装着的插件：名字 -> (提供的服务, 要用的服务)，从源码里读，不执行。"""
+    out = {}
+    for n in _names(DIR):
+        m = describe(_entry(DIR, n))
+        out[n] = (m["provide"], m["inject"])
+    return out
+
+
+def _providers(graph: dict) -> dict[str, list[str]]:
+    """服务 -> 谁能提供：内置的写成 "core"，然后是声明了 provide 的插件。"""
+    out: dict[str, list[str]] = {}
+    for s, (owner, _, _) in registry.SERVICES.items():
+        if not owner.startswith("plugin:"):
+            out.setdefault(s, []).append("core")
+    for n, (prov, _) in graph.items():
+        for s in prov:
+            out.setdefault(s, []).append(n)
+    return out
+
+
+def _cycle(name: str, graph: dict, providers: dict) -> list[str]:
+    """从 name 出发顺着“要用的服务 → 提供它的插件”走，能走回自己就是成环，返回那一圈。"""
+    def walk(n: str, path: list[str]) -> list[str]:
+        for s in graph.get(n, ([], []))[1]:
+            for p in providers.get(s, []):
+                if p == name:
+                    return path + [p]
+                if p != "core" and p not in path:
+                    if found := walk(p, path + [p]):
+                        return found
+        return []
+    return walk(name, [name])
+
+
+def core_services() -> list[dict]:
+    return [{"name": s, "describe": d} for s, (owner, _, d) in sorted(registry.SERVICES.items()) if not owner.startswith("plugin:")]
+
+
 def listing() -> dict:
     installed = _names(DIR)
     catalog = []
     for n in _names(CATALOG):
         meta = describe(_entry(CATALOG, n))
-        catalog.append({"name": n, **{k: meta[k] for k in ("title", "description", "version", "author")}, "installed": n in installed})
-    return {"locked": locked(), "dir": str(DIR), "plugins": [info(n) for n in installed], "catalog": catalog}
+        catalog.append({"name": n, **{k: meta[k] for k in ("title", "description", "version", "author", "provide", "inject")},
+                        "installed": n in installed})
+    return {"locked": locked(), "dir": str(DIR), "plugins": [info(n) for n in installed], "catalog": catalog,
+            "services": core_services()}
 
 
 # ---------- 加载和卸载 ----------
@@ -197,8 +269,9 @@ def _modname(name: str) -> str:
     return f"osa_plugin_{name}"
 
 
-async def load(name: str):
-    """按启用时记下的 sha256 加载；文件改过、出错都不加载，原因记在 _errors 里。"""
+async def load(name: str) -> bool:
+    """按启用时记下的 sha256 加载；文件改过、出错都不加载，原因记在 _errors 里。
+    要用的服务还没有时不加载，记进 _waiting，返回 False；提供者加载好了会自动再来（_wake）。"""
     if why := locked():
         raise PermissionError(why)
     entry = _entry(DIR, name)
@@ -211,7 +284,12 @@ async def load(name: str):
         raise PermissionError(i18n.t("插件 {name} 的文件在启用之后改过了：先看一下改了什么，再重新启用", name=name))
     unload(name)
     _errors.pop(name, None)
-    ctx = PluginContext(name, config_of(name, entry))
+    meta = describe(entry)
+    if missing := [s for s in meta["inject"] if s not in registry.SERVICES]:
+        _waiting[name] = missing
+        return False
+    _waiting.pop(name, None)
+    ctx = PluginContext(name, config_of(name, entry), meta["provide"], meta["inject"])
     mod = _modname(name)
     try:
         spec = importlib.util.spec_from_file_location(
@@ -237,6 +315,19 @@ async def load(name: str):
             raise RuntimeError(_errors[name]) from None
         raise RuntimeError(i18n.t("插件 {name} 加载失败：{error}", name=name, error=f"{type(e).__name__}: {e}")) from None
     _loaded[name] = ctx
+    if ctx.provides:
+        await _wake()
+    return True
+
+
+async def _wake():
+    """有新服务了：等着的插件里，服务齐了的加载（它们提供的服务又会叫醒下一批）。"""
+    for n in sorted(_waiting):
+        if n in _waiting and n not in _loaded and all(s in registry.SERVICES for s in _waiting[n]):
+            try:
+                await load(n)
+            except Exception as e:
+                log.warning("插件 %s 等到了服务，但加载失败：%s", n, e)
 
 
 def _forget_module(name: str):
@@ -246,7 +337,16 @@ def _forget_module(name: str):
 
 
 def unload(name: str):
+    """卸载插件。它提供的服务有别的插件在用的话，那些先卸载（还启用着的回到等待，提供者回来时自动恢复）。"""
     if ctx := _loaded.pop(name, None):
+        mine = {s for s, (owner, _, _) in registry.SERVICES.items() if owner == ctx.name}
+        for d in [n for n, c in list(_loaded.items()) if mine & set(c.injects)]:
+            dctx = _loaded.get(d)
+            if dctx is None:
+                continue
+            unload(d)
+            if _row(d)["enabled"]:
+                _waiting[d] = [s for s in dctx.injects if s in mine or s not in registry.SERVICES]
         ctx.dispose()
     _forget_module(name)
 
@@ -272,6 +372,7 @@ async def enable(name: str):
 async def disable(name: str):
     unload(name)
     _errors.pop(name, None)
+    _waiting.pop(name, None)
     _save(name, enabled=False)
     await _changed()
 
@@ -332,6 +433,7 @@ async def remove(name: str):
         raise LookupError(i18n.t("没有插件 {name}", name=name))
     unload(name)
     _errors.pop(name, None)
+    _waiting.pop(name, None)
     _remove_files(name)
     conn.execute("delete from plugins where name=?", (name,))
     conn.commit()
@@ -349,7 +451,9 @@ async def start():
     """服务启动：加载启用了的插件。一个出错不影响别的。"""
     if locked():
         return
-    for (name,) in conn.execute("select name from plugins where enabled=1").fetchall():
+    for (name,) in conn.execute("select name from plugins where enabled=1 order by name").fetchall():
+        if name in _loaded:   # 前面的插件提供了服务，把它叫醒、已经加载了
+            continue
         try:
             await load(name)
         except Exception as e:
@@ -360,3 +464,4 @@ async def start():
 async def stop():
     for name in list(_loaded):
         unload(name)
+    _waiting.clear()
