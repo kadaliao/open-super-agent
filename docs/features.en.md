@@ -75,7 +75,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 
 - Each Bot has its own routines: daily / on weekdays at a set time, every N minutes, or on a webhook.
 - Pause, resume and test them; the last 20 runs are kept. Settings → Routines lists every Bot's routines with an on/off switch for each.
-- Create one by saying "every day at 9, ...".
+- Create one by saying "every day at 9, ...". You can also just ask "what routines do I have", "move the brief to 8:30 on weekdays", "pause the github one" or "delete it", including from a chat app. Each Bot manages only its own routines.
 - Webhook events go through keyword filters, then a cheap model decides whether to act.
 
 ## Safety and cost

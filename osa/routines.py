@@ -364,3 +364,142 @@ def import_legacy(bot_id: int):
             pass
     conn.execute("insert or replace into settings(key, value) values('triggers_imported', '1')")
     conn.commit()
+
+
+# ---------- Bot 在对话里管自己的定时任务（只给 Router，在 builtin.py 注册）----------
+_TRIGGER = {
+    "kind": {"type": "string", "enum": list(KINDS)},
+    "times": {"type": "array", "items": {"type": "string"}, "description": "daily 用：HH:MM 列表"},
+    "days": {"type": "array", "items": {"type": "integer"}, "description": "daily 用：周几运行，周一=1，留空=每天"},
+    "minutes": {"type": "integer", "description": "every 用：间隔分钟，至少 5"}}
+CREATE_ROUTINE = {"type": "function", "function": {"name": "create_routine", "description": "新建定时任务",
+    "parameters": {"type": "object", "properties": {
+        "name": {"type": "string", "description": "名字；webhook 类只能用字母数字 - _"},
+        "prompt": {"type": "string", "description": "每次运行要做的事，写完整"},
+        "skill": {"type": "string", "description": "可选：每次按哪个技能做（不带 /）"}, **_TRIGGER},
+        "required": ["name", "kind"]}}}
+LIST_ROUTINES = {"type": "function", "function": {"name": "list_routines",
+    "description": "查看你自己的定时任务：每次做什么、什么时候跑、上次结果。填 id 看那一个的完整要求和最近几次运行",
+    "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}}}}
+UPDATE_ROUTINE = {"type": "function", "function": {"name": "update_routine",
+    "description": "修改你自己的一个定时任务，只填要改的。暂停填 enabled=false，恢复填 true",
+    "parameters": {"type": "object", "properties": {
+        "id": {"type": "integer"},
+        "name": {"type": "string"},
+        "prompt": {"type": "string", "description": "改完后的完整要求：先用 list_routines 看原文，只改用户要改的地方，其余照抄"},
+        "skill": {"type": "string", "description": "每次按哪个技能做（不带 /）；空字符串表示不再按技能做"},
+        **_TRIGGER, "kind": {"type": "string", "enum": list(KINDS), "description": "改触发方式时才填"},
+        "enabled": {"type": "boolean", "description": "false 暂停，true 恢复"}},
+        "required": ["id"]}}}
+DELETE_ROUTINE = {"type": "function", "function": {"name": "delete_routine",
+    "description": "删除你自己的一个定时任务，运行记录一起删、不能恢复。只在用户明确要删时用；只是先不跑就用 update_routine 暂停",
+    "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}}
+
+_STATUS = {"running": "正在跑", "done": "完成", "quiet": "没有新内容", "failed": "失败", "cancelled": "取消了",
+           "skipped": "跳过", "filtered": "被过滤"}
+_SOURCE = {"schedule": "按时", "webhook": "webhook", "test": "手动测试"}
+BRIEF_PROMPT = 200
+
+
+def _hm(ts: float) -> str:
+    return time.strftime("%m-%d %H:%M", time.localtime(ts))
+
+
+def _when(r: dict) -> str:
+    s = describe(r["trigger"], "zh")
+    if not r["enabled"]:
+        s += "，已暂停"
+    elif r["next_run"]:
+        s += "，下次 " + _hm(r["next_run"])
+    if r["trigger"]["kind"] == "webhook":
+        s += f"，地址 POST /hooks/{r['name']}"
+    return s
+
+
+def _run_line(run: dict, full: bool = False) -> str:
+    s = f"{_hm(run['ts'])} {_SOURCE.get(run['source'], run['source'])} {_STATUS.get(run['status'], run['status'])}"
+    if run["detail"] and run["status"] not in ("running", "quiet") and (full or run["status"] != "done"):
+        s += "：" + run["detail"].replace("\n", " ")
+    return s + (f"（任务 #{run['task_id']}）" if run["task_id"] else "")
+
+
+def _mine(bot_id: int, rid) -> dict | None:
+    try:
+        r = get(int(rid))
+    except (TypeError, ValueError):
+        return None
+    return r if r and r["bot_id"] == bot_id else None
+
+
+def _summary(r: dict, full: bool = False) -> str:
+    lines = [f"#{r['id']}「{r['name']}」{_when(r)}"]
+    p = r["prompt"]
+    if p:
+        lines.append("做什么：" + (p if full or len(p) <= BRIEF_PROMPT else
+                                  p[:BRIEF_PROMPT] + f"……（共 {len(p)} 字，看全文用 list_routines 填 id）"))
+    if r["skill"]:
+        lines.append(f"按技能：/{r['skill']}")
+    t = r["trigger"]
+    if full and t["kind"] == "webhook":
+        lines += [f"{k}：{v}" for k, v in (("只处理含这些词的", "、".join(t.get("include") or [])),
+                                           ("含这些词的不处理", "、".join(t.get("exclude") or [])),
+                                           ("LLM 过滤规则", t.get("llm_filter") or "")) if v]
+    if full:
+        rs = runs(r["id"])[:5]
+        lines.append("最近运行：" + ("\n" + "\n".join("- " + _run_line(x, True) for x in rs) if rs else "还没跑过"))
+    elif r["last_run"]:
+        lines.append("上次：" + _run_line(r["last_run"]))
+    return "\n".join(lines)
+
+
+async def tool_list(bot_id: int, args: dict) -> str:
+    if args.get("id") is not None:
+        r = _mine(bot_id, args["id"])
+        return _summary(r, full=True) if r else f"你没有 #{args['id']} 这个定时任务"
+    return "\n\n".join(_summary(r) for r in list_for(bot_id)) or "你还没有定时任务"
+
+
+async def tool_create(bot_id: int, args: dict) -> str:
+    trig = {"kind": args.get("kind"), "times": args.get("times") or [], "days": args.get("days") or [],
+            "minutes": args.get("minutes")}
+    try:
+        r = save(bot_id, {"name": args.get("name", ""), "prompt": args.get("prompt", ""),
+                          "skill": args.get("skill", ""), "trigger": trig})
+    except (ValueError, TypeError) as e:
+        return f"没建成：{e}"
+    await _changed(r)
+    return f"已建定时任务 #{r['id']}「{r['name']}」：{_when(r)}"
+
+
+async def tool_update(bot_id: int, args: dict) -> str:
+    a = {k: v for k, v in args.items() if v is not None}   # 模型常把没改的填成 null
+    r = _mine(bot_id, a.get("id"))
+    if not r:
+        return f"没改：你没有 #{a.get('id')} 这个定时任务（只能改你自己的）"
+    data = {k: a[k] for k in ("name", "prompt", "skill", "enabled") if k in a}
+    if keys := [k for k in ("kind", "times", "days", "minutes") if k in a]:
+        data["trigger"] = r["trigger"] | {k: a[k] for k in keys}   # 只改时间也行，没填的照旧
+    if not data:
+        return "没改：没说要改什么"
+    try:
+        new = save(bot_id, data, r["id"])
+    except (ValueError, TypeError) as e:
+        return f"没改：{e}"
+    await _changed(new)
+    return "已改好：" + _summary(new)
+
+
+async def tool_delete(bot_id: int, args: dict) -> str:
+    r = _mine(bot_id, args.get("id"))
+    if not r:
+        return f"没删：你没有 #{args.get('id')} 这个定时任务（只能删你自己的）"
+    delete(r["id"])
+    await _changed(r)
+    # 删了不能恢复：把原来的设置留在对话里，用户反悔时照着重建
+    keep = [f"触发：{json.dumps(r['trigger'], ensure_ascii=False)}"] + \
+        ([f"每次做：{r['prompt']}"] if r["prompt"] else []) + ([f"技能：{r['skill']}"] if r["skill"] else [])
+    out = f"已删除定时任务 #{r['id']}「{r['name']}」（{describe(r['trigger'], 'zh')}）。" \
+          "用户反悔的话照下面的原设置用 create_routine 重建：\n" + "\n".join(keep)
+    if r["running"] and r["last_run"] and r["last_run"]["task_id"]:
+        out += f"\n正在跑的那次（任务 #{r['last_run']['task_id']}）会接着跑完，要停就用 cancel_task"
+    return out
