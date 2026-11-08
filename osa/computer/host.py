@@ -119,6 +119,9 @@ class HostComputer(Computer):
         self.root = root.resolve()          # 判断路径在不在里面要用真实路径（macOS 的 /tmp 是个链接）
         self.workspace = str(self.root)
         self._starting = asyncio.Lock()
+        self._init_desk()
+
+    def _init_desk(self):
         # 整台电脑：真实的鼠标键盘只有一套，一次只给一个用（任务的 key，或者对话里直接操作的 chat-<Bot id>）
         self.desk_owner, self.desk_label = "", ""
         self.desk_seen = 0.0           # 它最后一次用屏幕
@@ -204,19 +207,19 @@ class HostComputer(Computer):
 
     async def _show_screen(self, view: str) -> bool:
         """画面看整个屏幕还是 Bot 的 Chrome：你选的；没选就看最近一次操作的是哪个（Chrome 没开时看屏幕）。"""
-        if view == "chrome" or not desktop_on() or self.desk_problem(look=True):
+        if view == "chrome" or not self.desktop_enabled() or self.desk_problem(await self._desk_info(), look=True):
             return False
         return view == "screen" or self.recent_desk or self.desk_busy() or (await self.status())["state"] != "running"
 
     async def peek(self, fmt: str = "jpeg", view: str = "") -> bytes:
         if await self._show_screen(view):
-            return (await asyncio.to_thread(macdesk.capture, fmt, 60))[0]
+            return await self._capture(fmt, 60)
         return base64.b64decode((await self._peek(fmt))["data"])
 
     async def look(self) -> tuple[bytes, str]:
         if await self._show_screen(""):
-            png = (await asyncio.to_thread(macdesk.capture))[0]
-            f = await asyncio.to_thread(macdesk.front)
+            png = await self._capture()
+            f = await self._front()
             return png, f"{f['app']} — {f['title']}" if f["title"] else f["app"]
         r = await self._peek("png")
         return base64.b64decode(r["data"]), f"{r.get('title') or ''} | {r.get('url') or ''}"
@@ -246,17 +249,43 @@ class HostComputer(Computer):
         raise ComputerError(i18n.t("本机电脑没有远程画面，浏览器窗口就在这台电脑的屏幕上"))
 
     # ---------- 整台电脑（真实的屏幕、鼠标、键盘） ----------
-    def desk_problem(self, look: bool = False) -> str:
-        """现在不能操作屏幕的原因；能操作返回空。look：只是看（不用辅助功能权限）。"""
-        if not desktop_on():
+    # 下面这几个是“在那台电脑上做”的部分：本机直接调 macdesk；服务器借用你的 Mac 时（linked.py）换成经连接让 Mac 去做
+    def desktop_enabled(self) -> bool:
+        """给不给 Bot desktop_* 工具。"""
+        return desktop_on()
+
+    async def _desk_info(self, fresh: bool = False) -> dict:
+        """那台电脑现在的情况：能不能操作屏幕（allowed）、两个权限、锁没锁屏、多久没有键盘鼠标输入。"""
+        def get():
+            return {"supported": macdesk.supported(), "allowed": True, **macdesk.permissions(),
+                    "locked": macdesk.locked(), "idle": macdesk.idle()}
+        return await asyncio.to_thread(get)
+
+    async def _desk_run(self, op: str, a: dict) -> dict:
+        return await asyncio.to_thread(self._desk_sync, op, a)
+
+    async def _capture(self, fmt: str = "png", quality: int = 70) -> bytes:
+        return (await asyncio.to_thread(macdesk.capture, fmt, quality))[0]
+
+    async def _front(self) -> dict:
+        return await asyncio.to_thread(macdesk.front)
+
+    async def grant(self) -> None:
+        """弹系统的授权提示、打开系统设置里对应的页面。"""
+        await asyncio.to_thread(macdesk.request_permissions)
+
+    def desk_problem(self, info: dict, look: bool = False) -> str:
+        """现在不能操作屏幕的原因；能操作返回空。info 是 _desk_info()；look：只是看（不用辅助功能权限）。"""
+        if not self.desktop_enabled():
             return i18n.t("没有打开“操作整台电脑”（电脑面板里可以打开）")
-        p = macdesk.permissions()
+        if not info.get("allowed", True):
+            return i18n.t("这台 Mac 上还没允许服务器操作整个屏幕：在 Mac 上点菜单栏的 Open Super Agent 图标，勾上“允许服务器操作屏幕”")
         missing = [i18n.t(n) for k, n in (("accessibility", i18n.N_("辅助功能")), ("screen", i18n.N_("屏幕录制")))
-                   if not p[k] and not (look and k == "accessibility")]
+                   if not info.get(k) and not (look and k == "accessibility")]
         if missing:
             return i18n.t("还没给 Open Super Agent 这些权限：{what}。电脑面板里点“去打开权限”，或者到 系统设置 → 隐私与安全性 里打开",
                           what=i18n.t("、").join(missing))
-        if not look and macdesk.locked():
+        if not look and info.get("locked"):
             return i18n.t("屏幕锁着（或者显示器睡着了），现在不能操作")
         return ""
 
@@ -309,13 +338,14 @@ class HostComputer(Computer):
         t = self.desk_ok.get(key)
         return t is not None and (not key.startswith("chat-") or time.time() - t < CHAT_OK)   # 任务 id 不重复，任务的一直算
 
-    def user_active(self) -> bool:
-        """Bot 上一个屏幕动作之后，有没有别的键盘鼠标输入（你在用电脑）。在 App 里点确认卡片不算。"""
+    def user_active(self, info: dict) -> bool:
+        """Bot 上一个屏幕动作之后，有没有别的键盘鼠标输入（你在用电脑）。在 App 里点确认卡片不算。
+        只比时长不比时刻：借用的 Mac 和服务器的时钟可以不一样，网络慢只会让这里晚一点发现，不会误判。"""
         if not self.desk_at:
             return False
         from .. import approvals
         since = max(self.desk_at, approvals.last_done)
-        return (time.time() - since) - macdesk.idle() > QUIET
+        return (time.time() - since) - info["idle"] > QUIET
 
     def _guard(self, op: str, a: dict):
         """不碰 Open Super Agent 自己的窗口（App 和浏览器里开着的界面）：Bot 不能自己点“允许”、改设置。"""
@@ -377,9 +407,10 @@ class HostComputer(Computer):
             raise ComputerError("没有占住屏幕")
         if await self.wait_for_control():
             raise ComputerError(DESK_STALE)
-        if why := self.desk_problem():
+        info = await self._desk_info(fresh=True)
+        if why := self.desk_problem(info):
             raise ComputerError(why)
-        if self.user_active():
+        if self.user_active(info):
             self.paused_by = "input"
             self.takeover()
             self.changed()
@@ -387,7 +418,7 @@ class HostComputer(Computer):
             raise ComputerError(DESK_STALE)
         async with self.lock:
             try:
-                return await asyncio.to_thread(self._desk_sync, op, a)
+                return await self._desk_run(op, a)
             except (ValueError, RuntimeError, OSError) as e:
                 raise ComputerError(str(e)) from None
             finally:
@@ -398,14 +429,22 @@ class HostComputer(Computer):
                     self.recent_desk = True
                     self.changed()
 
-    def desk_state(self) -> dict:
+    def desk_supported(self) -> bool:
+        return macdesk.supported() and security.local_exec()
+
+    async def desk_state(self) -> dict:
         """给电脑面板：能不能用、开没开、权限、谁在用。"""
-        if not macdesk.supported() or not security.local_exec():
+        if not self.desk_supported():
             return {"supported": False}
-        out = {"supported": True, "on": desktop_on(), **macdesk.permissions(), "paused_by": self.paused_by,
+        out = {"supported": True, "on": self.desktop_enabled(), "paused_by": self.paused_by,
                "owner": self.desk_label if self.desk_busy() else ""}
         if out["on"]:
-            out["problem"] = self.desk_problem()
+            try:
+                info = await self._desk_info()
+            except ComputerError as e:
+                return {**out, "problem": str(e)}
+            out |= {k: info.get(k) for k in ("accessibility", "screen", "allowed")}
+            out["problem"] = self.desk_problem(info)
         return out
 
     # ---------- 文件：只在工作文件夹里 ----------
@@ -486,6 +525,9 @@ class HostComputer(Computer):
         return out
 
     # ---------- 终端 ----------
+    def shell_enabled(self) -> bool:
+        return shell_on()
+
     async def exec(self, cmd: str, timeout: int = 120, stdin: str | None = None) -> ExecResult:
         if not shell_on():
             raise ComputerError(i18n.t("本机电脑的终端没有打开（电脑面板里可以打开，打开后每条命令都要你确认）"))

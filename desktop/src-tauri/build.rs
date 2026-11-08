@@ -9,6 +9,10 @@ fn main() {
         "desktop_set_badge",
         "desktop_open_external",
         "desktop_log",
+        "desktop_link_state",
+        "desktop_link",
+        "desktop_unlink",
+        "desktop_link_desktop",
     ])))
     .expect("tauri build");
 }

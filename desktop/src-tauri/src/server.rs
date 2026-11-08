@@ -1,4 +1,5 @@
 //! 在这台电脑上运行时，App 自己起停服务：跑 App 里带的 Python（开发版用仓库里的 .venv），崩了自动重启。
+//! 服务器借用这台 Mac 时，同样的办法起停 Mac 上的小程序（agent_launch）。
 //! 服务和它启动的应用（MCP 子进程）放在一个进程组里，退出 App 时一起停掉；
 //! App 异常退出来不及停时，服务看 OSA_PARENT_PID 自己退出。
 
@@ -119,28 +120,40 @@ fn spawn(l: &Launch) -> std::io::Result<Child> {
 
 /// 怎么起服务。App 里带了运行环境（resources/runtime 和 resources/app）就用它；开发版用仓库里的 .venv。
 pub fn launch(resources: Option<PathBuf>, port: u16, secret: &str) -> Result<Launch, String> {
+    let port = port.to_string();
+    python_launch(resources, &["-m", "uvicorn", "osa.server:app", "--host", "127.0.0.1", "--port", &port], "server.log", vec![
+        ("OSA_PASSWORD".into(), secret.into()),
+        ("OSA_COOKIE".into(), "osa_desktop".into()), // 和本机别的服务（比如开发用的 8765）分开，免得互相顶掉登录
+        ("OSA_DESKTOP".into(), "1".into()), // 电脑默认用这台电脑上的 Chrome（osa/computer/host.py）
+    ])
+}
+
+/// 服务器借用这台 Mac 时在后台跑的小程序（osa/computer/agent.py）：连到 ws_url，替服务器上的 Bot 操作这台 Mac。
+/// 数据目录和“在这台电脑上运行”共用：Bot 的 Chrome 里登录过的网站、工作文件夹里的文件两边都能用
+pub fn agent_launch(resources: Option<PathBuf>, ws_url: &str, token: &str) -> Result<Launch, String> {
+    python_launch(resources, &["-m", "osa.computer.agent"], "agent.log", vec![
+        ("OSA_LINK_URL".into(), ws_url.into()),
+        ("OSA_LINK_TOKEN".into(), token.into()),
+        ("OSA_LINK_FLAGS".into(), store::link_flags().display().to_string()),
+    ])
+}
+
+fn python_launch(resources: Option<PathBuf>, args: &[&str], log_name: &str, extra: Vec<(String, String)>) -> Result<Launch, String> {
     let data = store::data_dir();
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
-    let log = store::log_dir().join("server.log");
+    let log = store::log_dir().join(log_name);
     if std::fs::metadata(&log).map(|m| m.len() > 5 << 20).unwrap_or(false) {
         let _ = std::fs::rename(&log, log.with_extension("log.1"));
     }
     let mut env: Vec<(String, String)> = vec![
         ("OSA_DATA_DIR".into(), data.display().to_string()),
-        ("OSA_PASSWORD".into(), secret.into()),
-        ("OSA_COOKIE".into(), "osa_desktop".into()), // 和本机别的服务（比如开发用的 8765）分开，免得互相顶掉登录
         ("OSA_PARENT_PID".into(), std::process::id().to_string()),
-        ("OSA_DESKTOP".into(), "1".into()), // 电脑默认用这台电脑上的 Chrome（osa/computer/host.py）
         ("PYTHONNOUSERSITE".into(), "1".into()),
         // 签名后的 App 里不能写文件：.pyc 写到数据目录旁边，只有第一次启动慢一些
         ("PYTHONPYCACHEPREFIX".into(), store::home().join("pycache").display().to_string()),
     ];
-    let args = |prefix: &[&str]| -> Vec<String> {
-        let port = port.to_string();
-        prefix.iter().map(|s| s.to_string())
-            .chain(["-m", "uvicorn", "osa.server:app", "--host", "127.0.0.1", "--port", &port].map(String::from))
-            .collect()
-    };
+    env.extend(extra);
+    let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
 
     if let Some(res) = resources.filter(|r| r.join("runtime/bin/python3").exists()) {
         let app = res.join("app");
@@ -149,14 +162,14 @@ pub fn launch(resources: Option<PathBuf>, port: u16, secret: &str) -> Result<Lau
         // uvx 应用用 uv 自己下载的 Python，别拿 App 里这个建环境：它签名时开了强化运行时，
         // 只能加载同一个开发者签过名的扩展模块，PyPI 上下载的那些会被拒绝
         env.push(("UV_PYTHON_PREFERENCE".into(), "only-managed".into()));
-        return Ok(Launch { program: res.join("runtime/bin/python3"), args: args(&[]), cwd: app, env, log });
+        return Ok(Launch { program: res.join("runtime/bin/python3"), args, cwd: app, env, log });
     }
     if cfg!(debug_assertions) {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let python = repo.join(".venv/bin/python");
         if python.exists() {
             env.push(("PATH".into(), search_path(None)));
-            return Ok(Launch { program: python, args: args(&[]), cwd: repo, env, log });
+            return Ok(Launch { program: python, args, cwd: repo, env, log });
         }
     }
     Err("App 里没有找到运行环境".into())

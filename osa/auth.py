@@ -141,7 +141,8 @@ def host_ok(host: str | None) -> bool:
 def _public(path: str) -> bool:
     if ".." in path:   # 不让 /s/../ 这种路径借公开前缀绕过
         return False
-    return path in PUBLIC_FILES or path in ("/login", "/logout", "/login/ticket") or path.startswith(PUBLIC_PREFIXES)
+    # /api/computer/link：借给服务器的 Mac 连进来，它自己查借用令牌（computer/link.py）
+    return path in PUBLIC_FILES or path in ("/login", "/logout", "/login/ticket", "/api/computer/link") or path.startswith(PUBLIC_PREFIXES)
 
 
 def _safe_next(n: str | None) -> str:

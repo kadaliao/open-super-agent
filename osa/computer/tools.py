@@ -10,7 +10,7 @@ import re
 import time
 from .. import i18n
 from . import ComputerError, get, macdesk
-from .host import desktop_on, shell_on
+from .base import HOSTS
 
 AUTO_SHOT = {"computer_click", "computer_type", "computer_key", "computer_scroll"}
 
@@ -52,7 +52,8 @@ SCHEMAS = [
     _fn("browser_upload", "把电脑里的文件传到网页上：ref 是“上传 / 选择文件”按钮或文件输入框的编号，paths 是文件的完整路径",
         {"ref": I, "paths": {"type": "array", "items": S}}),
     _fn("computer_screenshot", "截取浏览器里当前页面的画面，返回图片。要看页面长什么样（图片、图表、布局、验证码、操作是否成功）时用；"
-        "网页内容和元素用 browser_snapshot。", {}),
+        "网页内容和元素用 browser_snapshot。save=true 时把截图存进电脑的工作文件夹（screenshots 子文件夹）并返回路径，"
+        "要把网页截图发给用户就用 send_file 发这个文件。", {"save": B}, []),
     _fn("computer_click", "【备用】按截图上的坐标 (x, y) 点击页面。只在 browser_click 做不到时用（画布、没有编号的元素），"
         "坐标以 computer_screenshot 的截图为准。",
         {"x": I, "y": I, "button": {"type": "string", "enum": ["left", "right", "middle"]}, "double": B}, ["x", "y"]),
@@ -98,20 +99,20 @@ _HOST_FILES = {
 def desk_schemas(c=None) -> list[dict]:
     """操作整个屏幕的工具：只有本机电脑打开了“操作整台电脑”才给。"""
     c = c or get()
-    return DESK_SCHEMAS if c.backend == "host" and desktop_on() else []
+    return DESK_SCHEMAS if c.backend in HOSTS and c.desktop_enabled() else []
 
 
 def schemas(c=None) -> list[dict]:
     """给 Worker 的电脑工具。本机电脑：文件工具说明换成工作文件夹，终端没打开就不给 computer_shell，
     打开了“操作整台电脑”再加上 desktop_*。"""
     c = c or get()
-    if c.backend != "host":
+    if c.backend not in HOSTS:
         return SCHEMAS
     out = []
     for s in SCHEMAS:
         f = s["function"]
         if f["name"] == "computer_shell":
-            if not shell_on():
+            if not c.shell_enabled():
                 continue
             s = _fn("computer_shell", f"在用户这台电脑上执行 shell 命令（工作目录是工作文件夹 {c.workspace}）。每条命令都要用户确认。",
                     {"cmd": S, "timeout": I}, ["cmd"])
@@ -122,12 +123,12 @@ def schemas(c=None) -> list[dict]:
 
 
 def _intro(c) -> str:
-    if c.backend != "host":
+    if c.backend not in HOSTS:
         return """你有一台电脑（Linux + Chromium 浏览器 + 终端，和其他 Bot 共用）。你的任务有自己的浏览器窗口，
 别的任务同时在别的窗口里做、互不干扰；登录状态和文件是大家共用的。用 browser_* / computer_* 工具操作："""
     shell = ("- 终端：computer_shell 在用户这台电脑上执行命令（工作目录是工作文件夹）。每条命令都要用户确认，只在必要时用，几步合成一条。"
-             if shell_on() else "- 没有终端（用户没有打开）。下载文件用浏览器，读写文件用 computer_read_file / computer_write_file。")
-    desk = DESK_HINT if desktop_on() else ""
+             if c.shell_enabled() else "- 没有终端（用户没有打开）。下载文件用浏览器，读写文件用 computer_read_file / computer_write_file。")
+    desk = DESK_HINT if c.desktop_enabled() else ""
     return f"""你有一台电脑：用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己日常用的 Chrome 分开，所有 Bot 共用，
 用户在里面登录过的网站你都能直接用）。你的任务有自己的浏览器窗口，别的任务同时在别的窗口里做、互不干扰。用 browser_* / computer_* 工具操作：
 - 文件只能放在工作文件夹 {c.workspace} 里：computer_read_file / computer_write_file 只能读写这里面的文件（可以写相对路径），
@@ -151,23 +152,23 @@ DESK_HINT = """
 
 def system_hint(c=None) -> str:
     c = c or get()
-    shell = "" if c.backend == "host" else "\n- 下载文件、处理数据、跑脚本用 computer_shell。"
+    shell = "" if c.backend in HOSTS else "\n- 下载文件、处理数据、跑脚本用 computer_shell。"
     return _intro(c) + _BODY.replace("{shell}", shell)
 
 
 def capability(c=None) -> str:
     """Router 的能力清单里那一句：电脑是什么、能做什么。"""
     c = c or get()
-    if c.backend == "host":
+    if c.backend in HOSTS:
         return ("每个后台任务都能用用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己的 Chrome 分开，所有 Bot 共用），"
                 "可以打开网页、点击、输入、登录后操作、上传下载文件（文件放在工作文件夹）"
-                + ("、在终端执行命令（每条都要用户确认）" if shell_on() else "") + "。几个任务可以同时用，各自一个浏览器窗口，"
+                + ("、在终端执行命令（每条都要用户确认）" if c.shell_enabled() else "") + "。几个任务可以同时用，各自一个浏览器窗口，"
                 "登录状态共用；同时用的任务多了才排队。浏览器窗口就在用户的屏幕上，右栏也能看到画面。"
                 "上传文件、写文件、点“发送 / 发布 / 付款”这类按钮时会自动弹确认卡片。"
                 + ("用户还打开了“操作整台电脑”：任务能看整个屏幕、用真实的鼠标键盘操作这台 Mac 上的其他 App（微信、访达、备忘录、"
                    "系统设置等，desktop_* 工具），每个任务第一次用会先问用户；鼠标键盘一次只能一个任务用。"
                    "你自己用 desktop_* 只做一两步的事（打开某个 App、看一眼屏幕）；要在 App 里按一串按钮、填东西、来回操作的，"
-                   "派一个任务去做（你这一轮能调用的工具次数有限）。" if desktop_on() else ""))
+                   "派一个任务去做（你这一轮能调用的工具次数有限）。" if c.desktop_enabled() else ""))
     return ("每个后台任务都能用所有 Bot 共用的一台电脑（Linux 桌面 + Chromium 浏览器 + 终端），"
             "可以打开网页、点击、输入、登录后操作、上传下载文件、运行脚本。几个任务可以同时用，各自一个浏览器窗口，"
             "登录状态和文件共用；同时用的任务多了才排队。用户能在右栏实时看到屏幕。")
@@ -281,7 +282,7 @@ async def _confirm(task, c, name: str, args: dict, key: str) -> str | None:
         tool, shown = "browser_submit", {"操作": info.get("what"), "页面": f"{info.get('title') or ''} | {info.get('url') or ''}"}
     if not approvals.decide(tool, c.backend)[0]:
         return None
-    ok, note = await approvals.request(task, tool, shown, once=tool == "computer_shell" and c.backend == "host")
+    ok, note = await approvals.request(task, tool, shown, once=tool == "computer_shell" and c.backend in HOSTS)
     return None if ok else f"用户拒绝了这个操作，没有执行。{note}".strip()
 
 
@@ -323,7 +324,12 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
                 kw["name"] = kw.pop("key")
             return page_text(await c.browser(op, key=key, **kw)), None
         if name == "computer_screenshot":
-            return "这是浏览器里当前页面的截图。", await c.page_shot(key)
+            png = await c.page_shot(key)
+            if not args.get("save"):
+                return "这是浏览器里当前页面的截图。", png
+            path = f"screenshots/网页 {time.strftime('%Y-%m-%d %H.%M.%S')}.png"
+            await c.write_bytes(path if c.backend in HOSTS else f"{c.workspace}/{path}", png)
+            return f"这是浏览器里当前页面的截图，已存到 {c.workspace}/{path}（发给用户用 send_file）。", png
         if name == "computer_click":
             button = args.get("button") or "left"
             if button not in ("left", "right", "middle"):
@@ -353,7 +359,7 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
             await c.start()
             # 把这个任务的窗口放到最前面，用户一接手就看到；用户正在帮别的任务时不打扰，等他点这张卡片的“接手”。
             # 本机电脑不抢：你可能正在用别的程序，点卡片上的“接手电脑”时才放到前面
-            if c.controller == "bot" and c.backend != "host":
+            if c.controller == "bot" and c.backend not in HOSTS:
                 try:
                     await c.front(key)
                 except ComputerError:
@@ -403,7 +409,7 @@ def _desk_text(d: dict) -> str:
 async def _desktop(task, c, name: str, args: dict, key: str, notify_progress) -> tuple[str, bytes | None]:
     """整个屏幕的工具：占住屏幕（一次一个任务）→ 这个任务第一次用先问用户 → 点“发送”类按钮、在输入框里回车先问 → 做 → 截图。"""
     from .. import approvals
-    if c.backend != "host" or not desktop_on():
+    if c.backend not in HOSTS or not c.desktop_enabled():
         return "用户没有打开“操作整台电脑”，只能用浏览器（browser_*）。", None
     ok_key = key if key.startswith("chat-") else f"task:{task.id}"   # 同意按任务记：Heavy 的几个研究员只问一次
     no = ("用户这次没同意你操作整台电脑（“操作整台电脑”的开关是开着的，是用户在卡片上点了“不行”）。"

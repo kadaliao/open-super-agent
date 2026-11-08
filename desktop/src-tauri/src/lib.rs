@@ -1,6 +1,7 @@
 //! Open Super Agent 桌面版：一个窗口打开服务器自己的网址（本机的 127.0.0.1，或者你的服务器），
 //! 再补上网页做不到的：系统通知、菜单栏、全局快捷键、开机启动，以及在这台电脑上起停服务。
 
+mod link;
 mod server;
 mod store;
 mod tray;
@@ -31,10 +32,17 @@ const BRIDGE: &str = r#"(function () {
       });
     } catch (e) {}
   };
+  var ask = function (cmd, args) { return window.__TAURI_INTERNALS__.invoke(cmd, args || {}); };
   window.osaDesktop = {
     notify: function (title, body, chatId, active) { call('desktop_notify', { title: String(title), body: String(body), chatId: chatId == null ? null : chatId, active: !!active }); },
     setBadge: function (count) { call('desktop_set_badge', { count: count | 0 }); },
     openExternal: function (url) { call('desktop_open_external', { url: String(url) }); },
+    link: {
+      state: function () { return ask('desktop_link_state'); },
+      connect: function (token, id) { return ask('desktop_link', { token: String(token), id: id | 0 }); },
+      disconnect: function () { return ask('desktop_unlink'); },
+      setDesktop: function (on) { return ask('desktop_link_desktop', { on: !!on }); }
+    },
     speech: false
   };
 })();"#;
@@ -44,6 +52,7 @@ pub struct State {
     origin: Mutex<Option<Url>>, // 当前打开的服务器
     phase: Mutex<(String, String)>, // 启动页显示的状态："starting" / "error" 和说明
     server: Arc<server::Server>,
+    agent: Arc<server::Server>, // 服务器借用这台 Mac 时在后台跑的小程序（link.rs）
     granted: Mutex<Vec<String>>, // 已经给过桥接授权的服务器
     popups: AtomicU32,
 }
@@ -99,6 +108,7 @@ fn start_local(app: &AppHandle) {
     std::thread::spawn(move || {
         let st = state(&app);
         set_phase(&app, "starting", "");
+        link::stop(&app); // 在这台电脑上运行时，用的就是本机电脑，不借给服务器
         {
             let mut cfg = st.cfg.lock().unwrap();
             cfg.mode = Some("local".into());
@@ -191,7 +201,11 @@ fn grant(app: &AppHandle, origin: &Url) {
         .permission("allow-desktop-notify")
         .permission("allow-desktop-set-badge")
         .permission("allow-desktop-open-external")
-        .permission("allow-desktop-log");
+        .permission("allow-desktop-log")
+        .permission("allow-desktop-link-state")
+        .permission("allow-desktop-link")
+        .permission("allow-desktop-unlink")
+        .permission("allow-desktop-link-desktop");
     if app.add_capability(cap).is_ok() {
         granted.push(key);
     }
@@ -230,6 +244,7 @@ fn choose_remote(app: AppHandle, url: String) -> Result<(), String> {
     server::check_remote(&base).map_err(|e| format!("{}{e}", tr("连不上这个地址：", "Can't reach this address: ")))?;
     let st = state(&app);
     st.server.stop();
+    link::stop(&app);
     {
         let mut cfg = st.cfg.lock().unwrap();
         cfg.mode = Some("remote".into());
@@ -238,6 +253,7 @@ fn choose_remote(app: AppHandle, url: String) -> Result<(), String> {
     }
     set_phase(&app, "", "");
     open_server(&app, origin, None);
+    link::start(&app); // 借给过这个服务器的话接着借
     Ok(())
 }
 
@@ -357,6 +373,8 @@ pub fn on_menu(app: &AppHandle, id: &str) {
             std::thread::spawn(move || tauri::async_runtime::block_on(check_update(&app, true)));
         }
         "autostart" => tray::toggle_autostart(app),
+        "link_desktop" => link::menu_toggle_desktop(app),
+        "unlink" => link::menu_unlink(app),
         "quit" => app.exit(0),
         _ => {}
     }
@@ -494,6 +512,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app)))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
@@ -511,12 +530,14 @@ pub fn run() {
             origin: Mutex::new(None),
             phase: Mutex::new((String::new(), String::new())),
             server: Arc::new(server::Server::default()),
+            agent: Arc::new(server::Server::default()),
             granted: Mutex::new(vec![]),
             popups: AtomicU32::new(0),
         })
         .invoke_handler(tauri::generate_handler![
             setup_state, choose_local, choose_remote, open_logs,
-            desktop_notify, desktop_set_badge, desktop_open_external, desktop_log
+            desktop_notify, desktop_set_badge, desktop_open_external, desktop_log,
+            link::desktop_link_state, link::desktop_link, link::desktop_unlink, link::desktop_link_desktop
         ])
         .on_window_event(|w, e| {
             // 关掉主窗口只是藏起来：服务和定时任务接着跑，菜单栏里还能打开
@@ -551,6 +572,7 @@ pub fn run() {
                 (Some("remote"), Some(url)) => {
                     if let Some(origin) = normalize(&url) {
                         open_server(&handle, origin, None);
+                        link::start(&handle);
                     }
                 }
                 _ => {}
@@ -562,7 +584,10 @@ pub fn run() {
 
     app.run(|app, event| match event {
         // 菜单栏里点“退出”走 ExitRequested；⌘Q 和系统的“退出”直接走 Exit。两种都先停服务（重复调用没关系）
-        RunEvent::ExitRequested { .. } | RunEvent::Exit => state(app).server.stop(),
+        RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+            state(app).server.stop();
+            link::stop(app);
+        }
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => show_main(app),
         _ => {}

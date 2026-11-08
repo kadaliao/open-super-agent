@@ -1,4 +1,5 @@
-//! 菜单栏图标：旁边显示有几个操作等你确认；菜单里打开窗口、在浏览器里打开、切换服务器、开机启动、退出。
+//! 菜单栏图标：旁边显示有几个操作等你确认；菜单里打开窗口、在浏览器里打开、切换服务器、开机启动、退出，
+//! 以及服务器借用这台 Mac 时的两项（允许操作屏幕、断开，见 link.rs），没借出时是灰的。
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -8,11 +9,14 @@ use tauri_plugin_autostart::ManagerExt;
 use crate::tr;
 
 struct Autostart(CheckMenuItem<Wry>);
+struct Link(CheckMenuItem<Wry>, MenuItem<Wry>);
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let enabled = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", tr("开机时启动", "Open at login"), true, enabled, None::<&str>)?;
+    let link_desktop = CheckMenuItem::with_id(app, "link_desktop", tr("允许服务器操作屏幕", "Let the server use the screen"), false, false, None::<&str>)?;
+    let unlink = MenuItem::with_id(app, "unlink", tr("断开服务器借用这台 Mac", "Stop lending this Mac to the server"), false, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -20,6 +24,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &item("browser", tr("在浏览器里打开", "Open in browser"))?,
             &PredefinedMenuItem::separator(app)?,
             &item("switch", tr("切换服务器…", "Switch server…"))?,
+            &link_desktop,
+            &unlink,
+            &PredefinedMenuItem::separator(app)?,
             &autostart,
             &item("logs", tr("打开日志文件夹", "Open logs folder"))?,
             &item("update", tr("检查更新…", "Check for updates…"))?,
@@ -28,6 +35,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
     app.manage(Autostart(autostart));
+    app.manage(Link(link_desktop, unlink));
     let mut tray = TrayIconBuilder::with_id("main")
         .tooltip("Open Super Agent")
         .menu(&menu)
@@ -59,5 +67,14 @@ pub fn toggle_autostart(app: &AppHandle) {
     let _ = if on { auto.enable() } else { auto.disable() };
     if let Some(item) = app.try_state::<Autostart>() {
         let _ = item.0.set_checked(auto.is_enabled().unwrap_or(on));
+    }
+}
+
+/// 借出这台 Mac 时两项可点；“允许服务器操作屏幕”的勾跟着 Mac 上的开关
+pub fn set_link(app: &AppHandle, linked: bool, desktop: bool) {
+    if let Some(l) = app.try_state::<Link>() {
+        let _ = l.0.set_enabled(linked);
+        let _ = l.0.set_checked(linked && desktop);
+        let _ = l.1.set_enabled(linked);
     }
 }

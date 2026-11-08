@@ -241,6 +241,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .pc-desk { display: flex; flex-direction: column; gap: 4px; }
 .pc-desk-perm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--warn); }
 .pc-look { margin: 2px 0; }
+.pc-lend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding-top: 6px; border-top: 1px solid var(--line); }
+.pc-lend > span { flex: 1 1 200px; }
 .pc-overlay { position: absolute; inset: 0; display: grid; place-items: center; color: #aaa; font-size: 13px; background: rgba(0,0,0,.5); }
 .pc-empty { border: 1px dashed var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .pc-actions { display: flex; align-items: center; gap: 8px; }

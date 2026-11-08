@@ -298,7 +298,7 @@ class Router:
         """这一轮说完了：对话里直接操作屏幕占着的话让出来，排队的任务不用等（同意过的一会儿之内不用再问）。"""
         from . import computer
         c = computer._computers.get(computer.SHARED)
-        if c is not None and c.backend == "host":
+        if c is not None and hasattr(c, "desk_release"):
             await c.desk_release(f"chat-{self.bot_id}")
 
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):

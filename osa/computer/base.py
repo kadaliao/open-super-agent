@@ -63,6 +63,7 @@ def keysym(key: str) -> str:
     return key
 
 
+HOSTS = ("host", "linked")   # 用户自己的电脑：服务所在的这台（host.py），或者服务器借来的 Mac（linked.py）
 CHAT_KEEP = 600   # 对话里直接操作过的窗口，这么多秒内不分给任务
 # 依赖“刚才看到的页面”的动作：用户接手过就不照原样做（见 browser）
 STALE_OPS = {"click", "type", "key", "upload", "scroll", "back", "click_xy", "press", "wheel"}

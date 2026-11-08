@@ -20,6 +20,8 @@ from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, avatars, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
 from . import prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
+from .computer import link
+from .computer.base import HOSTS
 from . import worker as worker_mod
 from .watchdog import watchdog
 
@@ -1061,7 +1063,7 @@ async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
         elif action == "pause":
             await c.pause()
         elif action == "takeover":
-            desk = c.backend == "host" and c.desk_busy()   # Bot 在用整个屏幕：接手就是让它停下，不用开 Chrome
+            desk = c.backend in HOSTS and c.desk_busy()   # Bot 在用整个屏幕：接手就是让它停下，不用开 Chrome
             if not desk:
                 await c.start()
             # 从“请你帮忙”卡片接手：先把请你帮忙的那个任务（Heavy 里是那个研究员）的窗口放到最前面
@@ -1069,10 +1071,10 @@ async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
             key = c.asking.get(tid) or next((k for k, u in c.users.items() if tid and u.get("task_id") == tid), None)
             if key in c.users and c.users[key].get("window"):
                 await c.front(key)
-            elif c.backend == "host" and not desk:   # 浏览器窗口就在你屏幕上：放到最前面，接手就是直接在里面操作
+            elif c.backend in HOSTS and not desk:   # 浏览器窗口就在你屏幕上：放到最前面，接手就是直接在里面操作
                 await c.show()
             c.takeover()
-        elif action == "show" and c.backend == "host":
+        elif action == "show" and c.backend in HOSTS:
             await c.show()
         elif action == "handback":
             return await handback(bot_id)
@@ -1087,12 +1089,14 @@ async def pc_action(bot_id: int, action: str, data: dict | None = Body(None)):
 
 @app.post("/api/computer/desktop/grant")
 async def pc_desktop_grant():
-    """“操作整台电脑”还差 macOS 权限：弹系统的授权提示，打开系统设置里对应的页面。"""
-    from .computer import macdesk
+    """“操作整台电脑”还差 macOS 权限：在那台 Mac 上弹系统的授权提示，打开系统设置里对应的页面。"""
     c = computer.get()
-    if c.backend != "host" or not macdesk.supported() or not security.local_exec():
+    if c.backend not in HOSTS or not c.desk_supported():
         raise HTTPException(400, i18n.t("只有在 Mac 上用本机电脑时才能操作整台电脑"))
-    await asyncio.to_thread(macdesk.request_permissions)
+    try:
+        await c.grant()
+    except computer.ComputerError as e:
+        _err(e)
     state = await computer.public_state()
     await broadcast({"type": "computer", "computer": state})
     return state
@@ -1138,6 +1142,33 @@ async def pc_use(data: dict = Body(...)):
     state = await _pc_state(int(data.get("bot_id") or bots.primary()["id"]))
     await broadcast({"type": "computer", "computer": state})
     return state
+
+
+# ---------- 服务器借用你的 Mac（computer/link.py） ----------
+@app.get("/api/computer/links")
+async def pc_links():
+    return link.links()
+
+
+@app.post("/api/computer/links")
+async def pc_link_create(data: dict | None = Body(None)):
+    """发一个借用令牌，网页交给桌面 App，App 在 Mac 上问过你再存起来。"""
+    if security.demo():
+        raise HTTPException(403, i18n.t("演示服务器上不能借用你的电脑"))
+    lid, token = link.create(str((data or {}).get("name") or "Mac"))
+    return {"id": lid, "token": token}
+
+
+@app.delete("/api/computer/links/{lid}")
+async def pc_link_delete(lid: int):
+    await link.revoke(lid)
+    await broadcast({"type": "computer", "computer": await computer.public_state()})
+    return {"ok": True}
+
+
+@app.websocket("/api/computer/link")
+async def pc_link_ws(sock: WebSocket):
+    await link.serve(sock)
 
 
 @app.post("/api/computer/watch")

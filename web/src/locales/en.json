@@ -1099,7 +1099,6 @@
   "{name} 想新建一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to create a new bot. Confirm on the card in its direct chat",
   "服务器上的 Chrome": "Chrome on the server",
   "服务器上的 Docker": "Docker on the server",
-  "App 连着服务器，Bot 用的是服务器上的电脑。要让 Bot 用这台电脑上的 Chrome：菜单栏 → 切换服务器… → 在这台电脑上运行": "The app is connected to a server, so bots use the server's computer. To let bots use Chrome on this computer: menu bar → Switch server… → Run on this computer",
   "没装": "not installed",
   "没有找到“{q}”。": "Nothing found for “{q}”.",
   "演示服务器上不能导出或恢复备份": "Backups can't be exported or restored on the demo server",
@@ -1128,5 +1127,18 @@
   "整个屏幕": "Whole screen",
   "你动了鼠标或键盘，Bot 先停下了。用完点交还，它接着做": "You moved the mouse or pressed a key, so the bot stopped. Hand back when you're done and it will continue",
   "Bot 已暂停，你直接用电脑": "The bot is paused. Use the computer directly",
-  "Chrome 没开，能看整个屏幕": "Chrome is closed; the whole screen is visible"
+  "Chrome 没开，能看整个屏幕": "Chrome is closed; the whole screen is visible",
+  "你的 Mac": "Your Mac",
+  "还没借出来": "not lent yet",
+  "你的 Mac（{name}）": "Your Mac ({name})",
+  "App 连着服务器。要让服务器上的 Bot 用这台 Mac，点下面的“借给服务器”": "The app is connected to a server. To let the server's bots use this Mac, click “Lend to server” below",
+  "这台 Mac 上还没允许服务器操作屏幕": "This Mac hasn't allowed the server to use its screen",
+  "允许": "Allow",
+  "不再把这台 Mac 借给服务器？服务器上的 Bot 就用不了它了，正在用它的任务会出错。": "Stop lending this Mac to the server? The server's bots won't be able to use it, and tasks using it now will fail.",
+  "这台 Mac 借给服务器了": "This Mac is lent to the server",
+  "这台 Mac 借给服务器了，正在连接…": "This Mac is lent to the server, connecting…",
+  "让 Bot 用它": "Use it",
+  "让服务器上的 Bot 用这台 Mac：它们会用这台 Mac 上单独开的 Chrome，打开“操作整台电脑”后还能用屏幕。": "Let the server's bots use this Mac: they'll use a separate Chrome on it, and the screen too once “use the whole computer” is on.",
+  "借给服务器": "Lend to server",
+  "Bot 用借来的 Mac 上单独开的一个 Chrome（和那台 Mac 上日常用的 Chrome 分开），窗口在那台 Mac 的屏幕上。第一次用先打开它，在里面登录要 Bot 用的网站，所有 Bot 共用这些登录。": "Bots use a separate Chrome on the lent Mac (apart from the everyday Chrome there); its window is on that Mac's screen. Open it the first time and sign in to the sites the bots need; all bots share those sign-ins."
 }

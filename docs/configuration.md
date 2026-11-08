@@ -119,6 +119,7 @@ computer:
 | Instabox | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
 | 本地 Docker | 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
 | 本机 Chrome（host） | 用服务所在电脑上装的 Chrome，不用 Docker，桌面 App 默认用它。见下面。 |
+| 你的 Mac（linked） | 服务器借用你 Mac 上的 Chrome（和整个屏幕）：Mac 上的桌面 App 连着服务器、点了“借给服务器”才有，见 [桌面 App](desktop.md)。 |
 
 **本机 Chrome（host）**：适合在自己的电脑上跑（桌面 App，或者直接 `uv run`）。服务器上没有屏幕，用不了。
 “本机”是服务所在的那台机器：桌面 App 连着服务器、或者在浏览器里用服务器时，电脑面板上写的是“服务器上的 Chrome”。
@@ -151,6 +152,10 @@ Chrome 装在外接硬盘上（`/Applications` 里只是个链接）时，macOS 
 - 先问你：操作整台电脑（`desktop`、`desktop_submit`，见上面）、往网页上传文件（`browser_upload`）、写文件（`computer_write_file`）、提交（`browser_submit`：点“发送 / 发布 / 提交 / 付款 / 删除”这类按钮、
   POST 表单的提交按钮，或者在发消息的多行输入框、POST 表单里回车；真链接和搜索框不算）都先弹确认卡片。点“总是允许”以后同类操作不再问，
   可以在 设置 → 确认规则 里撤销。用 Docker、Instabox 时这些默认不问，想问也可以在确认规则里加“先问我”。
+
+**你的 Mac（linked）**：服务器上的 Bot 借用你 Mac 上的 Chrome，规则和本机 Chrome 一样（文件只在 Mac 的工作文件夹里，上传、写文件、提交先问），
+另外：没有终端；操作整个屏幕除了 `host_desktop` 还要在 Mac 上允许；服务器锁（`security.local_exec: false`）不影响它，演示模式下不能用。
+Mac 掉线时电脑面板显示“你的 Mac 没连上”。用法见 [桌面 App → 把这台 Mac 借给服务器](desktop.md)。
 
 **几个任务同时用电脑**：所有 Bot 共用一台电脑，但后台任务不用一个个排队。每个任务在自己的浏览器窗口里做，
 截图、点击、输入都只作用在自己的窗口里，互不干扰；登录状态、电脑里的文件大家共用。同时用的任务最多 `parallel` 个，多了排队，

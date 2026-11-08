@@ -92,14 +92,14 @@ def names(c) -> set:
     return {s["function"]["name"] for s in ctools.schemas(c)}
 
 
-def test_off_by_default_and_mac_only(desk, monkeypatch):
+async def test_off_by_default_and_mac_only(desk, monkeypatch):
     assert ctools.DESKTOP <= names(desk) and "整台电脑" in ctools.system_hint(desk)
     monkeypatch.setitem(CFG["computer"], "host_desktop", False)
     assert not ctools.DESKTOP & names(desk) and not ctools.desk_schemas(desk)
     assert "整台电脑" not in ctools.system_hint(desk)
     monkeypatch.setitem(CFG["computer"], "host_desktop", True)
     monkeypatch.setattr(macdesk, "supported", lambda: False)   # 不是 Mac
-    assert not host.desktop_on() and desk.desk_state() == {"supported": False}
+    assert not host.desktop_on() and await desk.desk_state() == {"supported": False}
     monkeypatch.setattr(macdesk, "supported", lambda: True)
     monkeypatch.setitem(CFG, "security", {"local_exec": False})   # 服务器锁
     assert not host.desktop_on()
@@ -174,7 +174,7 @@ async def test_your_input_pauses_the_bot(desk, monkeypatch):
     step = asyncio.create_task(ctools.call(task(), "desktop_click", {"x": 1, "y": 1}, _noop, key="7:"))
     await _sleep(0.05)
     assert desk.controller == "human" and desk.paused_by == "input" and not step.done()
-    assert desk.desk_state()["paused_by"] == "input"
+    assert (await desk.desk_state())["paused_by"] == "input"
     desk.handback()
     out, _ = await asyncio.wait_for(step, 2)
     assert "desktop_screenshot" in out and not any(op[0] == "click" for op in desk.fake.ops)   # 交还后这一步不做
@@ -196,7 +196,7 @@ async def test_locked_screen_and_missing_permissions(desk, monkeypatch):
     desk.fake.perms["accessibility"] = False
     out, _ = await ctools.call(task(), "desktop_type", {"text": "hi"}, _noop, key="7:")
     assert "辅助功能" in out and not desk.fake.ops
-    assert "辅助功能" in desk.desk_state()["problem"]
+    assert "辅助功能" in (await desk.desk_state())["problem"]
 
 
 async def test_send_buttons_and_enter_ask(desk, monkeypatch):

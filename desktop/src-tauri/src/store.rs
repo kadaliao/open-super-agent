@@ -84,3 +84,79 @@ pub fn secret() -> String {
     }
     s
 }
+
+// ---------- 服务器借用这台 Mac（link.rs） ----------
+
+/// 借用令牌：服务器发的，按服务器地址（https://osa.example.com）分开存，值是 {"token", "id"}。
+/// 发布版在钥匙串里；开发版和测试目录在数据目录的 link-tokens.json 里（权限 600），理由同 secret()
+fn link_in_keychain() -> bool {
+    !cfg!(debug_assertions) && std::env::var_os("OSA_DESKTOP_HOME").is_none()
+}
+
+fn link_file() -> PathBuf {
+    home().join("link-tokens.json")
+}
+
+fn read_link_file() -> serde_json::Map<String, serde_json::Value> {
+    std::fs::read(link_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn write_private(path: &std::path::Path, data: &[u8]) {
+    let _ = std::fs::write(path, data);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+}
+
+pub fn link_get(origin: &str) -> Option<(String, i64)> {
+    let v: serde_json::Value = if link_in_keychain() {
+        let s = keyring::Entry::new(KEYCHAIN_SERVICE, &format!("link {origin}")).ok()?.get_password().ok()?;
+        serde_json::from_str(&s).ok()?
+    } else {
+        read_link_file().get(origin)?.clone()
+    };
+    Some((v["token"].as_str()?.to_string(), v["id"].as_i64().unwrap_or(0)))
+}
+
+pub fn link_set(origin: &str, token: &str, id: i64) -> bool {
+    let v = serde_json::json!({ "token": token, "id": id });
+    if link_in_keychain() {
+        return keyring::Entry::new(KEYCHAIN_SERVICE, &format!("link {origin}")).and_then(|e| e.set_password(&v.to_string())).is_ok();
+    }
+    let mut all = read_link_file();
+    all.insert(origin.into(), v);
+    write_private(&link_file(), &serde_json::to_vec_pretty(&all).unwrap_or_default());
+    true
+}
+
+pub fn link_clear(origin: &str) {
+    if link_in_keychain() {
+        if let Ok(e) = keyring::Entry::new(KEYCHAIN_SERVICE, &format!("link {origin}")) {
+            let _ = e.delete_credential();
+        }
+        return;
+    }
+    let mut all = read_link_file();
+    if all.remove(origin).is_some() {
+        write_private(&link_file(), &serde_json::to_vec_pretty(&all).unwrap_or_default());
+    }
+}
+
+/// 这台 Mac 上的开关：能不能让服务器操作整个屏幕。只有 App 能改（菜单栏，或网页经桥接调用、App 弹窗问过你），
+/// Mac 上的小程序每次动屏幕前都现读这个文件
+pub fn link_flags() -> PathBuf {
+    home().join("link.json")
+}
+
+pub fn link_desktop() -> bool {
+    std::fs::read(link_flags()).ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["desktop"].as_bool())
+        .unwrap_or(false)
+}
+
+pub fn set_link_desktop(on: bool) {
+    write_private(&link_flags(), serde_json::json!({ "desktop": on }).to_string().as_bytes());
+}

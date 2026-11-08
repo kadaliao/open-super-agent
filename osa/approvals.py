@@ -85,7 +85,7 @@ ASK = {"generate_image"}   # 默认每次都问的（画图要花钱）；点“
 
 def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
     """返回 (是否要确认, 原因)。规则用通配符匹配工具全名，例如 filesystem__* 。backend：电脑工具在哪种电脑上用。"""
-    if tool == "computer_shell" and backend == "host":
+    if tool == "computer_shell" and backend in ("host", "linked"):
         return True, "本机电脑的终端每条命令都要确认"
     rs = rules()
     for r in rs:
@@ -95,7 +95,7 @@ def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
         if r["action"] == "allow" and fnmatch.fnmatchcase(tool, r["pattern"]):
             return False, f"规则「{r['pattern']}」自动允许"
     if tool in PC_TOOLS:
-        return backend == "host" and tool in PC_ASK, "默认策略"
+        return backend in ("host", "linked") and tool in PC_ASK, "默认策略"
     if tool in ASK:
         return True, "默认策略"
     from . import mcp_hub

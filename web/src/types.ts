@@ -46,11 +46,13 @@ export type ComputerState = {
   parallel?: number; users?: ComputerUser[]; waiting?: string[]; watch?: string | null; exclusive?: string
   workspace?: string; shell?: boolean   // shell：本机电脑的终端开没开
   desktop?: DesktopState                // 本机电脑的“操作整台电脑”（只有 Mac）
+  link?: { connected: boolean; name: string }   // 借给服务器的 Mac 连没连上（backend 是 linked 时用的就是它）
 }
 // supported：这台机器能不能用（Mac、没开服务器锁）；on：打开了没有；accessibility / screen：两个 macOS 权限
 // problem：现在不能操作的原因（缺权限、屏幕锁着）；owner：谁在用屏幕；paused_by=input：你动了鼠标键盘，Bot 自己停下的
 export type DesktopState = {
   supported: boolean; on?: boolean; accessibility?: boolean; screen?: boolean; problem?: string; owner?: string; paused_by?: string
+  allowed?: boolean   // 借来的 Mac 上允许了服务器操作屏幕（本机电脑总是 true）
 }
 export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string

@@ -32,6 +32,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - The computer is one of these three; the first two are free:
   - your own Chrome: the default in the desktop app, with a separate profile apart from your everyday one, no Docker needed;
     on a Mac you can also turn on "use the whole computer" so Bots see the whole screen and use your mouse and keyboard in other apps;
+    when the service runs on a server, the Mac desktop app can lend that Mac to the Bots on the server;
   - a Linux desktop (Chromium and a terminal) in local Docker;
   - an [Instabox](https://instabox.sh) cloud machine.
 - With your own Chrome it is more careful: uploading files, writing files and clicking "send / publish / pay" all ask first, files stay inside the workspace folder, and the terminal is off by default.

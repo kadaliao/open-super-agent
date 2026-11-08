@@ -103,12 +103,13 @@ def public() -> dict:
 def save(data: dict) -> dict:
     if security.demo() and ({"limits", "heavy_workers", "computer_parallel"} & data.keys()):
         raise ValueError(i18n.t("演示服务器上不能改用量上限"))
-    if not security.local_exec() and (data.get("computer_backend") == "host" or data.get("computer_host_shell")
-                                      or data.get("computer_host_desktop")):
+    if not security.local_exec() and (data.get("computer_backend") == "host" or data.get("computer_host_shell")):
         raise ValueError(security.no_local_exec())
-    if data.get("computer_host_desktop"):
+    if security.demo() and (data.get("computer_backend") == "linked" or data.get("computer_host_desktop")):
+        raise ValueError(i18n.t("演示服务器上不能借用你的电脑"))
+    if data.get("computer_host_desktop"):   # 这台机器是 Mac，或者用的是借来的 Mac（服务器锁不管：动手的不是服务器）
         from .computer import macdesk
-        if not macdesk.supported():
+        if not (macdesk.supported() and security.local_exec()) and computer.get().backend != "linked":
             raise ValueError(i18n.t("操作整台电脑现在只支持 macOS"))
     if "language" in data:
         i18n.set_lang(data["language"])
