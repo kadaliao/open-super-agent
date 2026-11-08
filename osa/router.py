@@ -23,6 +23,7 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
   回复里顺带一句“记住了”。一次性的事不记；每条写成独立完整的一句话。
   只有名字、时区、所在城市、常用语言、职业这类关于用户本人的基本事实设 shared=true（所有 Bot 共享）；
   对你工作的要求和偏好只记在你自己这里。新信息和旧记忆冲突时用 replace_id 改那一条；用户让你忘掉就 forget。
+  现在有哪些 Bot 不用记：下面“其他 Bot”每轮都是最新的。
 - 用户要把结果“做成页面 / 报告 / 能分享的页面”时，用 save_page 存进资料库，回复里附上返回的链接；
   需要先查资料再写的，派任务并在 goal 里写明“最后用 save_page 保存成页面”。
 {attach_rule}
@@ -55,7 +56,8 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 后台 Worker 当前能用的工具（判断能不能做时以此为准）：
 {capabilities}
 
-其他 Bot（需要时用 message_bot 私信它们帮忙）：
+其他 Bot（需要时用 message_bot 私信它们帮忙。这是此刻真实存在的全部 Bot，以这里为准：
+记忆或之前的对话里提到、但这里没有的 Bot，是没建成或已经删了，不要当它存在）：
 {others}
 
 你的技能（用户用 /名字 调用）：
@@ -107,7 +109,8 @@ DM_TURN = """
 # 新建 Bot：只有主 Bot 有 create_bot（每次都弹卡片请用户确认），别的 Bot 要新 Bot 时找主 Bot
 PRIMARY_RULE = ("- 你是主 Bot，只有你能新建 Bot：用户要一个新 Bot，或者别的 Bot 私信你说需要一个新 Bot 时，用 create_bot 建"
                 "（会先弹卡片请用户确认）。先看“其他 Bot”里有没有已经能做这件事的，有就别重复建；"
-                "职责写完整，专门的做法作为 skills 一起交给它，不要存成你自己的技能。\n")
+                "职责写完整，专门的做法作为 skills 一起交给它，不要存成你自己的技能。"
+                "要用的 Bot 不在“其他 Bot”里，就是还没建（哪怕记忆里写着建过）：用 create_bot 建，不要让用户自己去设置里建。\n")
 OTHER_RULE = ("- 新建 Bot 只有主 Bot「{primary}」能做：用户要你建一个 Bot，或者你觉得该有个专门的 Bot 时，"
               "用 message_bot 私信它（它就在这个群里的话用 handoff），把名字、职责和做法写完整，由它请用户确认后新建。"
               "不要让用户自己去设置里建。\n")
@@ -477,9 +480,14 @@ class Router:
             return f"已派发任务 #{task.id}"
         if name == "message_bot":
             to = bots.by_name(args.get("to", ""))
-            if not to or to["id"] == self.bot_id:
+            if to and to["id"] == self.bot_id:
+                return "没发：这是你自己"
+            if not to:
                 others = "、".join(b["name"] for b in bots.list_bots() if b["id"] != self.bot_id)
-                return f"没发：没有叫 {args.get('to')} 的其他 Bot。现有：{others or '无'}"
+                # 没有这个 Bot：没建成或删了（记忆里说有也不算）。主 Bot 自己能建，别的 Bot 找主 Bot
+                fix = "要用它就先用 create_bot 新建（用户在卡片上确认后建好），不要让用户自己去设置里建" if self.bot["is_primary"] \
+                    else f"需要这样一个 Bot 的话，私信主 Bot「{bots.primary_name()}」请它新建"
+                return f"没发：没有叫 {args.get('to')} 的其他 Bot（没建成或已删除，记忆里说有也不算）。现有：{others or '无'}。{fix}"
             if self.chat["kind"] == "group" and to["id"] in self.chat["bot_ids"]:
                 return f"没发：{to['name']} 就在这个群里，用 handoff 交给它"
             out = await dm.send(self.bot_id, to, args.get("text", ""), self.chat["id"],

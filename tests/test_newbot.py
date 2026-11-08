@@ -92,3 +92,23 @@ async def test_bad_args_no_card(llm, events, boss, make_bot):
     out = tool_outputs(llm.bodies("router", "Boss")[-1])
     assert "已经有叫 taken7 的 Bot" in out[0] and "职责是空的" in out[1] and "技能 有 空格" in out[2]
     assert not card() and not bots.by_name("Empty7") and not bots.by_name("Bad7")
+
+
+async def test_missing_bot_means_create_it(llm, events, boss, make_bot):
+    """记忆里说有、列表里没有的 Bot 就是没建成：私信它时告诉主 Bot 用 create_bot 建，别的 Bot 去找主 Bot。"""
+    other = make_bot("Helper9")
+    llm.script("router:Boss", Call("message_bot", {"to": "Quark", "text": "在吗"}), "它还没建，我来建",
+               Call("message_bot", {"to": "Boss", "text": "自己"}), "好")
+    llm.script("router:Helper9", Call("message_bot", {"to": "Quark", "text": "在吗"}), "好")
+
+    await server.safe_handle(bots.chat(boss["chat_id"]), "让 Quark 找本书")
+    out = tool_outputs(llm.bodies("router", "Boss")[-1])[-1]
+    assert "没有叫 Quark" in out and "create_bot" in out and "设置" in out
+    assert "以这里为准" in system_of(llm.bodies("router", "Boss")[-1])   # 提示词：Bot 列表比记忆可信
+
+    await server.safe_handle(bots.chat(boss["chat_id"]), "再试")
+    assert tool_outputs(llm.bodies("router", "Boss")[-1])[-1] == "没发：这是你自己"
+
+    await server.safe_handle(bots.chat(other["chat_id"]), "让 Quark 找本书")
+    out = tool_outputs(llm.bodies("router", "Helper9")[-1])[-1]
+    assert "没有叫 Quark" in out and "Boss" in out and "create_bot" not in out

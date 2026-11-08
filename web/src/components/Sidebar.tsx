@@ -115,7 +115,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
               {group ? <span className="ci-group"><GroupFace image={c.image} bots={members} size={34} stack={24} /></span> : <BotAvatar avatar={bot!.avatar} size={34} busy={x.busy} />}
               <div className="ci-text">
                 <div className="ci-name">{x.name}{bot?.is_primary && <span className="star">★</span>}{group && <span className="ci-count">{members.length}</span>}</div>
-                <div className="ci-preview">{x.needs ? '⚠ ' + t('等你确认') : x.away ? '⚠ ' + t('有 Bot 等你确认（在私聊里）') : preview(c) || (group ? t('新的群聊') : t('新的 Bot'))}</div>
+                <div className="ci-preview">{x.needs ? '⚠ ' + t('等你确认') : x.away ? '⚠ ' + t('有 Bot 等你确认（在私聊里）') : preview(c) || (group ? t('新的群聊') : plain(bot!.instructions) || t('新的 Bot'))}</div>
               </div>
               {badge(c, x.needs)}
             </button>
