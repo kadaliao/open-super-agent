@@ -134,7 +134,6 @@ pub fn agent_launch(resources: Option<PathBuf>, ws_url: &str, token: &str) -> Re
     python_launch(resources, &["-m", "osa.computer.agent"], "agent.log", vec![
         ("OSA_LINK_URL".into(), ws_url.into()),
         ("OSA_LINK_TOKEN".into(), token.into()),
-        ("OSA_LINK_FLAGS".into(), store::link_flags().display().to_string()),
     ])
 }
 

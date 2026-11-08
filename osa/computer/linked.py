@@ -4,7 +4,7 @@
 排队、确认卡片、你一动鼠标就停这些都在服务器上照常做（继承 HostComputer），只是真正动手的那一步经连接交给 Mac：
 浏览器控制脚本、整个屏幕的动作、截图、读写文件。不同的地方：
 - 没有终端：服务器不能让 Mac 执行命令。
-- 操作整个屏幕除了服务器上打开“操作整台电脑”，还要你在 Mac 上允许（菜单栏图标里的开关），服务器自己打不开。
+- 操作整个屏幕和本机一样看那台 Mac 的两个权限（借出时你在 Mac 上同意的就包括屏幕）。
 - 不看服务器的服务器锁（security.local_exec）：动手的是你的 Mac，不是服务器。
 """
 import base64
@@ -101,7 +101,12 @@ class LinkedComputer(HostComputer):
         return bool(lk and lk.desktop)
 
     def desktop_enabled(self) -> bool:
-        return bool((CFG.get("computer") or {}).get("host_desktop", False)) and self.desk_supported()
+        """那台 Mac 给了两个权限（用最近一次问到的：Mac 连上时报一次，之后电脑面板每次刷新都会问）。"""
+        lk = link.connected()
+        if not (lk and lk.desktop and (CFG.get("computer") or {}).get("host_desktop", True)):
+            return False
+        info = self._info[1] or lk.perms
+        return bool(info.get("accessibility") and info.get("screen"))
 
     async def _desk_info(self, fresh: bool = False) -> dict:
         """画面每一两秒取一次，用一秒内的结果；Bot 动手前（fresh）一定重新问。"""

@@ -100,62 +100,62 @@ pricing:
 ```yaml
 computer:
   enabled: true
-  backend: auto          # auto：桌面 App 里用 host，否则有 INSTABOX_API_KEY 就用 Instabox、没有用本地 Docker；也可以指定 host / local / instabox
+  backend: auto          # Bot 电脑用哪种：auto（桌面 App 独立运行时是本机；否则有 INSTABOX_API_KEY 用 Instabox、没有用本地 Docker），也可以写 instabox / local / host
   parallel: 3            # 几个任务可以同时用电脑，多了排队；设置 → 限制与预算 里也能改
   width: 1280
   height: 800
   idle_pause_s: 900      # 闲置多少秒后自动暂停
   instabox_template: agent-browser
   instabox_machine: ""   # 使用已有的 Instabox 机器（免费版只能有一台）
-  chrome_path: ""        # host 用的浏览器，留空按常见位置找
-  host_shell: false      # host 的终端，默认关
-  host_desktop: false    # host 的“操作整台电脑”，默认关，只有 macOS
+  chrome_path: ""        # 本机：Bot 的浏览器用哪个 Chrome，留空按常见位置找
+  host_shell: false      # 本机的终端，默认关
+  host_desktop: true     # 本机是 Mac 时，给了权限就能操作整个屏幕；false 只用浏览器
 ```
 
-电脑面板上方可以换用哪台电脑（存在设置里，盖过 `backend`；有任务在用时不能换）。
+用哪台电脑只有两种：
 
-| 后端 | 说明 |
+- **本机**：你自己的电脑。桌面 App 独立运行时就是这台电脑，不用选。App 连着服务器时，电脑面板上方选“本机”，就是把这台 Mac 借给服务器上的 Bot
+  （Mac 上会弹窗问你），选回“Bot 电脑”就收回。见下面“借给服务器”。
+- **Bot 电脑**：服务器那边给 Bot 的电脑，用哪种由上面的 `backend` 定：
+
+| backend | 说明 |
 |---|---|
-| Instabox | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
-| 本地 Docker | 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
-| 本机 Chrome（host） | 用服务所在电脑上装的 Chrome，不用 Docker，桌面 App 默认用它。见下面。 |
-| 你的 Mac（linked） | 服务器借用你 Mac 上的 Chrome（和整个屏幕）：Mac 上的桌面 App 连着服务器、点了“借给服务器”才有，见 [桌面 App](desktop.md)。 |
+| `instabox` | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
+| `local` | 本地 Docker 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
+| `host` | 服务所在那台电脑上的浏览器（比如在自己电脑上直接 `uv run`、在浏览器里用）。规则和本机一样。 |
 
-**本机 Chrome（host）**：适合在自己的电脑上跑（桌面 App，或者直接 `uv run`）。服务器上没有屏幕，用不了。
-“本机”是服务所在的那台机器：桌面 App 连着服务器、或者在浏览器里用服务器时，电脑面板上写的是“服务器上的 Chrome”。
-Chrome 装在外接硬盘上（`/Applications` 里只是个链接）时，macOS 要先允许 App 访问“可移除的宗卷”（系统设置 → 隐私与安全性 → 文件与文件夹），
-没允许时电脑面板会提示。
+**本机**（桌面 App 独立运行，或者 `backend: host`）：
 
-- 浏览器：开一个单独的 Chrome 配置目录 `data/computers/host/chrome`，和你日常用的 Chrome 分开。第一次在电脑面板点“打开 Chrome”，
-  在打开的窗口里登录要 Bot 用的网站，所有 Bot 共用。调试端口由 Chrome 随机选、只听 127.0.0.1，网页连不上。
-  Bot 的窗口不会抢到最前面；要看就点“显示窗口”，或者看面板上的画面（每一两秒一张截图，手机上也能看）。
-  “接手”就是让 Bot 暂停，你直接在 Chrome 窗口里操作，完了点“交还”。服务停止时这个 Chrome 跟着关掉，闲置时不自动关。
+- 画面跟着 Bot 走：它在操作屏幕时显示整个屏幕，在浏览器里做事时显示它的浏览器窗口（每一两秒一张截图，手机上也能看）。
+  “接手”就是让 Bot 暂停，你直接用电脑，完了点“交还”。
+- 浏览器：Bot 有自己的浏览器窗口，用的是你装的 Chrome，但配置目录是单独的（`data/computers/host/chrome`），和你日常用的分开。
+  遇到要登录的网站，Bot 会请你帮忙，你在它的窗口里登录一次，之后所有 Bot 共用。调试端口由 Chrome 随机选、只听 127.0.0.1，网页连不上。
+  Chrome 装在外接硬盘上（`/Applications` 里只是个链接）时，macOS 要先允许 App 访问“可移除的宗卷”（系统设置 → 隐私与安全性 → 文件与文件夹），
+  没允许时电脑面板会提示。服务停止时这个浏览器跟着关掉。
+- 屏幕和鼠标键盘（只有 macOS）：给 Open Super Agent 打开**辅助功能**（发鼠标键盘事件、读按钮上的字）和**屏幕录制**（截到别的 App 的窗口）
+  两个权限后，Bot 还能看整个屏幕、用你的鼠标键盘操作这台 Mac 上的其他 App（微信、访达、备忘录、系统设置……，`desktop_*` 工具）。
+  权限就是开关：没给就只用浏览器，电脑面板上有一行提示和“去打开”按钮（打开后还显示这句，就退出 App 再打开）；不想要可以写 `host_desktop: false`。
+  自己用 `uv run` 跑时，权限给的是你启动它的那个终端。
+  - 每个任务第一次用屏幕先弹卡片问你（`desktop`），对话里同意过的 10 分钟内不再问。在屏幕上点“发送 / 发布 / 提交 / 付款 / 购买 / 转账”这类按钮、
+    在多行输入框（聊天软件、终端）里按回车也先问（`desktop_submit`）。点“总是允许”后不再问，可以在 设置 → 确认规则 里撤销。
+  - Bot 在用屏幕时，你动一下鼠标或键盘它就自己停下（在 App 里点确认卡片、点“交还”不算），等你点“交还”再接着做，交还后它先重新看一眼屏幕。
+    屏幕锁着时什么都不做。Bot 不点、也不往 Open Super Agent 自己的窗口（桌面 App，和浏览器里开着的界面）里打字，免得它自己点“允许”。
+  - 鼠标键盘只有一套，一次只给一个任务用，别的任务排队（任务卡片上写“排队等屏幕”）；对话里 Bot 直接操作的，一轮说完就让出来。
+  - 只截主显示器。给模型的截图缩到 1280×800 以内，坐标按截图算。打字是放进剪贴板再按 ⌘V（中文输入法开着也不会被拦），
+    粘贴完把原来的剪贴板放回去，剪贴板管理器不记这一条。App 的名字中英文都认（“计算器”“Calculator”）。
+  - 要把截图发给你时，Bot 用 `desktop_screenshot`（整个屏幕）或 `computer_screenshot`（它的浏览器页面）的 `save` 存进工作文件夹的 `screenshots`，再发进对话。
 - 文件：只放在工作文件夹 `data/workspace`（和“文件系统”应用是同一个目录）。Bot 读写文件、往网页上传文件都限定在里面，
   浏览器下载的文件存到 `data/workspace/downloads`。技能里写的 `/data/workspace/…` 会自动换成这个目录。
 - 终端：默认没有。在电脑面板勾上“允许 Bot 用终端”（或 `host_shell: true`）后，Bot 能在这台电脑上执行命令，
   工作目录是工作文件夹，但命令能访问你能访问的所有文件，所以**每条命令都要你确认**，不能“总是允许”。命令拿不到名字里带
   KEY、TOKEN、SECRET、PASSWORD 的环境变量。
-- 整台电脑（只有 macOS）：默认关。在电脑面板勾上“允许 Bot 操作整台电脑”（或 `host_desktop: true`）后，Bot 还能看整个屏幕、
-  用你的鼠标键盘操作这台 Mac 上的其他 App（微信、访达、备忘录、系统设置……，`desktop_*` 工具）。网页照旧用它自己的 Chrome，不占鼠标。
-  - 要给 Open Super Agent 两个权限：**辅助功能**（发鼠标键盘事件、读按钮上的字）和**屏幕录制**（截到别的 App 的窗口）。
-    电脑面板里点“去打开权限”会弹系统的提示，并打开系统设置里对应的页面；打开后还显示没有，就退出 App 再打开。
-    自己用 `uv run` 跑时，权限给的是你启动它的那个终端。
-  - 只截主显示器。给模型的截图缩到 1280×800 以内，坐标按截图算。打字是放进剪贴板再按 ⌘V（中文输入法开着也不会被拦），
-    粘贴完把原来的剪贴板放回去，剪贴板管理器不记这一条。App 的名字中英文都认（“计算器”“Calculator”）。
-  - 鼠标键盘只有一套，一次只给一个任务用，别的任务排队（任务卡片上写“排队等屏幕”）；对话里 Bot 直接操作的，一轮说完就让出来。
-  - 每个任务第一次用先弹卡片问你（`desktop`），对话里同意过的 10 分钟内不再问。在屏幕上点“发送 / 发布 / 提交 / 付款 / 购买 / 转账”这类按钮、
-    在多行输入框（聊天软件、终端）里按回车也先问（`desktop_submit`）。点“总是允许”后不再问，可以在 设置 → 确认规则 里撤销。
-  - Bot 在用屏幕时，你动一下鼠标或键盘它就自己停下（在 App 里点确认卡片、点“交还”不算），等你点“交还”再接着做，交还后它先重新看一眼屏幕。
-    屏幕锁着时什么都不做。Bot 不点、也不往 Open Super Agent 自己的窗口（桌面 App，和浏览器里开着的界面）里打字，免得它自己点“允许”。
-  - 打开后电脑面板能看整个屏幕：默认跟着 Bot 最近一次操作的走（整个屏幕或 Bot 的 Chrome），也可以固定看其中一个；Chrome 没开也能看屏幕。
-  - 要把屏幕截图发给你时，Bot 用 `desktop_screenshot` 的 `save` 存进工作文件夹的 `screenshots`，再发进对话。
-- 先问你：操作整台电脑（`desktop`、`desktop_submit`，见上面）、往网页上传文件（`browser_upload`）、写文件（`computer_write_file`）、提交（`browser_submit`：点“发送 / 发布 / 提交 / 付款 / 删除”这类按钮、
+- 先问你：操作屏幕（`desktop`、`desktop_submit`，见上面）、往网页上传文件（`browser_upload`）、写文件（`computer_write_file`）、提交（`browser_submit`：点“发送 / 发布 / 提交 / 付款 / 删除”这类按钮、
   POST 表单的提交按钮，或者在发消息的多行输入框、POST 表单里回车；真链接和搜索框不算）都先弹确认卡片。点“总是允许”以后同类操作不再问，
-  可以在 设置 → 确认规则 里撤销。用 Docker、Instabox 时这些默认不问，想问也可以在确认规则里加“先问我”。
+  可以在 设置 → 确认规则 里撤销。用 Bot 电脑时这些默认不问，想问也可以在确认规则里加“先问我”。
 
-**你的 Mac（linked）**：服务器上的 Bot 借用你 Mac 上的 Chrome，规则和本机 Chrome 一样（文件只在 Mac 的工作文件夹里，上传、写文件、提交先问），
-另外：没有终端；操作整个屏幕除了 `host_desktop` 还要在 Mac 上允许；服务器锁（`security.local_exec: false`）不影响它，演示模式下不能用。
-Mac 掉线时电脑面板显示“你的 Mac 没连上”。用法见 [桌面 App → 把这台 Mac 借给服务器](desktop.md)。
+**借给服务器**（App 连着服务器时选“本机”，后台的电脑类型叫 `linked`）：和本机一样，只是 Bot 在服务器上、经 Mac 主动连过去的连接操作这台 Mac。
+不同的地方：没有终端；借出时 Mac 上弹窗同意的就包括屏幕；服务器锁（`security.local_exec: false`）不影响它，演示模式下不能用；
+Mac 掉线时电脑面板显示“你的 Mac 没连上”。细节见 [桌面 App](desktop.md)。
 
 **几个任务同时用电脑**：所有 Bot 共用一台电脑，但后台任务不用一个个排队。每个任务在自己的浏览器窗口里做，
 截图、点击、输入都只作用在自己的窗口里，互不干扰；登录状态、电脑里的文件大家共用。同时用的任务最多 `parallel` 个，多了排队，
@@ -285,7 +285,7 @@ curl -X POST localhost:8765/hooks/github -H 'content-type: application/json' \
 | 共享的用户事实 | 50 条 |
 | 做过的事 | 每个 Bot 保留最近 20 条，提示词里带最近 10 条 |
 | 页面 | 共 1000 个，每个 50 万字 |
-| 上传文件 | 每个 20 MB，存到电脑的工作文件夹（Docker / Instabox 是 `/data/workspace`，本机 Chrome 是 `data/workspace`；附件在 `uploads/` 下） |
+| 上传文件 | 每个 20 MB，存到电脑的工作文件夹（Docker / Instabox 是 `/data/workspace`，本机是 `data/workspace`；附件在 `uploads/` 下） |
 | 对话里的图片 | 浏览器先缩到最长边 1600 像素，每张最多 10 MB，存在数据库里；没有消息引用的一天后清掉。对话模型能看图时带上最近 4 张（PNG / JPEG / WebP） |
 | `send_file` | 一轮对话、一个任务最多发 5 个文件；10 MB 以内的图片另存一份直接显示 |
 | 链接卡片 | 你发的链接、Bot 消息里单独一段的链接展开成卡片或播放器，YouTube、B 站、X 的链接写在句子里也展开，一条消息最多 3 个。网页卡片由服务器去抓（8 秒、最多 512 KB），缓存 7 天，抓不到的过 1 小时再试；和 `fetch_url` 一样不抓本机和内网地址（`tools.fetch_private` 也管它）。YouTube、X 要浏览器能访问才显示；B 站会拦一些机房的 IP，服务器访问不了 B 站时只显示播放按钮、没有封面和标题，点了照样能播 |

@@ -36,7 +36,7 @@ See [Features](docs/features.en.md) for the full list.
 
 | Client | What you get |
 |---|---|
-| 💻 **macOS desktop app** | Download the dmg and open it: about 43 MB with its own runtime, no Docker or Python; Bots use the Chrome on your computer, and can use the whole computer once you allow it. It keeps running in the menu bar after you close the window, and can also connect to your server and lend this Mac to the Bots there. See [Desktop app](docs/desktop.md) (Chinese) |
+| 💻 **macOS desktop app** | Download the dmg and open it: about 43 MB with its own runtime, no Docker or Python; Bots use this computer: a browser, plus the screen, mouse and keyboard once you grant the permissions. It keeps running in the menu bar after you close the window, and can also connect to your server and let the Bots there use this Mac. See [Desktop app](docs/desktop.md) (Chinese) |
 | 🖥️ **Server** | One `docker compose up` on a VPS or a machine at home keeps it always on; connect from a browser, the desktop app, your phone or a chat app. See [Deploy with Docker Compose](docs/docker.md) (Chinese) |
 | 📱 **iPhone app** (TestFlight) | Scan a QR code on your computer with the Camera to connect; approvals and finished tasks are pushed to your phone, encrypted, and readable on the lock screen. See [iPhone app](docs/mobile.md) (Chinese) |
 | 💬 **Chat apps** | Talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, with approvals as message buttons. See [Chat apps](docs/channels.md) (Chinese) |

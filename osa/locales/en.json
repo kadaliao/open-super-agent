@@ -559,7 +559,6 @@
   "这台服务器上，文件夹应用只能访问工作文件夹（{dir}）": "On this server, the Folder app can only access the workspace folder ({dir})",
   "这台服务器不允许从网页上在服务器本机执行命令（config.yaml 的 security.local_exec）": "This server doesn't allow running commands on the server from the web (security.local_exec in config.yaml)",
   "这台服务器没有打开电脑功能（config.yaml 的 computer.enabled）": "The computer is turned off on this server (computer.enabled in config.yaml)",
-  "没有打开“操作整台电脑”（电脑面板里可以打开）": "“Use the whole computer” is off (turn it on in the computer panel)",
   "还没给 Open Super Agent 这些权限：{what}。电脑面板里点“去打开权限”，或者到 系统设置 → 隐私与安全性 里打开": "Open Super Agent doesn't have these permissions yet: {what}. Click “Grant permissions” in the computer panel, or turn them on in System Settings → Privacy & Security",
   "屏幕锁着（或者显示器睡着了），现在不能操作": "The screen is locked (or the display is asleep), so nothing can be done right now",
   "辅助功能": "Accessibility",
@@ -570,13 +569,12 @@
   "在屏幕上拖动": "Drag on the screen",
   "打开 {app}": "Open {app}",
   "只有在 Mac 上用本机电脑时才能操作整台电脑": "Using the whole computer only works on a Mac with “This computer” selected",
-  "操作整台电脑现在只支持 macOS": "Using the whole computer only works on macOS for now",
-  "这台 Mac 上还没允许服务器操作整个屏幕：在 Mac 上点菜单栏的 Open Super Agent 图标，勾上“允许服务器操作屏幕”": "This Mac hasn't allowed the server to use its screen yet. On the Mac, click the Open Super Agent menu bar icon and check “Let the server use the screen”",
   "借用已经断开": "Stopped lending this Mac",
   "你的 Mac 没连上（App 没开、没联网，或者电脑睡着了）": "Your Mac isn't connected (the app isn't open, it's offline, or the Mac is asleep)",
   "重新连上了": "Reconnected",
   "你的 Mac 没有回应（超时）": "Your Mac didn't respond (timed out)",
   "你的 Mac 断开了": "Your Mac disconnected",
   "借用的 Mac 不能用终端": "A lent Mac can't run terminal commands",
-  "演示服务器上不能借用你的电脑": "The demo server can't borrow your computer"
+  "演示服务器上不能借用你的电脑": "The demo server can't borrow your computer",
+  "这台电脑不能让 Bot 操作整个屏幕（只有 Mac 可以）": "This computer can't let bots use the whole screen (only a Mac can)"
 }

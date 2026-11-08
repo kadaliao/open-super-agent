@@ -2,21 +2,20 @@
 // 桌面版：新窗口、下载由外壳自己处理；点了系统通知，外壳发一个 osa-open-chat 事件（detail 是对话 id）。
 // 手机版：多了推送订阅、弹出页、切换服务器；点了推送通知，外壳发 osa-open-url 事件（detail 是站内地址，如 /?chat=12&thread=34）。
 export type PushSub = { endpoint: string; keys: { p256dh: string; auth: string } }
-// 服务器借用这台 Mac（只有 macOS 桌面 App 连着服务器时有用）：linked 借出去了没有，id 是服务器那边的借用编号，
-// desktop 是这台 Mac 上“允许服务器操作屏幕”的开关，running 是 Mac 上的小程序在不在跑
-export type LinkState = { available: boolean; linked: boolean; id: number | null; desktop: boolean; running: boolean }
+// 服务器借用这台 Mac（macOS 桌面 App 连着服务器时，电脑选“本机”）：available 是能借（连着服务器），linked 借出去了没有，
+// id 是服务器那边的借用编号，running 是 Mac 上的小程序在不在跑
+export type LinkState = { available: boolean; linked: boolean; id: number | null; running: boolean }
 
 export type Bridge = {
   notify(title: string, body: string, chatId?: number, active?: boolean): void   // active：是不是当前打开的对话，外壳看窗口在前台时就不弹
   setBadge(count: number): void   // 菜单栏、程序坞或手机图标上显示的待确认数
   openExternal(url: string): void // 用系统浏览器打开
   speech?: boolean                // 外壳里能用语音识别时为 true；否则不显示麦克风
-  // 桌面 App：把这台 Mac 借给服务器（connect、setDesktop(true) 都会先在 Mac 上弹窗问你，返回你同不同意）
+  // 桌面 App：把这台 Mac 借给服务器（connect 会先在 Mac 上弹窗问你，返回你同不同意）
   link?: {
     state(): Promise<LinkState>
     connect(token: string, id: number): Promise<boolean>
     disconnect(): Promise<void>
-    setDesktop(on: boolean): Promise<boolean>
   }
   // 下面这些只有手机 App 有
   platform?: 'macos' | 'ios'

@@ -3,12 +3,12 @@
 它主动连到服务器的 /api/computer/link（服务器那边见 link.py、linked.py），替服务器上的 Bot 操作这台 Mac。动手的代码就是本机电脑的（host.py）：
 - Bot 专用的 Chrome：单独的配置目录，和“在这台电脑上运行”时共用，在那边登录过的网站这里也能用；
 - 文件：读写、列目录、删除、往网页上传都只在工作文件夹里（服务器给的路径在 Mac 上再查一遍）；
-- 整个屏幕：只有你在 Mac 上允许了才做（App 菜单栏里的开关，存在 OSA_LINK_FLAGS 那个文件里），服务器改不了这个开关；
+- 整个屏幕：借出时你在 Mac 上同意的就包括屏幕；能不能做看 App 有没有“辅助功能”和“屏幕录制”权限；
   屏幕上的动作在 Mac 上照样不碰 Open Super Agent 自己的窗口；
 - 不执行终端命令。
 断了隔几秒重连；令牌作废了（4401）隔几分钟再试；App 退出时跟着退出（OSA_PARENT_PID），退出前关掉 Bot 的 Chrome。
 
-环境变量：OSA_LINK_URL（wss://服务器/api/computer/link）、OSA_LINK_TOKEN、OSA_LINK_FLAGS、OSA_DATA_DIR。
+环境变量：OSA_LINK_URL（wss://服务器/api/computer/link）、OSA_LINK_TOKEN、OSA_DATA_DIR。
 """
 import asyncio
 import base64
@@ -19,7 +19,6 @@ import signal
 import socket
 import subprocess
 import sys
-from pathlib import Path
 
 import websockets
 
@@ -30,16 +29,7 @@ from .host import HostComputer
 
 log = logging.getLogger("osa.agent")
 MAX_MSG = 64 << 20
-NOT_ALLOWED = "这台 Mac 上还没允许服务器操作整个屏幕：在 Mac 上点菜单栏的 Open Super Agent 图标，勾上“允许服务器操作屏幕”"
 RETRY = {4401: 300, 4409: 60}   # 令牌作废了、已经借了另一台：隔久一点再试
-
-
-def allowed() -> bool:
-    """你在 Mac 上允许了服务器操作整个屏幕（App 写的开关文件，每次都现读）。"""
-    try:
-        return bool(json.loads(Path(os.environ["OSA_LINK_FLAGS"]).read_text()).get("desktop"))
-    except (KeyError, OSError, ValueError):
-        return False
 
 
 def computer_name() -> str:
@@ -74,12 +64,10 @@ async def handle(pc: HostComputer, op: str, a: dict):
     if op == "rm":
         return await pc.rm(str(a["path"]))
     if op == "desk_info":
-        if not macdesk.supported():
-            return {"supported": False, "allowed": False}
-        return {**await pc._desk_info(), "allowed": allowed()}
+        return await pc._desk_info() if macdesk.supported() else {"supported": False}
     if op in ("desk", "capture", "front", "grant"):
-        if not (macdesk.supported() and allowed()):
-            raise ComputerError(NOT_ALLOWED)
+        if not macdesk.supported():
+            raise ComputerError("这台电脑不是 Mac，不能操作整个屏幕")
         if op == "desk":
             r = await pc._desk_run(str(a["action"]), dict(a.get("a") or {}))
             return {**r, "png": base64.b64encode(r["png"]).decode()} if "png" in r else r
@@ -110,7 +98,7 @@ async def reply(ws, pc: HostComputer, msg: dict):
 
 async def connect_loop(pc: HostComputer, url: str, token: str):
     hello = {"type": "hello", "name": computer_name(), "platform": sys.platform, "desktop": macdesk.supported(),
-             "workspace": pc.workspace}
+             "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace}
     wait, tasks = 1, set()
     while True:
         code = None

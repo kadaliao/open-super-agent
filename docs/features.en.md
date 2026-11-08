@@ -30,13 +30,12 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - Web pages are driven directly over CDP, by element and by reading page text, which is faster, more precise and cheaper in tokens than guessing coordinates from screenshots.
 - Watch it live and take over or hand back at any time; for captchas and logins, the Bot asks you to step in.
 - The computer is one of these three; the first two are free:
-  - your own Chrome: the default in the desktop app, with a separate profile apart from your everyday one, no Docker needed;
-    on a Mac you can also turn on "use the whole computer" so Bots see the whole screen and use your mouse and keyboard in other apps;
-    when the service runs on a server, the Mac desktop app can lend that Mac to the Bots on the server;
+  - this computer: the default in the desktop app, no Docker needed. Bots get their own browser window (a profile apart from your everyday one) and, once you grant the permissions, the whole screen, mouse and keyboard;
+    when the service runs on a server, choose "This computer" in the Mac desktop app and the Bots on the server use that Mac;
   - a Linux desktop (Chromium and a terminal) in local Docker;
   - an [Instabox](https://instabox.sh) cloud machine.
-- With your own Chrome it is more careful: uploading files, writing files and clicking "send / publish / pay" all ask first, files stay inside the workspace folder, and the terminal is off by default.
-  Using the whole computer is off by default, each task asks before it starts, and the Bot stops as soon as you move the mouse or press a key.
+- On this computer it is more careful: uploading files, writing files and clicking "send / publish / pay" all ask first, files stay inside the workspace folder, and the terminal is off by default;
+  each task asks before it first uses the screen, and the Bot stops as soon as you move the mouse or press a key.
 
 ## Apps, skills and templates
 

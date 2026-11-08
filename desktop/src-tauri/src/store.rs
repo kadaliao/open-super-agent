@@ -143,20 +143,3 @@ pub fn link_clear(origin: &str) {
         write_private(&link_file(), &serde_json::to_vec_pretty(&all).unwrap_or_default());
     }
 }
-
-/// 这台 Mac 上的开关：能不能让服务器操作整个屏幕。只有 App 能改（菜单栏，或网页经桥接调用、App 弹窗问过你），
-/// Mac 上的小程序每次动屏幕前都现读这个文件
-pub fn link_flags() -> PathBuf {
-    home().join("link.json")
-}
-
-pub fn link_desktop() -> bool {
-    std::fs::read(link_flags()).ok()
-        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-        .and_then(|v| v["desktop"].as_bool())
-        .unwrap_or(false)
-}
-
-pub fn set_link_desktop(on: bool) {
-    write_private(&link_flags(), serde_json::json!({ "desktop": on }).to_string().as_bytes());
-}

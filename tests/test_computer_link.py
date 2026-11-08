@@ -42,9 +42,6 @@ def mac(tmp_path, monkeypatch):
     """借来的 Mac：Mac 那边是真的本机电脑（工作文件夹在临时目录），服务器这边是 LinkedComputer。"""
     monkeypatch.setattr(host, "DATA", tmp_path / "mac")
     monkeypatch.setattr(host, "chrome_path", lambda: "/fake/chrome")
-    flags = tmp_path / "link.json"
-    flags.write_text('{"desktop": false}')
-    monkeypatch.setenv("OSA_LINK_FLAGS", str(flags))
     pc = host.HostComputer(0)
     pc.helper_calls = []
 
@@ -57,12 +54,13 @@ def mac(tmp_path, monkeypatch):
         return {"state": "running", "detail": ""}
     pc.status = running
     pipe = Pipe(pc)
-    lk = link.Link(pipe, {"id": 1, "name": "Mac"}, {"name": "测试的 Mac mini", "desktop": True, "workspace": pc.workspace})
+    lk = link.Link(pipe, {"id": 1, "name": "Mac"}, {"name": "测试的 Mac mini", "desktop": True, "workspace": pc.workspace,
+                                                     "perms": {"accessibility": True, "screen": True}})
     pipe.link = lk
     monkeypatch.setattr(link, "current", lk)
     c = linked.LinkedComputer(0)
     monkeypatch.setattr(ctools, "get", lambda: c)
-    c.mac, c.flags, c.pipe = pc, flags, pipe
+    c.mac, c.pipe = pc, pipe
     return c
 
 
@@ -100,31 +98,25 @@ async def test_no_terminal_and_uploads_stay_in_workspace(mac):
     assert mac.mac.helper_calls[-1]["files"] == [str(mac.mac.root / "a.pdf")]   # Mac 上换成真实路径
 
 
-async def test_screen_needs_the_switch_on_the_mac(mac, monkeypatch):
+async def test_screen_through_the_link(mac, monkeypatch):
+    """借出时同意的就包括屏幕：那台 Mac 有两个权限就能用 desktop_*，动手在 Mac 上做，照样不碰自己的窗口。"""
     d = Desk()
     d.install(monkeypatch)
-    monkeypatch.setitem(CFG.setdefault("computer", {}), "host_desktop", True)
     monkeypatch.setattr(approvals, "request", Recorder(True))
+    task = SimpleNamespace(id=5, bot_id=1, chat_id=1, goal="g", background=False)
     assert mac.desktop_enabled() and ctools.DESKTOP <= {s["function"]["name"] for s in ctools.schemas(mac)}
-    out, shot = await ctools.call(SimpleNamespace(id=5, bot_id=1, chat_id=1, goal="g", background=False),
-                                  "desktop_screenshot", {}, _noop, key="5:")
-    assert "还没允许" in out and shot is None and "desk" not in mac.pipe.sent   # Mac 上没允许：服务器打不开
-    assert "还没允许" in (await mac.desk_state())["problem"]
-    with pytest.raises(ComputerError, match="还没允许"):
-        await mac._capture()
-
-    mac.flags.write_text('{"desktop": true}')                                 # 你在 Mac 上打开了开关
-    mac._info = (0.0, {})
-    out, shot = await ctools.call(SimpleNamespace(id=5, bot_id=1, chat_id=1, goal="g", background=False),
-                                  "desktop_click", {"x": 640, "y": 360}, _noop, key="5:")
-    assert "已点击" in out and shot == png() and d.ops[-1][0] == "click"
+    out, shot = await ctools.call(task, "desktop_click", {"x": 640, "y": 360}, _noop, key="5:")
+    assert "已点击" in out and shot == png() and d.ops[-1][0] == "click" and "desk" in mac.pipe.sent
     assert (await mac.desk_state())["problem"] == ""
-    assert await mac.peek(view="screen") == png()
-
+    assert await mac.peek() == png()
     d.el = {"role": "AXButton", "label": "允许", "pid": os.getpid()}          # Mac 上照样不碰自己的窗口
-    out, _ = await ctools.call(SimpleNamespace(id=5, bot_id=1, chat_id=1, goal="g", background=False),
-                               "desktop_click", {"x": 1, "y": 1}, _noop, key="5:")
+    out, _ = await ctools.call(task, "desktop_click", {"x": 1, "y": 1}, _noop, key="5:")
     assert "自己的窗口" in out
+
+    d.perms["screen"] = False                                             # 那台 Mac 没给屏幕录制
+    mac._info = (0.0, {})                                                 # 过了一秒，面板再问
+    assert "屏幕录制" in (await mac.desk_state())["problem"]
+    assert not mac.desktop_enabled()                                      # 问过一次就知道了：不再给 desktop_*
 
 
 async def test_offline(mac, monkeypatch):

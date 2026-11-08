@@ -7,7 +7,8 @@
   浏览器下载的文件也存到这里的 downloads。
 - 终端：默认关（computer.host_shell）。打开后在这台电脑上执行命令，每条都要你确认（tools.py），环境变量里的密钥不传过去。
 - 画面：浏览器窗口就在你的屏幕上；网页上看截图（peek），手机上也能看。“接手”就是让 Bot 暂停，你直接在 Chrome 里操作。
-- 整台电脑：默认关（computer.host_desktop，只有 macOS）。打开后 Bot 还能看整个屏幕、用真实的鼠标键盘操作别的 App（macdesk.py）。
+- 整台电脑（只有 macOS）：你给 Open Super Agent 打开“辅助功能”和“屏幕录制”权限后，Bot 还能看整个屏幕、用真实的鼠标键盘操作别的 App
+  （macdesk.py）。权限就是开关，没给就只用浏览器；config.yaml 的 computer.host_desktop: false 可以整个关掉。
   鼠标键盘只有一套，一次只给一个任务用（desk_claim，别的排队）；每个任务第一次用先问你（tools.py）。
   Bot 上一个动作之后你动了鼠标键盘（在 App 里点确认卡片、交还不算），它就自动停下，等你交还。屏幕锁着时什么都不做。
   不点、不往 Open Super Agent 自己的窗口里打字，免得它自己点“允许”。
@@ -83,8 +84,10 @@ def shell_on() -> bool:
 
 
 def desktop_on() -> bool:
-    """打开了“操作整台电脑”：Bot 能看整个屏幕、用真实的鼠标键盘操作这台 Mac 上的 App。"""
-    return bool((CFG.get("computer") or {}).get("host_desktop", False)) and security.local_exec() and macdesk.supported()
+    """Bot 能看整个屏幕、用真实的鼠标键盘操作这台 Mac 上的 App：是 Mac、没关掉（computer.host_desktop）、两个权限都给了。"""
+    if not (bool((CFG.get("computer") or {}).get("host_desktop", True)) and security.local_exec() and macdesk.supported()):
+        return False
+    return all(macdesk.permissions().values())
 
 
 DESK_CHAT = 120   # 对话里直接操作屏幕：一轮说完就让出来（router），万一没让，这么多秒没再动也让给排队的任务
@@ -255,9 +258,9 @@ class HostComputer(Computer):
         return desktop_on()
 
     async def _desk_info(self, fresh: bool = False) -> dict:
-        """那台电脑现在的情况：能不能操作屏幕（allowed）、两个权限、锁没锁屏、多久没有键盘鼠标输入。"""
+        """那台电脑现在的情况：两个权限、锁没锁屏、多久没有键盘鼠标输入。"""
         def get():
-            return {"supported": macdesk.supported(), "allowed": True, **macdesk.permissions(),
+            return {"supported": macdesk.supported(), **macdesk.permissions(),
                     "locked": macdesk.locked(), "idle": macdesk.idle()}
         return await asyncio.to_thread(get)
 
@@ -276,10 +279,8 @@ class HostComputer(Computer):
 
     def desk_problem(self, info: dict, look: bool = False) -> str:
         """现在不能操作屏幕的原因；能操作返回空。info 是 _desk_info()；look：只是看（不用辅助功能权限）。"""
-        if not self.desktop_enabled():
-            return i18n.t("没有打开“操作整台电脑”（电脑面板里可以打开）")
-        if not info.get("allowed", True):
-            return i18n.t("这台 Mac 上还没允许服务器操作整个屏幕：在 Mac 上点菜单栏的 Open Super Agent 图标，勾上“允许服务器操作屏幕”")
+        if not self.desk_supported() or not (CFG.get("computer") or {}).get("host_desktop", True):
+            return i18n.t("这台电脑不能让 Bot 操作整个屏幕（只有 Mac 可以）")
         missing = [i18n.t(n) for k, n in (("accessibility", i18n.N_("辅助功能")), ("screen", i18n.N_("屏幕录制")))
                    if not info.get(k) and not (look and k == "accessibility")]
         if missing:
@@ -436,15 +437,13 @@ class HostComputer(Computer):
         """给电脑面板：能不能用、开没开、权限、谁在用。"""
         if not self.desk_supported():
             return {"supported": False}
-        out = {"supported": True, "on": self.desktop_enabled(), "paused_by": self.paused_by,
-               "owner": self.desk_label if self.desk_busy() else ""}
-        if out["on"]:
-            try:
-                info = await self._desk_info()
-            except ComputerError as e:
-                return {**out, "problem": str(e)}
-            out |= {k: info.get(k) for k in ("accessibility", "screen", "allowed")}
-            out["problem"] = self.desk_problem(info)
+        out = {"supported": True, "paused_by": self.paused_by, "owner": self.desk_label if self.desk_busy() else ""}
+        try:
+            info = await self._desk_info()
+        except ComputerError as e:
+            return {**out, "problem": str(e)}
+        out |= {k: bool(info.get(k)) for k in ("accessibility", "screen")}
+        out["problem"] = self.desk_problem(info)
         return out
 
     # ---------- 文件：只在工作文件夹里 ----------

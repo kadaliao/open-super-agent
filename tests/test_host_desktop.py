@@ -92,16 +92,22 @@ def names(c) -> set:
     return {s["function"]["name"] for s in ctools.schemas(c)}
 
 
-async def test_off_by_default_and_mac_only(desk, monkeypatch):
+async def test_permissions_are_the_switch(desk, monkeypatch):
+    """没有开关：是 Mac、给了两个权限就有 desktop_*；缺权限、不是 Mac、服务器锁、config 里关掉都没有。"""
+    monkeypatch.delitem(CFG["computer"], "host_desktop")                # 默认就开
     assert ctools.DESKTOP <= names(desk) and "整台电脑" in ctools.system_hint(desk)
-    monkeypatch.setitem(CFG["computer"], "host_desktop", False)
-    assert not ctools.DESKTOP & names(desk) and not ctools.desk_schemas(desk)
-    assert "整台电脑" not in ctools.system_hint(desk)
+    desk.fake.perms["screen"] = False                                    # 缺屏幕录制：只用浏览器
+    assert not ctools.DESKTOP & names(desk) and not ctools.desk_schemas(desk) and "整台电脑" not in ctools.system_hint(desk)
+    st = await desk.desk_state()
+    assert st["supported"] and not st["screen"] and "屏幕录制" in st["problem"]   # 面板上提示去打开
+    desk.fake.perms["screen"] = True
+    monkeypatch.setitem(CFG["computer"], "host_desktop", False)          # config.yaml 里关掉
+    assert not ctools.DESKTOP & names(desk)
     monkeypatch.setitem(CFG["computer"], "host_desktop", True)
-    monkeypatch.setattr(macdesk, "supported", lambda: False)   # 不是 Mac
+    monkeypatch.setattr(macdesk, "supported", lambda: False)             # 不是 Mac
     assert not host.desktop_on() and await desk.desk_state() == {"supported": False}
     monkeypatch.setattr(macdesk, "supported", lambda: True)
-    monkeypatch.setitem(CFG, "security", {"local_exec": False})   # 服务器锁
+    monkeypatch.setitem(CFG, "security", {"local_exec": False})          # 服务器锁
     assert not host.desktop_on()
 
 

@@ -2,7 +2,7 @@
 computer_* 截的是自己窗口里的页面、按页面坐标点击，动作之后自动附上新截图，模型马上能看到结果。
 本机电脑（host.py）的工具说明和提示词不一样：文件只在工作文件夹里，终端默认没有；
 上传文件、写文件、提交、终端命令按确认规则先问用户（_confirm，规则见 approvals.decide）。
-本机电脑打开“操作整台电脑”后还有 desktop_* 工具：看整个屏幕、用真实的鼠标键盘操作别的 App（_desktop，见 host.py）。"""
+本机（或借来的 Mac）给了屏幕权限时还有 desktop_* 工具：看整个屏幕、用真实的鼠标键盘操作别的 App（_desktop，见 host.py）。"""
 import asyncio
 import contextvars
 import base64
@@ -97,14 +97,14 @@ _HOST_FILES = {
 
 
 def desk_schemas(c=None) -> list[dict]:
-    """操作整个屏幕的工具：只有本机电脑打开了“操作整台电脑”才给。"""
+    """操作整个屏幕的工具：只有本机（或借来的 Mac）是 Mac、给了两个权限才给。"""
     c = c or get()
     return DESK_SCHEMAS if c.backend in HOSTS and c.desktop_enabled() else []
 
 
 def schemas(c=None) -> list[dict]:
     """给 Worker 的电脑工具。本机电脑：文件工具说明换成工作文件夹，终端没打开就不给 computer_shell，
-    打开了“操作整台电脑”再加上 desktop_*。"""
+    能操作整个屏幕时再加上 desktop_*。"""
     c = c or get()
     if c.backend not in HOSTS:
         return SCHEMAS
@@ -165,7 +165,7 @@ def capability(c=None) -> str:
                 + ("、在终端执行命令（每条都要用户确认）" if c.shell_enabled() else "") + "。几个任务可以同时用，各自一个浏览器窗口，"
                 "登录状态共用；同时用的任务多了才排队。浏览器窗口就在用户的屏幕上，右栏也能看到画面。"
                 "上传文件、写文件、点“发送 / 发布 / 付款”这类按钮时会自动弹确认卡片。"
-                + ("用户还打开了“操作整台电脑”：任务能看整个屏幕、用真实的鼠标键盘操作这台 Mac 上的其他 App（微信、访达、备忘录、"
+                + ("任务还能看整个屏幕、用真实的鼠标键盘操作这台 Mac 上的其他 App（微信、访达、备忘录、"
                    "系统设置等，desktop_* 工具），每个任务第一次用会先问用户；鼠标键盘一次只能一个任务用。"
                    "你自己用 desktop_* 只做一两步的事（打开某个 App、看一眼屏幕）；要在 App 里按一串按钮、填东西、来回操作的，"
                    "派一个任务去做（你这一轮能调用的工具次数有限）。" if c.desktop_enabled() else ""))
@@ -410,9 +410,9 @@ async def _desktop(task, c, name: str, args: dict, key: str, notify_progress) ->
     """整个屏幕的工具：占住屏幕（一次一个任务）→ 这个任务第一次用先问用户 → 点“发送”类按钮、在输入框里回车先问 → 做 → 截图。"""
     from .. import approvals
     if c.backend not in HOSTS or not c.desktop_enabled():
-        return "用户没有打开“操作整台电脑”，只能用浏览器（browser_*）。", None
+        return "这台电脑现在不能操作整个屏幕（不是 Mac，或者还没给 Open Super Agent“辅助功能”和“屏幕录制”权限），只能用浏览器（browser_*）。", None
     ok_key = key if key.startswith("chat-") else f"task:{task.id}"   # 同意按任务记：Heavy 的几个研究员只问一次
-    no = ("用户这次没同意你操作整台电脑（“操作整台电脑”的开关是开着的，是用户在卡片上点了“不行”）。"
+    no = ("用户这次没同意你操作整个屏幕（在卡片上点了“不行”）。"
           "能用浏览器做的用 browser_*，做不了就在结果里说明，这个任务里别再试 desktop_*。")
     if time.time() - c.desk_denied.get(ok_key, 0) < 600:
         return no, None

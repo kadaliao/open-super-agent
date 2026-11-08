@@ -48,11 +48,10 @@ export type ComputerState = {
   desktop?: DesktopState                // 本机电脑的“操作整台电脑”（只有 Mac）
   link?: { connected: boolean; name: string }   // 借给服务器的 Mac 连没连上（backend 是 linked 时用的就是它）
 }
-// supported：这台机器能不能用（Mac、没开服务器锁）；on：打开了没有；accessibility / screen：两个 macOS 权限
+// supported：是 Mac；accessibility / screen：两个 macOS 权限（都给了 Bot 才能操作整个屏幕）
 // problem：现在不能操作的原因（缺权限、屏幕锁着）；owner：谁在用屏幕；paused_by=input：你动了鼠标键盘，Bot 自己停下的
 export type DesktopState = {
-  supported: boolean; on?: boolean; accessibility?: boolean; screen?: boolean; problem?: string; owner?: string; paused_by?: string
-  allowed?: boolean   // 借来的 Mac 上允许了服务器操作屏幕（本机电脑总是 true）
+  supported: boolean; accessibility?: boolean; screen?: boolean; problem?: string; owner?: string; paused_by?: string
 }
 export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
@@ -89,7 +88,6 @@ export type Settings = {
   computer_backends: { id: string; ok: boolean; locked?: boolean }[]   // 这台机器上能用哪些；locked：服务器锁不让用
   computer_on_desktop: boolean                          // 服务是桌面 App 自带的（本地模式）；否则“本机”指服务器那台机器
   computer_host_shell: boolean
-  computer_host_desktop: boolean
   embedding: { provider: string; model: string }
   image_model: { provider: string; model: string }   // 画图用哪个模型（对话里画图、生成头像共用），空的是用排在最前面的
   model_info: Record<string, ModelInfo>   // 键是 服务/模型

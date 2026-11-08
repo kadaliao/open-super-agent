@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, useStore } from './store'
+import { api, bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, setSettings, useStore } from './store'
 import { desktop } from './desktop'
 import Chat from './components/Chat'
 import ThreadPanel from './components/Thread'
@@ -41,6 +41,16 @@ export default function App() {
     }
     window.addEventListener('osa-open-computer', h)
     return () => window.removeEventListener('osa-open-computer', h)
+  }, [])
+  // 在菜单栏里断开了“服务器借用这台 Mac”：让服务器也作废它；电脑还选着这台 Mac 的话换回 Bot 电脑
+  useEffect(() => {
+    const h = async (e: Event) => {
+      await api(`/api/computer/links/${(e as CustomEvent).detail}`, { method: 'DELETE' }).catch(() => {})
+      if (getState().settings?.computer_backend === 'linked')
+        api('/api/settings', { method: 'PUT', body: { computer_backend: 'auto' } }).then(setSettings).catch(() => {})
+    }
+    window.addEventListener('osa-unlinked', h)
+    return () => window.removeEventListener('osa-unlinked', h)
   }, [])
   // 点了任务卡片上的“过程”：打开右栏的任务标签
   useEffect(() => {

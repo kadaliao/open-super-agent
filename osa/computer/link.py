@@ -74,7 +74,8 @@ class Link:
     def __init__(self, ws, row: dict, hello: dict):
         self.ws, self.id = ws, row["id"]
         self.name = str(hello.get("name") or row["name"])[:80]
-        self.desktop = bool(hello.get("desktop"))      # 是 Mac，能操作整个屏幕（还要 Mac 上允许）
+        self.desktop = bool(hello.get("desktop"))      # 是 Mac，能操作整个屏幕
+        self.perms = dict(hello.get("perms") or {})   # 连上时那台 Mac 的两个权限
         self.workspace = str(hello.get("workspace") or "")
         self.version = str(hello.get("version") or "")
         self._ids = itertools.count(1)

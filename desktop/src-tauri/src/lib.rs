@@ -40,8 +40,7 @@ const BRIDGE: &str = r#"(function () {
     link: {
       state: function () { return ask('desktop_link_state'); },
       connect: function (token, id) { return ask('desktop_link', { token: String(token), id: id | 0 }); },
-      disconnect: function () { return ask('desktop_unlink'); },
-      setDesktop: function (on) { return ask('desktop_link_desktop', { on: !!on }); }
+      disconnect: function () { return ask('desktop_unlink'); }
     },
     speech: false
   };
@@ -204,8 +203,7 @@ fn grant(app: &AppHandle, origin: &Url) {
         .permission("allow-desktop-log")
         .permission("allow-desktop-link-state")
         .permission("allow-desktop-link")
-        .permission("allow-desktop-unlink")
-        .permission("allow-desktop-link-desktop");
+        .permission("allow-desktop-unlink");
     if app.add_capability(cap).is_ok() {
         granted.push(key);
     }
@@ -373,7 +371,6 @@ pub fn on_menu(app: &AppHandle, id: &str) {
             std::thread::spawn(move || tauri::async_runtime::block_on(check_update(&app, true)));
         }
         "autostart" => tray::toggle_autostart(app),
-        "link_desktop" => link::menu_toggle_desktop(app),
         "unlink" => link::menu_unlink(app),
         "quit" => app.exit(0),
         _ => {}
@@ -537,7 +534,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             setup_state, choose_local, choose_remote, open_logs,
             desktop_notify, desktop_set_badge, desktop_open_external, desktop_log,
-            link::desktop_link_state, link::desktop_link, link::desktop_unlink, link::desktop_link_desktop
+            link::desktop_link_state, link::desktop_link, link::desktop_unlink
         ])
         .on_window_event(|w, e| {
             // 关掉主窗口只是藏起来：服务和定时任务接着跑，菜单栏里还能打开
