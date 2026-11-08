@@ -17,6 +17,16 @@ function CodeBlock(props: any) {
   return <div className="code-wrap"><button className="code-copy" onClick={copy}>{t('复制')}</button><pre {...rest}>{children}</pre></div>
 }
 
+// 模型常在表格单元格里写 <br> 换行。网页里的 HTML 一律不当真（防注入），只把单独的 <br> 换成真的换行
+function brTags() {
+  const walk = (node: any) => {
+    if (!node.children) return
+    node.children = node.children.map((c: any) => (c.type === 'html' && /^<br\s*\/?>$/i.test(c.value.trim()) ? { type: 'break' } : c))
+    node.children.forEach(walk)
+  }
+  return (tree: any) => walk(tree)
+}
+
 // 站内的资料库链接（/library/pages/12）在应用里打开；其余链接开新标签页
 function Link({ node, href, ...p }: any) {
   const page = href?.match(/^\/library\/pages\/(\d+)$/)
@@ -98,7 +108,7 @@ function Para({ node, children, ...p }: any) {
 const Markdown = memo(function Markdown({ text, embeds }: { text: string; embeds?: boolean }) {
   return (
     <div className="md">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }], ...(embeds ? [markEmbeds] : [])]}
+      <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }], brTags]} rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }], ...(embeds ? [markEmbeds] : [])]}
         components={{ pre: CodeBlock, a: Link, img: Img, p: Para }}>
         {text}
       </ReactMarkdown>
