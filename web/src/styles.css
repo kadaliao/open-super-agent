@@ -994,3 +994,12 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 /* 设置 → 手机 App：配对二维码，白底黑码，深色界面里相机也认得出 */
 .qr { display: block; width: 220px; height: 220px; margin: 14px 0 6px; border-radius: 10px; image-rendering: pixelated; }
 .th-menu-head .ghost-btn { width: auto; padding: 2px 8px; font-size: 12.5px; }
+
+/* 小应用（Applet.tsx）：对话里原地显示，能直接操作；高度跟着内容走 */
+.applet-card { margin: 8px 0; max-width: 640px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
+.applet-head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg2); font-size: 13px; }
+.applet-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.applet-frame { display: block; width: 100%; border: 0; background: #fff; transition: height .15s; }
+.page-card { display: flex; gap: 10px; align-items: center; margin: 8px 0; max-width: 540px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); text-align: left; }
+.page-card:hover { border-color: var(--fg3); }
+.page-card .lib-main b { font-size: 14px; }

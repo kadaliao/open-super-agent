@@ -150,6 +150,7 @@ export type MemoryList = { shared: Memory[]; own: Memory[]; work: Memory[] }
 export type Page = {
   id: number; bot_id: number | null; title: string; format: 'markdown' | 'html'; share_token: string | null; pinned: boolean
   task_id: number | null; created: number; updated: number; size: number; content?: string
+  app?: { tools: string[]; chat: boolean } | null   // 小应用的清单（见 osa/applets.py），普通页面没有
 }
 export type Teach = { bot_id: number; started: number; note: string; max_s: number }
 export type TeachDraft = { bot_id: number; draft: { name: string; description: string; body: string }; steps: string[] }

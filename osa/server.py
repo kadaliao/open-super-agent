@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
-from . import approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
+from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
 from . import prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from .computer import link
 from .computer.base import HOSTS
@@ -62,6 +62,12 @@ async def _pages_changed():
     await broadcast({"type": "pages_changed"})
 
 worker_mod.PAGES_CHANGED = _pages_changed
+
+
+async def _data_changed(pid: int, data: dict):
+    await broadcast({"type": "page_data", "page_id": pid, "data": data})
+
+library.DATA_CHANGED = _data_changed
 
 
 async def parent_watch(pid: int, every: float = 2):
@@ -795,7 +801,8 @@ def _raw(page: dict) -> Response:
     """html 页面的原文，带 CSP：在沙箱里运行，碰不到这个站点的接口和数据。"""
     if page["format"] != "html":
         raise HTTPException(404, i18n.t("只有 html 页面有原文地址"))
-    return HTMLResponse(page["content"], headers={"Content-Security-Policy": library.RAW_CSP,
+    html = applets.inject(page["content"]) if page.get("app") else page["content"]
+    return HTMLResponse(html, headers={"Content-Security-Policy": library.RAW_CSP,
                                                   "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"})
 
 
@@ -808,7 +815,7 @@ async def list_pages():
 async def create_page(data: dict = Body(...)):
     try:
         p = library.save_page(data.get("bot_id"), data.get("title", ""), data.get("content", ""),
-                              data.get("format") or "markdown", task_id=data.get("task_id"))
+                              data.get("format") or "markdown", task_id=data.get("task_id"), app=data.get("app"))
     except (ValueError, TypeError) as e:
         _err(e)
     await broadcast({"type": "pages_changed"})
@@ -845,6 +852,61 @@ async def share_page(pid: int, data: dict = Body(...)):
 async def delete_page(pid: int):
     library.delete_page(pid)
     await broadcast({"type": "pages_changed"})
+    return {"ok": True}
+
+
+# ---------- 小应用：界面经网页宿主调过来（web/src/applet.ts） ----------
+def _applet_or_404(pid: int) -> dict:
+    p = _page_or_404(pid)
+    if not p.get("app"):
+        raise HTTPException(400, i18n.t("页面 #{id} 不是小应用", id=pid))
+    return p
+
+
+@app.get("/api/pages/{pid}/data")
+async def page_data(pid: int):
+    _applet_or_404(pid)
+    return library.get_data(pid)
+
+
+@app.put("/api/pages/{pid}/data")
+async def put_page_data(pid: int, data: dict = Body(...)):
+    _applet_or_404(pid)
+    try:
+        out = library.set_data(pid, data)
+    except (ValueError, TypeError) as e:
+        _err(e)
+    await broadcast({"type": "page_data", "page_id": pid, "data": out})
+    return out
+
+
+@app.post("/api/pages/{pid}/call")
+async def page_call(pid: int, data: dict = Body(...)):
+    """小应用调一个清单里允许的工具。要确认的在 Bot 的私聊里弹卡片，这个请求一直等到用户决定。"""
+    p = _applet_or_404(pid)
+    try:
+        return {"result": await applets.call(p, str(data.get("tool") or ""), data.get("args") or {})}
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except (ValueError, TypeError, RuntimeError) as e:
+        _err(e)
+    except Exception as e:
+        raise HTTPException(500, i18n.t("工具出错：{e}", e=providers.brief(e)))
+
+
+@app.post("/api/pages/{pid}/say")
+async def page_say(pid: int, data: dict = Body(...)):
+    p = _applet_or_404(pid)
+    try:
+        await applets.say(p, str(data.get("text") or ""))
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except (ValueError, TypeError) as e:
+        _err(e)
     return {"ok": True}
 
 
@@ -1672,6 +1734,16 @@ async def safe_handle(chat: dict, text: str, via: str = "", attachments: list | 
 
 
 channels.handle = safe_handle
+
+
+async def _applet_say(chat: dict, text: str, applet: dict):
+    try:
+        await rt.runtime(chat["bot_ids"][0]).handle_user(text, "", chat["id"], applet=applet)
+    except Exception as e:
+        logging.getLogger(__name__).exception("小应用 %s 发消息出错", applet.get("id"))
+        await broadcast({"type": "error", "chat_id": chat["id"], "message": i18n.t("出错了：{e}", e=providers.brief(e))})
+
+applets.handle = _applet_say
 channels.reset = reset_chat
 channels.handback = handback
 

@@ -409,6 +409,9 @@ function handle(d: any) {
     case 'pages_changed':
       window.dispatchEvent(new CustomEvent('osa-pages'))
       break
+    case 'page_data':   // 小应用的数据被 Bot 或别的窗口改了：转给打开着的小应用（applet.ts）
+      window.dispatchEvent(new CustomEvent('osa-page-data', { detail: { page_id: d.page_id, data: d.data } }))
+      break
     case 'channels_changed':
       window.dispatchEvent(new CustomEvent('osa-channels'))
       break

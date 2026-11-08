@@ -1161,5 +1161,9 @@
   "（职责按你改的）": " (with your edits to the role)",
   "职责（全文，改好后点下面的按钮）": "Role (full text; click the button below when done)",
   "还原": "Undo edits",
-  "职责": "Role"
+  "职责": "Role",
+  "小应用": "Applet",
+  "打开": "Open",
+  "资料库里的页面": "Page in the library",
+  "来自小应用「{title}」": "From the applet \"{title}\""
 }

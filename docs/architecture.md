@@ -55,7 +55,8 @@ osa/
   tasklog.py       任务过程：每一步的记录、实时推送、任务列表和详情、重启后标记“已中断”、按天数清理
   memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
-  library.py       资料库：页面（存储、分享链接、save_page 工具）、电脑里的文件（列目录、删除、置顶）
+  library.py       资料库：页面（存储、分享链接、save_page 工具）、小应用的清单和数据（page_data 工具）、电脑里的文件（列目录、删除、置顶）
+  applets.py       小应用：清单校验、页面里的 SDK（window.osa，返回原文时内联）、从界面调工具（走确认规则）和替用户发消息
   bots.py          Bot 和对话的增删改查、旧数据迁移
   media.py         对话里的图片和附件：media 表、消息的 meta.attachments、给能看图的模型带上图片、send_file、清理没人用的
   images.py        对话里画图：generate_image 工具、画之前的确认卡片（在后台等，不卡住 Router）、画好的图发进对话
@@ -231,6 +232,15 @@ web/src/
 - 上下文里按正在说话的 Bot 的角度写（`memory.context(..., me=)`）：“X 私信了你”“你私信了 Y，等它回信”“Y 回了你的私信”。
 - 因私信而起的一轮里 Bot 自己 `cancel_task`：原因写成“X 收到 Y 的新消息后自己取消的”，不写成用户取消；被取消的任务和这一轮回给同一个 Bot 的话，不再单独送“已取消”（这一轮的回复或新派的任务会接着回它）。
 - 等回信只在内存里：服务重启后没回的私信不会再回；服务关闭时被取消的任务也不送“已取消”。
+
+### 小应用
+- 小应用就是带清单 `app` 的 html 页面（`pages.app`），数据在 `page_data` 表。设计见 [小应用计划](plans/applets.md)。
+- **页面碰不到站点**：沙箱 iframe 没有 `allow-same-origin`，CSP `connect-src 'none'`。它只能 postMessage 给外面的网页，
+  网页里的宿主（`web/src/applet.ts`）只认来自那个 iframe 的消息，只替它调 `/api/pages/<id>/call`、`/data`、`/say` 三个接口。
+  服务器按清单放行：工具只认 `app.tools` 里的，发消息要 `app.chat`。新加一种小应用能做的事，要同时过这三道：SDK、宿主、服务器。
+- 工具调用照旧走 `approvals.decide`，卡片在 Bot 的私聊里，`task` 是一个 SimpleNamespace（和 Router 直接操作电脑时一样）。
+- 替用户发的消息 `meta.applet = {id, title}`，上下文里前缀“（来自小应用「标题」）”；不要用 `via`，那是聊天软件的标记，Router 会以为用户在手机上。
+- 对话里的 `/library/pages/<id>` 链接展开成卡片（`Markdown.tsx` 的 `isPage`）：单独一行的原地换掉，写在句子里的放在那一段后面；小应用高度由页面里的 SDK 上报（`resize` 事件）。
 
 ### 技能文件与分享
 - 一个技能一个 Markdown 文件：开头的 YAML 写 `name`、`description`，导出时加上 `apps`（做法里 `@` 到的应用），后面是做法。

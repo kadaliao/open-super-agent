@@ -7,7 +7,7 @@ import time
 import openai
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import approvals, botadmin, bots, dm, dsml, i18n, images, library, media, memories, memory, providers, routines, search, skills, tasklog
+from . import applets, approvals, botadmin, bots, dm, dsml, i18n, images, library, media, memories, memory, providers, routines, search, skills, tasklog
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -25,6 +25,13 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
   现在有哪些 Bot 不用记：下面“其他 Bot”每轮都是最新的。
 - 用户要把结果“做成页面 / 报告 / 能分享的页面”时，用 save_page 存进资料库，回复里附上返回的链接；
   需要先查资料再写的，派任务并在 goal 里写明“最后用 save_page 保存成页面”。
+- 用户要一个能操作的界面（表单、看板、计算器、按钮点了去查东西的面板、每天更新的仪表盘）时，用 save_page 做成小应用。
+  做小应用（可交互的界面）时 format=html 并填 app，页面里直接用 window.osa（服务器会自动注入，不用引脚本）：
+    osa.call(工具名, 参数对象) → 文字结果（只能用 app.tools 里列的工具；要确认的会弹卡片）；
+    osa.send(文字) 替用户给你发一条消息（要 app.chat=true），你会像收到用户消息一样接着处理；
+    osa.store.get(键) / set(键, 值) / all() / remove(键) 读写这个小应用的数据，你用 page_data 工具也能读写同一份数据，
+    osa.on('data', fn) 在数据被改时收到通知。页面高度会自动适应内容，不要写死 100vh；不要用 fetch，外网和接口都连不上。
+  用户在对话里会直接看到小应用并能操作，所以回复里附上链接就行，不用复述界面内容。
 {attach_rule}
 - 要把电脑里的文件（截图、画好的图、做好的表格和文档）交给用户时用 send_file，图片会直接显示在对话里；不要自己拼下载链接。
 - 用户要你画图、生成一张图片时用 generate_image，把画面描述写具体（默认会先弹卡片请用户确认，上面有价格）；
@@ -197,6 +204,7 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
     library.SAVE_PAGE,
     library.READ_PAGE,
+    library.PAGE_DATA,
     media.SEND_FILE,
     images.GENERATE_IMAGE,
     search.SEARCH_TOOL,
@@ -287,11 +295,12 @@ class Router:
     def _over_budget(self) -> bool:
         return memory.tokens_today() > CFG["limits"]["daily_token_budget"]
 
-    async def handle_user(self, text: str, via: str = "", chat_id: int | None = None, attachments: list | None = None):
+    async def handle_user(self, text: str, via: str = "", chat_id: int | None = None, attachments: list | None = None,
+                          applet: dict | None = None):
         """用户在私聊（或私聊里的讨论串 chat_id）里发了一条消息。via：从哪个聊天软件发来的（网页上发的为空）。
-        attachments：附件（见 media.py），记在消息的 meta 里。"""
+        attachments：附件（见 media.py），记在消息的 meta 里。applet：是小应用的界面替用户发的（{id, title}）。"""
         cid = chat_id or self.chat_id
-        meta = ({"via": via} if via else {}) | ({"attachments": attachments} if attachments else {})
+        meta = ({"via": via} if via else {}) | ({"attachments": attachments} if attachments else {}) | ({"applet": applet} if applet else {})
         if hit := skills.parse(self.bot_id, text):
             meta |= {"skill": hit[0]["name"], "skill_prompt": skills.expand(*hit)}
         await self.add("user", text, cid, **meta)
@@ -599,6 +608,8 @@ class Router:
             return await search.tool(self.bot_id, args)
         if name == "read_page":
             return library.tool_read_page(args)
+        if name == "page_data":
+            return await library.tool_page_data(self.bot_id, args)
         if name == "send_file":
             if len(self._turn_files) >= media.MAX_SEND:
                 return f"没发：一次最多发 {media.MAX_SEND} 个文件"

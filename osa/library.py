@@ -2,8 +2,10 @@
 
 页面存在数据库里，格式是 markdown 或 html。分享就是生成一个不可猜的链接 /s/<token>，取消分享后链接失效。
 html 页面只通过带 CSP 的 /raw 地址在沙箱 iframe 里显示：脚本可以跑，但拿不到这个站点的任何数据，也连不上接口。
+带清单 app 的 html 页面是小应用（见 applets.py）：页面里能通过 postMessage 调清单里允许的工具、读写自己的数据（page_data 表）。
 文件直接读写电脑里的目录（Computer.ls / stat_paths / rm / read_bytes / write_bytes），Docker 和 Instabox 要先开机。
 """
+import json
 import posixpath
 import re
 import secrets
@@ -13,8 +15,12 @@ from .memory import conn
 
 conn.execute("""create table if not exists pages(
   id integer primary key, bot_id integer, title text, format text default 'markdown', content text,
-  share_token text, pinned integer default 0, task_id integer, created real, updated real)""")
+  share_token text, pinned integer default 0, task_id integer, created real, updated real, app text)""")
 conn.execute("create unique index if not exists pages_token on pages(share_token)")
+if "app" not in {r[1] for r in conn.execute("pragma table_info(pages)")}:
+    conn.execute("alter table pages add column app text")
+conn.execute("""create table if not exists page_data(
+  page_id integer, key text, value text, updated real, primary key(page_id, key))""")
 conn.execute("create table if not exists file_pins(path text primary key, ts real)")
 conn.commit()
 
@@ -27,14 +33,15 @@ RAW_CSP = ("sandbox allow-scripts allow-popups; default-src 'none'; script-src '
            "style-src 'unsafe-inline' https:; img-src https: data:; font-src https: data:; media-src https: data:; "
            "connect-src 'none'; frame-src 'none'; form-action 'none'")
 
-_COLS = "id, bot_id, title, format, share_token, pinned, task_id, created, updated, length(content)"
+_COLS = "id, bot_id, title, format, share_token, pinned, task_id, created, updated, length(content), app"
 
 
 # ---------- 页面 ----------
 def _page(r, content: str | None = None) -> dict:
-    i, bot_id, title, fmt, token, pinned, task_id, created, updated, size = r
+    i, bot_id, title, fmt, token, pinned, task_id, created, updated, size, app = r
     p = {"id": i, "bot_id": bot_id, "title": title, "format": fmt, "share_token": token, "pinned": bool(pinned),
-         "task_id": task_id, "created": created, "updated": updated, "size": size or 0}
+         "task_id": task_id, "created": created, "updated": updated, "size": size or 0,
+         "app": json.loads(app) if app else None}
     if content is not None:
         p["content"] = content
     return p
@@ -57,24 +64,30 @@ def by_token(token: str) -> dict | None:
 
 
 def save_page(bot_id: int | None, title: str, content: str, fmt: str = "markdown",
-              pid: int | None = None, task_id: int | None = None) -> dict:
-    """新建，或者给 pid 时更新内容。"""
+              pid: int | None = None, task_id: int | None = None, app=None) -> dict:
+    """新建，或者给 pid 时更新内容。app 是小应用的清单（见 applets.manifest），只对 html 有效；更新时不给就保留原来的。"""
+    from . import applets
     title = " ".join((title or "").split())[:120] or i18n.t("未命名页面")
     fmt = fmt if fmt in FORMATS else "markdown"
+    app = applets.manifest(app) if fmt == "html" else None
     if not (content or "").strip():
         raise ValueError(i18n.t("页面内容不能为空"))
     if len(content) > MAX_PAGE:
         raise ValueError(i18n.t("页面太大（最多 {n}K 字）", n=MAX_PAGE // 1000))
     now = time.time()
     if pid is not None:
-        if not get_page(pid, False):
+        if not (old := get_page(pid, False)):
             raise ValueError(i18n.t("没有页面 #{id}", id=pid))
-        conn.execute("update pages set title=?, format=?, content=?, updated=? where id=?", (title, fmt, content, now, pid))
+        if app is None and fmt == "html":
+            app = old["app"]
+        conn.execute("update pages set title=?, format=?, content=?, updated=?, app=? where id=?",
+                     (title, fmt, content, now, json.dumps(app, ensure_ascii=False) if app else None, pid))
     else:
         if conn.execute("select count(*) from pages").fetchone()[0] >= MAX_PAGES:
             raise ValueError(i18n.t("资料库最多 {n} 个页面，先删掉一些", n=MAX_PAGES))
-        pid = conn.execute("insert into pages(bot_id, title, format, content, task_id, created, updated) "
-                           "values(?,?,?,?,?,?,?)", (bot_id, title, fmt, content, task_id, now, now)).lastrowid
+        pid = conn.execute("insert into pages(bot_id, title, format, content, task_id, created, updated, app) "
+                           "values(?,?,?,?,?,?,?,?)", (bot_id, title, fmt, content, task_id, now, now,
+                                                       json.dumps(app, ensure_ascii=False) if app else None)).lastrowid
     conn.commit()
     return get_page(pid, False)
 
@@ -100,7 +113,29 @@ def share(pid: int, on: bool) -> dict:
 
 def delete_page(pid: int):
     conn.execute("delete from pages where id=?", (pid,))
+    conn.execute("delete from page_data where page_id=?", (pid,))
     conn.commit()
+
+
+# ---------- 小应用的数据 ----------
+def get_data(pid: int) -> dict:
+    return {k: json.loads(v) for k, v in conn.execute("select key, value from page_data where page_id=? order by key", (pid,))}
+
+
+def set_data(pid: int, updates: dict) -> dict:
+    """合并写入：值为 None 的键删掉。返回全部数据。"""
+    from . import applets
+    cur = get_data(pid)
+    new = applets.check_data(updates, cur)
+    now = time.time()
+    for k in set(cur) - set(new):
+        conn.execute("delete from page_data where page_id=? and key=?", (pid, k))
+    for k, v in new.items():
+        if k not in cur or cur[k] != v:
+            conn.execute("insert or replace into page_data(page_id, key, value, updated) values(?,?,?,?)",
+                         (pid, k, json.dumps(v, ensure_ascii=False), now))
+    conn.commit()
+    return new
 
 
 def link(pid: int) -> str:
@@ -111,13 +146,54 @@ def link(pid: int) -> str:
 SAVE_PAGE = {"type": "function", "function": {
     "name": "save_page",
     "description": "把成品（报告、清单、对比表、网页等）保存成资料库里的页面，返回页面链接。"
-                   "用户要“做成页面/报告/可以分享的页面”，或结果很长、以后还要看时用。给 page_id 就是更新那个页面。",
+                   "用户要“做成页面/报告/可以分享的页面”，或结果很长、以后还要看时用。给 page_id 就是更新那个页面。"
+                   "要做成可交互的小应用（表单、看板、计算器、能点按钮查东西的面板）时 format=html 并填 app，"
+                   "页面里用 window.osa 调工具、读写数据、给你发消息（见系统提示词里的说明）。",
     "parameters": {"type": "object", "properties": {
         "title": {"type": "string"},
         "content": {"type": "string", "description": "页面全文。markdown 用 Markdown；html 是完整的 HTML（可以带内联 CSS 和脚本）"},
         "format": {"type": "string", "enum": list(FORMATS)},
-        "page_id": {"type": "integer", "description": "可选：要更新的页面编号"}},
+        "page_id": {"type": "integer", "description": "可选：要更新的页面编号"},
+        "app": {"type": "object", "description": "可选，只对 html 有效：填了就是小应用。tools 是页面里允许调用的工具名（只能是你现在有的工具）；"
+                                                 "chat 为 true 时页面能替用户给你发消息",
+                "properties": {"tools": {"type": "array", "items": {"type": "string"}}, "chat": {"type": "boolean"}}}},
         "required": ["title", "content"]}}}
+
+
+PAGE_DATA = {"type": "function", "function": {
+    "name": "page_data",
+    "description": "读或写一个小应用的数据（键值对）。用户在小应用里填的内容在这里；你写进去的数据小应用里马上能看到（osa.store / osa.on('data')）。"
+                   "不给 set 就只读。",
+    "parameters": {"type": "object", "properties": {
+        "page_id": {"type": "integer"},
+        "set": {"type": "object", "description": "要写入的键值（值可以是任何 JSON；设为 null 删除这个键）"}},
+        "required": ["page_id"]}}}
+
+
+async def tool_page_data(bot_id: int, args: dict) -> str:
+    pid = args.get("page_id")
+    p = get_page(pid, False) if isinstance(pid, int) else None
+    if not p:
+        return f"没有页面 #{pid}"
+    if not p.get("app"):
+        return f"页面 #{pid} 不是小应用，没有数据。要做成小应用，用 save_page 更新它并填 app"
+    if (upd := args.get("set")) is not None:
+        if p["bot_id"] != bot_id:
+            return f"没写：小应用 #{pid} 不是你建的，只能读"
+        try:
+            data = set_data(pid, upd)
+        except (ValueError, TypeError) as e:
+            return f"没写：{e}"
+        if DATA_CHANGED:
+            await DATA_CHANGED(pid, data)
+        head = f"已写入 {len(upd)} 个键。"
+    else:
+        data, head = get_data(pid), ""
+    text = json.dumps(data, ensure_ascii=False, indent=1)
+    return f"{head}小应用「{p['title']}」的数据（{len(data)} 个键）：\n{text[:12000]}" + ("\n…（太长，截断）" if len(text) > 12000 else "")
+
+
+DATA_CHANGED = None   # 由 server 设置：async (page_id, data) -> None，数据变了通知打开着的页面
 
 
 READ_PAGE = {"type": "function", "function": {
@@ -142,12 +218,23 @@ def tool_save_page(bot_id: int, args: dict, task_id: int | None = None) -> str:
     pid = args.get("page_id")
     if pid is not None and (not (old := get_page(pid, False)) or old["bot_id"] != bot_id):
         return f"没保存：页面 #{pid} 不存在或不是你建的，只能更新自己的页面"
+    app = args.get("app")
+    if app and (unknown := [t for t in (app.get("tools") or []) if isinstance(t, str) and not applets_known(t)]):
+        return f"没保存：app.tools 里有现在没有的工具 {', '.join(unknown)}，只能列你这一轮能用的工具"
     try:
         p = save_page(bot_id, args.get("title", ""), args.get("content", ""), args.get("format") or "markdown",
-                      args.get("page_id"), task_id)
+                      args.get("page_id"), task_id, app)
     except (ValueError, TypeError) as e:
         return f"没保存：{e}"
+    if p["app"]:
+        return (f"已保存小应用 #{p['id']}「{p['title']}」，链接 {link(p['id'])}。回复里用 Markdown 链接附上它，对话里会直接显示这个小应用，"
+                f"用户能在里面操作。用 page_data 能读写它的数据（page_id={p['id']}）。")
     return f"已保存页面 #{p['id']}「{p['title']}」，链接 {link(p['id'])}（用户在资料库里也能看到）。回复里用 Markdown 链接附上它。"
+
+
+def applets_known(tool: str) -> bool:
+    from . import applets
+    return applets.known(tool)
 
 
 # ---------- 文件 ----------
