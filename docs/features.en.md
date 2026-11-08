@@ -8,7 +8,9 @@ The README lists the highlights; this is the full list. For setup see [Configura
 
 - **Multiple Bots**: each has its own name, avatar, persona and conversation. Replies stream in, and the model's reasoning can be expanded or collapsed.
   Upload an avatar, or have AI draw one from the Bot's name and role.
-- **Threads**: reply to any message in a side thread to dig into it without derailing the main chat.
+- **Threads**: reply to any message in a side thread to dig into it without derailing the main chat. When a bot replies in a thread,
+  a reminder floats at the bottom of the chat and opens it in one click; the Threads button at the top lists every thread in the chat.
+  Unread replies survive reloads and sync across devices, and clear everywhere once you read them.
 - **Group chats**: 2–6 Bots in one chat.
   - `@` a Bot to have it answer, or `@everyone`; unaddressed messages go to the group's coordinator, who hands work to the right Bot.
   - Bots hand off to each other: one researches, and the next writes the summary when the research is done.

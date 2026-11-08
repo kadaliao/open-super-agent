@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, chatById, loadOlder, openChat, openLibrary, openThread, pinChat, showTask, useStore } from '../store'
-import type { Approval, Bot, Chat as ChatT, Message, Task } from '../types'
+import { api, approve, chatById, loadOlder, markThreadSeen, openChat, openLibrary, openThread, pinChat, showTask, useStore } from '../store'
+import type { Approval, Bot, Chat as ChatT, Message, Task, ThreadInfo } from '../types'
+import { plain } from '../plain'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
 import Markdown from './Markdown'
@@ -59,16 +60,121 @@ const ReplyBtn = ({ m, reply }: { m: Message; reply: Reply }) =>
 function ThreadLink({ m, reply }: { m: Message; reply: Reply }) {
   const bots = useStore(s => s.bots)
   const open = useStore(s => !!reply && s.thread?.chat === reply.chat && s.thread.rootId === m.id)
+  const fresh = useStore(s => (m.thread ? s.threads[m.thread.id]?.unread : 0) || 0)   // 还没看过的回复
   if (!reply || !m.thread?.count) return null
   const who = m.thread.bots.map(id => bots.find(b => b.id === id)).filter((b): b is Bot => !!b)
   return (
-    <button className={'th-link' + (open ? ' on' : '')} onClick={() => openThread(reply.chat, m.id)}>
+    <button className={'th-link' + (open ? ' on' : '') + (fresh ? ' new' : '')} onClick={() => openThread(reply.chat, m.id)}>
       {who.length > 0 && <GroupAvatars bots={who} size={18} />}
       <b>{t('{n} 条回复', { n: m.thread.count })}</b>
-      {m.thread.last && <span className="muted">{t('最后回复 {time}', { time: time(m.thread.last) })}</span>}
+      {fresh > 0 ? <span className="th-new">{t('{n} 条新回复', { n: fresh })}</span>
+        : m.thread.last && <span className="muted">{t('最后回复 {time}', { time: time(m.thread.last) })}</span>}
     </button>
   )
 }
+
+// ---------- 讨论串的新回复 ----------
+// 讨论串在右边打开、回复只在里面，被回复的消息一往上滚就看不到“N 条回复”了。
+// 所以有新回复时对话底部浮一条提醒，点了直接打开；对话顶上的“讨论串”列出这个对话的全部讨论串。
+
+// 这个对话下面有新回复、又没正开着的讨论串，最近回复的在前
+const freshIn = (threads: Record<number, ThreadInfo>, chatId: number, open?: number | null) =>
+  Object.values(threads).filter(x => x.parent === chatId && x.unread > 0 && x.id !== open)
+    .sort((a, b) => (b.last || 0) - (a.last || 0))
+
+// 说话的人：你，或者某个 Bot（私聊里没记 bot_id 的就是这个私聊的 Bot）
+function speakerName(role: string | undefined, botId: number | null | undefined, chat: ChatT, bots: Bot[]) {
+  if (role === 'user') return t('你')
+  const b = bots.find(x => x.id === (botId ?? (chat.kind === 'direct' ? chat.bot_ids[0] : null)))
+  return b?.name || 'Bot'
+}
+
+// 对话底部的提醒：一个讨论串有新回复时显示谁回了什么，点了打开它；好几个时点了打开讨论串列表
+function NewReplies({ chat, onList }: { chat: ChatT; onList: () => void }) {
+  const threads = useStore(s => s.threads)
+  const open = useStore(s => s.thread?.id)
+  const bots = useStore(s => s.bots)
+  const fresh = freshIn(threads, chat.id, open)
+  if (!fresh.length) return null
+  const one = fresh.length === 1 ? fresh[0] : null
+  const n = fresh.reduce((a, x) => a + x.unread, 0)
+  const faces = [...new Set(fresh.flatMap(x => x.preview_bot ? [x.preview_bot] : x.bots))]
+    .map(id => bots.find(b => b.id === id)).filter((b): b is Bot => !!b)
+  return (
+    <div className="new-replies">
+      <button className="nr-main" onClick={() => one ? openThread(chat.id, one.root) : onList()}>
+        {faces.length > 0 && <GroupAvatars bots={faces} size={20} />}
+        <span className="nr-text">
+          {one ? tn('{who} 在讨论串里回复了', { who: <b>{speakerName('assistant', one.preview_bot, chat, bots)}</b> })
+            : t('{n} 个讨论串有新回复', { n: fresh.length })}
+          {one?.preview && <span className="nr-preview">{plain(one.preview)}</span>}
+        </span>
+        {n > 1 && <span className="badge">{n}</span>}
+        <span className="nr-go">{one ? t('查看') : t('列表')}</span>
+      </button>
+      <button className="nr-x" title={t('都看过了')} onClick={() => fresh.forEach(x => markThreadSeen(x.id))}><Icon name="x" size={14} /></button>
+    </div>
+  )
+}
+
+// 对话顶上的“讨论串”：这个对话的全部讨论串，最近有回复的在前，有新回复的标出来
+function ThreadsMenu({ chat, open, setOpen }: { chat: ChatT; open: boolean; setOpen: (v: boolean) => void }) {
+  const threads = useStore(s => s.threads)
+  const current = useStore(s => s.thread?.id)
+  const bots = useStore(s => s.bots)
+  const [list, setList] = useState<ThreadInfo[] | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const fresh = freshIn(threads, chat.id)
+  const n = fresh.reduce((a, x) => a + x.unread, 0)
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    setList(null)
+    api<ThreadInfo[]>(`/api/chats/${chat.id}/threads`).then(r => { if (live) setList(r) }).catch(() => { if (live) setList([]) })
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); setOpen(false) } }
+    window.addEventListener('pointerdown', away)
+    window.addEventListener('keydown', esc)
+    return () => { live = false; window.removeEventListener('pointerdown', away); window.removeEventListener('keydown', esc) }
+  }, [open, chat.id])
+  useEffect(() => { setOpen(false) }, [chat.id])
+  if (!chat.threads && !fresh.length) return null
+  return (
+    <div className="th-menu-wrap" ref={box}>
+      <button className={'icon-btn' + (open ? ' open' : '')} title={t('讨论串')} onClick={() => setOpen(!open)}>
+        <Icon name="threads" size={17} />{n > 0 && <span className="badge dot">{n}</span>}
+      </button>
+      {open && (
+        <div className="menu th-menu">
+          <div className="th-menu-head"><b>{t('讨论串')}</b>{n > 0 && <button className="ghost-btn" onClick={() => fresh.forEach(x => markThreadSeen(x.id))}>{t('都看过了')}</button>}</div>
+          <div className="th-menu-list">
+            {list === null ? <div className="muted small th-menu-empty">{t('加载中…')}</div>
+              : list.length === 0 ? <div className="muted small th-menu-empty">{t('还没有讨论串。点消息下面的“回复”，就能针对它单独讨论。')}</div>
+              : list.map(x => {
+                const y = { ...x, ...threads[x.id] }   // 列表拉下来以后又来的回复、刚看过的
+                const who = y.bots.map(id => bots.find(b => b.id === id)).filter((b): b is Bot => !!b)
+                return (
+                  <button key={x.id} className={'th-row' + (y.unread ? ' new' : '') + (x.id === current ? ' on' : '')}
+                          onClick={() => { setOpen(false); openThread(chat.id, x.root) }}>
+                    <div className="th-row-root"><span className="muted">{speakerName(x.root_role, x.root_bot, chat, bots)}：</span>{plain(x.root_text || '') || '…'}</div>
+                    {y.preview && <div className="th-row-last">{who.length > 0 && <GroupAvatars bots={who} size={16} />}<span>{plain(y.preview)}</span></div>}
+                    <div className="th-row-meta">
+                      <span>{t('{n} 条回复', { n: y.count })}{y.last ? ' · ' + when(y.last) : ''}</span>
+                      {y.unread > 0 && <span className="th-new">{t('{n} 条新回复', { n: y.unread })}</span>}
+                    </div>
+                  </button>
+                )
+              })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 今天的只写时间，更早的写日期
+const when = (ts: number) => new Date(ts * 1000).toDateString() === new Date().toDateString()
+  ? time(ts) : new Date(ts * 1000).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' })
 
 function BotMessage({ bot, m, children, showName, reply }: { bot?: Bot; m: Message; children?: React.ReactNode; showName?: boolean; reply?: Reply }) {
   return (
@@ -485,22 +591,36 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const prevHeight = useRef(0)
+  const lastSeen = useRef<{ chat: number | null; id: number }>({ chat: null, id: 0 })
+  const [below, setBelow] = useState(0)         // 往上翻着时新来了几条消息：底部显示“↓ N 条新消息”
+  const [threadsOpen, setThreadsOpen] = useState(false)
+  // 底部浮着提醒时，消息列表下面留出地方，滚到底也不被挡住
+  const floating = useStore(s => !!s.active && freshIn(s.threads, s.active, s.thread?.id).length > 0) || below > 0
 
-  // 新消息到达时，只有用户本来就在底部才自动滚到底
+  // 新消息到达时，只有用户本来就在底部才自动滚到底；不在底部就记下来了几条
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
     if (stick.current) el.scrollTop = el.scrollHeight
     else if (prevHeight.current && el.scrollTop < 40) el.scrollTop = el.scrollHeight - prevHeight.current
     prevHeight.current = el.scrollHeight
-  }, [messages, stream?.text, stream?.thinking])
-  useEffect(() => { stick.current = true }, [active])
+    const last = messages?.length ? messages[messages.length - 1].id : 0
+    const before = lastSeen.current
+    if (before.chat === active && before.id && last > before.id && !stick.current) {
+      const n = messages!.filter(m => m.id > before.id && m.role !== 'user').length
+      if (n) setBelow(b => b + n)
+    }
+    lastSeen.current = { chat: active, id: last }
+  }, [messages, stream?.text, stream?.thinking, floating])
+  useEffect(() => { stick.current = true; setBelow(0) }, [active])
 
   const onScroll = () => {
     const el = scroller.current!
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (stick.current && below) setBelow(0)
     if (el.scrollTop < 40 && hasMore && active) { prevHeight.current = el.scrollHeight; loadOlder(active) }
   }
+  const toBottom = () => { const el = scroller.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); setBelow(0) }
 
   if (!active || !chat) return <main className="chat empty-main" />
   const group = chat.kind === 'group'
@@ -529,11 +649,12 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
           }}>{t('新话题')}</button>
           <button className={'icon-btn' + (chat.pinned ? ' on' : '')} onClick={() => pinChat(chat.id, !chat.pinned)}
                   title={chat.pinned ? t('取消置顶') : t('置顶到侧栏上方')}><Icon name="pin" size={16} /></button>
+          <ThreadsMenu chat={chat} open={threadsOpen} setOpen={setThreadsOpen} />
           <button className="icon-btn" onClick={onToggleDetails} title={t('详情')}>☰</button>
         </div>
       </header>
       <div className="scroller" ref={scroller} onScroll={onScroll}>
-        <div className="thread">
+        <div className={'thread' + (floating ? ' floating' : '')}>
           {empty && (group ? (
             <div className="welcome">
               <GroupFace image={chat.image} bots={members} size={72} stack={56} />
@@ -554,6 +675,12 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
           <StreamMessage chat={chat} chatId={chat.id} />
           <PendingApprovals here={a => a.chat_id === active} from={a => a.origin_chat_id === active} />
           {error && <div className="error-line">{error}</div>}
+        </div>
+      </div>
+      <div className="float-anchor">
+        <div className="float-stack">
+          <NewReplies chat={chat} onList={() => setThreadsOpen(true)} />
+          {below > 0 && <button className="new-below" onClick={toBottom}><Icon name="chevron" size={14} />{t('{n} 条新消息', { n: below })}</button>}
         </div>
       </div>
       <SetupHint />

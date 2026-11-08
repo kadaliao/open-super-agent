@@ -17,6 +17,10 @@ if "parent" not in _cols:
     conn.execute("alter table chats add column root integer")     # 讨论串：回复的是哪条消息
 if "image" not in _cols:
     conn.execute("alter table chats add column image text")   # 群聊自己的头像图片（/avatars/…）；没有就用成员的头像拼
+if "seen" not in _cols:
+    # 讨论串：你看到过的最后一条消息 id，之后 Bot 的回复算“新回复”。升级上来时，已有的回复都算看过
+    conn.execute("alter table chats add column seen integer")
+    conn.execute("update chats set seen=(select coalesce(max(id), 0) from messages where chat_id=chats.id) where kind='thread'")
 conn.execute("create index if not exists chats_thread on chats(parent, root)")
 conn.commit()
 
@@ -142,8 +146,11 @@ _CHAT_COLS = "id, kind, title, bot_ids, pinned, updated, lead, parent, root, ima
 def _chat(row) -> dict:
     i, kind, title, ids, pinned, updated, lead, parent, root, image = row
     last = conn.execute("select content, role from messages where chat_id=? order by id desc limit 1", (i,)).fetchone()
+    threads = 0 if kind == "thread" else \
+        conn.execute("select count(*) from chats where kind='thread' and parent=?", (i,)).fetchone()[0]
     return {"id": i, "kind": kind, "title": title, "bot_ids": json.loads(ids or "[]"), "pinned": pinned or 0,
-            "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead, "image": image}
+            "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead, "image": image,
+            "threads": threads}   # 下面有几个讨论串：有的话对话顶上显示“讨论串”按钮
 
 
 def list_chats() -> list[dict]:
@@ -207,16 +214,53 @@ _REPLY = ("(m.role = 'user' or (m.role = 'assistant' and m.content != '') "
 
 
 def thread_summaries(parent: int, roots: list[int]) -> dict[int, dict]:
-    """这些消息下面的讨论串：root -> {id, count 回复数, last 最后回复的时间, bots 回复过的 Bot}。"""
+    """这些消息下面的讨论串：root -> {id, count 回复数, last 最后回复的时间, bots 回复过的 Bot,
+    unread 你还没看过的 Bot 回复数}。"""
     if not roots:
         return {}
     marks = ",".join("?" * len(roots))
     rows = conn.execute(f"""select c.id, c.root, count(m.id), max(m.ts),
-        group_concat(distinct case when m.role != 'user' then m.bot_id end)
+        group_concat(distinct case when m.role != 'user' then m.bot_id end),
+        sum(case when m.role != 'user' and m.id > coalesce(c.seen, 0) then 1 else 0 end)
         from chats c left join messages m on m.chat_id = c.id and {_REPLY}
         where c.kind = 'thread' and c.parent = ? and c.root in ({marks}) group by c.id""", (parent, *roots)).fetchall()
-    return {root: {"id": i, "count": n, "last": last, "bots": [int(x) for x in (who or "").split(",") if x]}
-            for i, root, n, last, who in rows}
+    return {root: {"id": i, "count": n, "last": last, "bots": [int(x) for x in (who or "").split(",") if x],
+                   "unread": unread or 0}
+            for i, root, n, last, who, unread in rows}
+
+
+def thread_list(parent: int | None = None, unread: bool = False) -> list[dict]:
+    """讨论串列表，最近有回复的在前。parent：只要这个对话下面的；unread：只要有新回复的。
+    每项是 thread_summaries 的摘要，加上 parent、root，被回复的那条消息（root_text、root_role、root_bot）
+    和最后一条回复（preview、preview_bot）的开头。还没有回复的讨论串不算。"""
+    sql = "select parent, root from chats where kind='thread'" + (" and parent=?" if parent else "")
+    roots: dict[int, list[int]] = {}
+    for p, r in conn.execute(sql, (parent,) if parent else ()):
+        roots.setdefault(p, []).append(r)
+    out = []
+    for p, rs in roots.items():
+        for root, s in thread_summaries(p, rs).items():
+            if not s["count"] or (unread and not s["unread"]):
+                continue
+            head = conn.execute("select role, content, bot_id from messages where id=?", (root,)).fetchone()
+            tail = conn.execute(f"select m.content, m.bot_id from messages m where m.chat_id=? and {_REPLY} "
+                                "order by m.id desc limit 1", (s["id"],)).fetchone()
+            out.append({**s, "parent": p, "root": root,
+                        "root_role": head[0] if head else "", "root_text": (head[1] if head else "")[:200],
+                        "root_bot": head[2] if head else None,
+                        "preview": (tail[0] if tail else "")[:200], "preview_bot": tail[1] if tail else None})
+    return sorted(out, key=lambda x: x["last"] or 0, reverse=True)
+
+
+def mark_seen(thread_id: int, upto: int | None = None) -> dict | None:
+    """你看过了讨论串里到 upto（默认到最新一条）为止的消息。返回和 thread_event 一样的摘要；不是讨论串返回 None。"""
+    top = conn.execute("select coalesce(max(id), 0) from messages where chat_id=?", (thread_id,)).fetchone()[0]
+    upto = min(int(upto), top) if upto else top
+    if not conn.execute("update chats set seen=max(coalesce(seen, 0), ?) where id=? and kind='thread'",
+                        (upto, thread_id)).rowcount:
+        return None
+    conn.commit()
+    return thread_event(thread_id)
 
 
 def thread_event(chat_id: int) -> dict | None:

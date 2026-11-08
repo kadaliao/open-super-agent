@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, setSettings, useStore } from './store'
+import { api, bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, openNotified, setSettings, useStore } from './store'
 import { desktop } from './desktop'
 import Chat from './components/Chat'
 import ThreadPanel from './components/Thread'
@@ -70,11 +70,11 @@ export default function App() {
   useEffect(() => { if (teach) showBot(teach.bot_id, 'computer') }, [teach?.started])
   useEffect(() => { if (draft) showBot(draft.bot_id, 'skills') }, [draft])
 
-  // 桌面 App：点了系统通知，外壳告诉页面打开哪个对话
+  // 桌面 App：点了系统通知，外壳告诉页面打开哪个对话（讨论串里的回复发来的是讨论串的 id）
   useEffect(() => {
     const h = (e: Event) => {
-      const chat = Number((e as CustomEvent).detail)
-      if (chat && getState().chats.some(c => c.id === chat)) openChat(chat)
+      const id = Number((e as CustomEvent).detail)
+      if (id) openNotified(id)
     }
     window.addEventListener('osa-open-chat', h)
     return () => window.removeEventListener('osa-open-chat', h)

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
-import type { App, Approval, Attachment, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadSummary } from './types'
+import type { App, Approval, Attachment, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadInfo, ThreadSummary } from './types'
 import { notice } from './components/Dialog'
 import { desktop, phone } from './desktop'
 
@@ -14,6 +14,8 @@ type State = {
   colors: string[]
   active: number | null              // 当前打开的对话
   thread: OpenThread | null          // 右边打开着的讨论串（在当前对话里）
+  threads: Record<number, ThreadInfo> // 知道的讨论串（id → 摘要）：unread 大于 0 的是有新回复、要提醒你去看的
+  visible: boolean                   // 页面正被看着（没切到后台、窗口没藏起来）：这时打开着的讨论串才算看过
   messages: Record<number, Message[]>
   hasMore: Record<number, boolean>
   streams: Record<number, Stream | undefined>
@@ -39,7 +41,7 @@ type State = {
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, thread: null, messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
+  active: null, thread: null, threads: {}, visible: document.visibilityState === 'visible', messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
   view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false,
 }
 const subs = new Set<() => void>()
@@ -97,7 +99,7 @@ export async function bootstrap() {
   if (fromUrl) history.replaceState(null, '', location.pathname)
   const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
-  set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors,
+  set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors, threads: byId(b.threads),
         tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], categories: b.categories || [], oauthCallback: b.oauth_callback || '', teach: b.teach || null, auth: !!b.auth, onboarding: !!b.onboarding, ready: true })
   if (active) {
     const opened = openChat(active)
@@ -124,6 +126,9 @@ async function syncPush() {
     if (sub) await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub } })
   } catch { /* 下次打开再试 */ }
 }
+
+// 有新回复的讨论串（bootstrap 里的 threads）按 id 放好
+const byId = (list: ThreadInfo[] = []) => Object.fromEntries(list.map(x => [x.id, x]))
 
 export const setTeachDraft = (d: TeachDraft | null) => set({ teachDraft: d })
 
@@ -173,6 +178,15 @@ export async function openThread(chatId: number, rootId: number) {
 }
 
 export const closeThread = () => set({ thread: null })
+
+// 讨论串里的新回复看过了：先在本页去掉提醒，再告诉服务端（其他页面、手机收到 thread_seen 也去掉）。
+// 只报到本页已经加载的最后一条，没显示出来的不算看过
+export function markThreadSeen(id: number) {
+  if (!state.threads[id]?.unread) return
+  const list = state.messages[id]
+  set(s => ({ threads: { ...s.threads, [id]: { ...s.threads[id], unread: 0 } } }))
+  api(`/api/threads/${id}/seen`, { method: 'POST', body: list?.length ? { id: list[list.length - 1].id } : {} }).catch(() => {})
+}
 const same = (chatId: number, rootId: number) => state.thread?.chat === chatId && state.thread.rootId === rootId
 
 export async function sendInThread(text: string, attachments: Attachment[] = []) {
@@ -265,6 +279,7 @@ const reportVisibility = () => {
 // 手机 App 退到后台超过 30 秒，系统可能已经把连接掐了而页面不知道：回到前台时直接换一条新连接
 let hiddenAt = 0
 document.addEventListener('visibilitychange', () => {
+  set({ visible: document.visibilityState === 'visible' })
   if (document.visibilityState === 'hidden') hiddenAt = Date.now()
   else if (phone && ws && hiddenAt && Date.now() - hiddenAt > 30_000) {
     const old = ws
@@ -295,7 +310,7 @@ async function resync() {
   if (syncLang(b.settings?.language)) return new Promise<void>(() => {})   // 语言和服务端的不一样：重新加载中
   const tasks: Record<number, Task> = {}
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
-  set({ messages: {}, streams: {}, tasks, teach: b.teach || null })
+  set({ messages: {}, streams: {}, tasks, teach: b.teach || null, threads: byId(b.threads) })
   if (state.active) loadChat(state.active)
   if (state.thread) openThread(state.thread.chat, state.thread.rootId)
   Object.keys(state.taskSteps).forEach(id => loadTask(Number(id)))   // 断线期间漏掉的过程
@@ -326,17 +341,26 @@ function handle(d: any) {
         const up = th && messages[th.parent]
         if (th && up) messages = { ...messages, [th.parent]: up.map(x => x.id === th.root
           ? { ...x, thread: { id: th.id, count: th.count, last: th.last, bots: th.bots } } : x) }
-        const chats = th ? s.chats : s.chats.map(c => c.id === cid ? { ...c, updated: m.ts, preview: m.content.slice(0, 80) } : c)
-          .sort((a, b) => b.updated - a.updated)   // 置顶的也按最新消息排，另外在上面那排
-        const unread = home !== s.active && m.role !== 'user' ? { ...s.unread, [home]: (s.unread[home] || 0) + 1 } : s.unread
+        // 讨论串里的消息：上级对话的“有讨论串”和讨论串的新回复数（服务端算好的）；侧栏的数字也算在上级对话上
+        const chats = th ? s.chats.map(c => c.id === th.parent && !c.threads ? { ...c, threads: 1 } : c)
+          : s.chats.map(c => c.id === cid ? { ...c, updated: m.ts, preview: m.content.slice(0, 80) } : c)
+            .sort((a, b) => b.updated - a.updated)   // 置顶的也按最新消息排，另外在上面那排
+        const said = m.role !== 'user' && !!m.content
+        const threads = th ? { ...s.threads, [th.id]: { ...s.threads[th.id], ...th, unread: th.unread ?? 0,
+          ...(said ? { preview: m.content.slice(0, 200), preview_bot: m.bot_id } : {}) } } : s.threads
+        const unread = !th && home !== s.active && m.role !== 'user' ? { ...s.unread, [home]: (s.unread[home] || 0) + 1 } : s.unread
         const streams = m.role === 'assistant' ? { ...s.streams, [cid]: undefined } : s.streams
-        return { chats, unread, streams, messages, ...(learned ? { thread: { ...s.thread!, id: cid } } : {}) }
+        return { chats, threads, unread, streams, messages, ...(learned ? { thread: { ...s.thread!, id: cid } } : {}) }
       })
       if (learned) loadChat(cid)
+      if (th && state.thread?.id === cid && state.visible) markThreadSeen(cid)   // 正开着这个讨论串
       // 桌面 App 里窗口藏起来时，当前对话的回复也要通知
-      if (m.role !== 'user' && (home !== state.active || (th && state.thread?.id !== cid) || desktop)) notifyOS(home, m, undefined, th?.root)
+      if (m.role !== 'user' && (home !== state.active || (th && state.thread?.id !== cid) || desktop)) notifyOS(home, m, undefined, th && { id: cid, root: th.root })
       break
     }
+    case 'thread_seen':   // 别的页面或手机上看过了这个讨论串
+      set(s => ({ threads: { ...s.threads, [d.thread.id]: { ...s.threads[d.thread.id], ...d.thread, parent: d.thread.parent, root: d.thread.root } } }))
+      break
     case 'stream_start':
       set(s => ({ streams: { ...s.streams, [cid]: { sid: d.sid, text: '', thinking: '', started: Date.now(), bot_id: d.bot_id } } }))
       break
@@ -394,23 +418,32 @@ function handle(d: any) {
   }
 }
 
-// threadRoot：消息在讨论串里，点通知时打开那个讨论串
-function notifyOS(chatId: number, m: Message | null, text?: string, threadRoot?: number) {
+// th：消息在讨论串里（id 是讨论串，root 是被回复的那条消息），点通知时打开那个讨论串
+function notifyOS(chatId: number, m: Message | null, text?: string, th?: { id: number; root: number }) {
   if (phone) return   // 手机 App 在前台时看得到；退到后台由服务端推送
-  if (desktop) return notifyDesktop(chatId, m, text)
+  if (desktop) return notifyDesktop(chatId, m, text, th?.id)
   if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return
   if (localStorage.getItem('osa.push') === '1') return   // 这台设备开了推送，由服务端推，免得重复
   const chat = state.chats.find(c => c.id === chatId)
   const n = new Notification(chat?.title || 'Open Super Agent', { body: text || m?.content.slice(0, 120) })
-  n.onclick = async () => { window.focus(); await openChat(chatId); if (threadRoot) openThread(chatId, threadRoot) }
+  n.onclick = async () => { window.focus(); await openChat(chatId); if (th) openThread(chatId, th.root) }
 }
 
 // 桌面 App 用系统通知：Bot 的回复、任务结果、等你确认的操作，和服务端推送的规则一样。
-// 窗口在不在前台由外壳判断（WebKit 的 hasFocus 在 App 里不准）：正看着这个对话时不打扰
-function notifyDesktop(chatId: number, m: Message | null, text?: string) {
+// 窗口在不在前台由外壳判断（WebKit 的 hasFocus 在 App 里不准）：正看着这个对话时不打扰（讨论串的新回复对话里有提醒条）。
+// 讨论串里的回复用讨论串的 id 发：点通知时外壳把这个 id 发回来，页面打开那个讨论串
+function notifyDesktop(chatId: number, m: Message | null, text?: string, threadId?: number) {
   if (m && m.role !== 'assistant' && m.meta?.kind !== 'result' && m.meta?.kind !== 'image') return
   const chat = state.chats.find(c => c.id === chatId)
-  desktop!.notify(chat?.title || 'Open Super Agent', text || (m?.content || '').replace(/[#*`>_~\[\]]/g, '').slice(0, 120), chatId, chatId === state.active)
+  const title = (chat?.title || 'Open Super Agent') + (threadId ? ' · ' + t('讨论串') : '')
+  desktop!.notify(title, text || (m?.content || '').replace(/[#*`>_~\[\]]/g, '').slice(0, 120), threadId ?? chatId, chatId === state.active)
+}
+
+// 点了系统通知（桌面 App 发回的 id）：是对话就打开对话，是讨论串就打开它所在的对话和这个讨论串
+export async function openNotified(id: number) {
+  if (state.chats.some(c => c.id === id)) return openChat(id)
+  const th = state.threads[id] || await api<ThreadInfo>(`/api/threads/${id}`).catch(() => null)   // 页面重新加载过、早看过了
+  if (th && state.chats.some(c => c.id === th.parent)) { await openChat(th.parent); openThread(th.parent, th.root) }
 }
 
 export const botById = (id: number | null | undefined) => state.bots.find(b => b.id === id)

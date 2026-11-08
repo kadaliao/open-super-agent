@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { chatById, closeThread, loadOlder, sendInThread, useStore } from '../store'
+import { chatById, closeThread, loadOlder, markThreadSeen, sendInThread, useStore } from '../store'
 import type { Bot } from '../types'
 import Composer from './Composer'
 import { MessageList, PendingApprovals, StreamMessage } from './Chat'
@@ -14,6 +14,8 @@ export default function ThreadPanel() {
   const stream = useStore(s => (s.thread?.id ? s.streams[s.thread.id] : undefined))
   const error = useStore(s => (s.thread?.id ? s.errors[s.thread.id] : undefined))
   const hasMore = useStore(s => (s.thread?.id ? s.hasMore[s.thread.id] : false))
+  const unread = useStore(s => (s.thread?.id ? s.threads[s.thread.id]?.unread : 0) || 0)
+  const visible = useStore(s => s.visible)
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const prevHeight = useRef(0)
@@ -27,6 +29,8 @@ export default function ThreadPanel() {
     prevHeight.current = el.scrollHeight
   }, [list, th?.root, stream?.text, stream?.thinking])
   useEffect(() => { stick.current = true }, [th?.chat, th?.rootId])
+  // 开着、页面正被看着、回复也加载出来了：这个讨论串的新回复算看过（窗口藏着时来的回复，回来再算）
+  useEffect(() => { if (th?.id && unread && visible && list) markThreadSeen(th.id) }, [th?.id, unread, visible, list])
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.modal-bg')) closeThread() }
     window.addEventListener('keydown', esc)

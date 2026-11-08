@@ -123,6 +123,7 @@ async def bootstrap(request: Request):
             "shapes": bots.SHAPES, "colors": bots.COLORS,
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
+            "threads": bots.thread_list(unread=True),   # 有新回复的讨论串：对话里提醒你去看
             **_apps_out(request), "teach": teach.public(), "auth": auth.enabled(), "onboarding": settings.onboarding()}
 
 
@@ -190,6 +191,34 @@ def _root(chat_id: int, root: int) -> dict:
     if not r:
         raise HTTPException(404, i18n.t("这个对话里没有这条消息"))
     return {"id": r[0], "ts": r[1], "role": r[2], "content": r[3], "meta": json.loads(r[4] or "{}"), "bot_id": r[5]}
+
+
+@app.get("/api/chats/{chat_id}/threads")
+async def list_threads(chat_id: int):
+    """这个对话下面的讨论串，最近有回复的在前（对话顶上的“讨论串”列表）。"""
+    return bots.thread_list(chat_id)
+
+
+@app.get("/api/threads/{thread_id}")
+async def get_thread_by_id(thread_id: int):
+    """一个讨论串在哪（parent、root）和它的摘要：点了讨论串的系统通知、页面还不知道这个讨论串时用。"""
+    th = bots.thread_event(thread_id)
+    if not th:
+        raise HTTPException(404, i18n.t("没有这个对话"))
+    return th
+
+
+@app.post("/api/threads/{thread_id}/seen")
+async def thread_seen(thread_id: int, data: dict = Body(default={})):
+    """看过了讨论串里到 id 为止的消息（不给 id 就是全部）。其他打开着的页面、手机跟着去掉“新回复”。"""
+    try:
+        th = bots.mark_seen(thread_id, data.get("id"))
+    except (TypeError, ValueError) as e:
+        _err(e)
+    if not th:
+        raise HTTPException(404, i18n.t("没有这个对话"))
+    await broadcast({"type": "thread_seen", "chat_id": th["parent"], "thread": th})
+    return th
 
 
 @app.get("/api/chats/{chat_id}/threads/{root}")

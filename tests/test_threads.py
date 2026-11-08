@@ -155,3 +155,47 @@ async def test_approval_from_group_thread(llm, events, make_bot, monkeypatch):
 def find_id(chat_id: int, kind: str) -> int:
     return memory.conn.execute("select id from messages where chat_id=? and json_extract(meta, '$.kind')=?",
                                (chat_id, kind)).fetchone()[0]
+
+
+async def test_thread_new_replies_until_seen(llm, events, make_bot):
+    """讨论串里 Bot 的回复在你看过之前算“新回复”：刷新、换设备都还在，看过以后各处一起去掉。"""
+    a = make_bot("Replier")
+    cid = a["chat_id"]
+    llm.script("router:Replier", "根消息", "讨论串里的回答", "第二个回答")
+
+    await server.safe_handle(bots.chat(cid), "开始")
+    root_id = memory.conn.execute("select max(id) from messages where chat_id=? and role='assistant'", (cid,)).fetchone()[0]
+    th = bots.thread(cid, root_id)
+    await server.safe_handle(bots.chat(th["id"]), "问一句")
+    await settle()
+
+    ev = [e for e in events.of("message") if e["chat_id"] == th["id"]]
+    assert ev[0]["thread"]["unread"] == 0 and ev[-1]["thread"]["unread"] == 1   # 你自己说的不算
+    news = [x for x in bots.thread_list(unread=True) if x["id"] == th["id"]]
+    assert len(news) == 1 and news[0]["parent"] == cid and news[0]["root"] == root_id and news[0]["unread"] == 1
+    assert news[0]["root_text"] == "根消息" and news[0]["root_role"] == "assistant"
+    assert news[0]["preview"] == "讨论串里的回答" and news[0]["preview_bot"] == a["id"]
+    assert next(c for c in bots.list_chats() if c["id"] == cid)["threads"] == 1
+    assert [x["id"] for x in await server.list_threads(cid)] == [th["id"]]
+
+    got = await server.thread_seen(th["id"], {})
+    assert got["unread"] == 0 and got["count"] == 2
+    assert events.of("thread_seen")[-1]["thread"]["id"] == th["id"] and events.of("thread_seen")[-1]["chat_id"] == cid
+    assert not [x for x in bots.thread_list(unread=True) if x["id"] == th["id"]]
+    assert [x["id"] for x in await server.list_threads(cid)] == [th["id"]]   # 看过的也还在列表里
+
+    # 看过之后的回复又是新的；只看到前面某条为止时，后面的还算新
+    first = memory.conn.execute("select max(id) from messages where chat_id=? and role='assistant'", (th["id"],)).fetchone()[0]
+    await server.safe_handle(bots.chat(th["id"]), "再问一句")
+    await settle()
+    assert bots.thread_event(th["id"])["unread"] == 1
+    assert bots.mark_seen(th["id"], first)["unread"] == 1
+    assert bots.mark_seen(th["id"], 1 << 40)["unread"] == 0   # 超过最新一条的 id 按最新一条算
+
+    with pytest.raises(server.HTTPException):
+        await server.thread_seen(cid, {})                     # 不是讨论串
+    # 点了讨论串的系统通知：按讨论串的 id 查到它在哪
+    where = await server.get_thread_by_id(th["id"])
+    assert where["parent"] == cid and where["root"] == root_id
+    with pytest.raises(server.HTTPException):
+        await server.get_thread_by_id(cid)

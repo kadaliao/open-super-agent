@@ -9,6 +9,7 @@ export type Chat = {
   // pinned：置顶的时间（侧栏上面那排按它排，先置顶的在前），0 是没置顶。lead：群聊的协调者
   pinned: number; updated: number; preview: string; lead: number | null
   image: string | null   // 群聊自己的头像图片；没有就用成员的头像拼
+  threads?: number       // 下面有几个讨论串：有的话对话顶上显示“讨论串”按钮
 }
 // 消息的附件（meta.attachments，见 osa/media.py）：path 是电脑里的文件，media 是存在服务端的图片（缩略图、给模型看）
 export type Attachment = { name: string; size?: number; path?: string; media?: string; mime?: string; w?: number; h?: number }
@@ -17,8 +18,14 @@ export type Message = {
   meta: Record<string, any>; bot_id: number | null
   thread?: ThreadSummary   // 这条消息下面有讨论串
 }
-// 讨论串：针对某条消息的回复，是挂在原对话下面的一个子对话（id 是它的对话 id）。bots：回复过的 Bot
-export type ThreadSummary = { id: number; count: number; last: number | null; bots: number[] }
+// 讨论串：针对某条消息的回复，是挂在原对话下面的一个子对话（id 是它的对话 id）。bots：回复过的 Bot；unread：你还没看过的 Bot 回复数
+export type ThreadSummary = { id: number; count: number; last: number | null; bots: number[]; unread?: number }
+// 讨论串列表里的一项（对话顶上的“讨论串”列表、新回复提醒）：parent 是所在的对话，root 是被回复的那条消息。
+// root_text / root_role / root_bot：被回复的那条消息；preview / preview_bot：最后一条回复
+export type ThreadInfo = ThreadSummary & {
+  parent: number; root: number; unread: number
+  root_text?: string; root_role?: string; root_bot?: number | null; preview?: string; preview_bot?: number | null
+}
 // 右边打开着的讨论串：chat 是原对话，rootId 是被回复的那条消息；id 在第一次回复之前是 null
 export type OpenThread = { chat: number; rootId: number; root: Message | null; id: number | null }
 export type Task = {

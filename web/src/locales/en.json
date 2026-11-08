@@ -1103,5 +1103,23 @@
   "要让 Bot 能看屏幕、用鼠标键盘操作其他 App，给 Open Super Agent 打开“辅助功能”和“屏幕录制”权限（打开后还显示这句，就退出 App 再打开）。": "To let bots see the screen and use the mouse and keyboard in other apps, give Open Super Agent the Accessibility and Screen Recording permissions (if this still shows afterwards, quit and reopen the app).",
   "去打开": "Open settings",
   "在那台 Mac 上打开": "Turn them on on that Mac",
-  "Bot 用这台电脑做事时，画面会显示在这里。": "When a bot uses this computer, you'll see it here."
+  "Bot 用这台电脑做事时，画面会显示在这里。": "When a bot uses this computer, you'll see it here.",
+  "{n} 条新回复": [
+    "{n} new reply",
+    "{n} new replies"
+  ],
+  "{who} 在讨论串里回复了": "{who} replied in a thread",
+  "{n} 个讨论串有新回复": [
+    "New replies in {n} thread",
+    "New replies in {n} threads"
+  ],
+  "查看": "View",
+  "列表": "Show",
+  "都看过了": "Mark all read",
+  "还没有讨论串。点消息下面的“回复”，就能针对它单独讨论。": "No threads yet. Click “Reply” under a message to discuss it separately.",
+  "你": "You",
+  "{n} 条新消息": [
+    "{n} new message",
+    "{n} new messages"
+  ]
 }
