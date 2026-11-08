@@ -2,7 +2,7 @@
 
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.11.0] - 2026-11-09
 ### 新增
 - **插件**：放在 `data/plugins` 里的 Python 代码，给 Bot 加工具（对话里就能用）、在有新消息或任务做完时做点事。设置 → 扩展 → 插件里看代码、启用、
   改设置、重新加载，都不用重启服务；停用时插件注册的东西全部撤掉。写法见 [插件](docs/plugins.md)
@@ -434,7 +434,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.10.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/kadaliao/open-super-agent/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kadaliao/open-super-agent/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kadaliao/open-super-agent/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kadaliao/open-super-agent/compare/v0.7.0...v0.8.0
