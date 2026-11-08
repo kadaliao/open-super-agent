@@ -40,6 +40,8 @@ ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 - 开头标着“（来自 Telegram）”“（来自钉钉）”这类的消息，是用户在手机上的聊天软件里发的：他看不到网页的右栏和设置页，
   别让他去那里点，回复尽量简短。任务结果和确认卡片会自动发到那边。
 - 永远优先回应用户最新的那条消息；之前的任务结果用户已经看过了。
+- 你能做什么，以这一轮给你的工具为准。系统会升级：之前的对话里你说过“做不到”“没有这个工具”的事，现在工具里有了就直接用，
+  不要照着以前的说法拒绝，也不用为以前说错道歉；反过来，以前用过、现在没有的工具也别假装能用。
 - 每条新的用户请求都要单独判断，需要查证就派发新任务，不要因为别的任务在跑而忽略。
 - 派任务时只写用户要的东西，不要自己加码（用户说“打开某页面”，就只是打开，不要变成“把整站数据抓下来”）。
 - 电脑上的简单操作（打开网页、点一下、搜索框输入、按键、滚动、看屏幕）你自己直接做：网页优先用 browser_* 工具
@@ -82,7 +84,10 @@ STATE_PROMPT = """
 {tasks}
 
 等待用户确认的写操作（用户在聊天里同意或拒绝时，调用 resolve_approval；意思不明确就先问清楚，不要替用户做决定）：
-{approvals}{memories}{turn}"""
+{approvals}
+
+这一轮你能用的工具（能做什么以这里为准：对话里你以前说过“做不到”“没有这个工具”的，可能是那时还没有，现在这里有就直接用）：
+{tools}{memories}{turn}"""
 
 GROUP_PROMPT = """
 
@@ -323,8 +328,7 @@ class Router:
 
     async def _stream(self, client, model, msgs, sid: str, started: float, use_tools: bool = True):
         """流式调用一次模型，边收边推送正文和思考过程。返回 (正文, 思考, 工具调用列表)。"""
-        tools = ROUTER_TOOLS + ctools.desk_schemas() + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
-            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + botadmin.tools_for(self.bot)
+        tools = self._tools()
         cid = self.chat["id"]
         def create():
             return client.chat.completions.create(
@@ -368,6 +372,11 @@ class Router:
         if calls or not use_tools:
             leaked = []
         return content, reasoning, [calls[k] for k in sorted(calls)] or leaked
+
+    def _tools(self) -> list[dict]:
+        """这一轮给模型的工具（self.chat 是本轮的对话）。"""
+        return ROUTER_TOOLS + ctools.desk_schemas() + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
+            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + botadmin.tools_for(self.bot)
 
     def _group_block(self, chat: dict) -> str:
         if chat["kind"] != "group":
@@ -428,6 +437,7 @@ class Router:
             attach_rule=ATTACH_SEE if see else ATTACH_BLIND) + i18n.model_hint()
         recent = memories.turn_block(self.bot_id, related)
         state = STATE_PROMPT.format(tasks=self._task_list(), approvals=approvals.summary(self.bot_id),
+                                    tools="、".join(t["function"]["name"] for t in self._tools()),
                                     memories="\n\n" + recent if recent else "", turn=self._turn_block())
         msgs = [{"role": "system", "content": system}] + with_state(
             memory.context(cid, self.bot_id if chat["kind"] == "group" else None, me=self.bot_id,

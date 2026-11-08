@@ -390,3 +390,15 @@ async def test_edit_role_on_update_card(llm, events, boss, make_bot):
     approvals.resolve(c["id"], True, edits={"职责": "用户自己写的。"})
     await until(lambda: bots.get(w["id"])["instructions"] == "用户自己写的。", what="按用户改的改好")
     await settle()
+
+
+async def test_turn_lists_current_tools(llm, events, boss, make_bot):
+    """每一轮的状态里写着这一轮能用的工具：以前在对话里说过“删不了”，升级后照着当前的工具做（生产上 Nova 照旧话拒绝过）。"""
+    other = make_bot("Plain9")
+    await server.safe_handle(bots.chat(boss["chat_id"]), "把小白删了")
+    await server.safe_handle(bots.chat(other["chat_id"]), "你好")
+    await settle()
+    mine, theirs = last_user(llm.bodies("router", "Boss")[-1]), last_user(llm.bodies("router", "Plain9")[-1])
+    assert "这一轮你能用的工具" in mine and "delete_bot" in mine and "以前说过“做不到”" in mine
+    assert "update_bot" in theirs and "delete_bot" not in theirs
+    assert "以这一轮给你的工具为准" in system_of(llm.bodies("router", "Boss")[-1])
