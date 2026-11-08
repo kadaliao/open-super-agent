@@ -48,6 +48,7 @@ class Task:
     quiet: bool = False                    # 这次确实没有新内容
     notes: str = ""                        # 只给 Worker 看的补充说明，不显示、不存进对话（定时任务：上次的结果、“无新内容”的约定）
     files: list = field(default_factory=list)   # send_file 发的文件（附件，见 media.py），显示在任务结果下面
+    apps: list = field(default_factory=list)    # 用到的应用界面（MCP Apps，见 mcpapps.py），显示在任务结果下面
 
 
 def _public(self) -> dict:
@@ -168,7 +169,7 @@ async def _tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, p
             await log.update(step, status="running")
         from . import bots
         out = await tool.run(registry.Call(registry.WORKER, bots.get(task.bot_id) or {"id": task.bot_id}, task.chat_id,
-                                           task.approval_chat_id or task.chat_id, args, task=task, files=task.files, env=env))
+                                           task.approval_chat_id or task.chat_id, args, task=task, files=task.files, apps=task.apps, env=env))
         if isinstance(out, tuple):   # (文字, 截图)
             if out[1]:
                 shots.append(out[1])

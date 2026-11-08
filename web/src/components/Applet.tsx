@@ -3,6 +3,7 @@ import { api, openLibrary, useStore } from '../store'
 import type { Page } from '../types'
 import { t } from '../i18n'
 import { attachApplet } from '../applet'
+import { attachMcpApp, type AppView } from '../mcpapp'
 
 // 小应用的画面：沙箱 iframe + 宿主桥（applet.ts）。inline 时高度跟着内容走（页面里的 SDK 会报高度），
 // 资料库里打开时撑满（fill）。
@@ -55,5 +56,27 @@ export function PageEmbed({ href, fallback }: { href: string; fallback: ReactNod
       <span className="lib-icon">{p.format === 'html' ? '◧' : '▤'}</span>
       <span className="lib-main"><b>{p.title}</b><span className="lib-meta">{t('资料库里的页面')}{bot ? ` · ${bot.name}` : ''}</span></span>
     </button>
+  )
+}
+
+// 应用自带的界面（MCP Apps）：任务用到带界面的工具时挂在结果下面。iframe 是不透明源，宿主桥见 mcpapp.ts
+export function McpAppView({ view, botId }: { view: AppView; botId: number | null }) {
+  const ref = useRef<HTMLIFrameElement>(null)
+  const [h, setH] = useState(0)
+  const src = `/api/mcp-apps/${encodeURIComponent(view.app)}/view?uri=${encodeURIComponent(view.uri)}`
+  useEffect(() => {
+    if (!ref.current) return
+    return attachMcpApp(ref.current, view, botId, setH)
+  }, [view, botId])
+  return (
+    <div className="applet-card">
+      <div className="applet-head">
+        <span className="applet-title">▣ @{view.app}</span>
+        <span className="muted small">{view.tool}</span>
+      </div>
+      <iframe ref={ref} className="applet-frame" src={src} title={`@${view.app}`}
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms"
+        style={{ height: Math.min(Math.max(h, 80), 900) }} />
+    </div>
   )
 }

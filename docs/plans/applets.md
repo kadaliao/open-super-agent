@@ -20,7 +20,8 @@
 2. **工具注册表**（已做，2026-11-08）：`osa/registry.py` 的 `Tool` / `Context` / 事件，内置工具都在 `osa/builtin.py` 注册一次，
    MCP 应用每个一个 `Context`，断开时 dispose。前端 `web/src/cards.tsx` 按 `meta.kind` 注册卡片。
    还没迁：电脑工具、Router 自己的几个、botadmin（见架构文档“工具注册表与插件”）。
-3. **MCP Apps 宿主**：应用市场里的应用可以自带界面，小应用也能导出成标准形式。
+3. **MCP Apps 宿主**（已做，2026-11-09）：应用（MCP 服务器）自带的界面显示在任务结果下面，设计见下面“第 3 步的设计”。
+   原来写的“小应用导出成标准形式”挪到以后：那要 osa 自己当一个 MCP 服务器，是另一件事。
 4. **外部 Python 插件**（`data/plugins/*.py`）和市场：有社区需求再做。Bot 自己产出的扩展只能是沙箱里的东西（小应用、技能、MCP 连接），
    不能是进程内代码。
 
@@ -78,3 +79,52 @@ Bot 回复里的 `/library/pages/<id>` 链接展开（`Markdown.tsx` → `Applet
 
 - `tests/test_applets.py`：清单校验、注入、数据和上限、工具只认清单、确认卡片在 Bot 私聊里、替用户发消息进对话并标明来源。
 - 真的浏览器里：Bot 做一个报名表小应用，填表存进数据，Bot 用 `page_data` 读到；按钮调 `web_search` 返回结果；`osa.send` 后 Bot 接着说。
+
+## 第 3 步的设计：MCP Apps 宿主
+
+按 MCP Apps 扩展（`io.modelcontextprotocol/ui`，2026-01-26 版）做宿主，应用不用为 osa 写任何东西。
+
+### 流程
+
+1. 连应用时在 `initialize` 里声明 `extensions: {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}}`，
+   有的应用看到这个才登记带界面的工具。
+2. 工具的 `_meta.ui.resourceUri` 指向一个 `ui://` 资源（也认废弃的 `_meta["ui/resourceUri"]`）。`_meta.ui.visibility`：
+   没有 `model` 的不给模型、也不给小应用，只给它自己的界面调；没有 `app` 的界面不能调。
+3. 后台任务调了带界面的工具：给模型的结果后面加一句“用户会直接看到界面，答案只写结论”，
+   同时把这次调用（应用、工具、ui:// 地址、参数、完整的 `CallToolResult`）记在任务上，结果消息的 `meta.apps` 里带着。
+   一个任务最多挂 3 个，结果太大（超过 200K 字）就只给文字。Heavy 的草稿不挂。
+4. 前端在任务结果下面为每一个开一个 iframe，地址是 `/api/mcp-apps/<应用>/view?uri=...`。服务端从应用读这个资源，
+   按资源的 `_meta.ui.csp` 拼 CSP，同一次连接里缓存，应用断开时清掉（挂在应用的 `Context` 上）。
+5. 网页里的宿主（`web/src/mcpapp.ts`）和界面走 postMessage 上的 JSON-RPC 2.0：
+   - 界面发 `ui/initialize`，宿主回协议版本、能力（openLinks、serverTools、serverResources、logging、message）和 hostContext
+     （主题、语言、时区、平台、容器大小、只有 inline 一种显示方式）。
+   - 收到 `ui/notifications/initialized` 之后才发 `tool-input` 和 `tool-result`（规范要求之前不能发任何东西）。
+   - `tools/call` → 服务端只放行同一个应用里 visibility 含 app 的工具，命中确认规则的在 Bot 的私聊里弹卡片；
+     `resources/read` → 同一个应用的资源；`ui/message` → 替用户给结果所属的 Bot 发消息，标明来自哪个应用的界面；
+     `ui/open-link` → 只开 http(s)；`ui/notifications/size-changed` → 调 iframe 高度；主题变了发 `host-context-changed`；
+     卸载时发 `ui/resource-teardown`。
+   - 没做的：全屏 / 画中画（`ui/request-display-mode` 总是回 inline）、`ui/update-model-context` 收下但还没带进模型的上下文、
+     `ui/download-file`、`sampling/createMessage`、权限（摄像头、麦克风这些不给）。
+
+### 和规范不一样的一处：没有“沙箱代理”
+
+规范要求网页宿主把界面套在一个“沙箱代理”里：代理是另一个源上的 iframe，界面在代理里面。自己部署的服务往往只有一个地址
+（`127.0.0.1:8765`、一个域名、桌面 App 里的本机地址），没有第二个源可用。所以界面直接放在一个 iframe 里：
+
+- iframe 不给 `allow-same-origin`，响应头的 CSP 开头也有 `sandbox`，文档是不透明源，碰不到这个站点的 cookie 和接口；
+  直接在新标签页打开也一样。
+- CSP 只认声明过的域名：`resourceDomains` 进 script / style / img / font / media，`connectDomains` 进 connect，
+  `frameDomains`、`baseUriDomains` 同理；没声明的都是 `'none'`。不给 `'self'`（这里的 self 是本站，带着登录的接口）。
+  域名只认干净的 `https://` / `wss://` 写法（和本机的 http），别的写法丢掉，防止往 CSP 里塞指令。
+- 协议上看不出差别：代理本来只是原样转发，官方的 App SDK 照常能用（下面的验收用的就是它）。
+- 代价：界面里没有 `localStorage`，界面发出的请求 `Origin` 是 `null`，只放行特定来源的接口会拒绝它。
+  以后有部署需要时可以加一个可选的第二个地址（比如 `sandbox.<域名>`），在那上面做代理。
+
+### 验收
+
+- `tests/test_mcp_apps.py` 接一个真的 stdio 应用（`tests/fixtures/mcp_ui_server.py`）：工具按 visibility 分给谁、
+  界面的 CSP、只认声明过的 ui:// 地址、界面调工具（只给模型的拒绝、确认卡片、拒绝后 403）、读资源、任务结果挂上界面、
+  界面替用户发消息、断开后工具和缓存的界面都撤掉、Router 的能力说明里不列只给界面用的工具。
+- 真的浏览器里，界面用官方的 `@modelcontextprotocol/ext-apps` 2.0.4（从 jsDelivr 加载）：握手、收到参数和结果、拿到深色主题、
+  调只给界面用的工具、调只给模型的工具被拒绝、替用户发消息进对话、高度跟着内容走。
+- 真模型（deepseek-flash）：“用 @uidemo 查一下南京的天气”，Worker 自己调了带界面的工具，结果下面显示界面，答案只写了一句结论。

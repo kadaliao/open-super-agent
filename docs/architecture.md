@@ -56,6 +56,7 @@ osa/
   memory.py        SQLite 表、对话记录、Inline & Spill 上下文、新话题、用量和费用
   memories.py      长期记忆：每个 Bot 的记忆、共享的用户事实、做过的事、从其他助手导入
   library.py       资料库：页面（存储、分享链接、save_page 工具）、小应用的清单和数据（page_data 工具）、电脑里的文件（列目录、删除、置顶）
+  mcpapps.py       应用自带的界面（MCP Apps）：工具上的 _meta.ui、拼 CSP、取界面、替界面调工具 / 读资源、和小应用共用的确认
   applets.py       小应用：清单校验、页面里的 SDK（window.osa，返回原文时内联）、从界面调工具（走确认规则）和替用户发消息
   bots.py          Bot 和对话的增删改查、旧数据迁移
   media.py         对话里的图片和附件：media 表、消息的 meta.attachments、给能看图的模型带上图片、send_file、清理没人用的
@@ -248,6 +249,17 @@ web/src/
 - 还没迁的：电脑工具（`computer/tools.py`，和任务、窗口、控制权绑得紧）、Router 自己的几个（dispatch、cancel_task 这类改 Router 状态的）、
   botadmin（弹卡片、叫醒 Bot）。Router / Worker 先处理这些，注册表是最后一道。
 - 前端对应的是 `web/src/cards.tsx`：按消息的 `meta.kind` 注册卡片，`registerCard` 返回撤销函数，内置的在 `Chat.tsx` 末尾注册。
+
+### 应用自带的界面（MCP Apps）
+- 设计见 [小应用计划](plans/applets.md#第-3-步的设计mcp-apps-宿主)。工具的 `_meta.ui.resourceUri` 指向 `ui://` 资源；
+  后台任务调了这种工具，调用记在 `task.apps`（`registry.Call.apps`），结果消息的 `meta.apps` 里带着，前端在结果下面开 iframe。
+- **visibility 决定给谁**：没有 `model` 的工具注册时 `where` 是空的（不给模型、不给小应用），只能从它自己的界面经
+  `/api/mcp-apps/<应用>/call` 调；没有 `app` 的界面调不了。Router 的能力说明也只列模型能调的。
+- **界面碰不到站点**：和小应用一样是不透明源的 iframe，CSP 按资源声明的域名拼，不给 `'self'`。规范要求网页宿主用另一个源上的
+  “沙箱代理”，我们没有第二个源，所以直接放 iframe，代价是界面里没有 localStorage、请求的 Origin 是 null（见计划文档）。
+- 网页宿主 `web/src/mcpapp.ts` 只认来自那个 iframe 的 JSON-RPC，收到 `ui/notifications/initialized` 之前不发任何东西。
+  新加一种界面能做的事，要同时改宿主和服务端的接口，服务端照旧按应用、visibility、确认规则放行。
+- 应用的会话（`mcp_hub.session_of`）和缓存的界面都挂在应用的 `Context` 上，断开、重连时一起撤掉。
 
 ### 小应用
 - 小应用就是带清单 `app` 的 html 页面（`pages.app`），数据在 `page_data` 表。设计见 [小应用计划](plans/applets.md)。

@@ -661,11 +661,12 @@ class Router:
                          "用户要求“先问我再做”时，把这个要求写进 goal 就行。"
                          "你自己也能用 look_at_screen 直接看屏幕：用户问屏幕上是什么、任务做到哪了，先看再答，"
                          "不要说你看不见。")
-        groups = {srv: [t.name.split("__", 1)[1] for t in ts] for srv, ts in registry.by_group().items()}
+        # 只列模型能调的（visibility 里有 model 的）；只给应用界面用的不算
+        groups = {srv: [t.name.split("__", 1)[1] for t in ts if registry.WORKER in t.where] for srv, ts in registry.by_group().items()}
         def label(n: str) -> str:
             t = catalog.title(n)
             return f"@{n}" if t == "@" + n else f"@{n}（{t}）"
-        lines += [f"- 应用 {label(srv)}：{', '.join(ts)}" for srv, ts in groups.items()]
+        lines += [f"- 应用 {label(srv)}：{', '.join(ts)}" for srv, ts in groups.items() if ts]
         off = [n for n in mcp_hub.all_apps() if n not in groups]
         if off:
             lines.append(f"- 未连接的应用（现在用不了，请用户到「应用」页面重新连接）：{', '.join(label(n) for n in off)}")
@@ -727,7 +728,7 @@ class Router:
         memory.update_meta(task.id, status=task.status, elapsed=round(time.time() - task.started), steps=task.steps)
         await self.add("task", f"[任务 #{task.id} 结果]\n{task.result}", task.chat_id, kind="result", task_id=task.id,
                        status=task.status, elapsed=round(time.time() - task.started),
-                       **({"attachments": task.files} if task.files else {}))
+                       **({"attachments": task.files} if task.files else {}), **({"apps": task.apps} if task.apps else {}))
         await self.emit({"type": "task", "task": task.public()}, task.chat_id)
         if task.handoff:
             from . import groups

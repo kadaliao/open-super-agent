@@ -34,6 +34,7 @@ class Call:
     task: Any = None                # Worker 的 Task；Router 和小应用没有
     post: Callable | None = None    # async (role, content, chat_id, **meta) -> int：往对话里写一条消息
     files: list = field(default_factory=list)   # 本轮 / 本任务 send_file 发的附件，调用方挂到回复或结果下面
+    apps: list = field(default_factory=list)    # 本任务用到的应用界面（MCP Apps，见 mcpapps.py），挂在任务结果下面
     env: dict = field(default_factory=dict)     # 这一轮的环境：pages（能不能存页面）、use_pc（有没有电脑）
 
     @property
@@ -52,6 +53,7 @@ class Tool:
     progress: Callable[[dict], str] | None = None       # Worker 任务卡片上这一步的说明
     describe: str = ""                                  # 给 Router 看的一句话能力说明（“后台 Worker 当前能用的工具”）
     group: str = ""                                     # 来自哪个应用（MCP 服务器名），空是内置
+    meta: dict = field(default_factory=dict)            # 提供者自己的信息（MCP 工具：原名、界面、visibility）
     owner: str = "builtin"                              # 哪个 Context 注册的
 
     def offered(self, scope: str, env: dict) -> bool:

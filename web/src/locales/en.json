@@ -1283,5 +1283,6 @@
   "小应用": "Applet",
   "打开": "Open",
   "资料库里的页面": "Page in the library",
-  "来自小应用「{title}」": "From the applet \"{title}\""
+  "来自小应用「{title}」": "From the applet \"{title}\"",
+  "来自应用 @{name} 的界面": "From the @{name} app's view"
 }

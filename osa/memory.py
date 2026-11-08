@@ -225,8 +225,10 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
         else:
             if meta.get("via"):   # 在聊天软件里发的：Router 据此不提网页上的按钮和面板
                 c = f"（来自{VIA.get(meta['via'], meta['via'])}）{c}"
-            if meta.get("applet"):   # 小应用的界面替用户发的
-                c = f"（来自小应用「{meta['applet'].get('title', '')}」）{c}"
+            if (ap := meta.get("applet")) and ap.get("app"):   # 应用自带的界面（MCP Apps）替用户发的
+                c = f"（来自应用 @{ap['app']} 的界面）{c}"
+            elif ap:   # 小应用的界面替用户发的
+                c = f"（来自小应用「{ap.get('title', '')}」）{c}"
             if meta.get("skill_prompt"):   # /技能：把技能做法附在用户原话后面
                 c = f"{c}\n\n{meta['skill_prompt']}"
             parts = []

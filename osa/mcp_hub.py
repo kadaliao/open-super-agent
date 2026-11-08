@@ -34,12 +34,17 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import CONNECTION_CLOSED
 from .config import CFG, DATA
 from .memory import conn
-from . import i18n, registry, security, vault
+from . import i18n, mcpapps, registry, security, vault
 
 conn.execute("create table if not exists apps(name text primary key, config text, enabled integer, created real)")
 conn.commit()
 
 _ctx: dict[str, "registry.Context"] = {}   # 每个应用注册的工具都挂在它自己的 Context 上，断开时一起撤销
+_sessions: dict = {}                          # 连着的应用的会话：界面要读资源、调工具（见 mcpapps.py）
+
+
+def session_of(name: str):
+    return _sessions.get(name)
 status: dict[str, "str | i18n.Later"] = {}   # 应用 -> 状态说明，给前端看；到显示时才翻（i18n.later），读的时候 str()
 CONFIRM: set[str] = set()        # 默认需要用户确认的工具（规则可以覆盖）
 _running: dict[str, tuple[asyncio.Task, asyncio.Event]] = {}
@@ -534,21 +539,27 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event,
             if client:
                 await stack.enter_async_context(client)
             read, write = await stack.enter_async_context(transport)
-            session = await stack.enter_async_context(ClientSession(read, write))
+            # 告诉应用我们能显示它自带的界面（MCP Apps）；有的应用看到这个才登记带界面的工具
+            session = await stack.enter_async_context(ClientSession(read, write, extensions=mcpapps.CAPABILITY))
             await asyncio.wait_for(session.initialize(), wait_s)
             tools = (await session.list_tools()).tools
             deny = [w.lower() for w in a.get("deny", [])]
             _drop_tools(name)   # 重连时先撤掉上一次注册的
             ctx = _ctx[name] = registry.Context(f"mcp:{name}")
+            _sessions[name] = session
+            ctx.effect(lambda: _sessions.pop(name, None) if _sessions.get(name) is session else None)
+            ctx.effect(lambda: mcpapps.forget(name))
             n = c = 0
             for t in tools:
                 if any(w in t.name.lower() for w in deny):
                     continue
                 full = f"{name}__{t.name}"[:64]
 
-                async def call(_tool=t.name, _full=full, **args):
+                ui, vis = mcpapps.tool_ui(getattr(t, "meta", None))
+
+                async def run(c: registry.Call, _tool=t.name, _full=full, _ui=ui):
                     try:
-                        return _text(await session.call_tool(_tool, args))
+                        result = await session.call_tool(_tool, c.args)
                     except Exception as e:
                         # 连接断了（远程会话过期、进程退出）：重连一次再试
                         if not _lost(e) or stop.is_set() or time.time() - _reconnected.get(name, 0) < 60:
@@ -559,13 +570,23 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event,
                         if not again or again.owner != f"mcp:{name}":
                             hint = "，请用户到应用市场重新登录" if name in _needs_login else ""   # 写给模型看的
                             raise RuntimeError(f"应用 @{name} 连接断开：{status.get(name, '')}{hint}") from e
-                        return await again.run(registry.Call(registry.WORKER, {"id": 0}, 0, 0, args))
+                        return await again.run(c)
+                    text = _text(result)
+                    # 带界面的工具：后台任务（不是 Heavy 的草稿）把结果记下来，任务结果下面用应用的界面显示
+                    if _ui and c.scope == registry.WORKER and c.env.get("pages", True) and len(c.apps) < mcpapps.MAX_VIEWS:
+                        if rec := mcpapps.view_record(name, _tool, _ui, c.args, result):
+                            c.apps.append(rec)
+                            text += mcpapps.MODEL_HINT
+                    return text
 
-                ctx.simple(full, {"type": "function", "function": {
-                    "name": full, "description": (t.description or "")[:1000],
-                    "parameters": getattr(t, "input_schema", None) or getattr(t, "inputSchema", None)
-                                  or {"type": "object", "properties": {}}}}, call,
-                    where=frozenset({registry.WORKER, registry.APPLET}), gated=True, group=name)
+                params = getattr(t, "input_schema", None) or getattr(t, "inputSchema", None) or {"type": "object", "properties": {}}
+                # visibility 里没有 model 的只给自己的界面调，不给模型、也不给小应用
+                ctx.tool(registry.Tool(full, {"type": "function", "function": {
+                    "name": full, "description": (t.description or "")[:1000], "parameters": params}}, run,
+                    where=frozenset({registry.WORKER, registry.APPLET}) if "model" in vis else frozenset(),
+                    gated=True, group=name,
+                    meta={"mcp": {"tool": t.name, "ui": ui, "visibility": vis, "description": t.description or "",
+                                  "inputSchema": params}}))
                 if _needs_confirm(name, a, t):
                     CONFIRM.add(full)
                     c += 1

@@ -638,12 +638,20 @@
   "这个小应用不能发消息": "This applet is not allowed to send messages",
   "消息不能为空": "The message cannot be empty",
   "消息太长（最多 {n} 字）": "Message too long (at most {n} characters)",
-  "小应用的 Bot 已删除": "The applet's bot has been deleted",
   "键要是不超过 100 字的文字": "Keys must be text of at most 100 characters",
   "「{key}」太大（最多 {n}K 字）": "\"{key}\" is too large (at most {n}K characters)",
-  "这个操作要确认，但小应用的 Bot 已删除": "This action needs approval, but the applet's bot has been deleted",
   "用户拒绝了这个操作。{note}": "The user declined this action. {note}",
   "页面 #{id} 不是小应用": "Page #{id} is not an applet",
   "工具出错：{e}": "Tool error: {e}",
-  "小应用 #{id} 的数据": "Data of applet #{id}"
+  "小应用 #{id} 的数据": "Data of applet #{id}",
+  "发起它的 Bot 已删除": "The bot it came from has been deleted",
+  "应用 @{name} 没连接": "The app @{name} is not connected",
+  "应用 @{name} 没有界面 {uri}": "The app @{name} has no view {uri}",
+  "界面 {uri} 不是网页（{mime}）": "The view {uri} is not a web page ({mime})",
+  "界面 {uri} 是空的或太大": "The view {uri} is empty or too large",
+  "应用 @{app} 没有工具 {tool}": "The app @{app} has no tool {tool}",
+  "工具 {tool} 不给界面调用": "The tool {tool} can't be called from the app's view",
+  "这个操作要确认，但发起它的 Bot 已删除": "This action needs approval, but the bot it came from has been deleted",
+  "缺少 uri": "Missing uri",
+  "应用出错：{e}": "App error: {e}"
 }

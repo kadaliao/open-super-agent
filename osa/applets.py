@@ -21,8 +21,7 @@
 import asyncio
 import json
 import re
-from types import SimpleNamespace
-from . import approvals, i18n, registry
+from . import i18n, registry
 
 MAX_TOOLS = 20
 MAX_KEYS = 100
@@ -91,14 +90,9 @@ async def call(page: dict, tool: str, args) -> str:
     chat_id = (bot or {}).get("chat_id") or 0
     _running[page["id"]] = _running.get(page["id"], 0) + 1
     try:
-        if t.gated and approvals.decide(tool)[0]:
-            if not chat_id:
-                raise PermissionError(i18n.t("这个操作要确认，但小应用的 Bot 已删除"))
-            fake = SimpleNamespace(id=f"小应用·{page['title']}", bot_id=page["bot_id"], chat_id=chat_id, approval_chat_id=chat_id,
-                                   goal=f"小应用「{page['title']}」调用 {tool}", background=False)
-            ok, note = await approvals.request(fake, tool, args)
-            if not ok:
-                raise PermissionError(i18n.t("用户拒绝了这个操作。{note}", note=note).strip())
+        if t.gated:
+            from . import mcpapps
+            await mcpapps.confirm(bot, tool, args, f"小应用「{page['title']}」调用 {tool}")
         out = await t.run(registry.Call(registry.APPLET, bot or {"id": page["bot_id"]}, chat_id, chat_id, args))
         return str(out[0] if isinstance(out, tuple) else out)
     finally:
@@ -113,17 +107,23 @@ async def say(page: dict, text: str):
     app = page.get("app") or {}
     if not app.get("chat"):
         raise PermissionError(i18n.t("这个小应用不能发消息"))
+    await send(page.get("bot_id"), text, {"id": page["id"], "title": page["title"]})
+
+
+async def send(bot_id: int | None, text: str, origin: dict):
+    """界面替用户给 Bot 发一条消息，发到 Bot 的私聊里。origin 记在消息上（小应用 {id, title}；应用的界面 {app, title}）。"""
+    from . import bots
     text = (text or "").strip()
     if not text:
         raise ValueError(i18n.t("消息不能为空"))
     if len(text) > MAX_SAY:
         raise ValueError(i18n.t("消息太长（最多 {n} 字）", n=MAX_SAY))
-    bot = bots.get(page["bot_id"]) if page.get("bot_id") else None
+    bot = bots.get(bot_id) if bot_id else None
     chat = bots.chat(bot["chat_id"]) if bot and bot.get("chat_id") else None
     if not chat:
-        raise LookupError(i18n.t("小应用的 Bot 已删除"))
+        raise LookupError(i18n.t("发起它的 Bot 已删除"))
     assert handle
-    asyncio.create_task(handle(chat, text, {"id": page["id"], "title": page["title"]}))
+    asyncio.create_task(handle(chat, text, origin))
 
 
 # ---------- 页面里的 SDK ----------

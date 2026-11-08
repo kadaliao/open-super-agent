@@ -12,6 +12,8 @@ import { Attachments, mediaUrl, splitMarks, type ViewerItem } from './Media'
 import { imagePrice, setAsAvatar } from './AvatarTools'
 import { LinkEmbed, Linkify, textEmbeds } from './Embeds'
 import { cardFor, registerCard, type CardProps } from '../cards'
+import { McpAppView } from './Applet'
+import type { AppView } from '../mcpapp'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -286,6 +288,7 @@ function ResultMessage({ bot, m, goal, showName, reply }: { bot?: Bot; m: Messag
         <div className={open ? '' : 'clamp'}><Markdown text={text} embeds /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
         <Attachments items={m.meta.attachments} />
+        {(m.meta.apps as AppView[] | undefined)?.map((v, i) => <McpAppView key={i} view={v} botId={m.bot_id} />)}
         <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} />
           {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}
@@ -575,7 +578,8 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
           <div className="user-col">
             {items.length > 0 && <Attachments items={items} />}
             {(text || !items.length) && <div className="user-line">{m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
-              {m.meta.applet && <button className="via link-btn" onClick={() => openLibrary(m.meta.applet.id)}>{t('来自小应用「{title}」', { title: m.meta.applet.title })}</button>}
+              {m.meta.applet?.app ? <span className="via">{t('来自应用 @{name} 的界面', { name: m.meta.applet.app })}</span>
+                : m.meta.applet && <button className="via link-btn" onClick={() => openLibrary(m.meta.applet.id)}>{t('来自小应用「{title}」', { title: m.meta.applet.title })}</button>}
               <div className="bubble"><Linkify text={text} /></div></div>}
             {!text && items.length > 0 && m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
             {text && textEmbeds(text).map(u => <div key={u} className="user-embed"><LinkEmbed href={u} fallback={null} /></div>)}

@@ -247,6 +247,17 @@ icon:
 `palette`、`table`、`calendar`、`check`、`notebook`（图形见 [`web/src/appIcons.ts`](../web/src/appIcons.ts)）。黑色品牌会自动换成白底。
 商标归各自所有者，图标只用来让用户认出是哪个应用。
 
+## 自带界面的应用（MCP Apps）
+
+应用的 MCP server 按 [MCP Apps](https://modelcontextprotocol.io/docs/extensions/apps) 给工具配了界面（`_meta.ui.resourceUri` 指向一个
+`ui://` 资源）的，清单里什么都不用加：Bot 在后台任务里调了这个工具，界面就显示在任务结果下面，用户能直接点。
+
+- 界面要从别的域名加载脚本、样式、图片，或者要连接口，得在资源的 `_meta.ui.csp` 里声明（`resourceDomains`、`connectDomains`），
+  没声明的都会被 CSP 拦下。只认 `https://`、`wss://` 开头的写法。
+- 界面放在不透明源的 iframe 里，没有 `localStorage`，发出的请求 `Origin` 是 `null`。
+- `_meta.ui.visibility` 只写 `["app"]` 的工具只给界面用，Bot 看不到；只写 `["model"]` 的界面调不了。
+- 界面里调的工具照样走确认规则：写操作会在 Bot 的私聊里弹卡片。
+
 ## 在本机试
 
 1. 把清单放进 `data/apps/`（这个目录不进 git）。和内置应用同名时，会覆盖内置的那份。

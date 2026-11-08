@@ -19,7 +19,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
-from . import observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
+from . import mcpapps, observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from .computer import link
 from .computer.base import HOSTS
 from . import builtin, registry  # noqa: F401  builtin：导入即注册内置工具
@@ -846,6 +846,59 @@ async def share_page(pid: int, data: dict = Body(...)):
 async def delete_page(pid: int):
     library.delete_page(pid)
     await broadcast({"type": "pages_changed"})
+    return {"ok": True}
+
+
+# ---------- 应用自带的界面（MCP Apps）：网页宿主 web/src/mcpapp.ts 调过来 ----------
+def _mcp_errors(e: Exception):
+    if isinstance(e, PermissionError):
+        raise HTTPException(403, str(e))
+    if isinstance(e, LookupError):
+        raise HTTPException(404, str(e))
+    if isinstance(e, (ValueError, TypeError)):
+        raise HTTPException(400, str(e))
+    raise HTTPException(502, i18n.t("应用出错：{e}", e=providers.brief(e)))
+
+
+@app.get("/api/mcp-apps/{app_name}/view")
+async def mcp_app_view(app_name: str, uri: str):
+    """应用的界面：CSP 按它声明的域名拼，开头带 sandbox（不透明源，碰不到这个站点）。"""
+    try:
+        html, csp = await mcpapps.view(app_name, uri)
+    except Exception as e:
+        _mcp_errors(e)
+    return HTMLResponse(html, headers={"Content-Security-Policy": csp, "X-Content-Type-Options": "nosniff",
+                                       "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})
+
+
+@app.post("/api/mcp-apps/{app_name}/call")
+async def mcp_app_call(app_name: str, data: dict = Body(...)):
+    """界面调同一个应用里给界面用的工具；命中确认规则的在 Bot 的私聊里弹卡片，一直等到用户决定。"""
+    try:
+        return await mcpapps.call(app_name, str(data.get("name") or ""), data.get("arguments") or {},
+                                  bots.get(data["bot_id"]) if isinstance(data.get("bot_id"), int) else None)
+    except Exception as e:
+        _mcp_errors(e)
+
+
+@app.post("/api/mcp-apps/{app_name}/read")
+async def mcp_app_read(app_name: str, data: dict = Body(...)):
+    try:
+        return await mcpapps.read(app_name, data.get("uri"))
+    except Exception as e:
+        _mcp_errors(e)
+
+
+@app.post("/api/mcp-apps/{app_name}/say")
+async def mcp_app_say(app_name: str, data: dict = Body(...)):
+    """界面替用户给 Bot 发消息（ui/message）：发到结果所属 Bot 的私聊。"""
+    if not mcp_hub.session_of(app_name):
+        raise HTTPException(404, i18n.t("应用 @{name} 没连接", name=app_name))
+    try:
+        await applets.send(data.get("bot_id") if isinstance(data.get("bot_id"), int) else None, str(data.get("text") or ""),
+                           {"app": app_name, "title": "@" + app_name})
+    except Exception as e:
+        _mcp_errors(e)
     return {"ok": True}
 
 
