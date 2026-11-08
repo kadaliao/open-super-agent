@@ -4,8 +4,10 @@ import { api, setSettings, useStore } from '../store'
 import { desktop, phone } from '../desktop'
 import { Icon } from '../icons'
 import { lang, locale, syncLang, t, tc, tn } from '../i18n'
-import type { Rule, Settings as S } from '../types'
+import type { Routine, Rule, Settings as S } from '../types'
 import Backup from './Backup'
+import BotAvatar from './BotAvatar'
+import { describe, STATUS, when } from './Routines'
 import Channels from './Channels'
 import ModelSettings, { ROLE_NAMES } from './ModelSettings'
 import { priceSource, priceText, ToastHost, useToast } from './settingsKit'
@@ -24,7 +26,7 @@ const DESC: Record<string, string> = {
   models: t('Bot 用哪些大模型。先添加模型服务，再给每项工作选一个模型。'),
   usage: t('花了多少钱：按天、按用途、按任务统计。'),
   limits: t('防止任务跑太久、花太多。改完离开输入框就保存。'),
-  triggers: t('所有 Bot 的定时任务一览。'),
+  triggers: t('所有 Bot 的定时任务，在这里就能开关。'),
 }
 const LIMIT_NAMES: Record<string, [string, string]> = {
   daily_token_budget: [t('每天最多用多少 token'), t('超过以后不再派新的任务，第二天恢复')],
@@ -73,7 +75,7 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
               {title === 'usage' && <Usage />}
               {title === 'rules' && <Rules />}
               {title === 'vault' && <Vault />}
-              {title === 'triggers' && <Triggers />}
+              {title === 'triggers' && <Triggers onClose={onClose} />}
               {title === 'channels' && <Channels />}
               {title === 'notify' && (desktop?.push ? <PhoneNotifications /> : <Notifications />)}
               {title === 'mobile' && <MobileApp />}
@@ -187,17 +189,59 @@ function Prices() {
   )
 }
 
-function Triggers() {
-  const [s, setS] = useState<any>(null)
+// 所有 Bot 的定时任务，按 Bot 分组，每个都能直接开关；点“管理”去那个 Bot 的右栏“定时”里改
+function Triggers({ onClose }: { onClose: () => void }) {
+  const [list, setList] = useState<Routine[] | null>(null)
+  const [busy, setBusy] = useState<number | null>(null)
   const bots = useStore(x => x.bots)
-  useEffect(() => { api('/api/status').then(setS) }, [])
-  if (!s) return <div className="muted">{t('加载中…')}</div>
+  const toast = useToast()
+  const load = () => api<Routine[]>('/api/routines').then(setList).catch((e: any) => toast(e.message, true))
+  useEffect(() => {
+    load()
+    window.addEventListener('osa-routines', load)
+    return () => window.removeEventListener('osa-routines', load)
+  }, [])
+  const toggle = async (r: Routine, on: boolean) => {
+    setBusy(r.id)
+    try {
+      const n: Routine = await api(`/api/routines/${r.id}/${on ? 'resume' : 'pause'}`, { method: 'POST' })
+      setList(l => l && l.map(x => x.id === n.id ? n : x))
+      toast(on ? t('已开启「{name}」', { name: r.name }) : t('已暂停「{name}」', { name: r.name }))
+    } catch (e: any) { toast(e.message, true) }
+    setBusy(null)
+  }
+  const manage = (botId: number) => { onClose(); window.dispatchEvent(new CustomEvent('osa-open-bot', { detail: { botId, tab: 'routines' } })) }
+  if (!list) return <div className="muted">{t('加载中…')}</div>
+  const on = list.filter(r => r.enabled).length
+  const groups = bots.map(b => ({ bot: b, items: list.filter(r => r.bot_id === b.id) })).filter(g => g.items.length)
   return (
     <div>
-      <h4>{t('所有定时任务')}</h4>
-      {s.routines.length ? s.routines.map((r: any) => (
-        <div className="kv" key={r.id}><span>{bots.find(b => b.id === r.bot_id)?.name} · {t('{name}（{trigger}）', { name: r.name, trigger: r.trigger })}</span>
-          <span className="muted">{r.enabled ? tc('enabled', '运行中') : t('已暂停')}</span></div>
+      <p className="muted small">{list.length ? t('{n} 个定时任务，{on} 个开着。关掉的不会再按时运行，打开后从下一个时间点继续。', { n: list.length, on }) : ''}</p>
+      {groups.length ? groups.map(({ bot, items }) => (
+        <div key={bot.id} className="rt-group">
+          <div className="rt-group-head">
+            <BotAvatar avatar={bot.avatar} size={22} /><b>{bot.name}</b>
+            <span className="grow" />
+            <button className="link-btn" onClick={() => manage(bot.id)}>{t('管理')}</button>
+          </div>
+          <div className="set-rows">
+            {items.map(r => (
+              <div key={r.id} className={'set-row rt-row' + (r.enabled ? '' : ' off')}>
+                <span>
+                  <b>{r.name}</b>
+                  <span>{describe(r.trigger)}
+                    {r.enabled && r.next_run ? ' · ' + t('下次 {when}', { when: when(r.next_run) }) : r.trigger.kind === 'webhook' ? ` · POST /hooks/${r.name}` : ''}
+                    {r.running && ' · ' + t('运行中')}
+                    {r.last_run && <> · <span className={'run-' + r.last_run.status}>{t('上次 {when} {status}', { when: when(r.last_run.ts), status: STATUS[r.last_run.status] || r.last_run.status })}</span></>}
+                  </span>
+                </span>
+                <label className="switch" title={r.enabled ? t('暂停') : t('开启')}>
+                  <input type="checkbox" checked={r.enabled} disabled={busy === r.id} onChange={e => toggle(r, e.target.checked)} /><span />
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
       )) : <div className="muted small">{t('暂无')}</div>}
       <p className="muted small">{t('定时任务属于各个 Bot：在对话里说“每天 9 点帮我……”，或者在右栏 Bot 详情的“定时”里新建和管理。 webhook 类的地址是 POST /hooks/名字。')}</p>
     </div>

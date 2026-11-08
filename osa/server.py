@@ -19,7 +19,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
-from . import prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
+from . import observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from .computer import link
 from .computer.base import HOSTS
 from . import worker as worker_mod
@@ -848,6 +848,13 @@ async def delete_page(pid: int):
     return {"ok": True}
 
 
+@app.get("/api/bots/{bot_id}/outputs")
+async def bot_outputs(bot_id: int, request: Request):
+    """右栏“资料库”：这个 Bot 交出来的页面、文件、图片、链接，新的在前（见 outputs.py）。"""
+    _bot_or_404(bot_id)
+    return outputs.for_bot(bot_id, own_hosts={request.headers.get("host", ""), request.url.netloc})
+
+
 @app.get("/api/shared/{token}")
 async def shared_page(token: str):
     p = library.by_token(token)
@@ -965,6 +972,12 @@ def _routine_or_404(rid: int) -> dict:
     if not r:
         raise HTTPException(404, i18n.t("没有这个定时任务"))
     return r
+
+
+@app.get("/api/routines")
+async def all_routines():
+    """所有 Bot 的定时任务（设置里的一览，能在那里开关）。"""
+    return routines.list_for()
 
 
 @app.get("/api/bots/{bot_id}/routines")
@@ -1596,6 +1609,31 @@ async def refresh_prices():
 @app.get("/api/usage")
 async def usage():
     return memory.usage_stats()
+
+
+# ---------- 观测 ----------
+def _observe_args(range: str, tz: int, bot: int | None) -> tuple[str, int, int | None]:
+    return (range if range in observe.RANGES else "7d"), max(-840, min(840, tz)), bot
+
+
+@app.get("/api/observe")
+async def observe_stats(range: str = "7d", tz: int = 0, bot: int | None = None):
+    """观测页：一段时间里花了多少、做了多少、快不快、哪里出了问题。bot=-1 是没记录是哪个 Bot 的调用。"""
+    return observe.stats(*_observe_args(range, tz, bot))
+
+
+@app.get("/api/observe/calls")
+async def observe_calls(range: str = "7d", tz: int = 0, bot: int | None = None, before: int | None = None,
+                        limit: int = 50, failed: bool = False):
+    return observe.calls(*_observe_args(range, tz, bot), before, max(1, min(limit, 200)), failed)
+
+
+@app.get("/api/observe/calls.csv")
+async def observe_calls_csv(range: str = "7d", tz: int = 0, bot: int | None = None):
+    names = {b["id"]: b["name"] for b in bots.list_bots()}
+    body = observe.calls_csv(*_observe_args(range, tz, bot), names)
+    return Response(body, media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": f"attachment; filename=\"osa-calls-{time.strftime('%Y%m%d')}.csv\""})
 
 
 @app.get("/api/status")

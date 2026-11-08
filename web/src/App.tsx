@@ -5,6 +5,7 @@ import Chat from './components/Chat'
 import ThreadPanel from './components/Thread'
 import Library from './components/Library'
 import Market from './components/Market'
+import Observe from './components/Observe'
 import Sidebar from './components/Sidebar'
 import Settings from './components/Settings'
 import Onboarding from './components/Onboarding'
@@ -66,10 +67,16 @@ export default function App() {
   const draft = useStore(s => s.teachDraft)
   const showBot = (botId: number, t: string) => {
     const b = getState().bots.find(x => x.id === botId)
-    if (b && getState().active !== b.chat_id) openChat(b.chat_id)
+    if (b && (getState().active !== b.chat_id || getState().view !== 'chat')) openChat(b.chat_id)
     closeThread(); setDetails(true); setTab(t)
   }
   useEffect(() => { if (teach) showBot(teach.bot_id, 'computer') }, [teach?.started])
+  // 别处（设置里的定时任务、观测页）要打开某个 Bot 右栏的某一页
+  useEffect(() => {
+    const h = (e: Event) => { const { botId, tab } = (e as CustomEvent).detail; showBot(botId, tab) }
+    window.addEventListener('osa-open-bot', h)
+    return () => window.removeEventListener('osa-open-bot', h)
+  }, [])
   useEffect(() => { if (draft) showBot(draft.bot_id, 'skills') }, [draft])
 
   // 桌面 App：点了系统通知，外壳告诉页面打开哪个对话（讨论串里的回复发来的是讨论串的 id）
@@ -137,7 +144,7 @@ export default function App() {
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
       <div className="side-mask" onClick={() => setSide(false)} />
       <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings('')} onClose={() => setSide(false)} />
-      {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : <Chat onToggleDetails={() => { if (thread) { closeThread(); setDetails(true) } else setDetails(!details) }} />}
+      {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : view === 'observe' ? <Observe /> : <Chat onToggleDetails={() => { if (thread) { closeThread(); setDetails(true) } else setDetails(!details) }} />}
       {view === 'chat' && thread ? <ThreadPanel /> : details && view === 'chat' && (chat?.kind === 'group'
         ? <GroupPanel chat={chat} onClose={() => setDetails(false)} tab={tab} setTab={setTab} />
         : <BotPanel onClose={() => setDetails(false)} tab={tab} setTab={setTab} />)}

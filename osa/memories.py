@@ -227,7 +227,12 @@ async def parse_import(text: str, existing: list[str] | None = None) -> list[dic
 async def import_text(bot_id: int, text: str) -> list[dict]:
     saved = []
     known = [m["text"] for m in _list(None, "note") + _list(bot_id, "note")]
-    for item in await parse_import(text, known):
+    who = memory.WHO.set({"bot_id": bot_id})   # 拆记忆的那次模型调用记到这个 Bot 头上
+    try:
+        items = await parse_import(text, known)
+    finally:
+        memory.WHO.reset(who)
+    for item in items:
         try:
             saved.append(add(None if item["shared"] else bot_id, item["text"], "import"))
         except ValueError:

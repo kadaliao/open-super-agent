@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import approvals, dsml, i18n, library, media, memories, memory, mcp_hub, search, tasklog, tools
+from . import approvals, dsml, i18n, library, media, memories, memory, mcp_hub, providers, search, tasklog, tools
 from .computer import tools as ctools
 
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
@@ -62,6 +62,7 @@ Task.public = _public
 
 async def run_worker(task: Task, goal: str, label: str = "") -> str:
     ctools.CLAIM.set(f"{task.id}:{label}")
+    memory.WHO.set({"bot_id": task.bot_id, "chat_id": task.chat_id, "task_id": task.id})   # 任务里的模型调用（画图等）记到这个任务上
     try:
         return await _run_worker(task, goal, label)
     finally:
@@ -70,9 +71,15 @@ async def run_worker(task: Task, goal: str, label: str = "") -> str:
 
 async def _reply(task: Task, log: tasklog.Log, role: str, client, model: str, msgs: list, tools_: list | None = None) -> dict:
     """流式调用一次模型，思考和正文边收边写进任务过程。返回这一轮的 assistant 消息，可以直接接到 msgs 后面。"""
-    stream = await client.chat.completions.create(model=model, messages=msgs, stream=True,
-                                                  stream_options={"include_usage": True},
-                                                  **({"tools": tools_} if tools_ else {}), **call_kwargs(role))
+    t0, first = time.monotonic(), None
+    try:
+        stream = await client.chat.completions.create(model=model, messages=msgs, stream=True,
+                                                      stream_options={"include_usage": True},
+                                                      **({"tools": tools_} if tools_ else {}), **call_kwargs(role))
+    except Exception as e:
+        memory.record_error(role, model, providers.brief(e), task.id, bot_id=task.bot_id, chat_id=task.chat_id,
+                            ms=(time.monotonic() - t0) * 1000)
+        raise
     content, reasoning, calls, usage = "", "", {}, None
     think = text = None
     sent = 0   # 正文写进任务过程到哪了：DeepSeek 写进正文的工具调用（见 dsml.py）不写
@@ -85,30 +92,38 @@ async def _reply(task: Task, log: tasklog.Log, role: str, client, model: str, ms
             text = await log.start("text")
         await log.append(text, piece)
 
-    async for chunk in stream:
-        task.last_progress = time.time()   # 还在出字就算有进展，Watchdog 不会当成卡住
-        if chunk.usage:
-            usage = chunk.usage
-        if not chunk.choices:
-            continue
-        d = chunk.choices[0].delta
-        if rc := getattr(d, "reasoning_content", None):
-            reasoning += rc
-            if not think or think["status"] != "running":
-                think = await log.start("think")
-            await log.append(think, rc)
-        if d.content:
-            content += d.content
-            if (n := dsml.visible(content)) > sent:
-                await say(content[sent:n])
-                sent = n
-        for tc in d.tool_calls or []:
-            c = calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
-            c["id"] = tc.id or c["id"]
-            if tc.function:
-                c["name"] += tc.function.name or ""
-                c["args"] += tc.function.arguments or ""
-    memory.record_usage(role, model, usage, task.id)
+    try:
+        async for chunk in stream:
+            task.last_progress = time.time()   # 还在出字就算有进展，Watchdog 不会当成卡住
+            if chunk.usage:
+                usage = chunk.usage
+            if not chunk.choices:
+                continue
+            d = chunk.choices[0].delta
+            if first is None and (d.content or getattr(d, "reasoning_content", None) or d.tool_calls):
+                first = time.monotonic()
+            if rc := getattr(d, "reasoning_content", None):
+                reasoning += rc
+                if not think or think["status"] != "running":
+                    think = await log.start("think")
+                await log.append(think, rc)
+            if d.content:
+                content += d.content
+                if (n := dsml.visible(content)) > sent:
+                    await say(content[sent:n])
+                    sent = n
+            for tc in d.tool_calls or []:
+                c = calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                c["id"] = tc.id or c["id"]
+                if tc.function:
+                    c["name"] += tc.function.name or ""
+                    c["args"] += tc.function.arguments or ""
+    except Exception as e:
+        memory.record_error(role, model, providers.brief(e), task.id, bot_id=task.bot_id, chat_id=task.chat_id,
+                            ms=(time.monotonic() - t0) * 1000)
+        raise
+    memory.record_usage(role, model, usage, task.id, bot_id=task.bot_id, chat_id=task.chat_id,
+                        ms=(time.monotonic() - t0) * 1000, ttft=None if first is None else (first - t0) * 1000)
     content, leaked = dsml.split(content)
     if len(content) > sent:   # 压着的结尾不是标记，或者标记后面还有话
         await say(content[sent:])

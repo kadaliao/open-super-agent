@@ -7,7 +7,7 @@ import { useBack } from '../swipe'
 // 对话里的图片和附件：缩略图、文件卡片、看大图。图片存在服务端的 media 表（/api/media/<id>），
 // 文件在电脑里（/api/files/download?path=…）。附件的格式见 osa/media.py
 
-const fmtSize = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`
+export const fmtSize = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`
 export const mediaUrl = (id: string) => `/api/media/${id}`
 export const fileUrl = (path: string) => `/api/files/download?path=${encodeURIComponent(path)}`
 
@@ -97,7 +97,7 @@ const EXT_ICON: [RegExp, string][] = [
   [/\.(pptx?|key|odp)$/i, 'PPT'], [/\.(zip|rar|7z|tar|gz|tgz|bz2|xz)$/i, 'ZIP'], [/\.(mp3|m4a|wav|ogg|aac|flac)$/i, '♪'],
   [/\.(mp4|webm|mov|m4v|mkv|avi)$/i, '▶'], [/\.(png|jpe?g|gif|webp|svg|heic|bmp)$/i, 'IMG'], [/\.(md|txt|log|json|ya?ml|html?)$/i, 'TXT'],
 ]
-const extLabel = (name: string) => EXT_ICON.find(([re]) => re.test(name))?.[1] || (name.split('.').pop() || '').slice(0, 4).toUpperCase() || 'FILE'
+export const extLabel = (name: string) => EXT_ICON.find(([re]) => re.test(name))?.[1] || (name.split('.').pop() || '').slice(0, 4).toUpperCase() || 'FILE'
 
 export function FileCard({ a }: { a: Attachment }) {
   const body = <>

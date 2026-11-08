@@ -224,14 +224,14 @@ def _keyword_filter(trig: dict, text: str) -> str | None:
     return None
 
 
-async def _llm_filter(rule: str, text: str) -> tuple[bool, str]:
+async def _llm_filter(rule: str, text: str, bot_id: int | None = None) -> tuple[bool, str]:
     client, model = client_for("filter")
     resp = await client.chat.completions.create(model=model, messages=[
         {"role": "system", "content": "你是事件过滤器。根据规则判断事件是否需要处理。"
                                       '只输出 JSON：{"handle": true/false, "reason": "一句话"}' + i18n.model_hint()},
         {"role": "user", "content": f"规则：{rule}\n\n事件：\n{text[:6000]}"}],
         response_format={"type": "json_object"}, **call_kwargs("filter"))
-    memory.record_usage("filter", model, resp.usage)
+    memory.record_usage("filter", model, resp.usage, bot_id=bot_id)
     try:
         d = json.loads(resp.choices[0].message.content)
         return bool(d.get("handle")), d.get("reason", "")
@@ -295,7 +295,7 @@ async def fire(r: dict, source: str, event: str = "") -> dict:
             await _changed(r)
             return {"accepted": False, "stage": "rule", "reason": reason}
         if rule := r["trigger"].get("llm_filter"):
-            ok, reason = await _llm_filter(rule, event)
+            ok, reason = await _llm_filter(rule, event, r["bot_id"])
             if not ok:
                 _record(rid, source, "filtered", i18n.t("LLM：{reason}", reason=reason))
                 await _changed(r)

@@ -63,6 +63,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 ## Library, images and links
 
 - **Library**: finished reports and web pages are saved as pages you can pin and share by link; browse, upload and download files on the shared computer.
+- **Each Bot's library**: the Library tab in the side panel lists everything that Bot has handed you, newest first: pages, files it sent, images it drew and links in its replies. Filter by kind, search, open the original, and jump to the task that made it.
 - **Images and files**:
   - Attach files in chat: images show as thumbnails, other files as cards.
   - When the chat model can see images, the Bot looks at your image directly instead of starting a task.
@@ -73,7 +74,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 ## Routines
 
 - Each Bot has its own routines: daily / on weekdays at a set time, every N minutes, or on a webhook.
-- Pause, resume and test them; the last 20 runs are kept.
+- Pause, resume and test them; the last 20 runs are kept. Settings → Routines lists every Bot's routines with an on/off switch for each.
 - Create one by saying "every day at 9, ...".
 - Webhook events go through keyword filters, then a cheap model decides whether to act.
 
@@ -82,6 +83,12 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - **Asks before acting**: write operations show a card first (allow once / deny / always allow), with rules you manage in Settings.
 - **Vault**: secrets are stored encrypted and never enter the chat.
 - **Visible cost**: tokens and money tracked per role, task and day, with a daily budget.
+- **Insights**: the Insights page in the sidebar covers today, 7 days, 30 days or everything, for all Bots or just one:
+  - Cost (compared with the previous period), tokens and cache hits, tasks with success rate and average time, routine runs, time to first word, and error counts
+  - Daily (hourly for today) cost, tokens, tasks and model calls, stacked by Bot
+  - Needs attention: failed and interrupted tasks plus model and tool errors, with repeats merged; click to see that task's steps
+  - Tables for Bots, models (calls, errors, cost, cache hits, time to first word, tokens per second), tools (calls, errors, denials, time) and routines (runs, results, cost, with an on/off switch), a weekday × hour activity map, and recent tasks
+  - A log of individual model calls you can export as CSV
 - **Watchdog**: cancels tasks that stall, loop or exceed the budget.
 - **Login**: set `OSA_PASSWORD` to require a login. With or without it, other websites can't use your browser to reach the service. See [SECURITY.md](../SECURITY.md).
 

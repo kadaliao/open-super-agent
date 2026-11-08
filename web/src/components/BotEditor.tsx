@@ -8,6 +8,7 @@ import { RoutinesPanel, SkillsPanel } from './Routines'
 import { MemoryPanel } from './Memories'
 import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } from './Templates'
 import { TasksPanel } from './Tasks'
+import { BotLibraryPanel } from './BotLibrary'
 import { ask } from './Dialog'
 import { AvatarImageTools, botPrompt } from './AvatarTools'
 import { useBack } from '../swipe'
@@ -92,6 +93,7 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
         <div className="panel-tabs">
           <button className={tab === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>{t('电脑')}</button>
           <button className={tab === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>{tc('tab', '任务')}</button>
+          <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>{t('资料库')}</button>
           <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>{t('技能')}</button>
           <button className={tab === 'routines' ? 'on' : ''} onClick={() => setTab('routines')}>{t('定时')}</button>
           <button className={tab === 'memory' ? 'on' : ''} onClick={() => setTab('memory')}>{t('记忆')}</button>
@@ -102,6 +104,7 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
       {tab === 'computer'
         ? <div className="panel-body"><ComputerPanel key={bot.id} botId={bot.id} /></div>
         : tab === 'tasks' ? <TasksPanel key={bot.id} botId={bot.id} />
+        : tab === 'library' ? <div className="panel-body"><BotLibraryPanel key={bot.id} bot={bot} /></div>
         : tab === 'skills' ? <div className="panel-body"><SkillsPanel key={bot.id} bot={bot} /></div>
         : tab === 'routines' ? <div className="panel-body"><RoutinesPanel key={bot.id} bot={bot} /></div>
         : tab === 'memory' ? <div className="panel-body"><MemoryPanel key={bot.id} bot={bot} /></div>

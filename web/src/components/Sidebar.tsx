@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MouseEvent } from 'react'
-import { openApps, openChat, openLibrary, pinChat, useStore } from '../store'
+import { openApps, openChat, openLibrary, openObserve, pinChat, useStore } from '../store'
 import { t } from '../i18n'
 import type { Chat } from '../types'
 import BotAvatar from './BotAvatar'
@@ -87,6 +87,9 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
       </button>
       <button className={'side-nav' + (view === 'apps' ? ' active' : '')} onClick={() => { openApps(); onClose() }}>
         <span className="side-nav-icon">⊞</span>{t('应用')}
+      </button>
+      <button className={'side-nav' + (view === 'observe' ? ' active' : '')} onClick={() => { openObserve(); onClose() }}>
+        <span className="side-nav-icon"><Icon name="activity" size={16} /></span>{t('观测')}
       </button>
       {pins.length > 0 && (
         <div className="pin-row">

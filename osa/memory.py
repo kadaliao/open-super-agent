@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 import time
+from contextvars import ContextVar
 from .config import CFG, DB_PATH
 
 db_path = DB_PATH
@@ -28,11 +29,39 @@ conn.execute("create index if not exists messages_chat on messages(chat_id, id)"
 conn.execute("""create table if not exists llm_usage(ts real, role text, model text, task_id integer,
   cache_hit integer, cache_miss integer, output integer, cost real)""")
 conn.execute("create index if not exists llm_usage_task on llm_usage(task_id)")
+# 每次模型调用（观测页、费用、每日预算都从这里算）。比 llm_usage 多记：bot_id / chat_id（谁在哪个对话里调的）、
+# provider、ms（整次用时）、ttft（多久出第一个字，毫秒）、err（失败的原因：失败的也记一行，token 和费用是 0）。
+# llm_usage 是旧版本的表，原样留着不加列：旧版本按位置往里插 8 个值，加了列就插不进去，退回旧版本会每次回复都出错。
+# 旧版本记的（升级前的、退回旧版本那段时间的）启动时搬过来，Bot 从任务找回；搬到哪儿记在 settings 的 llm_usage_moved
+conn.execute("""create table if not exists llm_calls(id integer primary key, ts real, role text, model text, task_id integer,
+  cache_hit integer default 0, cache_miss integer default 0, output integer default 0, cost real default 0,
+  bot_id integer, chat_id integer, provider text, ms integer, ttft integer, err text)""")
+conn.execute("create index if not exists llm_calls_ts on llm_calls(ts)")
+conn.execute("create index if not exists llm_calls_task on llm_calls(task_id)")
+
+
+def _move_legacy_usage():
+    r = conn.execute("select value from settings where key='llm_usage_moved'").fetchone()
+    done = json.loads(r[0]) if r else -1.0
+    last = conn.execute("select max(ts) from llm_usage where ts > ?", (done,)).fetchone()[0]
+    if last is None:
+        return
+    conn.execute("""insert into llm_calls(ts, role, model, task_id, cache_hit, cache_miss, output, cost, bot_id, chat_id)
+        select u.ts, u.role, u.model, u.task_id, u.cache_hit, u.cache_miss, u.output, u.cost, m.bot_id, m.chat_id
+        from llm_usage u left join messages m on m.id = u.task_id where u.ts > ? and u.ts <= ? order by u.ts""", (done, last))
+    conn.execute("insert or replace into settings values('llm_usage_moved', ?)", (json.dumps(last),))
+
+
+_move_legacy_usage()
 # 后台任务的过程（每一步想了什么、调了什么工具、拿到什么），读写在 tasklog.py
 conn.execute("""create table if not exists task_steps(
   id integer primary key, task_id integer, ts real, worker text default '', kind text, title text default '',
   body text default '', status text default 'done', dur real default 0, detail text default '')""")
 conn.execute("create index if not exists task_steps_task on task_steps(task_id, id)")
+# 工具那一步的标题会被进度说明盖掉（“排队等电脑”“点击……”），工具名另存一列给观测页统计；旧记录用标题凑合
+if "name" not in {r[1] for r in conn.execute("pragma table_info(task_steps)")}:
+    conn.execute("alter table task_steps add column name text default ''")
+    conn.execute("update task_steps set name=title where kind='tool'")
 conn.commit()
 
 
@@ -242,26 +271,60 @@ def _is_peak(ts: float) -> bool:
     return any(a <= hm < b for a, b in (r.split("-") for r in CFG["pricing"]["peak_hours"]))
 
 
-def record_usage(role: str, model: str, usage, task_id: int | None = None, provider: str | None = None):
-    """记录一次模型调用的 token 和费用。usage 是 OpenAI 格式的 usage 对象；provider 不给就按角色的配置。"""
-    if usage is None:
+# 这次模型调用是谁、在哪个对话里发起的：Router 说话、Worker 做任务时设上，调用记录（llm_calls）据此记到 Bot 头上。
+# 画图这类经过好几层才调模型的，也能从这里认出是哪个 Bot（asyncio 新开的任务会带着它）
+WHO: ContextVar[dict | None] = ContextVar("osa_usage_who", default=None)
+
+
+def add_usage(role: str, model: str, *, task_id: int | None = None, provider: str | None = None,
+              bot_id: int | None = None, chat_id: int | None = None, hit: int = 0, miss: int = 0, out: int = 0,
+              cost: float = 0.0, ms: int | None = None, ttft: int | None = None, err: str = ""):
+    """往 llm_calls 里记一行。bot_id / chat_id 不给就看 WHO，再不行从任务找回 Bot。"""
+    who = WHO.get() or {}
+    task_id = task_id if task_id is not None else who.get("task_id")
+    bot_id = bot_id if bot_id is not None else who.get("bot_id")
+    chat_id = chat_id if chat_id is not None else who.get("chat_id")
+    if bot_id is None and task_id is not None:
+        r = conn.execute("select bot_id, chat_id from messages where id=?", (task_id,)).fetchone()
+        if r:
+            bot_id, chat_id = r[0], chat_id if chat_id is not None else r[1]
+    conn.execute("""insert into llm_calls(ts, role, model, task_id, cache_hit, cache_miss, output, cost,
+        bot_id, chat_id, provider, ms, ttft, err) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 (time.time(), role, model, task_id, hit, miss, out, cost, bot_id, chat_id, provider,
+                  None if ms is None else int(ms), None if ttft is None else int(ttft), err or None))
+    conn.commit()
+
+
+def record_usage(role: str, model: str, usage, task_id: int | None = None, provider: str | None = None,
+                 bot_id: int | None = None, chat_id: int | None = None, ms: float | None = None, ttft: float | None = None):
+    """记录一次模型调用的 token 和费用。usage 是 OpenAI 格式的 usage 对象；provider 不给就按角色的配置。
+    ms / ttft：整次用时、第一个字出来的时间（毫秒），知道的话给。
+    服务没返回 usage 时：知道用时的（流式调用）照样记一次调用，token 和费用按 0；否则不记。"""
+    if usage is None and ms is None:
         return
-    prompt = usage.prompt_tokens or 0
+    prompt = (usage.prompt_tokens or 0) if usage else 0
     hit = getattr(usage, "prompt_cache_hit_tokens", None)
     if hit is None:  # 非 DeepSeek 接口：尝试 OpenAI 的 cached_tokens 字段
         details = getattr(usage, "prompt_tokens_details", None)
         hit = getattr(details, "cached_tokens", 0) or 0
-    miss, out = prompt - hit, usage.completion_tokens or 0
-    now = time.time()
+    miss, out = prompt - hit, (usage.completion_tokens or 0) if usage else 0
     from . import prices
     provider = provider or (CFG["roles"].get(role) or {}).get("provider")
-    cost = prices.cost(provider, model, hit, miss, out, _is_peak(now))
-    conn.execute("insert into llm_usage values(?,?,?,?,?,?,?,?)", (now, role, model, task_id, hit, miss, out, cost))
-    conn.commit()
+    cost = prices.cost(provider, model, hit, miss, out, _is_peak(time.time()))
+    add_usage(role, model, task_id=task_id, provider=provider, bot_id=bot_id, chat_id=chat_id,
+              hit=hit, miss=miss, out=out, cost=cost, ms=ms, ttft=ttft)
+
+
+def record_error(role: str, model: str, error: str, task_id: int | None = None, provider: str | None = None,
+                 bot_id: int | None = None, chat_id: int | None = None, ms: float | None = None):
+    """一次没成功的模型调用（连不上、报错、超时）：记下原因，观测页据此算出错率。"""
+    provider = provider or (CFG["roles"].get(role) or {}).get("provider")
+    add_usage(role, model, task_id=task_id, provider=provider, bot_id=bot_id, chat_id=chat_id, ms=ms,
+              err=(error or "error")[:300])
 
 
 def tokens_today() -> int:
-    return conn.execute("select coalesce(sum(cache_hit+cache_miss+output),0) from llm_usage where ts > ?",
+    return conn.execute("select coalesce(sum(cache_hit+cache_miss+output),0) from llm_calls where ts > ?",
                         (time.time() - 86400,)).fetchone()[0]
 
 
@@ -272,16 +335,16 @@ def usage_stats() -> dict:
 
     def total(since):
         r = conn.execute("""select coalesce(sum(cost),0), coalesce(sum(cache_hit),0), coalesce(sum(cache_miss),0),
-            coalesce(sum(output),0), count(*) from llm_usage where ts >= ?""", (since,)).fetchone()
+            coalesce(sum(output),0), count(*) from llm_calls where ts >= ? and err is null""", (since,)).fetchone()
         return {"cost": round(r[0], 4), "cache_hit": r[1], "cache_miss": r[2], "output": r[3], "calls": r[4],
                 "cache_rate": round(r[1] / (r[1] + r[2]), 3) if r[1] + r[2] else 0}
 
-    by_role = conn.execute("""select role, model, sum(cost), sum(cache_hit+cache_miss+output), count(*) from llm_usage
-        where ts >= ? group by role, model order by 3 desc""", (now - 30 * 86400,)).fetchall()
+    by_role = conn.execute("""select role, model, sum(cost), sum(cache_hit+cache_miss+output), count(*) from llm_calls
+        where ts >= ? and err is null group by role, model order by 3 desc""", (now - 30 * 86400,)).fetchall()
     by_task = conn.execute("""select u.task_id, sum(u.cost), sum(u.cache_hit+u.cache_miss+u.output), m.content
-        from llm_usage u left join messages m on m.id = u.task_id where u.task_id is not null
+        from llm_calls u left join messages m on m.id = u.task_id where u.task_id is not null
         group by u.task_id order by u.task_id desc limit 20""").fetchall()
-    by_day = conn.execute("""select date(ts, 'unixepoch', 'localtime') d, sum(cost) from llm_usage
+    by_day = conn.execute("""select date(ts, 'unixepoch', 'localtime') d, sum(cost) from llm_calls
         where ts >= ? group by d order by d""", (now - 30 * 86400,)).fetchall()
     return {
         "currency": CFG["pricing"]["currency"],

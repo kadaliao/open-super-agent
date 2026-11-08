@@ -109,8 +109,9 @@ web/src/
 | `avatars` | 头像图片（256 像素的 PNG / JPEG / WebP），`id` 是内容哈希，`/avatars/<id>` 不登录也能看（分享页要用）；没人用的一天后清掉 |
 | `messages` | 所有消息。`role` 是 user / assistant / task；`meta`（JSON）里放 reasoning、任务编号、卡片类型等；`attachments` 是附件（见下面 `media`） |
 | `media` | 对话里的图片（PNG / JPEG / WebP / GIF，浏览器缩到 1600 像素左右），`id` 是内容哈希，带文件名、大小、宽高；`/api/media/<id>` 要登录。消息的 `meta.attachments` 引用它：`[{name, size, path?, media?, mime?, w?, h?}]`，`path` 是电脑里的文件。没人引用的一天后清掉 |
-| `llm_usage` | 每次模型调用的 token 数和费用；画图记 `role=image`、0 token，费用按 `pricing.images` 的每张价格 |
-| `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；只留最近 `memory.task_log_days` 天 |
+| `llm_calls` | 每次模型调用：token 数、费用、哪个 Bot 在哪个对话或任务里调的（`bot_id`、`chat_id`、`task_id`）、服务商、整次用时 `ms`、第一个字多久出来 `ttft`（毫秒）；失败的也记一行，`err` 是原因、token 和费用是 0。画图记 `role=image`、0 token，费用按 `pricing.images` 的每张价格。费用、每日预算和观测页都从这里算 |
+| `llm_usage` | 旧版本的调用记录，原样留着不加列（旧版本按位置插 8 个值，加列后退回旧版本会出错）。启动时把新出现的行搬进 `llm_calls`，搬到哪儿记在 `settings` 的 `llm_usage_moved` |
+| `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；工具那一步的工具名在 `name`（标题会被进度说明盖掉）；只留最近 `memory.task_log_days` 天 |
 | `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |

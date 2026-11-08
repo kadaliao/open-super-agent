@@ -75,13 +75,13 @@ async def test_ask_then_draw_then_always(llm, events, make_bot, sf):
     assert find(cid, role="assistant", text="请在卡片上确认")   # Router 不干等，这一轮照常说完
     assert not sf                                              # 没确认之前不画
 
-    before = memory.conn.execute("select count(*) from llm_usage where role='image'").fetchone()[0]
+    before = memory.conn.execute("select count(*) from llm_calls where role='image'").fetchone()[0]
     approvals.resolve(card["id"], True, always=True)
     img = (await until(lambda: find(cid, kind="image"), what="画好的图"))[0]
     assert img["meta"]["prompt"] == "一只戴墨镜的猫" and img["meta"]["model"] == "Kwai-Kolors/Kolors" and img["meta"]["price"] == 0
     att = img["meta"]["attachments"][0]
     assert media.get(att["media"])[1] == PNG and (att["w"], att["h"]) == (8, 8)
-    assert memory.conn.execute("select count(*) from llm_usage where role='image'").fetchone()[0] == before + 1
+    assert memory.conn.execute("select count(*) from llm_calls where role='image'").fetchone()[0] == before + 1
     await settle()
 
     # 点过“总是允许”：下一次直接画，工具说已画好

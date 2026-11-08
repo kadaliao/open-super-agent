@@ -31,7 +31,7 @@ type State = {
   categories: [string, string][]     // 应用市场的分类：[键, 名字]，按显示顺序
   oauthCallback: string              // 登录授权的回调地址：自己建 OAuth 客户端时要填到对方那里
   skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
-  view: 'chat' | 'library' | 'apps'  // 主区显示对话、资料库还是应用市场
+  view: 'chat' | 'library' | 'apps' | 'observe'  // 主区显示对话、资料库、应用市场还是观测页
   libraryPage: number | null         // 资料库里打开的页面
   teach: Teach | null                // 正在“演示一遍”的录制
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
@@ -255,6 +255,10 @@ export function showTask(id: number | null) {
 
 export function openLibrary(pageId: number | null = null) {
   set({ view: 'library', libraryPage: pageId })
+}
+
+export function openObserve() {
+  set({ view: 'observe' })
 }
 
 export function openApps() {

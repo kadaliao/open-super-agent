@@ -6,7 +6,7 @@
 - 没人用的图片放一天后清掉：刚传上来、还没点保存的不能删。
 - 生图走兼容 OpenAI 的 /images/generations。硅基流动的参数名和返回格式不一样（image_size、images[].url），单独处理。
 - 用哪个模型画（settings 表的 image_model）和对话里画图共用：设置 → 模型 → 画图 里选，生成头像时换了也记下来。
-  以前叫 avatar_model，读不到新的就读旧的。每画一张在 llm_usage 记一行（role=image，0 token，费用按 pricing.images）。
+  以前叫 avatar_model，读不到新的就读旧的。每画一张在 llm_calls 记一行（role=image，0 token，费用按 pricing.images）。
 """
 import base64
 import hashlib
@@ -151,9 +151,8 @@ def _error(r: httpx.Response) -> str:
 
 def record(provider: str, model: str):
     """画了一张：费用统计里记一行（0 token，费用按每张的价格，不知道的按 0）。"""
-    conn.execute("insert into llm_usage values(?,?,?,?,?,?,?,?)",
-                 (time.time(), "image", model, None, 0, 0, 0, prices.image_price(provider, model) or 0.0))
-    conn.commit()
+    from . import memory
+    memory.add_usage("image", model, provider=provider, cost=prices.image_price(provider, model) or 0.0)
 
 
 async def generate(prompt: str, provider: str, model: str) -> str:

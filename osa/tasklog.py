@@ -53,9 +53,10 @@ class Log:
 
     async def start(self, kind: str, title: str = "", detail: str = "", status: str = "running") -> dict:
         now = time.time()
-        sid = conn.execute("insert into task_steps(task_id, ts, worker, kind, title, body, status, dur, detail) "
-                           "values(?,?,?,?,?,?,?,?,?)",
-                           (self.task.id, now, self.worker, kind, title, "", status, 0, detail)).lastrowid
+        sid = conn.execute("insert into task_steps(task_id, ts, worker, kind, title, body, status, dur, detail, name) "
+                           "values(?,?,?,?,?,?,?,?,?,?)",
+                           (self.task.id, now, self.worker, kind, title, "", status, 0, detail,
+                            title if kind == "tool" else "")).lastrowid
         conn.commit()
         s = {"id": sid, "task_id": self.task.id, "ts": now, "worker": self.worker, "kind": kind, "title": title,
              "body": "", "status": status, "dur": 0, "detail": detail, "_sent": 0, "_t": now}
@@ -150,7 +151,7 @@ def detail(task_id: int) -> dict | None:
         t["finished"] = res[2]
         t["elapsed"] = t["elapsed"] or json.loads(res[1] or "{}").get("elapsed")
     cost, tokens = conn.execute("select coalesce(sum(cost), 0), coalesce(sum(cache_hit+cache_miss+output), 0) "
-                                "from llm_usage where task_id=?", (task_id,)).fetchone()
+                                "from llm_calls where task_id=?", (task_id,)).fetchone()
     t |= {"cost": round(cost, 4), "tokens": tokens, "currency": CFG["pricing"]["currency"]}
     return t
 

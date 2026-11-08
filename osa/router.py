@@ -303,6 +303,7 @@ class Router:
         async with self.lock:
             self.turn = turn or {}
             owed = self.turn.get("reply")
+            who = memory.WHO.set({"bot_id": self.bot_id, "chat_id": chat_id})   # 这一轮的模型调用记到这个 Bot 头上
             try:
                 try:
                     shown = await self._think(bots.chat(chat_id))
@@ -317,6 +318,7 @@ class Router:
                     await dm.answer(self.bot_id, owed, shown or i18n.t("（没有回复内容）"), chat_id)
             finally:
                 self.turn = {}
+                memory.WHO.reset(who)
                 await self._release_desk()
 
     async def _release_desk(self):
@@ -334,38 +336,46 @@ class Router:
             return client.chat.completions.create(
                 model=model, messages=msgs, stream=True, **({"tools": tools} if use_tools else {}),
                 stream_options={"include_usage": True}, **call_kwargs("router"))
-        try:
-            stream = await create()
-        except openai.BadRequestError:
-            # 以为能看图、服务却不收图片：这一轮把图片换成文字再试一次，记下这个模型不能看图，免得之后每轮都报错
-            if not media.strip_images(msgs):
-                raise
-            r = CFG["roles"]["router"]
-            media.remember_test(r["provider"], r["model"], "no")
-            stream = await create()
+        t0, first = time.monotonic(), None
         content, reasoning, calls, usage = "", "", {}, None
         sent = 0   # 正文推送到哪了：DeepSeek 写进正文的工具调用（见 dsml.py）不推送
-        async for chunk in stream:
-            if chunk.usage:
-                usage = chunk.usage
-            if not chunk.choices:
-                continue
-            d = chunk.choices[0].delta
-            if rc := getattr(d, "reasoning_content", None):
-                reasoning += rc
-                await self.emit({"type": "stream", "sid": sid, "thinking": rc}, cid)
-            if d.content:
-                content += d.content
-                if (n := dsml.visible(content)) > sent:
-                    await self.emit({"type": "stream", "sid": sid, "delta": content[sent:n]}, cid)
-                    sent = n
-            for tc in d.tool_calls or []:
-                c = calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
-                c["id"] = tc.id or c["id"]
-                if tc.function:
-                    c["name"] += tc.function.name or ""
-                    c["args"] += tc.function.arguments or ""
-        memory.record_usage("router", model, usage)
+        try:
+            try:
+                stream = await create()
+            except openai.BadRequestError:
+                # 以为能看图、服务却不收图片：这一轮把图片换成文字再试一次，记下这个模型不能看图，免得之后每轮都报错
+                if not media.strip_images(msgs):
+                    raise
+                r = CFG["roles"]["router"]
+                media.remember_test(r["provider"], r["model"], "no")
+                stream = await create()
+            async for chunk in stream:
+                if chunk.usage:
+                    usage = chunk.usage
+                if not chunk.choices:
+                    continue
+                d = chunk.choices[0].delta
+                if first is None and (d.content or getattr(d, "reasoning_content", None) or d.tool_calls):
+                    first = time.monotonic()   # 第一个字（或思考、工具调用）出来的时间；只带角色的空块不算
+                if rc := getattr(d, "reasoning_content", None):
+                    reasoning += rc
+                    await self.emit({"type": "stream", "sid": sid, "thinking": rc}, cid)
+                if d.content:
+                    content += d.content
+                    if (n := dsml.visible(content)) > sent:
+                        await self.emit({"type": "stream", "sid": sid, "delta": content[sent:n]}, cid)
+                        sent = n
+                for tc in d.tool_calls or []:
+                    c = calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                    c["id"] = tc.id or c["id"]
+                    if tc.function:
+                        c["name"] += tc.function.name or ""
+                        c["args"] += tc.function.arguments or ""
+        except Exception as e:
+            memory.record_error("router", model, providers.brief(e), ms=(time.monotonic() - t0) * 1000)
+            raise
+        memory.record_usage("router", model, usage, ms=(time.monotonic() - t0) * 1000,
+                            ttft=None if first is None else (first - t0) * 1000)
         content, leaked = dsml.split(content)
         if len(content) > sent:   # 压着的结尾不是标记，或者标记后面还有话
             await self.emit({"type": "stream", "sid": sid, "delta": content[sent:]}, cid)
