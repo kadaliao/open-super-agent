@@ -2,10 +2,10 @@
 
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.8.0] - 2026-11-08
 ### 安全
 - **服务器锁**：`config.yaml` 新增 `security.local_exec`（默认 `true`，和以前一样）。设成 `false` 后，网页上不能再让服务器执行任意命令：
-  电脑不能选“本机”、本机终端打不开；不能添加自定义启动命令的应用，也不能改应用的命令、参数、环境变量（比如塞个 `NODE_OPTIONS`）；
+  不能把服务器自己当电脑用（`backend: host`）、本机终端打不开；不能添加自定义启动命令的应用，也不能改应用的命令、参数、环境变量（比如塞个 `NODE_OPTIONS`）；
   “文件夹”应用只能访问工作文件夹；应用配置不能引用服务的环境变量。应用市场里的应用照常能用。部署到公网服务器时请打开，见 SECURITY.md
 - **演示模式**：`security.demo: true`，给登录密码公开出去的演示服务器。另外关掉在服务器上运行程序的应用和自定义应用、本机或内网的模型服务地址、
   改用量上限、备份的导出和恢复
@@ -351,7 +351,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.7.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/kadaliao/open-super-agent/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kadaliao/open-super-agent/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kadaliao/open-super-agent/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kadaliao/open-super-agent/compare/v0.5.0...v0.6.0

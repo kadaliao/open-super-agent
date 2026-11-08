@@ -23,6 +23,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 - **Chats and delegates**: each Bot has its own persona, memory and conversation. Long jobs run as background tasks while you keep chatting; put several Bots in a group, and one hands its research to another to write up.
 - **A computer you can watch and take over**: Bots browse, fill in forms and download files on the computer while you watch live; for captchas and logins, they ask you to step in. Several tasks run at once, each in its own browser window, without queueing.
+  The computer can be the Bots' own, or simply your Mac: once you grant the permissions, they use the mouse and keyboard in apps like WeChat, Finder and Notes, and stop as soon as you move the mouse.
 - **Connects to the apps you use**: 40 apps in the market, including Notion, Gmail, GitHub, Feishu, DingTalk and Tencent Docs, connected with a login or a token; any MCP server works too.
 - **Asks before acting**: sending mail, submitting forms and similar actions show a card first; secrets are encrypted in a vault and never enter the chat.
 - **Any model, with visible cost**: DeepSeek, Kimi, Zhipu, OpenAI, Ollama on your own machine, or any OpenAI-compatible endpoint. Spend is tracked per task and per day, with a daily budget.
@@ -91,7 +92,7 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 
 - [Deploy with Docker Compose](docs/docker.md)
 - [Configuration](docs/configuration.md): models, limits and prices, the computer, apps, approvals and the vault, routines, push, remote access
-- [Desktop app](docs/desktop.md): running on your computer or connecting to your server
+- [Desktop app](docs/desktop.md): running on your computer or connecting to your server, and letting the server's Bots use this Mac
 - [iPhone app (TestFlight)](docs/mobile.md): QR pairing, how pushes reach the phone, what the push relay can see, development
 - [Chat apps](docs/channels.md): connecting Telegram, Feishu/Lark, DingTalk, WeCom and Discord
 - [Adding an app to the market](docs/apps.md)
