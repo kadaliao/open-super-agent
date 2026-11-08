@@ -9,6 +9,7 @@ import Backup from './Backup'
 import BotAvatar from './BotAvatar'
 import { describe, STATUS, when } from './Routines'
 import Channels from './Channels'
+import Plugins from './Plugins'
 import ModelSettings, { ROLE_NAMES } from './ModelSettings'
 import { priceSource, priceText, ToastHost, useToast } from './settingsKit'
 import { ask } from './Dialog'
@@ -20,6 +21,7 @@ const GROUPS: { name: string; items: [string, string, string][] }[] = [
   { name: t('安全'), items: [['rules', t('确认规则'), 'shield'], ['vault', t('保险库'), 'key']] },
   { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell'], ['mobile', t('手机 App'), 'smartphone']] },
   { name: t('数据'), items: [['triggers', t('定时任务'), 'clock'], ['backup', t('备份与迁移'), 'archive']] },
+  { name: t('扩展'), items: [['plugins', t('插件'), 'puzzle']] },
 ]
 const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k, v])))
 const DESC: Record<string, string> = {
@@ -27,6 +29,7 @@ const DESC: Record<string, string> = {
   usage: t('花了多少钱：按天、按用途、按任务统计。'),
   limits: t('防止任务跑太久、花太多。改完离开输入框就保存。'),
   triggers: t('所有 Bot 的定时任务，在这里就能开关。'),
+  plugins: t('在服务里运行的 Python 代码：给 Bot 加工具，在有消息、任务做完时做点事。写法见 docs/plugins.md。'),
 }
 const LIMIT_NAMES: Record<string, [string, string]> = {
   daily_token_budget: [t('每天最多用多少 token'), t('超过以后不再派新的任务，第二天恢复')],
@@ -80,6 +83,7 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
               {title === 'notify' && (desktop?.push ? <PhoneNotifications /> : <Notifications />)}
               {title === 'mobile' && <MobileApp />}
               {title === 'backup' && <Backup />}
+              {title === 'plugins' && <Plugins />}
             </div>
           </div>
         </ToastHost>

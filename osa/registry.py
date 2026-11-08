@@ -13,6 +13,7 @@
 还没迁过来的：电脑工具（computer/tools.py，和任务、窗口、控制权绑得紧，自成一套）、Router 自己的几个（dispatch、cancel_task 这类
 要改 Router 状态的）、botadmin（要弹卡片、叫醒 Bot）。它们仍由 Router / Worker 直接处理，注册表是最后一道。
 """
+import asyncio
 import inspect
 import logging
 from dataclasses import dataclass, field
@@ -76,9 +77,10 @@ class Context:
         return dispose
 
     def tool(self, tool: Tool) -> Callable[[], None]:
+        """同名工具已经由别的 Context 注册时报错，不覆盖：覆盖了再撤销，原来那个就没了（插件盖掉内置的 save_page 再卸载）。"""
         tool.owner = self.name
         if (old := TOOLS.get(tool.name)) and old.owner != self.name:
-            log.warning("工具 %s 已由 %s 注册，被 %s 覆盖", tool.name, old.owner, self.name)
+            raise ValueError(f"工具 {tool.name} 已经由 {old.owner} 注册了，换个名字")
         TOOLS[tool.name] = tool
 
         def undo():
@@ -91,6 +93,12 @@ class Context:
         async def run(call: Call):
             return await fn(**call.args)
         return self.tool(Tool(name, schema, run, **kw))
+
+    def task(self, coro) -> "asyncio.Task":
+        """在后台跑一个协程（轮询、定时之类），dispose 时取消。"""
+        t = asyncio.create_task(coro)
+        self.effect(lambda: t.cancel() if not t.done() else None)
+        return t
 
     def on(self, event: str, fn: Callable) -> Callable[[], None]:
         _LISTENERS.setdefault(event, []).append(fn)
@@ -130,6 +138,18 @@ def by_group() -> dict[str, list[Tool]]:
         if t.group:
             out.setdefault(t.group, []).append(t)
     return out
+
+
+_firing: set = set()
+
+
+def fire(event: str, **kw):
+    """发事件但不等监听器跑完：用在对话、任务这些不能被插件拖慢的地方。"""
+    if not _LISTENERS.get(event):
+        return
+    t = asyncio.get_running_loop().create_task(emit(event, **kw))
+    _firing.add(t)
+    t.add_done_callback(_firing.discard)
 
 
 async def emit(event: str, **kw):

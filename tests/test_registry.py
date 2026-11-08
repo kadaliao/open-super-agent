@@ -1,4 +1,5 @@
 """工具注册表（osa/registry.py）：注册和撤销、按场合和环境挑工具、事件；Router 和 Worker 都从它找工具；应用断开时工具一起撤销。"""
+import asyncio
 import pytest
 from conftest import find, until
 from fakellm import Call
@@ -25,15 +26,34 @@ def test_register_and_dispose():
     names = lambda scope, env=None: [s["function"]["name"] for s in registry.schemas(scope, env)]
     assert "t1" in names(WORKER) and "t1" not in names(ROUTER)
     assert "t2" in names(ROUTER, {"pages": True}) and "t2" not in names(ROUTER)
-    # 另一个 Context 覆盖同名工具；它撤销时，原来的那个不会被误删
+    # 别的 Context 不能覆盖同名工具（覆盖后再撤销，原来那个就没了）
     ctx2 = Context("p2")
-    ctx2.simple("t1", _schema("t1"), _echo)
-    assert registry.get("t1").owner == "p2"
+    with pytest.raises(ValueError, match="已经由 p1 注册"):
+        ctx2.simple("t1", _schema("t1"), _echo)
+    assert registry.get("t1").owner == "p1"
     ctx.dispose()
-    assert registry.get("t1").owner == "p2" and registry.get("t2") is None
+    assert registry.get("t1") is None and registry.get("t2") is None
+    ctx2.simple("t1", _schema("t1"), _echo)   # 撤销之后名字空出来了
+    assert registry.get("t1").owner == "p2"
     ctx2.dispose()
-    assert registry.get("t1") is None
     assert registry._LISTENERS.get("ping") == []
+
+
+async def test_fire_and_task():
+    ctx = Context("bg")
+    got = []
+    ctx.on("y", lambda **kw: got.append(kw))
+    registry.fire("y", n=1)
+    registry.fire("nobody_listens", n=2)
+    await asyncio.sleep(0.01)
+    assert got == [{"n": 1}]
+
+    async def forever():
+        await asyncio.sleep(3600)
+    t = ctx.task(forever())
+    ctx.dispose()
+    await asyncio.sleep(0)
+    assert t.cancelled() or t.cancelling()
 
 
 async def test_emit_runs_sync_and_async_listeners():

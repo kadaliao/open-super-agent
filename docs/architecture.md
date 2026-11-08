@@ -71,6 +71,7 @@ osa/
     apps/          每个应用一份清单（<名字>.yaml），格式见 docs/apps.md；本机还会读 data/apps/
     checks.py      添加应用前的检查（邮箱先试登录一次）
   registry.py      工具注册表和插件上下文：Tool（schema、run、在哪些场合能用、要不要确认）、Context（注册返回 disposer，dispose 反向撤销）、事件 on / emit
+  plugins.py       插件：data/plugins 里的 Python 代码，ast 读说明不执行、启用记 sha256、加载 / 卸载 / 重新加载、插件市场（osa/catalog/plugins）
   builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、search_memory
   tools.py         内置的网页工具：web_search、fetch_url 的实现
   unfurl.py        链接卡片：服务器取网页的标题、摘要、配图（og:*），不抓内网，缓存在 unfurls 表；YouTube 走 oEmbed
@@ -249,6 +250,13 @@ web/src/
 - 还没迁的：电脑工具（`computer/tools.py`，和任务、窗口、控制权绑得紧）、Router 自己的几个（dispatch、cancel_task 这类改 Router 状态的）、
   botadmin（弹卡片、叫醒 Bot）。Router / Worker 先处理这些，注册表是最后一道。
 - 前端对应的是 `web/src/cards.tsx`：按消息的 `meta.kind` 注册卡片，`registerCard` 返回撤销函数，内置的在 `Chat.tsx` 末尾注册。
+
+### 插件
+- 写法见 [插件](plugins.md)，设计见 [计划文档](plans/applets.md#第-4-步的设计插件)。插件拿到的 `PluginContext` 就是 `registry.Context`
+  加上设置、数据目录、日志、读保险库；停用、删除、重新加载都是 `dispose()`。
+- **启用记 sha256，加载时比对**，不一样就不加载：这是“Bot 不能让自己写的代码进进程”的那道闸，改插件相关代码时别绕过它。
+  只有设置页（用户）能启用，不要给 Bot 加管插件的工具。服务器锁、演示服务器上整个关掉。
+- `registry.fire` 发的事件不等监听器（`user_message`、`task_done`），在对话、任务这种不能被插件拖慢的地方用它；要等结果的才用 `emit`。
 
 ### 应用自带的界面（MCP Apps）
 - 设计见 [小应用计划](plans/applets.md#第-3-步的设计mcp-apps-宿主)。工具的 `_meta.ui.resourceUri` 指向 `ui://` 资源；

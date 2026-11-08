@@ -730,6 +730,7 @@ class Router:
                        status=task.status, elapsed=round(time.time() - task.started),
                        **({"attachments": task.files} if task.files else {}), **({"apps": task.apps} if task.apps else {}))
         await self.emit({"type": "task", "task": task.public()}, task.chat_id)
+        registry.fire("task_done", task=task.public(), bot=self.bot, result=task.result)   # 插件能订阅；不等它们
         if task.handoff:
             from . import groups
             asyncio.create_task(groups.after_task(task))

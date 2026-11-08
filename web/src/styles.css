@@ -1162,3 +1162,17 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 .page-card { display: flex; gap: 10px; align-items: center; margin: 8px 0; max-width: 540px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); text-align: left; }
 .page-card:hover { border-color: var(--fg3); }
 .page-card .lib-main b { font-size: 14px; }
+
+/* 设置 → 插件（Plugins.tsx） */
+.plugin-row { align-items: flex-start; }
+.plugin-row > span { min-width: 0; }
+.plugin-row b .chip { margin-left: 6px; vertical-align: 1px; font-weight: 500; }
+.plugin-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; font-size: 13px; }
+.plugin-actions .link-btn.danger { color: var(--bad); }
+.plugin-src, .plugin-err { margin: 8px 0 0; max-height: 360px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--bg2);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+.plugin-err { color: var(--bad); white-space: pre-wrap; max-height: 160px; }
+.plugin-cfg { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.plugin-cfg textarea { width: 100%; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.plugin-cfg .btn + .btn { margin-left: 8px; }
+.plugin-row > .chip, .plugin-row > .btn { flex: none; align-self: center; }
