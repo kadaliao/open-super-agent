@@ -13,9 +13,9 @@
 
 简体中文 · [English](README.en.md)
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="演示：群聊里 Scout 在电脑上查资料后交给 Quill 写介绍；演示一遍生成技能；资料库" width="860"></a>
+<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="演示：让 Nova 在右边打开的文本编辑里写一份周末出游清单。它先弹卡片问你能不能操作整台电脑，同意后点进文本编辑把清单写进去，电脑面板上实时看得到屏幕" width="860"></a>
 
-<sub>群聊交接 → 演示一遍生成技能 → 资料库（等待模型的部分已加速）· <a href="docs/images/demo.mp4">看高清版 MP4</a></sub>
+<sub>Bot 用你的 Mac：先问你 → 点进文本编辑写清单 → 回复（等待模型的部分已加速）· <a href="docs/images/demo.mp4">看高清版 MP4</a></sub>
 
 </div>
 
@@ -37,19 +37,19 @@
 
 | 用法 | 说明 |
 |---|---|
-| 💻 **macOS 桌面 App** | 下载 dmg 打开就能用：约 43 MB，自带运行环境，不用装 Docker 和 Python，Bot 直接用这台电脑：浏览器，给了权限还有屏幕和鼠标键盘。关掉窗口后在菜单栏接着跑；也能连到你的服务器，让服务器上的 Bot 用这台 Mac。见 [桌面 App](docs/desktop.md) |
+| 💻 **macOS 桌面 App** | 下载 dmg 打开就能用：约 45 MB，自带运行环境，不用装 Docker 和 Python，Bot 直接用这台电脑：浏览器，给了权限还有屏幕和鼠标键盘。关掉窗口后在菜单栏接着跑；也能连到你的服务器，让服务器上的 Bot 用这台 Mac。见 [桌面 App](docs/desktop.md) |
 | 🖥️ **服务器** | 一条 `docker compose up` 放到 VPS 或家里的机器上，一直开着；浏览器、桌面 App、手机、聊天软件都能连。见 [用 Docker Compose 部署](docs/docker.md) |
 | 📱 **iPhone App**（TestFlight 内测） | 用相机扫电脑上的二维码就连上；要你确认的事、做完的任务推送到手机，内容加密，锁屏上就能看。见 [iPhone App](docs/mobile.md) |
 | 💬 **聊天软件** | 在 Telegram、飞书、钉钉、企业微信、Discord 里直接和 Bot 说话，要你确认的操作变成消息里的按钮。见 [聊天软件](docs/channels.md) |
 
 <p align="center">
-  <img src="docs/images/macos-app.png" width="860" alt="macOS 桌面 App：左边是 Bot 列表，中间的对话里有后台任务和等你确认的卡片，右边是 Bot 正在操作的 Chrome">
+  <img src="docs/images/macos-app.png" width="860" alt="macOS 桌面 App：左边是 Bot 列表，中间是 Nova 把出游清单写进文本编辑后的回复，右边的电脑面板是“本机”，实时显示这台 Mac 的屏幕">
 </p>
 <p align="center">
   <img src="docs/images/ios-chat.png" width="200" alt="iPhone App：对话">
-  <img src="docs/images/ios-task.png" width="200" alt="iPhone App：后台任务做完，结果是一张对比表">
+  <img src="docs/images/ios-task.png" width="200" alt="iPhone App：后台任务做完，结果是一张杭州三个景点的对比表">
   <img src="docs/images/ios-approval.png" width="200" alt="iPhone App：确认卡片，允许一次、总是允许或拒绝">
-  <img src="docs/images/ios-computer.png" width="200" alt="iPhone App：实时看 Bot 的电脑，随时接手">
+  <img src="docs/images/ios-computer.png" width="200" alt="iPhone App：实时看 Bot 电脑的画面，随时接手">
 </p>
 <p align="center"><sub>上：macOS 桌面 App。下：iPhone App（TestFlight 内测），对话 · 后台任务 · 确认卡片 · 看 Bot 的电脑</sub></p>
 

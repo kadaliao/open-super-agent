@@ -13,9 +13,9 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 [简体中文](README.md) · English
 
-<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="Demo: Scout researches on the computer and hands off to Quill in a group chat; teaching a task; the library" width="860"></a>
+<a href="docs/images/demo.mp4"><img src="docs/images/demo.gif" alt="Demo: asking Nova to write a weekend trip checklist in the TextEdit window on the right. It first shows a card asking whether it may use the whole computer, then clicks into TextEdit and writes the list while the computer panel shows the screen live" width="860"></a>
 
-<sub>Group handoff → teach a task → library (model wait times sped up) · <a href="docs/images/demo.mp4">HD MP4</a></sub>
+<sub>A Bot using your Mac: asks first → writes a checklist in TextEdit → replies (model wait times sped up; Chinese UI) · <a href="docs/images/demo.mp4">HD MP4</a></sub>
 
 </div>
 
@@ -37,19 +37,19 @@ See [Features](docs/features.en.md) for the full list.
 
 | Client | What you get |
 |---|---|
-| 💻 **macOS desktop app** | Download the dmg and open it: about 43 MB with its own runtime, no Docker or Python; Bots use this computer: a browser, plus the screen, mouse and keyboard once you grant the permissions. It keeps running in the menu bar after you close the window, and can also connect to your server and let the Bots there use this Mac. See [Desktop app](docs/desktop.md) (Chinese) |
+| 💻 **macOS desktop app** | Download the dmg and open it: about 45 MB with its own runtime, no Docker or Python; Bots use this computer: a browser, plus the screen, mouse and keyboard once you grant the permissions. It keeps running in the menu bar after you close the window, and can also connect to your server and let the Bots there use this Mac. See [Desktop app](docs/desktop.md) (Chinese) |
 | 🖥️ **Server** | One `docker compose up` on a VPS or a machine at home keeps it always on; connect from a browser, the desktop app, your phone or a chat app. See [Deploy with Docker Compose](docs/docker.md) (Chinese) |
 | 📱 **iPhone app** (TestFlight) | Scan a QR code on your computer with the Camera to connect; approvals and finished tasks are pushed to your phone, encrypted, and readable on the lock screen. See [iPhone app](docs/mobile.md) (Chinese) |
 | 💬 **Chat apps** | Talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, with approvals as message buttons. See [Chat apps](docs/channels.md) (Chinese) |
 
 <p align="center">
-  <img src="docs/images/macos-app.png" width="860" alt="The macOS desktop app: Bots on the left, a background task and an approval card in the chat, and the Chrome the Bot is driving on the right">
+  <img src="docs/images/macos-app.png" width="860" alt="The macOS desktop app: Bots on the left, Nova's reply after writing a trip checklist into TextEdit in the middle, and the computer panel on the right set to This computer, showing the Mac's screen live">
 </p>
 <p align="center">
   <img src="docs/images/ios-chat.png" width="200" alt="iPhone app: a conversation">
-  <img src="docs/images/ios-task.png" width="200" alt="iPhone app: a finished background task with a comparison table">
+  <img src="docs/images/ios-task.png" width="200" alt="iPhone app: a finished background task with a comparison table of three places in Hangzhou">
   <img src="docs/images/ios-approval.png" width="200" alt="iPhone app: an approval card with allow once, always allow and deny">
-  <img src="docs/images/ios-computer.png" width="200" alt="iPhone app: watching the Bot's computer live">
+  <img src="docs/images/ios-computer.png" width="200" alt="iPhone app: watching the Bot computer live, ready to take over">
 </p>
 <p align="center"><sub>Top: the macOS desktop app. Bottom: the iPhone app (TestFlight): chat · background task · approval · the Bot's computer. Screenshots show the Chinese UI.</sub></p>
 
@@ -73,7 +73,7 @@ See [Deploy with Docker Compose](docs/docker.md) (Chinese) for automatic HTTPS, 
 <details>
 <summary>Run without Docker</summary>
 
-You need Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/) and Node ≥ 20 (plus Docker for the local Docker computer; not needed with Instabox or your local Chrome):
+You need Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/) and Node ≥ 20 (plus Docker for the local Docker computer; not needed with Instabox or this computer):
 
 ```bash
 export DEEPSEEK_API_KEY=sk-...              # optional, you can also add it in Settings → Models; see .env.example

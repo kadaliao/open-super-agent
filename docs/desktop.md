@@ -10,7 +10,7 @@ brew install --cask kadaliao/tap/open-super-agent
 
 App 自己会检查更新，所以 `brew upgrade` 默认跳过它。`brew uninstall --cask --zap open-super-agent` 会连数据一起删。
 
-<p align="center"><img src="images/macos-app.png" width="860" alt="桌面 App：左边是 Bot 列表，中间的对话里有后台任务和等你确认的卡片，右边是 Bot 正在操作的 Chrome"></p>
+<p align="center"><img src="images/macos-app.png" width="860" alt="桌面 App：左边是 Bot 列表，中间是 Nova 把出游清单写进文本编辑后的回复，右边的电脑面板是“本机”，实时显示这台 Mac 的屏幕"></p>
 
 ## 两种用法
 
