@@ -2,7 +2,7 @@
 
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.9.0] - 2026-11-08
 ### 新增
 - **讨论串的新回复会提醒你**：以前回复只在讨论串里，被回复的消息一往上滚就找不到了。现在 Bot 在讨论串里回复后，对话底部浮一条提醒
   （谁回复了、说了什么），点了直接打开；好几个讨论串都有新回复时点了打开列表。对话顶上多了“讨论串”按钮，列出这个对话的全部讨论串，
@@ -370,7 +370,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.8.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/kadaliao/open-super-agent/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kadaliao/open-super-agent/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kadaliao/open-super-agent/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kadaliao/open-super-agent/compare/v0.6.0...v0.6.1

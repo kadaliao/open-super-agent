@@ -3,7 +3,7 @@
 iOS 的原生 App，用 Tauri 2 做（和桌面 App 同一套），代码在 `mobile/`。App 只是客户端：手机上不跑服务，连的是你部署好的服务器，
 界面就是服务器自己的网页界面，服务器升级界面就跟着升级。
 
-现在是 0.7.0，在 TestFlight 上内部测试，还不能公开安装。接下来是公开测试，然后上架 App Store（先上中国大陆以外的地区，中国区要先办 APP 备案）。
+现在是 0.9.0，在 TestFlight 上内部测试，还不能公开安装。接下来是公开测试，然后上架 App Store（先上中国大陆以外的地区，中国区要先办 APP 备案）。
 
 <p align="center">
   <img src="images/ios-connect.png" width="200" alt="第一次打开：扫码连接，或者填服务器地址">
