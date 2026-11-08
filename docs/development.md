@@ -51,6 +51,18 @@ uv run pytest -q
 
 改了 Router、群聊、私信、确认、电脑分配这些有约定的地方，加一个测试把约定写下来（见 `tests/test_smoke.py`）。
 
+## 加一个工具
+
+工具都在注册表里（`osa/registry.py`，设计约定见 [架构](architecture.md#工具注册表与插件)）。加一个内置工具：
+
+1. 写 OpenAI 风格的 schema 和一个 `async def run(call: registry.Call) -> str` （或 `(str, png)`）。`call.bot`、`call.chat_id`、`call.args`、
+   `call.post`（写消息）、`call.files`（收附件）、`call.task`（Worker 里才有）够用了，不要去碰 Router 或 Task 的别的字段。
+2. 在 `osa/builtin.py` 的 `load()` 里 `ctx.tool(Tool(...))`，写明 `where`（给 Router、Worker 还是小应用）、要不要 `gated`、Worker 任务卡片上的 `progress`。
+   加在列表末尾：顺序决定给模型的顺序，中间插会让模型服务的前缀缓存失效一次。
+3. 要用户确认的：`gated=True` 后 Worker 和小应用会按确认规则（`approvals.decide`）弹卡片；Router 不会等，自己在 `run` 里处理
+   （像画图那样后台等卡片）。
+4. 测试里用 `registry.Context("test").simple(...)` 注册假工具，结束 `dispose()`；冒充应用的工具用 `mcp_tool` fixture。
+
 ## 不要用真实数据测试
 
 复制一份数据库，在另一个端口启动：

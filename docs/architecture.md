@@ -69,7 +69,9 @@ osa/
   catalog/         应用市场的目录：读取和检查清单，按模板生成连接配置（python -m osa.catalog 检查所有清单）
     apps/          每个应用一份清单（<名字>.yaml），格式见 docs/apps.md；本机还会读 data/apps/
     checks.py      添加应用前的检查（邮箱先试登录一次）
-  tools.py         内置工具：web_search、fetch_url
+  registry.py      工具注册表和插件上下文：Tool（schema、run、在哪些场合能用、要不要确认）、Context（注册返回 disposer，dispose 反向撤销）、事件 on / emit
+  builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、search_memory
+  tools.py         内置的网页工具：web_search、fetch_url 的实现
   unfurl.py        链接卡片：服务器取网页的标题、摘要、配图（og:*），不抓内网，缓存在 unfurls 表；YouTube 走 oEmbed
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明；导出成文件、分享链接、从文件或链接导入
   templates.py     Bot 模板：检查、内置模板（templates/*.yaml）、从 Bot 导出、分享、安装
@@ -233,6 +235,19 @@ web/src/
 - 上下文里按正在说话的 Bot 的角度写（`memory.context(..., me=)`）：“X 私信了你”“你私信了 Y，等它回信”“Y 回了你的私信”。
 - 因私信而起的一轮里 Bot 自己 `cancel_task`：原因写成“X 收到 Y 的新消息后自己取消的”，不写成用户取消；被取消的任务和这一轮回给同一个 Bot 的话，不再单独送“已取消”（这一轮的回复或新派的任务会接着回它）。
 - 等回信只在内存里：服务重启后没回的私信不会再回；服务关闭时被取消的任务也不送“已取消”。
+
+### 工具注册表与插件
+- Router、Worker、小应用都从 `registry.TOOLS` 找工具；一个工具一个 `Tool`：`schema`、`run(call)`、`where`（router / worker / applet）、
+  `when(env)`（这一轮给不给模型：Heavy 的草稿不存页面）、`gated`（跑之前按确认规则问不问；Router 里从不问，它不能等）、`progress`、`describe`。
+  `run` 只看 `Call`（谁在调、结果发到哪、卡片发到哪、`post` 写消息、`files` 收附件、`env`），不碰 Router 或 Task 的内部状态。
+- **谁提供工具谁拿一个 `Context`**，每次注册返回 disposer，`dispose()` 反向撤销全部：MCP 应用每个一个 `Context`（`mcp:<名字>`），
+  断开、重连时先 dispose，不留孤儿工具。新加一个内置工具：在 `builtin.py` 里注册一次就行，Router 和 Worker 都有了。
+  注册的**顺序就是给模型的顺序**，顺序稳定模型服务的前缀缓存才命中，别随手调换。
+- 事件：工具的实现只 `registry.emit("pages_changed")`，服务端在自己的 `Context` 上 `on(...)` 再广播给网页；
+  工具不需要知道有 WebSocket。
+- 还没迁的：电脑工具（`computer/tools.py`，和任务、窗口、控制权绑得紧）、Router 自己的几个（dispatch、cancel_task 这类改 Router 状态的）、
+  botadmin（弹卡片、叫醒 Bot）。Router / Worker 先处理这些，注册表是最后一道。
+- 前端对应的是 `web/src/cards.tsx`：按消息的 `meta.kind` 注册卡片，`registerCard` 返回撤销函数，内置的在 `Chat.tsx` 末尾注册。
 
 ### 小应用
 - 小应用就是带清单 `app` 的 html 页面（`pages.app`），数据在 `page_data` 表。设计见 [小应用计划](plans/applets.md)。

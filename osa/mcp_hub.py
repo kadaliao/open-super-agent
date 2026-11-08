@@ -34,12 +34,12 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import CONNECTION_CLOSED
 from .config import CFG, DATA
 from .memory import conn
-from . import i18n, security, vault
+from . import i18n, registry, security, vault
 
 conn.execute("create table if not exists apps(name text primary key, config text, enabled integer, created real)")
 conn.commit()
 
-TOOLS: dict[str, tuple] = {}     # 名字 -> (异步调用函数, OpenAI 工具 schema)
+_ctx: dict[str, "registry.Context"] = {}   # 每个应用注册的工具都挂在它自己的 Context 上，断开时一起撤销
 status: dict[str, "str | i18n.Later"] = {}   # 应用 -> 状态说明，给前端看；到显示时才翻（i18n.later），读的时候 str()
 CONFIRM: set[str] = set()        # 默认需要用户确认的工具（规则可以覆盖）
 _running: dict[str, tuple[asyncio.Task, asyncio.Event]] = {}
@@ -132,7 +132,7 @@ def state(name: str, a: dict) -> str:
 def public() -> list[dict]:
     out = []
     for n, a in all_apps().items():
-        tools = sorted(t.split("__", 1)[1] for t in TOOLS if t.startswith(n + "__"))
+        tools = tools_of(n)
         out.append({"name": n, "catalog": a.get("catalog") or "", "type": a.get("type") or "stdio",
                     "command": a.get("command", ""), "args": a.get("args", []), "env": a.get("env", {}),
                     "url": _secret_free(a.get("url", "")), "headers": list((a.get("headers") or {}).keys()),
@@ -538,6 +538,8 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event,
             await asyncio.wait_for(session.initialize(), wait_s)
             tools = (await session.list_tools()).tools
             deny = [w.lower() for w in a.get("deny", [])]
+            _drop_tools(name)   # 重连时先撤掉上一次注册的
+            ctx = _ctx[name] = registry.Context(f"mcp:{name}")
             n = c = 0
             for t in tools:
                 if any(w in t.name.lower() for w in deny):
@@ -553,16 +555,17 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event,
                             raise
                         _reconnected[name] = time.time()
                         await connect(name)
-                        fn = TOOLS.get(_full)
-                        if not fn:
+                        again = registry.get(_full)
+                        if not again or again.owner != f"mcp:{name}":
                             hint = "，请用户到应用市场重新登录" if name in _needs_login else ""   # 写给模型看的
                             raise RuntimeError(f"应用 @{name} 连接断开：{status.get(name, '')}{hint}") from e
-                        return await fn[0](**args)
+                        return await again.run(registry.Call(registry.WORKER, {"id": 0}, 0, 0, args))
 
-                TOOLS[full] = (call, {"type": "function", "function": {
+                ctx.simple(full, {"type": "function", "function": {
                     "name": full, "description": (t.description or "")[:1000],
                     "parameters": getattr(t, "input_schema", None) or getattr(t, "inputSchema", None)
-                                  or {"type": "object", "properties": {}}}})
+                                  or {"type": "object", "properties": {}}}}, call,
+                    where=frozenset({registry.WORKER, registry.APPLET}), gated=True, group=name)
                 if _needs_confirm(name, a, t):
                     CONFIRM.add(full)
                     c += 1
@@ -603,9 +606,20 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event,
 
 
 def _drop_tools(name: str):
-    for k in [k for k in TOOLS if k.startswith(name + "__")]:
-        TOOLS.pop(k, None)
+    """应用断开：它注册的工具全部撤销（Context.dispose 反向撤销），确认集合里的也清掉。"""
+    if c := _ctx.pop(name, None):
+        c.dispose()
+    for k in [k for k in CONFIRM if k.startswith(name + "__")]:
         CONFIRM.discard(k)
+
+
+def tools_of(name: str) -> list[str]:
+    """一个应用现在注册着的工具名（不带应用前缀）。"""
+    return sorted(t.name.split("__", 1)[1] for t in registry.by_group().get(name, []))
+
+
+def all_tool_names() -> list[str]:
+    return sorted(t.name for ts in registry.by_group().values() for t in ts)
 
 
 async def connect(name: str, timeout: float = 150) -> str:

@@ -124,13 +124,12 @@ async def test_dm_reply_comes_back_to_thread(llm, events, make_bot):
     assert not find(cid, kind="dm_reply") and not find(cid, text="Mailman 说")
 
 
-async def test_approval_from_group_thread(llm, events, make_bot, monkeypatch):
+async def test_approval_from_group_thread(llm, events, make_bot, mcp_tool):
     async def create_note(text: str = "") -> str:
         return f"已创建笔记：{text}"
     schema = {"type": "function", "function": {"name": "demo__create_note", "description": "新建笔记",
               "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}}}
-    monkeypatch.setitem(mcp_hub.TOOLS, "demo__create_note", (create_note, schema))
-    monkeypatch.setattr(mcp_hub, "CONFIRM", mcp_hub.CONFIRM | {"demo__create_note"})
+    mcp_tool("demo__create_note", create_note, schema, confirm=True)
 
     a, b = make_bot("Noter"), make_bot("Other")
     group = bots.create_group([a["id"], b["id"]], lead=a["id"])

@@ -3,7 +3,7 @@ import asyncio
 import httpx
 import pytest
 from conftest import find, until
-from osa import applets, approvals, bots, library, memory, server, tools
+from osa import applets, approvals, bots, library, memory, registry, server
 
 
 def http():
@@ -24,14 +24,18 @@ def bot(make_bot):
 
 
 @pytest.fixture
-def echo(monkeypatch):
-    """一个假的内置工具 echo：原样返回参数。"""
+def echo():
+    """一个假的工具 echo：原样返回参数，Worker 和小应用都能用。"""
     async def fn(text: str = "") -> str:
         return f"echo:{text}"
-    monkeypatch.setitem(tools.TOOLS, "echo", (fn, "回声", {"text": "文字"}))
+    ctx = registry.Context("test")
+    ctx.simple("echo", {"type": "function", "function": {"name": "echo", "description": "回声",
+                                                          "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}}},
+               fn, where=frozenset({registry.WORKER, registry.APPLET}), gated=True)
     memory.conn.execute("delete from rules where pattern='echo'")
     memory.conn.commit()
     yield fn
+    ctx.dispose()
     memory.conn.execute("delete from rules where pattern='echo'")
     memory.conn.commit()
 
@@ -179,4 +183,4 @@ def test_prompts_mention_applets():
     from osa import router, worker
     assert "window.osa" in router.ROUTER_PROMPT and "page_data" in router.ROUTER_PROMPT
     assert "window.osa" in worker.PAGE_HINT
-    assert any(s["function"]["name"] == "page_data" for s in router.ROUTER_TOOLS)
+    assert any(s["function"]["name"] == "page_data" for s in registry.schemas(registry.ROUTER, router.ROUTER_ENV))

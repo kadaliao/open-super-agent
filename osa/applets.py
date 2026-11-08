@@ -22,7 +22,7 @@ import asyncio
 import json
 import re
 from types import SimpleNamespace
-from . import approvals, i18n
+from . import approvals, i18n, registry
 
 MAX_TOOLS = 20
 MAX_KEYS = 100
@@ -49,8 +49,8 @@ def manifest(app) -> dict | None:
 
 
 def known(tool: str) -> bool:
-    from . import tools
-    return tools.lookup(tool) is not None
+    """小应用能列进清单的工具：注册表里标了 applet 场合的（网页工具、连接了的应用的工具）。"""
+    return registry.available(tool, registry.APPLET) is not None
 
 
 def check_data(updates: dict, current: dict) -> dict:
@@ -76,12 +76,12 @@ def check_data(updates: dict, current: dict) -> dict:
 
 async def call(page: dict, tool: str, args) -> str:
     """界面里调一个工具。只认清单里列的；要确认的先弹卡片（出现在 Bot 的私聊里）。"""
-    from . import bots, tools
+    from . import bots
     app = page.get("app") or {}
     if tool not in app.get("tools", ()):
         raise PermissionError(i18n.t("这个小应用不能用工具 {tool}", tool=tool))
-    fn = tools.lookup(tool)
-    if not fn:
+    t = registry.available(tool, registry.APPLET)
+    if not t:
         raise LookupError(i18n.t("现在没有工具 {tool}（应用可能没连接）", tool=tool))
     if not isinstance(args, dict):
         raise ValueError(i18n.t("参数要是一个对象"))
@@ -91,7 +91,7 @@ async def call(page: dict, tool: str, args) -> str:
     chat_id = (bot or {}).get("chat_id") or 0
     _running[page["id"]] = _running.get(page["id"], 0) + 1
     try:
-        if approvals.decide(tool)[0]:
+        if t.gated and approvals.decide(tool)[0]:
             if not chat_id:
                 raise PermissionError(i18n.t("这个操作要确认，但小应用的 Bot 已删除"))
             fake = SimpleNamespace(id=f"小应用·{page['title']}", bot_id=page["bot_id"], chat_id=chat_id, approval_chat_id=chat_id,
@@ -99,7 +99,8 @@ async def call(page: dict, tool: str, args) -> str:
             ok, note = await approvals.request(fake, tool, args)
             if not ok:
                 raise PermissionError(i18n.t("用户拒绝了这个操作。{note}", note=note).strip())
-        return str(await fn(**args))
+        out = await t.run(registry.Call(registry.APPLET, bot or {"id": page["bot_id"]}, chat_id, chat_id, args))
+        return str(out[0] if isinstance(out, tuple) else out)
     finally:
         _running[page["id"]] -= 1
         if not _running[page["id"]]:

@@ -17,8 +17,9 @@
 ## 分几步
 
 1. **小应用运行时**（本计划，已做）：清单、数据、宿主桥、对话里原地显示、两个工具改动。
-2. **工具注册表**：把 Router 和 Worker 里几套工具来源（`tools.TOOLS`、`ctools.NAMES`、`botadmin.TOOLS`、`mcp_hub.TOOLS`、一串 `if name ==`）
-   收成一个注册表，加一个带 disposer 的 `Context`；先把 unfurl、画图、send_file 迁上去验证接口。前端按 `meta.kind` 做卡片注册表。
+2. **工具注册表**（已做，2026-11-08）：`osa/registry.py` 的 `Tool` / `Context` / 事件，内置工具都在 `osa/builtin.py` 注册一次，
+   MCP 应用每个一个 `Context`，断开时 dispose。前端 `web/src/cards.tsx` 按 `meta.kind` 注册卡片。
+   还没迁：电脑工具、Router 自己的几个、botadmin（见架构文档“工具注册表与插件”）。
 3. **MCP Apps 宿主**：应用市场里的应用可以自带界面，小应用也能导出成标准形式。
 4. **外部 Python 插件**（`data/plugins/*.py`）和市场：有社区需求再做。Bot 自己产出的扩展只能是沙箱里的东西（小应用、技能、MCP 连接），
    不能是进程内代码。

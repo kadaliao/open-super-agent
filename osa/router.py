@@ -7,7 +7,8 @@ import time
 import openai
 from .computer import tools as ctools
 from .config import CFG, call_kwargs, client_for
-from . import applets, approvals, botadmin, bots, dm, dsml, i18n, images, library, media, memories, memory, providers, routines, search, skills, tasklog
+from . import applets, approvals, botadmin, bots, dm, dsml, i18n, media, memories, memory, providers, registry, routines, skills, tasklog
+from . import builtin  # noqa: F401  导入即注册内置工具
 from . import worker as worker_mod
 from .worker import Task, run_worker, run_heavy
 
@@ -167,6 +168,7 @@ HANDOFF = {"type": "function", "function": {"name": "handoff", "description": "�
         "request": {"type": "string", "description": "要它做什么，写完整（它能看到群里之前的消息）"}},
         "required": ["to", "request"]}}}
 
+ROUTER_ENV = {"scope": "router"}   # Router 这一轮的环境（注册表按它挑工具）
 DIRECT_PC = {"computer_screenshot", "computer_click", "computer_type",
              "computer_key", "computer_scroll", "browser_open", "browser_snapshot", "browser_click",
              "browser_type", "browser_key", "browser_scroll", "browser_back", "browser_read"}
@@ -202,12 +204,6 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
             "required": ["text"]}}},
     {"type": "function", "function": {"name": "forget", "description": "删除一条长期记忆",
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
-    library.SAVE_PAGE,
-    library.READ_PAGE,
-    library.PAGE_DATA,
-    media.SEND_FILE,
-    images.GENERATE_IMAGE,
-    search.SEARCH_TOOL,
     {"type": "function", "function": {"name": "list_tasks", "description": "查看任务状态",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "cancel_task", "description": "取消任务",
@@ -394,8 +390,9 @@ class Router:
 
     def _tools(self) -> list[dict]:
         """这一轮给模型的工具（self.chat 是本轮的对话）。"""
-        return ROUTER_TOOLS + ctools.desk_schemas() + ([HANDOFF] if self.chat["kind"] == "group" else []) + \
-            ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + botadmin.tools_for(self.bot)
+        return ROUTER_TOOLS + registry.schemas(registry.ROUTER, ROUTER_ENV) + ctools.desk_schemas() \
+            + ([HANDOFF] if self.chat["kind"] == "group" else []) \
+            + ([MESSAGE_BOT] if len(bots.list_bots()) > 1 else []) + botadmin.tools_for(self.bot)
 
     def _group_block(self, chat: dict) -> str:
         if chat["kind"] != "group":
@@ -595,10 +592,6 @@ class Router:
             memories.delete(mid)
             await self.emit({"type": "memories_changed"})
             return f"已删除记忆 #{mid}"
-        if name == "save_page":
-            out = library.tool_save_page(self.bot_id, args)
-            await self.emit({"type": "pages_changed"})
-            return out
         if name == "list_tasks":
             return self._task_list()
         if name == "cancel_task":
@@ -614,23 +607,6 @@ class Router:
             return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")))
         if name == "recall":
             return memory.recall(args["id"], self.chat["id"])
-        if name == "search_memory":
-            return await search.tool(self.bot_id, args)
-        if name == "read_page":
-            return library.tool_read_page(args)
-        if name == "page_data":
-            return await library.tool_page_data(self.bot_id, args)
-        if name == "send_file":
-            if len(self._turn_files) >= media.MAX_SEND:
-                return f"没发：一次最多发 {media.MAX_SEND} 个文件"
-            try:
-                att = await media.from_computer(str(args.get("path") or ""))
-            except Exception as e:
-                return f"没发：{e}"
-            self._turn_files.append(att)
-            return media.sent_text(att)
-        if name == "generate_image":
-            return await images.generate(self.bot, self.chat["id"], self.chat_id, str(args.get("prompt") or ""), self.add)
         if name in botadmin.TOOLS:
             out = await botadmin.call(name, self.bot, self.chat["id"], self.chat_id, args, self.add, self.emit,
                                       self.turn.get("reply"), self.turn.get("depth", 0))
@@ -641,6 +617,9 @@ class Router:
             return await self._look()
         if name in DIRECT_PC or name in ctools.DESKTOP:
             return await self._direct(name, args)
+        if tool := registry.available(name, registry.ROUTER, ROUTER_ENV):   # 注册表里的（资料库、发文件、画图、按意思检索……）
+            return await tool.run(registry.Call(registry.ROUTER, self.bot, self.chat["id"], self.chat_id, args,
+                                                post=self.add, files=self._turn_files, env=ROUTER_ENV))
         return "未知工具"
 
     async def _remember(self, args: dict) -> str:
@@ -692,8 +671,8 @@ class Router:
         return (f"截图见下一条消息。当前窗口：{title or '无'}；电脑{who}。", png)
 
     def _capabilities(self) -> str:
-        from . import catalog, mcp_hub, tools
-        lines = [f"- {n}：{d}" for n, (_, d, _) in tools.TOOLS.items()]
+        from . import catalog, mcp_hub
+        lines = [f"- {t.name}：{t.describe}" for t in registry.TOOLS.values() if t.describe and not t.group]
         if (CFG.get("computer") or {}).get("enabled", True):
             lines.append("- 电脑：" + ctools.capability() +
                          "遇到登录、验证码、付款这类必须用户本人做的步骤，Worker 会在任务中途暂停，"
@@ -703,10 +682,7 @@ class Router:
                          "用户要求“先问我再做”时，把这个要求写进 goal 就行。"
                          "你自己也能用 look_at_screen 直接看屏幕：用户问屏幕上是什么、任务做到哪了，先看再答，"
                          "不要说你看不见。")
-        groups: dict[str, list[str]] = {}
-        for full in mcp_hub.TOOLS:
-            server, _, tool = full.partition("__")
-            groups.setdefault(server, []).append(tool)
+        groups = {srv: [t.name.split("__", 1)[1] for t in ts] for srv, ts in registry.by_group().items()}
         def label(n: str) -> str:
             t = catalog.title(n)
             return f"@{n}" if t == "@" + n else f"@{n}（{t}）"

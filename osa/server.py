@@ -22,7 +22,7 @@ from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channe
 from . import observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from .computer import link
 from .computer.base import HOSTS
-from . import worker as worker_mod
+from . import builtin, registry  # noqa: F401  builtin：导入即注册内置工具
 from .watchdog import watchdog
 
 DIST = Path(__file__).parent / "static" / "dist"
@@ -58,16 +58,10 @@ channels.notify = broadcast
 tasklog.notify = broadcast
 
 
-async def _pages_changed():
-    await broadcast({"type": "pages_changed"})
-
-worker_mod.PAGES_CHANGED = _pages_changed
-
-
-async def _data_changed(pid: int, data: dict):
-    await broadcast({"type": "page_data", "page_id": pid, "data": data})
-
-library.DATA_CHANGED = _data_changed
+# 工具的实现只发事件（registry.emit），由这里广播给网页
+_events = registry.Context("server")
+_events.on("pages_changed", lambda: broadcast({"type": "pages_changed"}))
+_events.on("page_data", lambda page_id, data: broadcast({"type": "page_data", "page_id": page_id, "data": data}))
 
 
 async def parent_watch(pid: int, every: float = 2):
@@ -1698,7 +1692,7 @@ async def observe_calls_csv(range: str = "7d", tz: int = 0, bot: int | None = No
 
 @app.get("/api/status")
 async def status():
-    return {"mcp": {k: str(v) for k, v in mcp_hub.status.items()}, "mcp_tools": sorted(mcp_hub.TOOLS), "mcp_confirm": sorted(mcp_hub.CONFIRM),
+    return {"mcp": {k: str(v) for k, v in mcp_hub.status.items()}, "mcp_tools": mcp_hub.all_tool_names(), "mcp_confirm": sorted(mcp_hub.CONFIRM),
             "routines": [{"id": r["id"], "bot_id": r["bot_id"], "name": r["name"], "enabled": r["enabled"],
                           "trigger": routines.describe(r["trigger"])} for r in routines.list_for()]}
 

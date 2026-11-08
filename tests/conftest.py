@@ -32,7 +32,7 @@ for k in ("OSA_VAULT_KEY", "INSTABOX_API_KEY", "OSA_PASSWORD", "OSA_WEBHOOK_TOKE
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from osa import bots, memory, providers, server  # noqa: E402
+from osa import bots, memory, mcp_hub, providers, registry, server  # noqa: E402
 from fakellm import FakeLLM  # noqa: E402
 
 
@@ -127,6 +127,26 @@ def find(chat_id: int, **want) -> list[dict]:
             continue
         out.append(m)
     return out
+
+
+@pytest.fixture
+def mcp_tool():
+    """冒充一个连接了的应用：按 (全名, 函数, schema, 要不要确认) 注册一个工具，测试结束撤销。"""
+    ctx = registry.Context("mcp:test")
+    added = []
+
+    def add(name: str, fn, schema: dict | None = None, confirm: bool = False):
+        server_name = name.split("__", 1)[0]
+        ctx.simple(name, schema or {"type": "function", "function": {"name": name, "description": name,
+                                                                        "parameters": {"type": "object", "properties": {}}}},
+                   fn, where=frozenset({registry.WORKER, registry.APPLET}), gated=True, group=server_name)
+        if confirm:
+            mcp_hub.CONFIRM.add(name)
+            added.append(name)
+    yield add
+    ctx.dispose()
+    for n in added:
+        mcp_hub.CONFIRM.discard(n)
 
 
 @pytest.fixture

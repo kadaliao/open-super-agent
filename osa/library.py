@@ -184,16 +184,14 @@ async def tool_page_data(bot_id: int, args: dict) -> str:
             data = set_data(pid, upd)
         except (ValueError, TypeError) as e:
             return f"没写：{e}"
-        if DATA_CHANGED:
-            await DATA_CHANGED(pid, data)
+        from . import registry
+        await registry.emit("page_data", page_id=pid, data=data)
         head = f"已写入 {len(upd)} 个键。"
     else:
         data, head = get_data(pid), ""
     text = json.dumps(data, ensure_ascii=False, indent=1)
     return f"{head}小应用「{p['title']}」的数据（{len(data)} 个键）：\n{text[:12000]}" + ("\n…（太长，截断）" if len(text) > 12000 else "")
 
-
-DATA_CHANGED = None   # 由 server 设置：async (page_id, data) -> None，数据变了通知打开着的页面
 
 
 READ_PAGE = {"type": "function", "function": {

@@ -4,11 +4,11 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import applets, approvals, dsml, i18n, library, mcp_hub, media, memories, memory, providers, search, tasklog, tools
+from . import applets, approvals, dsml, i18n, library, memories, memory, providers, registry, tasklog
+from . import builtin  # noqa: F401  导入即注册内置工具
 from .computer import tools as ctools
 
 PROGRESS = None   # 由 router 设置：async (task, text) -> None，把动作推送到任务卡片
-PAGES_CHANGED = None   # 由 server 设置：async () -> None，资料库有新页面时通知前端
 
 WORKER_PROMPT = """你是执行任务的 Worker。用工具查证事实，给出结论时附上来源链接。
 需要读写用户的外部服务（应用）时，使用名字带“应用名__”前缀的工具；任务里写了“@应用名”就必须用那个应用。
@@ -145,9 +145,10 @@ async def _reply(task: Task, log: tasklog.Log, role: str, client, model: str, ms
     return msg
 
 
-async def _tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, progress, pages: bool,
+async def _tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, progress, env: dict,
                 shots: list) -> tuple[str, str]:
-    """执行一个工具调用，返回 (给模型的结果, 这一步的状态)。工具出错交给模型自己处理。"""
+    """执行一个工具调用，返回 (给模型的结果, 这一步的状态)。工具出错交给模型自己处理。
+    电脑工具单独处理（和任务、窗口绑得紧），其余都从注册表找（env 决定这一轮有哪些）。"""
     try:
         args = json.loads(raw or "{}")
         if name in ctools.NAMES:
@@ -155,42 +156,24 @@ async def _tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, p
             if shot:
                 shots.append(shot)
             return out, "done"
-        if name == "search_memory":
-            await progress(i18n.t("查记忆和资料库：{query}", query=str(args.get("query", ""))[:40]))
-            return await search.tool(task.bot_id, args), "done"
-        if name == "read_page":
-            await progress(i18n.t("读页面 #{id}", id=args.get("page_id")))
-            return library.tool_read_page(args), "done"
-        if name == "page_data":
-            await progress(i18n.t("小应用 #{id} 的数据", id=args.get("page_id")))
-            return await library.tool_page_data(task.bot_id, args), "done"
-        if name == "send_file" and pages:
-            await progress(i18n.t("发文件：{path}", path=str(args.get("path", ""))[:60]))
-            if len(task.files) >= media.MAX_SEND:
-                return f"没发：一个任务最多发 {media.MAX_SEND} 个文件", "error"
-            try:
-                att = await media.from_computer(str(args.get("path") or ""))
-            except Exception as e:
-                return f"没发：{e}", "error"
-            task.files.append(att)
-            return media.sent_text(att).replace("对话里", "任务结果下面"), "done"
-        if name == "save_page" and pages:
-            await progress(i18n.t("保存页面：{title}", title=str(args.get("title", ""))[:40]))
-            out = library.tool_save_page(task.bot_id, args, task.id)
-            if PAGES_CHANGED:
-                await PAGES_CHANGED()
-            return out, "done"
-        what = str(args.get("query") or args.get("url") or "")[:60]
-        await progress(i18n.t("搜索：{what}", what=what) if name == "web_search" else
-                       i18n.t("读取网页：{what}", what=what) if name == "fetch_url" else f"{name} {what}")
-        fn = tools.lookup(name)
-        if fn and name in mcp_hub.TOOLS and approvals.decide(name)[0]:
+        tool = registry.available(name, registry.WORKER, env)
+        if not tool:
+            return "未知工具", "error"
+        await progress(tool.progress(args) if tool.progress else f"{name} {str(args.get('query') or args.get('url') or '')[:60]}")
+        if tool.gated and approvals.decide(name)[0]:
             await log.update(step, status="waiting")
             ok, note = await approvals.request(task, name, args)
             if not ok:
                 return f"用户拒绝了这个操作，没有执行。{note}".strip(), "rejected"
             await log.update(step, status="running")
-        return (await fn(**args) if fn else "未知工具"), "done"
+        from . import bots
+        out = await tool.run(registry.Call(registry.WORKER, bots.get(task.bot_id) or {"id": task.bot_id}, task.chat_id,
+                                           task.approval_chat_id or task.chat_id, args, task=task, files=task.files, env=env))
+        if isinstance(out, tuple):   # (文字, 截图)
+            if out[1]:
+                shots.append(out[1])
+            out = out[0]
+        return out, "done"
     except Exception as e:
         return f"工具出错：{e}", "error"
 
@@ -204,8 +187,8 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     if known := memories.worker_block(task.bot_id):
         system += f"\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}"
     msgs = [{"role": "system", "content": system}, {"role": "user", "content": goal}]
-    schemas = tools.schemas() + ([library.SAVE_PAGE] if pages else []) + [library.READ_PAGE, library.PAGE_DATA, search.SEARCH_TOOL] \
-        + (ctools.schemas() if use_pc else []) + ([media.SEND_FILE] if pages and use_pc else [])
+    env = {"scope": registry.WORKER, "pages": pages, "use_pc": use_pc}
+    schemas = registry.schemas(registry.WORKER, env) + (ctools.schemas() if use_pc else [])
     log = tasklog.Log(task, label)
 
     async def progress(text: str):
@@ -228,7 +211,7 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
             name, raw = call["function"]["name"], call["function"]["arguments"]
             task.recent_calls = (task.recent_calls + [f"{name}:{raw}"])[-6:]
             step = log.current = await log.start("tool", name, detail=raw[:2000])
-            out, status = await _tool(task, log, step, name, raw, progress, pages, shots)
+            out, status = await _tool(task, log, step, name, raw, progress, env, shots)
             msgs.append({"role": "tool", "tool_call_id": call["id"], "content": out[:8000]})
             await log.finish(step, status, out)
             task.last_progress = time.time()

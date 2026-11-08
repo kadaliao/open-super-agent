@@ -1,4 +1,4 @@
-"""Worker 可用的工具。新增工具：写一个 async 函数并加进 TOOLS。"""
+"""内置的网页工具：web_search、fetch_url。注册在 builtin.py，Router / Worker / 小应用都从 registry 找。"""
 import asyncio
 import html
 import ipaddress
@@ -93,23 +93,9 @@ async def fetch_url(url: str) -> str:
     return re.sub(r"\s+", " ", text)[:8000]
 
 
-TOOLS = {
-    "web_search": (web_search, "搜索网页，返回标题、链接和摘要", {"query": "搜索词"}),
-    "fetch_url": (fetch_url, "抓取网页正文（截断到 8000 字）", {"url": "网址"}),
-}
-
-
-def lookup(name: str):
-    """内置工具或 MCP 工具，找不到返回 None。"""
-    from . import mcp_hub
-    if name in TOOLS:
-        return TOOLS[name][0]
-    return mcp_hub.TOOLS.get(name, (None,))[0]
-
-
-def schemas() -> list[dict]:
-    from . import mcp_hub
-    return [s for _, s in mcp_hub.TOOLS.values()] + [{"type": "function", "function": {
+def schema(name: str, desc: str, params: dict[str, str]) -> dict:
+    """参数都是文字的简单工具的 schema。"""
+    return {"type": "function", "function": {
         "name": name, "description": desc,
         "parameters": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in params.items()},
-                       "required": list(params)}}} for name, (_, desc, params) in TOOLS.items()]
+                       "required": list(params)}}}

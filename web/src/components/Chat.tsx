@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, approve, chatById, loadOlder, markThreadSeen, openChat, openChatOrThread, openLibrary, openThread, pinChat, showTask, useStore } from '../store'
 import type { Approval, Bot, Chat as ChatT, Message, Task, ThreadInfo } from '../types'
 import { plain } from '../plain'
@@ -11,6 +11,7 @@ import { Icon } from '../icons'
 import { Attachments, mediaUrl, splitMarks, type ViewerItem } from './Media'
 import { imagePrice, setAsAvatar } from './AvatarTools'
 import { LinkEmbed, Linkify, textEmbeds } from './Embeds'
+import { cardFor, registerCard, type CardProps } from '../cards'
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -588,27 +589,35 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
         {(m.meta.tasks || []).map(task)}
       </BotMessage>) : null
     const k = taskKind(m)
-    // 没有新内容的定时任务（跑完才知道）不显示，运行记录在右栏“定时”里
-    if (k.kind === 'dispatch') return attached.has(m.id) || m.meta.quiet || tasks[m.id]?.quiet ? null : task(m.id)
-    if (k.kind === 'result') return <ResultMessage key={m.id} bot={speaker(m)} m={m} showName={group} reply={reply}
-      goal={(k.taskId && byId.get(k.taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />   // i18n-ignore：存在消息里的标记
-    if (k.kind === 'image') return <ImageMessage key={m.id} bot={speaker(m)} m={m} chat={chat} showName={group} reply={reply} />
-    if (k.kind === 'handoff') return <HandoffLine key={m.id} from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />
-    if (k.kind === 'dm') return <DmLine key={m.id} m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />
-    if (k.kind === 'dm_reply' && m.meta.sent) return <div key={m.id} className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
-      {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChatOrThread(m.meta.chat)}>{t('去看')}</button></>}</div>
-    if (k.kind === 'dm_reply') return <DmReply key={m.id} m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} reply={reply} />
-    if (k.kind === 'bot_created' || k.kind === 'bot_updated' || k.kind === 'bot_deleted') {
-      const nb = k.kind !== 'bot_deleted' ? botOf(m.meta.new_bot ?? m.meta.bot) : undefined
-      return <div key={m.id} className="sys-line">🤖 {m.content.replace(/^\[|\]$/g, '')}
-        {nb?.chat_id && nb.chat_id !== chat.id && <> · <button className="link-btn" onClick={() => openChat(nb.chat_id)}>
-          {k.kind === 'bot_created' ? t('去和它聊') : t('去看看')}</button></>}</div>
-    }
-    if (k.kind === 'reset') return <div key={m.id} className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>
-    if (k.kind === 'trigger') return <div key={m.id} className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>   // i18n-ignore：存在消息里的标记
+    const card = cardFor(k.kind)   // 按种类找卡片（cards.tsx）；没登记的种类显示成一行系统消息
+    if (card) return <Fragment key={m.id}>{card({ m, kind: k.kind, taskId: k.taskId, chat, group, bot: speaker(m), botOf, reply, tasks, byId, attached, task })}</Fragment>
     return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>
   })}</>
 }
+
+// ---------- 内置的几种消息卡片 ----------
+// 没有新内容的定时任务（跑完才知道）不显示，运行记录在右栏“定时”里
+registerCard('dispatch', ({ m, attached, tasks, task }) => attached.has(m.id) || m.meta.quiet || tasks[m.id]?.quiet ? null : task(m.id))
+registerCard('result', ({ m, bot, group, reply, taskId, byId }) => <ResultMessage bot={bot} m={m} showName={group} reply={reply}
+  goal={(taskId && byId.get(taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />)   // i18n-ignore：存在消息里的标记
+registerCard('image', ({ m, bot, chat, group, reply }) => <ImageMessage bot={bot} m={m} chat={chat} showName={group} reply={reply} />)
+registerCard('handoff', ({ m, botOf }) => <HandoffLine from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />)
+registerCard('dm', ({ m, botOf, chat }) => <DmLine m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />)
+registerCard('dm_reply', ({ m, botOf, chat, reply }) => m.meta.sent
+  ? <div className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
+      {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChatOrThread(m.meta.chat)}>{t('去看')}</button></>}</div>
+  : <DmReply m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} reply={reply} />)
+const botAdmin = ({ m, kind, botOf, chat }: CardProps) => {
+  const nb = kind !== 'bot_deleted' ? botOf(m.meta.new_bot ?? m.meta.bot) : undefined
+  return <div className="sys-line">🤖 {m.content.replace(/^\[|\]$/g, '')}
+    {nb?.chat_id && nb.chat_id !== chat.id && <> · <button className="link-btn" onClick={() => openChat(nb.chat_id)}>
+      {kind === 'bot_created' ? t('去和它聊') : t('去看看')}</button></>}</div>
+}
+registerCard('bot_created', botAdmin)
+registerCard('bot_updated', botAdmin)
+registerCard('bot_deleted', botAdmin)
+registerCard('reset', () => <div className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>)
+registerCard('trigger', ({ m }) => <div className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>)   // i18n-ignore：存在消息里的标记
 
 // 正在流式输出的回复
 export function StreamMessage({ chat, chatId }: { chat: ChatT; chatId: number }) {
