@@ -1157,5 +1157,9 @@
   "不同意的话附一句意见，它会按意见改了重提": "Add a note if you decline, and it will revise and ask again",
   "去看看": "Take a look",
   "{name} 想修改一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to edit a bot. Confirm on the card in its chat",
-  "{name} 想删除一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to delete a bot. Confirm on the card in its chat"
+  "{name} 想删除一个 Bot，等你确认，卡片在它的私聊里": "{name} wants to delete a bot. Confirm on the card in its chat",
+  "（职责按你改的）": " (with your edits to the role)",
+  "职责（全文，改好后点下面的按钮）": "Role (full text; click the button below when done)",
+  "还原": "Undo edits",
+  "职责": "Role"
 }

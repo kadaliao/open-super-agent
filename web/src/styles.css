@@ -955,6 +955,9 @@ a.file-card:hover { border-color: var(--fg3); }
 .botadmin-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
 .newbot-role.diff del { color: var(--bad); text-decoration: line-through; background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .newbot-role.diff ins { color: var(--good); text-decoration: none; background: color-mix(in srgb, var(--good) 14%, transparent); }
+.botadmin-label { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.botadmin-label + .newbot-role { margin-top: 4px; }
+textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resize: vertical; font: inherit; line-height: 1.6; color: var(--fg); border: 1px solid var(--line); border-left: 3px solid var(--link); }
 .newbot-role { margin: 8px 0 6px; padding: 8px 12px; border-left: 3px solid var(--link); background: var(--bg); border-radius: 0 8px 8px 0; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto; }
 
 /* 链接卡片和嵌入：YouTube、B 站、X、网页书签 */

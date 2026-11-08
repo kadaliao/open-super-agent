@@ -65,6 +65,8 @@ export type Approval = {
   origin_thread?: number   // 任务是在讨论串里派的：origin_chat_id 是讨论串所在的对话，这个是讨论串
   args: string; ts: number; expires?: number | null; status?: string; always?: boolean
   once?: boolean   // 只能一次一次地允许（本机电脑的终端命令），没有“总是允许”
+  editable?: string[]   // 能在卡片上直接改的参数（args 里的键），同意时把改过的一起发回去
+  edited?: string[]     // 同意时改过的
 }
 export type Stream = { sid: string; text: string; thinking: string; started: number; bot_id: number }
 // 模型服务：一个兼容 OpenAI 的接口地址加一个密钥。source：config.yaml 里写的，还是界面上加的

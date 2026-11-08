@@ -322,8 +322,9 @@ export function send(chatId: number, text: string, attachments: Attachment[] = [
   ws?.send(JSON.stringify({ type: 'send', chat_id: chatId, text, ...(attachments.length ? { attachments } : {}) }))
 }
 
-export function approve(id: number, ok: boolean, note = '', always = false) {
-  ws?.send(JSON.stringify({ type: 'approve', id, ok, note, always }))
+// edits：在卡片上改过的参数（只认卡片的 editable 里的）
+export function approve(id: number, ok: boolean, note = '', always = false, edits?: Record<string, string>) {
+  ws?.send(JSON.stringify({ type: 'approve', id, ok, note, always, ...(edits ? { edits } : {}) }))
 }
 
 function handle(d: any) {

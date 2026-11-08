@@ -104,9 +104,10 @@ def decide(tool: str, backend: str | None = None) -> tuple[bool, str]:
 
 # ---------- 确认请求 ----------
 async def request(task, tool: str, args: dict, kind: str = "approval", once: bool = False,
-                  limit: int = 3000) -> tuple[bool, str]:
+                  limit: int = 3000, editable: tuple[str, ...] = ()) -> tuple[bool, str]:
     """创建确认请求并等待用户决定。返回 (是否允许, 用户附言)。once：只能一次一次地允许（卡片上没有“总是允许”）。
-    limit：卡片上的参数（JSON）最多多长，超出的截掉。"""
+    limit：卡片上的参数（JSON）最多多长，超出的截掉。
+    editable：用户能在卡片上直接改的参数（args 里的键，值是文字）。同意时改过的直接写回 args，调用方从 args 里读最终的值。"""
     global last_done
     aid = next(_ids)
     fut = asyncio.get_running_loop().create_future()
@@ -117,7 +118,8 @@ async def request(task, tool: str, args: dict, kind: str = "approval", once: boo
     item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": chat_id,
             "origin_chat_id": th[0] if th else task.chat_id, **({"origin_thread": task.chat_id} if th else {}), "tool": tool,
             "goal": task.goal[:80], "args": json.dumps(args, ensure_ascii=False, indent=1)[:limit], "ts": time.time(),
-            "expires": time.time() + timeout if timeout else None, "future": fut, **({"once": True} if once else {})}
+            "expires": time.time() + timeout if timeout else None, "future": fut, **({"once": True} if once else {}),
+            **({"editable": [k for k in editable if isinstance(args.get(k), str)], "_args": args} if editable else {})}
     pending[aid] = item
     task.waiting_approval = aid
     t0 = time.time()
@@ -139,17 +141,24 @@ async def request(task, tool: str, args: dict, kind: str = "approval", once: boo
     return ok, note
 
 
-def resolve(aid: int, ok: bool, note: str = "", always: bool = False) -> str:
+def resolve(aid: int, ok: bool, note: str = "", always: bool = False, edits: dict | None = None) -> str:
+    """edits：用户在卡片上改过的参数（只认 request 时 editable 里的），同意时才算数。"""
     item = pending.get(aid)
     if not item or item["future"].done():
         return i18n.t("没有待确认的请求 #{id}", id=aid)
     always = ok and always and item["kind"] == "approval" and not item.get("once")
     if always:
         add_rule(item["tool"], "allow", i18n.N_("在确认卡片上点了总是允许"))
+    edited = {}
+    if ok and isinstance(edits, dict):
+        edited = {k: v.strip() for k, v in edits.items()
+                  if k in item.get("editable", ()) and isinstance(v, str) and v.strip()
+                  and v.strip() != item["_args"][k].strip()}
+        item["_args"].update(edited)
     item["future"].set_result((ok, note))
     if notify:
         asyncio.create_task(notify({"type": "approval", "id": aid, "chat_id": item["chat_id"],
-                                    "status": "approved" if ok else "rejected", "always": always}))
+                                    "status": "approved" if ok else "rejected", "always": always, "edited": list(edited)}))
     return (i18n.t("已允许请求 #{id}", id=aid) if ok else i18n.t("已拒绝请求 #{id}", id=aid)) \
         + (i18n.t("，以后同类操作自动允许") if always else "")
 
@@ -175,7 +184,7 @@ def cancel_for_bot(bot_id: int):
 
 
 def public(item: dict) -> dict:
-    return {k: v for k, v in item.items() if k != "future"}
+    return {k: v for k, v in item.items() if k != "future" and not k.startswith("_")}
 
 
 def summary(bot_id: int | None = None) -> str:

@@ -281,6 +281,8 @@ def plan_delete(me: dict, args: dict) -> dict:
 
 
 PLAN = {"create_bot": plan_create, "update_bot": plan_update, "delete_bot": plan_delete}
+# 用户能在卡片上直接改的：卡片参数的键 → 工具参数。新建和修改时的职责（改后的全文）
+EDITABLE = {"create_bot": {"职责": "instructions"}, "update_bot": {"职责": "instructions"}}
 
 
 # ---------- 做 ----------
@@ -353,13 +355,17 @@ async def call(tool: str, bot: dict, chat_id: int, private_chat_id: int, args: d
     _, _, no, no_note, failed = TEXT[tool]
     label = plan["label"]
 
-    async def tell(text: str):
-        """叫醒发起的 Bot 在这个对话里接着说一轮（见 dm.wake），它从最近的系统通知里看到结果。"""
-        await dm.wake(bot["id"], chat_id, {"reply": owed, "depth": depth,
-                                           "woke": {"kind": "botadmin", "from": bot["id"], "text": text}})
+    async def tell(text: str, edited: list[str] | None = None):
+        """叫醒发起的 Bot 在这个对话里接着说一轮（见 dm.wake），它从最近的系统通知里看到结果。
+        edited：用户在卡片上改过哪些（卡片参数的键），它要以改过的为准。"""
+        await dm.wake(bot["id"], chat_id, {"reply": owed, "depth": depth, "woke": {
+            "kind": "botadmin", "from": bot["id"], "text": text, **({"edited": edited} if edited else {})}})
+
+    editable = EDITABLE.get(tool, {})
 
     async def wait_and_do():
-        ok, note = await approvals.request(fake, tool, shown, once=True, limit=CARD_LIMIT)
+        ok, note = await approvals.request(fake, tool, shown, once=True, limit=CARD_LIMIT,
+                                           editable=tuple(k for k in editable if k in shown))
         if not bots.get(bot["id"]):   # 等的时候发起的 Bot 自己被删了
             return
         if not ok:   # 记一笔：下一轮模型知道用户没同意（和附带的意见），不会以为做成了
@@ -368,13 +374,16 @@ async def call(tool: str, bot: dict, chat_id: int, private_chat_id: int, args: d
             if note or owed:   # 用户附了意见要它改，或者有 Bot 等着结果
                 await tell(text)
             return
+        # 用户在卡片上改过的（已经写回 shown）换进参数里
+        edited = [k for k in editable if k in shown and shown[k] != plan["shown"][k]]
+        final = {**args, **{editable[k]: shown[k] for k in edited}}
         try:
-            fresh = PLAN[tool](bots.get(bot["id"]), args)   # 等确认的时候情况可能变了：再检查一遍
+            fresh = PLAN[tool](bots.get(bot["id"]), final)   # 等确认的时候情况可能变了：再检查一遍
             text = await _apply(tool, fresh, chat_id, post, emit)
         except ValueError as e:
             text = i18n.t(failed, name=label, error=e)
             await post("task", text, chat_id, kind="note")
-        await tell(text)
+        await tell(text, edited)
 
     t = asyncio.create_task(wait_and_do())
     _running.add(t)

@@ -351,3 +351,42 @@ def test_cards_in_chat_apps_and_push(boss):
     title, body, *_ = push.message_for({"type": "approval", "status": "pending", **rm})
     assert "想删除一个 Bot" in title and body == "Gone"
     assert channels.render({"role": "task", "content": "[已删除 Bot「Gone」]", "meta": {"kind": "bot_deleted"}}, False) == "🤖 已删除 Bot「Gone」"
+
+
+async def test_edit_role_on_card(llm, events, boss):
+    """新建卡片上的职责能直接改：按改过的建，主 Bot 醒来知道用户改过。只认卡片允许改的、改成空的不算。"""
+    cid = boss["chat_id"]
+    llm.script("router:Boss", Call("create_bot", {"name": "Edit9", "instructions": "原来的职责"}), "请确认", "建好了")
+    await server.safe_handle(bots.chat(cid), "建个 Edit9")
+    c = await until(card, what="确认卡片")
+    assert c["editable"] == ["职责"] and "_args" not in approvals.public(c)
+    approvals.resolve(c["id"], True, edits={"职责": "  用户改过的职责  ", "名字": "Hacked9"})
+    await until(lambda: find(cid, kind="bot_created"), what="建好的消息")
+    b = bots.by_name("Edit9")
+    assert b and b["instructions"] == "用户改过的职责" and not bots.by_name("Hacked9")
+    assert [e for e in events.of("approval") if e.get("id") == c["id"] and e.get("edited") == ["职责"]]
+    await until(lambda: len(llm.bodies("router", "Boss")) == 3, what="主 Bot 被叫醒")
+    assert "用户在卡片上改过职责" in last_user(llm.bodies("router", "Boss")[2])
+    await settle()
+
+
+async def test_edit_role_on_update_card(llm, events, boss, make_bot):
+    w = make_bot("Upd9", "旧职责。")
+    llm.script("router:Boss", Call("update_bot", {"name": "Upd9", "instructions": "模型写的新职责。"}),
+               Call("update_bot", {"name": "Upd9", "instructions": "第二次。"}), "请确认")
+    await server.safe_handle(bots.chat(boss["chat_id"]), "改两次")
+    await until(lambda: len([x for x in approvals.pending.values() if x["tool"] == "update_bot"]) == 2, what="两张卡片")
+    first, second = sorted((x for x in approvals.pending.values() if x["tool"] == "update_bot"), key=lambda x: x["id"])
+    approvals.resolve(second["id"], False, edits={"职责": "拒绝时改的不算"})
+    await until(lambda: find(boss["chat_id"], kind="note", text="没修改 Bot「Upd9」"), what="没改的记录")
+    approvals.resolve(first["id"], True, edits={"职责": "   "})   # 改成空的：当没改
+    await until(lambda: find(boss["chat_id"], kind="bot_updated"), what="改好的消息")
+    assert bots.get(w["id"])["instructions"] == "模型写的新职责。"
+    await settle()
+
+    llm.script("router:Boss", Call("update_bot", {"name": "Upd9", "instructions": "再改一次。"}), "请确认")
+    await server.safe_handle(bots.chat(boss["chat_id"]), "再改")
+    c = await until(lambda: card("update_bot"), what="确认卡片")
+    approvals.resolve(c["id"], True, edits={"职责": "用户自己写的。"})
+    await until(lambda: bots.get(w["id"])["instructions"] == "用户自己写的。", what="按用户改的改好")
+    await settle()

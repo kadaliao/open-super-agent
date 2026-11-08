@@ -23,7 +23,8 @@ The README lists the highlights; this is the full list. For setup see [Configura
   - Edit: "add a rule to Radar's role: AI news only", "rename Researcher to Deep". Name, role, avatar and skills can all change; when editing a role
     it only touches what you asked for, and the card strikes through removed text and highlights added text. For another Bot's routines, the main Bot asks that Bot to set them up.
   - Delete: the card lists what goes with it (chat history, skills, routines, its own memories, which groups it leaves). This can't be undone.
-  - Creating, editing and deleting always show a card first and happen only when you approve. Decline with a note and it revises and asks again.
+  - Creating, editing and deleting always show a card first and happen only when you approve. Decline with a note and it revises and asks again,
+    or click Edit on the card to change the role yourself before approving.
   Other Bots can edit themselves; to create, delete or edit another Bot they ask the main Bot, and you still confirm.
 - **Background tasks**: workers run long jobs while you keep chatting. **Heavy mode** has several workers do the same job, then cross-review and merge.
 - **Memory**:

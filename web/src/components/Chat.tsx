@@ -360,12 +360,29 @@ function BotAdminCard({ a }: { a: Approval }) {
   const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
   const target = useStore(s => s.bots.find(b => b.id === d['编号']))   // i18n-ignore：工具参数的键
   const [note, setNote] = useState('')
+  const [draft, setDraft] = useState<string | null>(null)   // 正在改的职责全文；null 是没在改
   const name: string = d['名字'] || d['Bot'] || ''   // i18n-ignore：工具参数的键
   const who = bot?.name || 'Bot'
   if (a.status && a.status !== 'pending') {
     const [yes, no] = BOT_DONE[a.tool]
-    return <div className="sys-line">{a.status === 'approved' ? '✓ ' + yes(name) : '✕ ' + no(name)}</div>
+    return <div className="sys-line">{a.status === 'approved' ? '✓ ' + yes(name) + (a.edited?.length ? t('（职责按你改的）') : '') : '✕ ' + no(name)}</div>
   }
+  const role: string = d['职责'] ?? ''   // i18n-ignore：工具参数的键
+  const canEdit = !!a.editable?.includes('职责')   // i18n-ignore：工具参数的键
+  const changed = draft !== null && !!draft.trim() && draft.trim() !== role.trim()
+  // 职责上面那行：说明 + “编辑 / 还原”
+  const roleHead = (label: string) => (
+    <div className="botadmin-label">
+      <span className="muted small">{draft !== null ? t('职责（全文，改好后点下面的按钮）') : label}</span><span className="grow" />
+      {canEdit && (draft === null
+        ? <button className="link-btn small" onClick={() => setDraft(role)}>✎ {t('编辑')}</button>
+        : <button className="link-btn small" onClick={() => setDraft(null)}>{t('还原')}</button>)}
+    </div>
+  )
+  const roleEditor = draft !== null && (
+    <textarea className="newbot-role edit" value={draft} maxLength={4000} autoFocus onChange={e => setDraft(e.target.value)}
+      rows={Math.min(14, Math.max(4, draft.split('\n').length + Math.ceil(draft.length / 40)))} />
+  )
   const lost = d['会删掉'] || {}   // i18n-ignore：工具参数的键
   const what = [lost['消息'] ? t('私聊里的 {n} 条消息', { n: lost['消息'] }) : '', lost['技能'] ? t('{n} 个技能', { n: lost['技能'] }) : '',   // i18n-ignore：工具参数的键
     lost['定时任务'] ? t('{n} 个定时任务', { n: lost['定时任务'] }) : '', lost['记忆'] ? t('它自己的 {n} 条记忆', { n: lost['记忆'] }) : ''].filter(Boolean)   // i18n-ignore：工具参数的键
@@ -382,7 +399,8 @@ function BotAdminCard({ a }: { a: Approval }) {
       {d['请求方'] && <div className="muted small">{t('{name} 私信请它做的', { name: d['请求方'] })}</div>}{/* i18n-ignore：工具参数的键 */}
       {a.tool === 'create_bot' && <>
         {d['头像'] && <div className="botadmin-row"><span className="muted">{t('头像')}</span><BotAvatar avatar={d['头像']} size={22} /></div>}{/* i18n-ignore：工具参数的键 */}
-        <div className="newbot-role">{d['职责'] ?? a.args}</div>{/* i18n-ignore：工具参数的键 */}
+        {roleHead(t('职责'))}
+        {roleEditor || <div className="newbot-role">{d['职责'] ?? a.args}</div>}{/* i18n-ignore：工具参数的键 */}
         {!!d['技能']?.length && <div className="muted small">{t('一起带上的技能：')}{d['技能'].join(' · ')}</div>}{/* i18n-ignore：工具参数的键 */}
         <div className="muted small">{t('建好后可以再让主 Bot 改，也能在它私聊的右栏里改')}</div>
       </>}
@@ -392,9 +410,9 @@ function BotAdminCard({ a }: { a: Approval }) {
           {target && <BotAvatar avatar={target.avatar} size={22} />}→<BotAvatar avatar={d['头像']} size={22} />{/* i18n-ignore：工具参数的键 */}
           {d['不再用图片头像'] && <span className="muted small">{t('不再用原来的图片')}</span>}</div>}{/* i18n-ignore：工具参数的键 */}
         {d['职责改动'] && <>{/* i18n-ignore：工具参数的键 */}
-          <div className="muted small">{t('职责：划掉的是删掉的，标绿的是加上的')}</div>
-          <div className="newbot-role diff">{(d['职责改动'] as [number, string][]).map(([sign, text], i) =>   // i18n-ignore：工具参数的键
-            sign < 0 ? <del key={i}>{text}</del> : sign > 0 ? <ins key={i}>{text}</ins> : <span key={i}>{text}</span>)}</div>
+          {roleHead(t('职责：划掉的是删掉的，标绿的是加上的'))}
+          {roleEditor || <div className="newbot-role diff">{(d['职责改动'] as [number, string][]).map(([sign, text], i) =>   // i18n-ignore：工具参数的键
+            sign < 0 ? <del key={i}>{text}</del> : sign > 0 ? <ins key={i}>{text}</ins> : <span key={i}>{text}</span>)}</div>}
         </>}
         {skillRows.filter(([, xs]) => xs?.length).map(([label, xs]) =>
           <div key={label} className="small">{label}{xs.map(x => <div key={x} className="muted">{x}</div>)}</div>)}
@@ -410,7 +428,8 @@ function BotAdminCard({ a }: { a: Approval }) {
       <div className="approval-actions">
         <input value={note} onChange={e => setNote(e.target.value)} placeholder={t('不同意的话附一句意见，它会按意见改了重提')} />
         <button className="btn" onClick={() => approve(a.id, false, note)}>{no}</button>
-        <button className={'btn ' + (a.tool === 'delete_bot' ? 'danger' : 'primary')} onClick={() => approve(a.id, true)}>{yes}</button>
+        <button className={'btn ' + (a.tool === 'delete_bot' ? 'danger' : 'primary')} disabled={draft !== null && !draft.trim()}
+          onClick={() => approve(a.id, true, '', false, changed ? { '职责': draft!.trim() } : undefined)}>{yes}</button>{/* i18n-ignore：工具参数的键 */}
       </div>
     </div>
   )

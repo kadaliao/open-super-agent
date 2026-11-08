@@ -1641,7 +1641,8 @@ async def ws(sock: WebSocket):
         while True:
             data = await sock.receive_json()
             if data.get("type") == "approve":
-                approvals.resolve(int(data["id"]), bool(data.get("ok")), data.get("note", ""), bool(data.get("always")))
+                approvals.resolve(int(data["id"]), bool(data.get("ok")), data.get("note", ""), bool(data.get("always")),
+                                  data.get("edits"))
             elif data.get("type") == "visibility":
                 watching[sock] = bool(data.get("visible"))
             elif data.get("type") == "send":

@@ -140,6 +140,7 @@ BOTADMIN_TURN = """
 - 用户没同意：附了意见就按意见改好，用同一个工具重新提；没附意见就简短说一声，不要自己重提。
 - 没做成：说明原因。"""
 BOTADMIN_OWED = "\n这是 {owed} 私信请你做的：你这一轮的回复会自动作为回信发给它，把结果写清楚，它看不到这里的系统通知。"
+BOTADMIN_EDITED = "\n用户在卡片上改过{fields}才同意的，以改过的为准：要知道现在是怎么写的，用 get_bot 看。"
 
 MESSAGE_BOT = {"type": "function", "function": {"name": "message_bot",
     "description": "私信另一个 Bot，请它帮忙做事。它在自己的私聊里处理，回信会自动回到当前对话，你到时再接着说",
@@ -388,7 +389,8 @@ class Router:
             return ""
         if woke["kind"] == "botadmin":
             o = bots.get(self.turn["reply"]["bot"]) if self.turn.get("reply") else None
-            return BOTADMIN_TURN + (BOTADMIN_OWED.format(owed=o["name"]) if o else "")
+            return BOTADMIN_TURN + (BOTADMIN_EDITED.format(fields="、".join(woke["edited"])) if woke.get("edited") else "") + \
+                (BOTADMIN_OWED.format(owed=o["name"]) if o else "")
         name = bots.get(woke["from"])["name"] if bots.get(woke["from"]) else "已删除的 Bot"
         if woke["kind"] == "dm":
             return DM_TURN.format(name=name)
