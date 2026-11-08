@@ -37,6 +37,10 @@ class OsaPlugin: Plugin, UNUserNotificationCenterDelegate {
     override func load(webview: WKWebView) {
         web = webview
         webview.allowsLinkPreview = false   // 长按链接的预览里点“打开”会让主界面跳走
+        // 整页不回弹、不能被手指拖着走（弹出键盘时系统把页面往上推，原来还能上下拖来拖去）；
+        // 系统为了露出输入框自己推页面不受影响，对话和列表在网页里有自己的滚动，也不受影响
+        webview.scrollView.bounces = false
+        webview.scrollView.isScrollEnabled = false
         DeviceToken.installHooks()
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)

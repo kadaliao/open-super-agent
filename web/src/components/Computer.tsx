@@ -7,6 +7,7 @@ import BotAvatar from './BotAvatar'
 import { ask, notice } from './Dialog'
 import { isEnter } from '../keys'
 import { desktop, phone, type LinkState } from '../desktop'
+import { useBack } from '../swipe'
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
@@ -272,6 +273,8 @@ export function ComputerPanel({ botId }: { botId: number }) {
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
   const [big, setBig] = useState(false)
+  const bigRef = useRef<HTMLDivElement>(null)
+  useBack(() => setBig(false), bigRef, big)
   const [ls, setLs] = useState<LinkState | null>(null)   // 这个 App 所在的 Mac 借给服务器了没有（只有连着服务器的桌面 App 有）
   const reloadLink = () => { if (desktop?.link && !phone) desktop.link.state().then(setLs).catch(() => setLs(null)) }
   useEffect(reloadLink, [st?.link?.connected, st?.backend])
@@ -341,7 +344,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
       {st.backend === 'host' && <HostShell on={!!st.shell} />}
       {err && <div className="error-line">{err}</div>}
       {big && live && (
-        <div className="modal-bg" onMouseDown={() => setBig(false)}>
+        <div className="modal-bg" ref={bigRef} onMouseDown={() => setBig(false)}>
           <div className="pc-big" onMouseDown={e => e.stopPropagation()}>
             <div className="pc-bar">
               <span className={'pc-dot ' + st.state} /><b>{t('电脑')}</b>

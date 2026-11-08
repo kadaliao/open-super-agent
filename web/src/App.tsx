@@ -11,6 +11,7 @@ import Onboarding from './components/Onboarding'
 import { BotPanel, NewBotDialog } from './components/BotEditor'
 import { GroupPanel, NewGroupDialog } from './components/Groups'
 import { ImageViewer } from './components/Media'
+import { useDrawer } from './swipe'
 
 export default function App() {
   const ready = useStore(s => s.ready)
@@ -23,6 +24,7 @@ export default function App() {
   const [onboard, setOnboard] = useState(false)                     // 第一次打开时的引导
   const [details, setDetails] = useState(() => localStorage.getItem('osa.details') === '1')
   const [side, setSide] = useState(false)   // 手机上的侧栏抽屉
+  useDrawer(() => setSide(true), side)      // 左边缘右滑：没有别的层时把它拉出来
   const [tab, setTab] = useState(() => localStorage.getItem('osa.tab') || 'computer')
   useEffect(() => localStorage.setItem('osa.tab', tab), [tab])
   // 文件拖到没有接收的地方（比如资料库页面）时，别让浏览器直接打开它、离开这个页面

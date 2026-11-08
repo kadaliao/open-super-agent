@@ -4,10 +4,13 @@ import type { Bot } from '../types'
 import Composer from './Composer'
 import { MessageList, PendingApprovals, StreamMessage } from './Chat'
 import { t } from '../i18n'
+import { useBack } from '../swipe'
 
 // 右边的讨论串：上面是被回复的那条消息，下面是针对它的回复。Bot 在这里回答，主对话不受影响
 export default function ThreadPanel() {
   const th = useStore(s => s.thread)
+  const root = useRef<HTMLElement>(null)
+  useBack(closeThread, root)
   const chat = useStore(s => (s.thread ? chatById(s, s.thread.chat) : undefined))
   const bots = useStore(s => s.bots)
   const list = useStore(s => (s.thread?.id ? s.messages[s.thread.id] : undefined))
@@ -53,7 +56,7 @@ export default function ThreadPanel() {
   const busy = stream ? (group ? bots.find(b => b.id === stream.bot_id)?.name || t('有人') : bot!.name) : ''
 
   return (
-    <aside className="panel th-panel">
+    <aside className="panel th-panel" ref={root}>
       <div className="panel-head">
         <div className="th-title"><b>{t('讨论串')}</b><span className="muted small">{group ? chat.title : bot!.name}</span></div>
         <button className="icon-btn" onClick={closeThread} title={t('关闭')}>✕</button>

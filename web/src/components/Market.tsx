@@ -5,6 +5,7 @@ import { BrandIcon } from './BrandIcon'
 import { t, tc, tn } from '../i18n'
 import { ask } from './Dialog'
 import { desktop } from '../desktop'
+import { useBack } from '../swipe'
 
 const HOW: Record<string, string> = { oauth: t('登录即用'), token: t('填一个密钥'), none: t('免配置') }
 // 登录授权的应用也可能要先填几项（比如自己建的 OAuth 客户端），填好再登录
@@ -79,6 +80,8 @@ export default function Market() {
   const [open, setOpen] = useState<string | null>(null)        // 打开详情的应用（市场 id 或应用名）
   const [custom, setCustom] = useState<{ app?: App } | null>(null)
   const [quickErr, setQuickErr] = useState('')
+  const editor = useRef<HTMLElement>(null)
+  useBack(() => setCustom(null), editor, !!custom)
   const demo = useStore(s => !!s.settings?.security?.demo)   // 演示服务器：只能用应用市场里的应用
   useEffect(() => { refreshApps() }, [])
   const byName = useMemo(() => Object.fromEntries(apps.map(a => [a.name, a])), [apps])
@@ -93,7 +96,7 @@ export default function Market() {
   }
 
   if (custom) return (
-    <main className="chat market"><header className="chat-head"><span className="head-name">{t('应用')}</span></header>
+    <main className="chat market" ref={editor}><header className="chat-head"><span className="head-name">{t('应用')}</span></header>
       <div className="scroller"><div className="m-body"><CustomEditor app={custom.app} onDone={() => setCustom(null)} /></div></div>
     </main>
   )
@@ -163,6 +166,8 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState(initErr)
   const [rekey, setRekey] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  useBack(onClose, root)
   // 填的内容放在这里：登录失败时应用会被撤掉、表单重新出现，不用再粘贴一遍
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries((item?.fields || []).map(f => [f.key, f.default || ''])))
   useEffect(() => {
@@ -188,7 +193,7 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
     run('remove', () => api(`/api/apps/${name}`, { method: 'DELETE' }))
   const showForm = !app || rekey
   return (
-    <div className="modal-bg" onMouseDown={onClose}>
+    <div className="modal-bg" ref={root} onMouseDown={onClose}>
       <div className="modal m-sheet" onMouseDown={e => e.stopPropagation()}>
         <div className="m-sheet-head">
           <AppIcon item={item} name={name} size={56} />

@@ -6,6 +6,7 @@ import Markdown from './Markdown'
 import { locale, t, tc } from '../i18n'
 import { ask } from './Dialog'
 import { isEnter } from '../keys'
+import { useBack } from '../swipe'
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 export const size = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`
@@ -21,7 +22,9 @@ export default function Library() {
   const pageId = useStore(s => s.libraryPage)
   const [tab, setTab] = useState(() => localStorage.getItem('osa.libtab') || 'pages')
   useEffect(() => localStorage.setItem('osa.libtab', tab), [tab])
-  if (pageId) return <main className="chat library"><PageView id={pageId} /></main>
+  const page = useRef<HTMLElement>(null)
+  useBack(() => openLibrary(), page, !!pageId)   // 页面 → 资料库列表
+  if (pageId) return <main className="chat library" ref={page}><PageView id={pageId} /></main>
   return (
     <main className="chat library">
       <header className="chat-head">

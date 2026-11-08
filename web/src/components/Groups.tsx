@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { api, openChat, refreshLists, useStore } from '../store'
 import type { Bot, Chat } from '../types'
 import { lang, t, tc } from '../i18n'
@@ -8,6 +8,7 @@ import { TasksPanel } from './Tasks'
 import { ask } from './Dialog'
 import { GroupFace } from './Chat'
 import { AvatarImageTools, groupPrompt } from './AvatarTools'
+import { useBack } from '../swipe'
 import { isEnter } from '../keys'
 
 const MIN = 2, MAX = 6
@@ -31,6 +32,8 @@ function BotPicker({ bots, picked, onChange }: { bots: Bot[]; picked: number[]; 
 
 export function NewGroupDialog({ onClose }: { onClose: () => void }) {
   const bots = useStore(s => s.bots)
+  const root = useRef<HTMLDivElement>(null)
+  useBack(onClose, root)
   const [picked, setPicked] = useState<number[]>([])
   const [title, setTitle] = useState('')
   const [lead, setLead] = useState<number | null>(null)
@@ -43,7 +46,7 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
     } catch (e: any) { setErr(e.message) }
   }
   return (
-    <div className="modal-bg" onMouseDown={onClose}>
+    <div className="modal-bg" ref={root} onMouseDown={onClose}>
       <div className="modal small" onMouseDown={e => e.stopPropagation()}>
         <h3>{t('新建群聊')}</h3>
         {bots.length < MIN ? <p className="muted">{t('至少要有 {n} 个 Bot 才能建群聊，先去新建一个 Bot。', { n: MIN })}</p> : <>
@@ -70,8 +73,10 @@ export function NewGroupDialog({ onClose }: { onClose: () => void }) {
 
 export function GroupPanel({ chat, onClose, tab, setTab }: { chat: Chat; onClose: () => void; tab: string; setTab: (tab: string) => void }) {
   const cur = tab === 'computer' || tab === 'tasks' ? tab : 'group'
+  const root = useRef<HTMLElement>(null)
+  useBack(onClose, root)
   return (
-    <aside className="panel">
+    <aside className="panel" ref={root}>
       <div className="panel-head">
         <div className="panel-tabs">
           <button className={cur === 'group' ? 'on' : ''} onClick={() => setTab('group')}>{tc('tab', '群聊')}</button>

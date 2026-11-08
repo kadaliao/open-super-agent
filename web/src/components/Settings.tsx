@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { encode } from 'uqr'
 import { api, setSettings, useStore } from '../store'
 import { desktop, phone } from '../desktop'
@@ -10,6 +10,7 @@ import Channels from './Channels'
 import ModelSettings, { ROLE_NAMES } from './ModelSettings'
 import { priceSource, priceText, ToastHost, useToast } from './settingsKit'
 import { ask } from './Dialog'
+import { useBack } from '../swipe'
 
 // 设置：左边按类分组的导航，右边是这一页
 const GROUPS: { name: string; items: [string, string, string][] }[] = [
@@ -41,9 +42,11 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
     document.addEventListener('keydown', h)
     return () => document.removeEventListener('keydown', h)
   }, [onClose])
+  const root = useRef<HTMLDivElement>(null)
+  useBack(onClose, root)
   const title = TITLES[tab] ? tab : 'models'
   return (
-    <div className="modal-bg" onMouseDown={onClose}>
+    <div className="modal-bg" ref={root} onMouseDown={onClose}>
       <div className="modal set-modal" onMouseDown={e => e.stopPropagation()}>
         <ToastHost>
           <nav className="set-nav">

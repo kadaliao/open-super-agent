@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { api, openChat, refreshLists, showTask, useStore } from '../store'
 import type { Avatar, Bot } from '../types'
 import { t, tc } from '../i18n'
@@ -10,6 +10,7 @@ import { ShareTemplate, TemplateInstall, TemplatePicker, type TemplatePreview } 
 import { TasksPanel } from './Tasks'
 import { ask } from './Dialog'
 import { AvatarImageTools, botPrompt } from './AvatarTools'
+import { useBack } from '../swipe'
 import { isEnter } from '../keys'
 
 // 新建 Bot：从模板装（带好技能和定时任务），或者空白的：只问名字和头像，职责在第一条消息里交代
@@ -23,6 +24,9 @@ export function NewBotDialog({ onClose }: { onClose: () => void }) {
   const [avatar, setAvatar] = useState<Avatar>({ shape: shapes[count % shapes.length], color: colors[(count + 2) % colors.length] })
   const [err, setErr] = useState('')
   const done = async (b: Bot) => { await refreshLists(); openChat(b.chat_id); onClose() }
+  const root = useRef<HTMLDivElement>(null)
+  useBack(onClose, root)
+  useBack(() => preview ? setPreview(null) : setMode('pick'), undefined, !!preview || mode === 'blank')   // 上一步
 
   const create = async () => {
     try { await done(await api('/api/bots', { method: 'POST', body: { name: name.trim() || t('新 Bot'), avatar } })) }
@@ -30,7 +34,7 @@ export function NewBotDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-bg" onMouseDown={onClose}>
+    <div className="modal-bg" ref={root} onMouseDown={onClose}>
       <div className={'modal ' + (mode === 'pick' ? 'medium' : 'small')} onMouseDown={e => e.stopPropagation()}>
         <h3>{t('新建 Bot')}</h3>
         {preview ? <TemplateInstall p={preview} onBack={() => setPreview(null)} onInstalled={done} />
@@ -79,9 +83,11 @@ export function AvatarPicker({ avatar, onChange, prompt }: { avatar: Avatar; onC
 export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: string; setTab: (tab: string) => void }) {
   const bot = useStore(s => s.bots.find(b => b.chat_id === s.active))
   const tasks = useStore(s => s.tasks)
+  const root = useRef<HTMLElement>(null)
+  useBack(onClose, root)
   if (!bot) return null
   return (
-    <aside className="panel">
+    <aside className="panel" ref={root}>
       <div className="panel-head">
         <div className="panel-tabs">
           <button className={tab === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>{t('电脑')}</button>

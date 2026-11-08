@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Attachment } from '../types'
 import { t } from '../i18n'
 import { Icon } from '../icons'
+import { useBack } from '../swipe'
 
 // 对话里的图片和附件：缩略图、文件卡片、看大图。图片存在服务端的 media 表（/api/media/<id>），
 // 文件在电脑里（/api/files/download?path=…）。附件的格式见 osa/media.py
@@ -62,6 +63,8 @@ export const openImage = (v: ViewerItem) => window.dispatchEvent(new CustomEvent
 
 export function ImageViewer() {
   const [v, setV] = useState<ViewerItem | null>(null)
+  const root = useRef<HTMLDivElement>(null)
+  useBack(() => setV(null), root, !!v)
   useEffect(() => {
     const h = (e: Event) => setV((e as CustomEvent).detail)
     window.addEventListener('osa-image', h)
@@ -75,7 +78,7 @@ export function ImageViewer() {
   }, [v])
   if (!v) return null
   return (
-    <div className="modal-bg viewer" onClick={() => setV(null)}>
+    <div className="modal-bg viewer" ref={root} onClick={() => setV(null)}>
       <img src={v.src} alt={v.name || ''} onClick={e => e.stopPropagation()} />
       <div className="viewer-bar" onClick={e => e.stopPropagation()}>
         {v.name && <span className="viewer-name" title={v.name}>{v.name}</span>}

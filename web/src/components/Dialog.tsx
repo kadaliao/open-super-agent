@@ -1,8 +1,9 @@
 // 代替浏览器的 confirm() / alert()：桌面 App 里的 WebKit 不弹原生对话框（confirm 直接当成“取消”）。
 // 第一次用到时自己挂到页面上，分享页这类单独的页面也能用。
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { t } from '../i18n'
+import { useBack } from '../swipe'
 
 type Req = { text: string; ok: string; cancel?: string; danger?: boolean; resolve: (ok: boolean) => void }
 
@@ -36,6 +37,8 @@ function close(r: Req, ok: boolean) {
 function Host() {
   const q = useSyncExternalStore(f => { subs.add(f); return () => { subs.delete(f) } }, () => queue)
   const r = q[0]
+  const root = useRef<HTMLDivElement>(null)
+  useBack(() => r && close(r, false), root, !!r)
   useEffect(() => {
     if (!r) return
     // 先于设置、应用市场这些弹窗自己的 Esc 处理：只关掉这个对话框
@@ -47,7 +50,7 @@ function Host() {
   }, [r])
   if (!r) return null
   return (
-    <div className="modal-bg dialog-bg" onMouseDown={e => e.target === e.currentTarget && close(r, false)}>
+    <div className="modal-bg dialog-bg" ref={root} onMouseDown={e => e.target === e.currentTarget && close(r, false)}>
       <div className="modal small dialog" role="alertdialog" aria-modal="true">
         <p className="dialog-text">{r.text}</p>
         <div className="modal-actions">
