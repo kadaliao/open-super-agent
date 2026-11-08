@@ -13,7 +13,7 @@ import re
 import time
 from .config import CFG, call_kwargs, client_for
 from .memory import conn
-from . import i18n, memory, skills
+from . import bots, i18n, memory, skills
 
 conn.execute("""create table if not exists routines(
   id integer primary key, bot_id integer, name text, prompt text default '', skill text default '',
@@ -366,7 +366,8 @@ def import_legacy(bot_id: int):
     conn.commit()
 
 
-# ---------- Bot 在对话里管自己的定时任务（只给 Router，在 builtin.py 注册）----------
+# ---------- Bot 在对话里管定时任务（只给 Router，在 builtin.py 注册）----------
+# 每个 Bot 管自己的；主 Bot 管所有 Bot 的（按编号改、删，填 bot 看某个 Bot 的、给它建），不弹卡片
 _TRIGGER = {
     "kind": {"type": "string", "enum": list(KINDS)},
     "times": {"type": "array", "items": {"type": "string"}, "description": "daily 用：HH:MM 列表"},
@@ -376,23 +377,29 @@ CREATE_ROUTINE = {"type": "function", "function": {"name": "create_routine", "de
     "parameters": {"type": "object", "properties": {
         "name": {"type": "string", "description": "名字；webhook 类只能用字母数字 - _"},
         "prompt": {"type": "string", "description": "每次运行要做的事，写完整"},
-        "skill": {"type": "string", "description": "可选：每次按哪个技能做（不带 /）"}, **_TRIGGER},
+        "skill": {"type": "string", "description": "可选：每次按哪个技能做（不带 /）"}, **_TRIGGER,
+        "bot": {"type": "string", "description": "只有主 Bot 能填：给哪个 Bot 建（名字），它以自己的身份、用自己的技能跑。不填是给你自己"}},
         "required": ["name", "kind"]}}}
 LIST_ROUTINES = {"type": "function", "function": {"name": "list_routines",
-    "description": "查看你自己的定时任务：每次做什么、什么时候跑、上次结果。填 id 看那一个的完整要求和最近几次运行",
-    "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}}}}
-UPDATE_ROUTINE = {"type": "function", "function": {"name": "update_routine",
-    "description": "修改你自己的一个定时任务，只填要改的。暂停填 enabled=false，恢复填 true",
+    "description": "查看定时任务：编号、每次做什么、什么时候跑、上次结果。填 id 看那一个的完整要求和最近几次运行。"
+                   "主 Bot 不填 bot 看所有 Bot 的，别的 Bot 只看得到自己的",
     "parameters": {"type": "object", "properties": {
         "id": {"type": "integer"},
+        "bot": {"type": "string", "description": "只有主 Bot 能填：只看哪个 Bot 的（名字）"}}}}}
+UPDATE_ROUTINE = {"type": "function", "function": {"name": "update_routine",
+    "description": "按编号修改定时任务，只填要改的。暂停填 enabled=false，恢复填 true。主 Bot 能改所有 Bot 的，别的 Bot 只能改自己的",
+    "parameters": {"type": "object", "properties": {
+        "id": {"type": "integer"},
+        "ids": {"type": "array", "items": {"type": "integer"},
+                "description": "同样的改动用在多个定时任务上时填（比如全部暂停），代替 id"},
         "name": {"type": "string"},
         "prompt": {"type": "string", "description": "改完后的完整要求：先用 list_routines 看原文，只改用户要改的地方，其余照抄"},
         "skill": {"type": "string", "description": "每次按哪个技能做（不带 /）；空字符串表示不再按技能做"},
         **_TRIGGER, "kind": {"type": "string", "enum": list(KINDS), "description": "改触发方式时才填"},
-        "enabled": {"type": "boolean", "description": "false 暂停，true 恢复"}},
-        "required": ["id"]}}}
+        "enabled": {"type": "boolean", "description": "false 暂停，true 恢复"}}}}}
 DELETE_ROUTINE = {"type": "function", "function": {"name": "delete_routine",
-    "description": "删除你自己的一个定时任务，运行记录一起删、不能恢复。只在用户明确要删时用；只是先不跑就用 update_routine 暂停",
+    "description": "按编号删除一个定时任务，运行记录一起删、不能恢复。只在用户明确要删时用；只是先不跑就用 update_routine 暂停。"
+                   "主 Bot 能删所有 Bot 的，别的 Bot 只能删自己的",
     "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}}
 
 _STATUS = {"running": "正在跑", "done": "完成", "quiet": "没有新内容", "failed": "失败", "cancelled": "取消了",
@@ -423,12 +430,39 @@ def _run_line(run: dict, full: bool = False) -> str:
     return s + (f"（任务 #{run['task_id']}）" if run["task_id"] else "")
 
 
-def _mine(bot_id: int, rid) -> dict | None:
+def _not_mine(me: dict) -> str:
+    return "" if me.get("is_primary") else f"（只能管你自己的，别的 Bot 的归主 Bot「{bots.primary_name()}」管）"
+
+
+def _mine(me: dict, rid) -> dict | None:
+    """me 能管的定时任务：自己的；主 Bot 是所有 Bot 的。"""
     try:
         r = get(int(rid))
     except (TypeError, ValueError):
         return None
-    return r if r and r["bot_id"] == bot_id else None
+    return r if r and (r["bot_id"] == me["id"] or me.get("is_primary")) else None
+
+
+def _owner(me: dict, name) -> tuple[dict | None, str]:
+    """填了 bot 时是哪个 Bot（只有主 Bot 能填别人），返回 (Bot, 不行的原因)。"""
+    if not name:
+        return me, ""
+    b = bots.by_name(str(name))
+    if b and b["id"] == me["id"]:
+        return me, ""
+    if not me.get("is_primary"):
+        return None, f"别的 Bot 的定时任务归主 Bot「{bots.primary_name()}」管，你只能管自己的"
+    if not b:
+        return None, f"没有叫 {name} 的 Bot（现有：{'、'.join(x['name'] for x in bots.list_bots())}）"
+    return b, ""
+
+
+def _whose(me: dict, r: dict) -> str:
+    """别的 Bot 的定时任务标上是谁的：“ Radar 的”；自己的是空的。"""
+    if r["bot_id"] == me["id"]:
+        return ""
+    b = bots.get(r["bot_id"])
+    return f" {b['name'] if b else '已删除的 Bot'} 的"
 
 
 def _summary(r: dict, full: bool = False) -> str:
@@ -452,53 +486,83 @@ def _summary(r: dict, full: bool = False) -> str:
     return "\n".join(lines)
 
 
-async def tool_list(bot_id: int, args: dict) -> str:
+async def tool_list(me: dict, args: dict) -> str:
     if args.get("id") is not None:
-        r = _mine(bot_id, args["id"])
-        return _summary(r, full=True) if r else f"你没有 #{args['id']} 这个定时任务"
-    return "\n\n".join(_summary(r) for r in list_for(bot_id)) or "你还没有定时任务"
+        r = _mine(me, args["id"])
+        if not r:
+            return f"没有 #{args['id']} 这个定时任务{_not_mine(me)}"
+        return (f"（这是{w}定时任务）\n" if (w := _whose(me, r)) else "") + _summary(r, full=True)
+    if args.get("bot") or not me.get("is_primary"):
+        b, why = _owner(me, args.get("bot"))
+        if not b:
+            return why
+        return "\n\n".join(_summary(r) for r in list_for(b["id"])) or \
+            ("你" if b["id"] == me["id"] else b["name"]) + "还没有定时任务"
+    # 主 Bot 不填 bot：所有 Bot 的，按 Bot 分开，自己的在前
+    parts, empty = [], []
+    for b in sorted(bots.list_bots(), key=lambda x: x["id"] != me["id"]):
+        name = b["name"] + ("（你）" if b["id"] == me["id"] else "")
+        if rs := list_for(b["id"]):
+            parts.append(f"「{name}」的定时任务：\n" + "\n\n".join(_summary(r) for r in rs))
+        else:
+            empty.append(name)
+    if not parts:
+        return "所有 Bot 都还没有定时任务"
+    return "\n\n".join(parts) + ("\n\n没有定时任务的 Bot：" + "、".join(empty) if empty else "")
 
 
-async def tool_create(bot_id: int, args: dict) -> str:
+async def tool_create(me: dict, args: dict) -> str:
+    b, why = _owner(me, args.get("bot"))
+    if not b:
+        return f"没建成：{why}"
     trig = {"kind": args.get("kind"), "times": args.get("times") or [], "days": args.get("days") or [],
             "minutes": args.get("minutes")}
     try:
-        r = save(bot_id, {"name": args.get("name", ""), "prompt": args.get("prompt", ""),
-                          "skill": args.get("skill", ""), "trigger": trig})
+        r = save(b["id"], {"name": args.get("name", ""), "prompt": args.get("prompt", ""),
+                           "skill": args.get("skill", ""), "trigger": trig})
     except (ValueError, TypeError) as e:
         return f"没建成：{e}"
     await _changed(r)
-    return f"已建定时任务 #{r['id']}「{r['name']}」：{_when(r)}"
+    return f"已{'' if b['id'] == me['id'] else '给 ' + b['name'] + ' '}建定时任务 #{r['id']}「{r['name']}」：{_when(r)}"
 
 
-async def tool_update(bot_id: int, args: dict) -> str:
+async def tool_update(me: dict, args: dict) -> str:
     a = {k: v for k, v in args.items() if v is not None}   # 模型常把没改的填成 null
-    r = _mine(bot_id, a.get("id"))
-    if not r:
-        return f"没改：你没有 #{a.get('id')} 这个定时任务（只能改你自己的）"
+    targets = a.get("ids") or ([a["id"]] if "id" in a else [])
+    if not targets:
+        return "没改：要填 id（或者 ids）"
     data = {k: a[k] for k in ("name", "prompt", "skill", "enabled") if k in a}
-    if keys := [k for k in ("kind", "times", "days", "minutes") if k in a]:
-        data["trigger"] = r["trigger"] | {k: a[k] for k in keys}   # 只改时间也行，没填的照旧
-    if not data:
+    keys = [k for k in ("kind", "times", "days", "minutes") if k in a]
+    if not data and not keys:
         return "没改：没说要改什么"
-    try:
-        new = save(bot_id, data, r["id"])
-    except (ValueError, TypeError) as e:
-        return f"没改：{e}"
-    await _changed(new)
-    return "已改好：" + _summary(new)
+    out = []
+    for rid in targets:
+        r = _mine(me, rid)
+        if not r:
+            out.append(f"没改 #{rid}：没有这个定时任务{_not_mine(me)}")
+            continue
+        d = data | ({"trigger": r["trigger"] | {k: a[k] for k in keys}} if keys else {})   # 只改时间也行，没填的照旧
+        try:
+            new = save(r["bot_id"], d, r["id"])
+        except (ValueError, TypeError) as e:
+            out.append(f"没改 #{rid}：{e}")
+            continue
+        await _changed(new)
+        out.append(f"已改好{_whose(me, new)}：" + _summary(new))
+    return "\n\n".join(out)
 
 
-async def tool_delete(bot_id: int, args: dict) -> str:
-    r = _mine(bot_id, args.get("id"))
+async def tool_delete(me: dict, args: dict) -> str:
+    r = _mine(me, args.get("id"))
     if not r:
-        return f"没删：你没有 #{args.get('id')} 这个定时任务（只能删你自己的）"
+        return f"没删：没有 #{args.get('id')} 这个定时任务{_not_mine(me)}"
     delete(r["id"])
     await _changed(r)
     # 删了不能恢复：把原来的设置留在对话里，用户反悔时照着重建
-    keep = [f"触发：{json.dumps(r['trigger'], ensure_ascii=False)}"] + \
+    keep = ([f"Bot：{b['name']}"] if r["bot_id"] != me["id"] and (b := bots.get(r["bot_id"])) else []) + \
+        [f"触发：{json.dumps(r['trigger'], ensure_ascii=False)}"] + \
         ([f"每次做：{r['prompt']}"] if r["prompt"] else []) + ([f"技能：{r['skill']}"] if r["skill"] else [])
-    out = f"已删除定时任务 #{r['id']}「{r['name']}」（{describe(r['trigger'], 'zh')}）。" \
+    out = f"已删除{_whose(me, r)}定时任务 #{r['id']}「{r['name']}」（{describe(r['trigger'], 'zh')}）。" \
           "用户反悔的话照下面的原设置用 create_routine 重建：\n" + "\n".join(keep)
     if r["running"] and r["last_run"] and r["last_run"]["task_id"]:
         out += f"\n正在跑的那次（任务 #{r['last_run']['task_id']}）会接着跑完，要停就用 cancel_task"

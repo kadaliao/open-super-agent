@@ -457,7 +457,7 @@ def _detail(b: dict, me: dict) -> str:
         parts.append("所有 Bot 共用的技能：" + " ".join("/" + s["name"] for s in shared))
     rs = routines.list_for(b["id"])
     parts.append("定时任务：" + ("\n" + "\n".join(
-        f"- {r['name']}（{routines.describe(r['trigger'], in_lang='zh')}{'' if r['enabled'] else '，已暂停'}）：{r['prompt'][:100]}"
+        f"- #{r['id']} {r['name']}（{routines.describe(r['trigger'], in_lang='zh')}{'' if r['enabled'] else '，已暂停'}）：{r['prompt'][:100]}"
         for r in rs) if rs else "无"))
     gs = _groups_of(b["id"])
     parts.append("所在群聊：" + ("、".join(f"「{c['title']}」" + ("（协调者）" if c["lead"] == b["id"] else "") for c in gs) or "无"))

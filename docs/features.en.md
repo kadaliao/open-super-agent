@@ -21,7 +21,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
   - Look up: "which Bots do I have?", "what skills and routines does Radar have?" It reads each Bot's full profile before answering.
   - Create: "make a Bot that finds resources and saves them to my cloud drive". It writes the name, role, avatar and skills.
   - Edit: "add a rule to Radar's role: AI news only", "rename Researcher to Deep". Name, role, avatar and skills can all change; when editing a role
-    it only touches what you asked for, and the card strikes through removed text and highlights added text. For another Bot's routines, the main Bot asks that Bot to set them up.
+    it only touches what you asked for, and the card strikes through removed text and highlights added text. The main Bot views, creates, edits, pauses and deletes other Bots' routines directly, without a card.
   - Delete: the card lists what goes with it (chat history, skills, routines, its own memories, which groups it leaves). This can't be undone.
   - Creating, editing and deleting always show a card first and happen only when you approve. Decline with a note and it revises and asks again,
     or click Edit on the card to change the role yourself before approving.
@@ -75,7 +75,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 
 - Each Bot has its own routines: daily / on weekdays at a set time, every N minutes, or on a webhook.
 - Pause, resume and test them; the last 20 runs are kept. Settings → Routines lists every Bot's routines with an on/off switch for each.
-- Create one by saying "every day at 9, ...". You can also just ask "what routines do I have", "move the brief to 8:30 on weekdays", "pause the github one" or "delete it", including from a chat app. Each Bot manages only its own routines.
+- Create one by saying "every day at 9, ...". You can also just ask "what routines do I have", "move the brief to 8:30 on weekdays", "pause the github one" or "delete it", including from a chat app. The main Bot manages every Bot's routines ("pause all routines"); other Bots manage only their own.
 - Webhook events go through keyword filters, then a cheap model decides whether to act.
 
 ## Safety and cost
