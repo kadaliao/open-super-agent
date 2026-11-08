@@ -61,6 +61,7 @@ def apply(ctx):
 | `ctx.log` | 日志（`ctx.log.warning(...)`），出现在服务的日志里 |
 | `ctx.services` | `META` 的 `inject` 里写了的服务，按名字取：`ctx.services["messenger"]`，见下面 |
 | `ctx.provide(name, value)` | 把一个对象作为服务提供给别的插件，名字要先写进 `META` 的 `provide` |
+| `ctx.source(Source(...))` | 加一种事件来源，用户能在 Bot 的“事件”里选它，见下面“事件来源” |
 
 `apply` 抛异常时，已经登记的会全部撤销，错误显示在设置页上。插件自己开的线程、改过的全局状态 osa 管不到，用 `ctx.effect` 登记清理。
 
@@ -74,7 +75,7 @@ Tool(
     schema={...},                  # OpenAI 风格的 function 工具定义
     run=run,                       # async def run(call) -> str，或者 (str, 截图 png 的 bytes)
     where=frozenset({ROUTER, WORKER}),   # 给谁用：对话里（ROUTER）、后台任务（WORKER）、小应用的界面（APPLET）
-    gated=False,                   # True：后台任务和小应用调用前按确认规则问用户（写操作、花钱的设成 True）
+    gated=False,                   # True：后台任务和小应用调用前先问用户（写操作、花钱的设成 True）；用户点“总是允许”或加了规则后不再问
     describe="一句话说明",          # 出现在 Bot 的“后台 Worker 当前能用的工具”里
     progress=lambda args: "…",     # 后台任务卡片上这一步显示什么
 )
@@ -100,6 +101,46 @@ Tool(
 
 `user_message`、`task_done`、`tool_done` 是“发出去不等”的：监听器慢不会拖慢对话。监听器里的异常记进日志，不影响别的监听器。
 监听器的参数以后可能会加，写成 `def on_done(task, bot, result, **_)` 留个 `**_`。
+
+## 事件来源
+
+[事件](events.md)是“某件事发生时 Bot 处理一次”。插件能加新的来源：启用后出现在“新建事件”的“插件”分类里，用户选它、填参数、写要 Bot 做什么；
+插件停用时来源跟着撤掉，已经建好的事件还在，只是暂时不触发。osa 管调度、过滤、排队、派任务，插件只管“看有没有新的”：
+
+```python
+"""Epic 免费游戏：Epic 商城开始送新游戏时触发。"""
+from osa.registry import POLL, Source
+from osa.sources import _util            # 联网用 _util.get：只抓公网地址、自己跟跳转、限大小
+
+META = {"title": "Epic 免费游戏", "version": "1.0"}
+
+
+async def check(params, state):
+    """state 第一次是 None：只记下现状。返回 (新事件, 新 state)，state 要能存成 JSON。"""
+    data = (await _util.get("https://…")).json()
+    games = {g["id"]: g for g in parse(data)}
+    seen = set(state or [])
+    new = [{"title": f"Epic 在送：{g['title']}", "text": g["period"], "url": g["url"]} for i, g in games.items() if i not in seen]
+    return new, list(games)
+
+
+def apply(ctx):
+    ctx.source(Source(
+        id="epic_free", title="Epic 送免费游戏", description="Epic 商城开始送新的免费游戏时触发",
+        mode=POLL, check=check, every=720, min_every=60, category="生活", icon="🎮",
+        fields=[{"key": "country", "label": "地区", "type": "select", "default": "CN",
+                 "options": [{"value": "CN", "label": "中国大陆"}, {"value": "US", "label": "美国"}]}],
+        scenarios=[{"title": "Epic 送新游戏时告诉我", "name": "Epic 免费游戏",
+                    "prompt": "告诉我是什么游戏、免费到什么时候，一句话介绍它好不好玩。"}],
+    ))
+```
+
+- 三种：`POLL`（osa 隔一段时间调 `check`）、`PUSH`（外面 POST 到事件的地址，`parse(req, params)` 把请求整理成事件）、
+  `INTERNAL`（订阅 osa 自己的事件，`on` 写事件名，`match(params, routine=…, **事件参数)`）。
+- 事件是 `{"title": 一行标题, "text": 给 Bot 看的详情, "url": 链接}`。`fields` 是给用户填的参数（text、url、number、select、multi、bool、
+  secret、list），网页按它画表单、服务端按它检查；secret 存进保险库，`check` 拿到的是解开的值。`scenarios` 是常见用法，点一下表单就填好了。
+- `check` 抛异常时错误显示在事件的列表上（“出错：……”），写成用户看得懂的中文。
+- 完整的字段说明在 `osa/registry.py` 的 `Source`，内置的来源在 `osa/sources/`，都是现成的例子。
 
 ## 服务和插件之间的依赖
 
@@ -157,13 +198,54 @@ def apply(ctx):
 点“安装”把它复制到 `data/plugins`，仍然要你看过代码、自己启用；市场里出了新版本显示“更新”，换上新版本后要重新启用。
 不支持从任意网址安装插件。
 
-现在有三个：
+现在有 21 个，按用处分：
 
-- **日期计算**（`date_calc`）：相差几天、几个工作日，加减天数和月数，星期几。大模型算日期常出错，装上以后对话里直接能算对。
+**算得准（不联网，对话里直接能用）**：大模型心算、数字数、算日期常出错，这些交给工具。
+
+- **精确计算器**（`calc`）：加减乘除用十进制精确算（0.1+0.2 就是 0.3），认百分比、万/亿、乘方开方、对数、三角函数（按度）、排列组合，
+  还能算房贷月供（等额本息、等额本金）和复利定投。
+- **单位换算**（`unit_convert`）：长度、重量、面积、体积、温度、速度、时间、数据大小和网速、能量、功率、压强，认中文英文单位名和斤、两、亩、尺、寸这些市制单位，
+  也能算“5尺3寸”“5 ft 11 in”这种加在一起的。
+- **日期计算**（`date_calc`）：相差几天、几个工作日，加减天数和月数，星期几。
+- **中国节假日**（`cn_holiday`）：某天要不要上班（法定节假日、调休补班）、几个工作日以后是哪天、两个日期之间有几个工作日、一年的放假安排。
+  数据来自 holiday-cn，第一次用到某年时下载、存在本地；还没公布的年份按周一到周五算。
+- **农历**（`lunar`）：公历农历互换（1900–2100 年）、闰月、干支生肖、二十四节气、春节端午中秋这些传统节日的日期，还能算农历生日今年是公历哪天。
+- **时区换算**（`world_clock`）：某个城市现在几点，某地的某个时间换成别处是几点（“北京时间明天 9 点是纽约几点”），说清夏令时、次日还是前一天。
+  设置里的 `home` 是你所在的时区，默认北京。
+- **抽签和随机**（`random_pick`）：从名单里抽人、打乱顺序、随机数、掷骰子、抛硬币、随机分组，用系统的安全随机数。
+- **字数统计**（`text_count`）：按 Word 的算法数字数，还有汉字、英文单词、字符数、行数段落，估算阅读和朗读时间，数某个词出现几次。
+
+**查一下（联网，不用设置）**
+
+- **汇率换算**（`exchange_rate`）：多少美元是多少人民币，日元、欧元、港币……写代码或中文名都行，一次能换成好几种。参考汇率每天更新一次，不是银行的买入卖出价。
+- **天气查询**（`weather_now`）：某个城市现在的天气和未来 1 到 7 天的预报（气温、降水概率、风力、紫外线、日出日落）。设置里的 `default_city` 是没说城市时查哪里。
+- **行情查询**（`stock_quote`）：A 股、港股、美股、指数和常见加密货币的最新价和涨跌，代码或常见名字（茅台、腾讯、恒指、比特币）都行。可能有延迟，不构成投资建议。
+
+**通知和发送**
+
+- **推送到手机**（`push_phone`）：Bot 能把通知推到你手机上（Bark、Server酱、PushPlus、ntfy、Telegram、Gotify、企业微信、飞书、钉钉），
+  `on_task_done` 设成 `failed` 或 `all` 后台任务做完也推。还提供 `notify` 服务给别的插件用。设置里选 `channel`，填它下面那一组（token 写 `vault:名字`）。
+- **发邮件**（`smtp_mail`）：Bot 能用你的邮箱（SMTP）发纯文字邮件，只在后台任务里用，每封默认先弹卡片问你。
+  设置里填 `user`、`password`（授权码，写 `vault:名字`），`host` 不填按邮箱后缀猜；`allowed_domains` 能限制只发给哪些域名。
 - **任务完成推送到群机器人**（`task_webhook`）：后台任务做完或失败时推到飞书、钉钉、企业微信、Slack、Discord 的群机器人，或任意接收 JSON 的地址。
   设置里填 `url`（建议 `vault:名字`）和 `kind`。
-- **订阅 RSS**（`rss_watch`）：定时看几个 RSS / Atom 订阅源，有新文章就以 Bot 的名义发到它的对话里。不调模型、不花钱，用的是内置的 `messenger` 服务。
-  设置里填 `feeds`（地址列表）、`bot`（名字，不填是主 Bot）、`every_minutes`（至少 10）。第一次只记下现有的文章，不发。
+- **订阅 RSS**（`rss_watch`）：定时看几个订阅源，有新文章就以 Bot 的名义原样发到它的对话里，不调模型、不花钱。
+  要 Bot 读完、筛选、总结再告诉你，用 [事件](events.md) 里的“订阅源有新文章”。
+
+**新的事件来源**（启用后在 Bot 的“事件”里选）
+
+- **Epic 免费游戏**（`epic_free`）：Epic 商城开始送新的免费游戏时触发，带游戏名、免费到什么时候、商店链接，默认半天看一次。
+- **地震提醒**（`earthquake`）：全球或你附近（城市名或“纬度,经度”加范围）发生地震时触发，带震级、地点、时间、深度、离你多远，数据来自 USGS。
+- **公网 IP 变了**（`ip_change`）：这台机器的公网 IPv4（可选 IPv6 前缀）换了时触发，几家查 IP 的服务轮流问、变了再换一家确认；家里跑服务、用 DDNS 的，IP 一换就知道去改解析。
+
+**看着点**
+
+- **工具调用记录**（`audit_log`）：Bot 每调一次工具记一行（时间、Bot、工具、参数和结果的开头，像密钥的先抹掉），一天一个文件、留 `keep_days` 天；
+  对话里能问“昨天谁调了 send_email”（`audit_search` 工具）。
+- **花费提醒**（`budget_alert`）：每 10 分钟看一次 token 和今天的花费，到了每日 token 预算的 `warn_at_percent`（默认 80%、100%）或你定的 `daily_cost`，
+  以 Bot 的名义提醒你，每条线每天最多一次。不调模型、不花钱。
+- **关键词提醒**（`keyword_alert`）：你在哪个对话里（群聊、别的 Bot 的私聊、Telegram、钉钉……）说了 `keywords` 里的词，就在指定 Bot 的私聊里记一笔提醒；
+  同一个对话同一个词 `cooldown_minutes` 分钟内只提醒一次。
 
 想把自己的插件放进市场：放进 `osa/catalog/plugins/`，加上测试（参考 `tests/test_plugins.py` 里的 `test_date_calc_logic`），提 PR。
 不收：要绕过验证码或人机校验的、偷偷往外发数据的、要额外装包的。
