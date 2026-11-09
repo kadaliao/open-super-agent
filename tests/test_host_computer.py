@@ -229,7 +229,7 @@ async def test_shell_asks_every_time(fake, shell, monkeypatch):
     user = Recorder(True)
     monkeypatch.setattr(approvals, "request", user)
     out, _ = await ctools.call(TASK, "computer_shell", {"cmd": "echo hi"}, _noop, key="7:")
-    assert "hi" in out and user.asked[-1] == ("computer_shell", {"命令": "echo hi"}, True)
+    assert "hi" in out and user.asked[-1] == ("computer_shell", {"命令": "echo hi"}, False)   # 能按命令前缀总是允许
 
 
 async def test_docker_computer_does_not_inspect(fake, monkeypatch):

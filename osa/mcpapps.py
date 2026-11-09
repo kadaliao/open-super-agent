@@ -136,7 +136,7 @@ def _tool(app: str, name: str) -> registry.Tool:
 
 async def confirm(bot: dict | None, tool: str, args: dict, label: str):
     """命中确认规则的工具先弹卡片（在 Bot 的私聊里），用户拒绝就报 PermissionError。小应用和应用的界面共用。"""
-    if not approvals.decide(tool)[0]:
+    if not approvals.decide(tool, args=args)[0]:
         return
     chat_id = (bot or {}).get("chat_id")
     if not chat_id:

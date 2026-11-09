@@ -178,7 +178,7 @@ async def _call_tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: s
         if not tool:
             return "未知工具", "error"
         await progress(tool.progress(args) if tool.progress else f"{name} {str(args.get('query') or args.get('url') or '')[:60]}")
-        if tool.gated and approvals.decide(name)[0]:
+        if tool.gated and approvals.decide(name, args=args)[0]:
             await log.update(step, status="waiting")
             ok, note = await approvals.request(task, name, args)
             if not ok:

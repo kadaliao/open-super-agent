@@ -327,8 +327,9 @@ export function send(chatId: number, text: string, attachments: Attachment[] = [
 }
 
 // edits：在卡片上改过的参数（只认卡片的 editable 里的）
-export function approve(id: number, ok: boolean, note = '', always = false, edits?: Record<string, string>) {
-  ws?.send(JSON.stringify({ type: 'approve', id, ok, note, always, ...(edits ? { edits } : {}) }))
+// scope：同意时管多久（once / task / always，见 approvals.resolve）；prefix：终端命令“总是允许这个前缀”的前缀
+export function approve(id: number, ok: boolean, note = '', always = false, edits?: Record<string, string>, scope?: string, prefix?: string) {
+  ws?.send(JSON.stringify({ type: 'approve', id, ok, note, always, ...(edits ? { edits } : {}), ...(scope ? { scope } : {}), ...(prefix ? { prefix } : {}) }))
 }
 
 function handle(d: any) {

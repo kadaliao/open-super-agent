@@ -358,6 +358,9 @@ def card_for(ev: dict) -> dict:
     if ev.get("expires"):
         when = "\n" + i18n.t("后台任务，{time} 前没确认按拒绝处理。", time=time.strftime("%H:%M", time.localtime(ev["expires"])))
     buttons = [(i18n.t("允许一次"), "ok", "primary"), (i18n.t("拒绝"), "no", "danger")]
+    scopes = ev.get("scopes") or ([] if ev.get("once") else ["always"])   # 旧的事件没有 scopes
+    if "task" in scopes:   # 这个任务里同一个工具不再问（approvals.resolve 的 scope=task）
+        buttons.append((i18n.t("本次任务内允许"), "task", ""))
     task_line = i18n.t("任务 #{id}：{goal}", id=ev.get("task_id"), goal=goal) + origin + when
     if tool == "generate_image":   # 画图：写清楚画什么、用哪个模型、多少钱
         try:
@@ -367,7 +370,7 @@ def card_for(ev: dict) -> dict:
         body = f"{d.get('描述') or args}\n\n" + i18n.t("模型：{model}", model=d.get("模型", "")) + " · " + \
             i18n.t("价格：{price}", price=d.get("价格", "")) + origin
         return {"id": ev["id"], "kind": "approval", "title": i18n.t("🎨 {name} 想画一张图", name=who), "body": body,
-                "buttons": buttons + [(i18n.t("总是允许"), "always", "")], "link": None, "done": ""}
+                "buttons": buttons + [(i18n.t("总是允许"), "always", "")] * ("always" in scopes), "link": None, "done": ""}
     if tool in ("create_bot", "update_bot", "delete_bot"):   # 新建、修改、删除 Bot：只能一次一次地允许
         try:
             d = json.loads(ev.get("args") or "{}")
@@ -388,7 +391,9 @@ def card_for(ev: dict) -> dict:
         app, _, name = tool.rpartition("__")
         head = i18n.t("应用 @{app} 的 **{tool}**", app=app, tool=name) if app else f"**{name}**"
         body = f"{head}\n{task_line}\n```\n{args}\n```"
-        if not ev.get("once"):   # 本机电脑的终端命令只能一条一条地允许
+        if "always" in scopes and ev.get("prefix"):   # 终端：按命令开头的词总是允许（网页上的卡片能改前缀）
+            buttons.append((i18n.t("总是允许 {prefix} 开头的", prefix=ev["prefix"][:20]), "always", ""))
+        elif "always" in scopes:
             buttons.append((i18n.t("总是允许"), "always", ""))
     return {"id": ev["id"], "kind": "approval", "title": i18n.t("⚠️ {name} 需要你确认", name=who), "body": body,
             "buttons": buttons, "link": None, "done": ""}
@@ -396,10 +401,11 @@ def card_for(ev: dict) -> dict:
 
 # 打字代替按按钮：“允许 #12”“拒绝 12”。钉钉卡片上的链接点一下就发出这样一句话。中英文都认，不分大小写
 _ALIASES = {"ok": i18n.both("允许一次") | i18n.both("允许") | i18n.both("同意"), "no": i18n.both("拒绝"),
-            "always": i18n.both("总是允许"), "done": i18n.both("处理完了"), "fail": i18n.both("处理不了")}
+            "always": i18n.both("总是允许"), "task": i18n.both("本次任务内允许") | i18n.both("本次任务"),
+            "done": i18n.both("处理完了"), "fail": i18n.both("处理不了")}
 WORDS = {w.lower(): act for act, words in _ALIASES.items() for w in words}
-ACT_WORD = {"ok": i18n.N_("允许一次"), "no": i18n.N_("拒绝"), "always": i18n.N_("总是允许"), "done": i18n.N_("处理完了"),
-            "fail": i18n.N_("处理不了")}
+ACT_WORD = {"ok": i18n.N_("允许一次"), "no": i18n.N_("拒绝"), "always": i18n.N_("总是允许"), "task": i18n.N_("本次任务内允许"),
+            "done": i18n.N_("处理完了"), "fail": i18n.N_("处理不了")}
 _WORD_CMD = re.compile(r"^(" + "|".join(re.escape(w) for w in sorted(WORDS, key=len, reverse=True)) +
                        r")\s*[#＃]?\s*(\d+)\s*[。.!！]?$", re.I)
 
@@ -409,7 +415,8 @@ def word_command(act: str, aid: int) -> str:
     return f"{i18n.t(ACT_WORD[act])} #{aid}"
 
 
-DONE_TEXT = {"approval": {"approved": i18n.N_("✓ 已允许"), "always": i18n.N_("✓ 已允许，以后自动允许"), "rejected": i18n.N_("✕ 已拒绝"),
+DONE_TEXT = {"approval": {"approved": i18n.N_("✓ 已允许"), "always": i18n.N_("✓ 已允许，以后自动允许"),
+                          "task": i18n.N_("✓ 已允许，这个任务里不再问"), "rejected": i18n.N_("✕ 已拒绝"),
                           "expired": i18n.N_("已过期，按拒绝处理"), "cancelled": i18n.N_("任务已取消")},
              "help": {"approved": i18n.N_("✓ 已处理完，Bot 继续"), "rejected": i18n.N_("✕ 没有处理"), "expired": i18n.N_("已过期"),
                       "cancelled": i18n.N_("任务已取消")}}
@@ -559,7 +566,7 @@ class Channel:
                 card = card_for(ev)
                 self.queue(lambda: self._send_card(peer, card))
             elif status != "pending" and aid in self.carding:
-                status = "always" if ev.get("always") else status
+                status = "always" if ev.get("always") else "task" if ev.get("scope") == "task" else status
                 self.queue(lambda: self._finish_card(peer, aid, status))
         elif t == "stream_start" and mine:
             self.start_typing()
@@ -678,7 +685,7 @@ class Channel:
         if act not in ACT_WORD:
             return False, i18n.t("这个按钮已经失效了")
         kind = item.get("kind")
-        if act in ("done", "fail") and kind != "help" or act in ("ok", "no", "always") and kind == "help":
+        if act in ("done", "fail") and kind != "help" or act in ("ok", "no", "always", "task") and kind == "help":
             return False, i18n.t("这个请求不能这样处理")
         if act == "done":
             await handback(item["bot_id"])
@@ -686,7 +693,7 @@ class Channel:
         if act == "fail":
             approvals.resolve(aid, False, "用户表示处理不了")
             return True, i18n.t("已告诉 Bot")
-        return True, approvals.resolve(aid, act in ("ok", "always"), "", act == "always")
+        return True, approvals.resolve(aid, act in ("ok", "always", "task"), "", scope={"always": "always", "task": "task"}.get(act))
 
 
 async def save_upload(name: str, data: bytes) -> str:

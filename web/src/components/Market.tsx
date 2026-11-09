@@ -353,7 +353,8 @@ function Advanced({ app, onEdit }: { app: App; onEdit: () => void }) {
 // ---------- 自定义应用：任意 MCP server ----------
 function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
   const isNew = !app
-  const locked = useStore(s => s.settings?.security?.local_exec === false)   // 服务器锁：本地应用的命令改不了，也不能新加
+  // 服务器锁（security.apps: market）：本地应用的命令改不了，也不能新加。旧版服务没有 apps，按 local_exec 推
+  const locked = useStore(s => (s.settings?.security?.apps ?? (s.settings?.security?.local_exec === false ? 'market' : 'any')) === 'market')
   const [name, setName] = useState(app?.name || '')
   const [type, setType] = useState<'stdio' | 'http' | 'sse'>(app?.type || 'http')
   const remote = type !== 'stdio'

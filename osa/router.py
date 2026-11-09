@@ -211,7 +211,10 @@ ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_P
         "parameters": {"type": "object", "properties": {
             "id": {"type": "integer"}, "approve": {"type": "boolean"},
             "note": {"type": "string", "description": "用户附带的意见，例如修改要求"},
-            "always": {"type": "boolean", "description": "用户明确说以后同类操作都不用问时为 true"}}, "required": ["id", "approve"]}}},
+            "always": {"type": "boolean", "description": "用户明确说以后同类操作都不用问时为 true"},
+            "scope": {"type": "string", "description": "同意时管多久：once 只这一次（默认）；task 这个任务里同类操作不再问；"
+                      "minutes:N 接下来 N 分钟不再问；always 同 always=true（终端命令按命令开头的词）。用户没说清楚就别填"}},
+            "required": ["id", "approve"]}}},
     {"type": "function", "function": {"name": "recall", "description": "按 id 取回早先消息原文",
         "parameters": {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}}},
     {"type": "function", "function": {"name": "look_at_screen",
@@ -595,7 +598,8 @@ class Router:
             return self.cancel(args["task_id"], i18n.t("{name} 收到 {sender} 的新消息后自己取消的", name=self.bot["name"],
                                                        sender=dm._name(woke["from"])))
         if name == "resolve_approval":
-            return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")))
+            return approvals.resolve(args["id"], args["approve"], args.get("note", ""), bool(args.get("always")),
+                                     scope=args.get("scope"))
         if name == "recall":
             return memory.recall(args["id"], self.chat["id"])
         if name in botadmin.TOOLS:
@@ -751,6 +755,7 @@ class Router:
         await self._done(task)
 
     async def _done(self, task: Task):
+        approvals.end_task(task.id)   # “本次任务内允许”到这里为止
         if task.on_done:
             try:
                 await task.on_done(task)

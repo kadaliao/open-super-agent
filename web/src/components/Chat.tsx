@@ -465,21 +465,34 @@ function ApprovalCard({ a }: { a: Approval }) {
   if (a.tool in BOT_DONE) return <BotAdminCard a={a} />
   if (a.tool === 'desktop') return <DesktopCard a={a} />
   const [note, setNote] = useState('')
+  const [prefix, setPrefix] = useState(a.prefix || '')
   const done = a.status && a.status !== 'pending'
-  const label: Record<string, string> = { approved: a.always ? t('已允许，以后自动允许') : t('已允许'), rejected: t('已拒绝'), expired: t('超时未确认，按拒绝处理'), cancelled: t('任务已取消') }
+  const label: Record<string, string> = { approved: a.always ? t('已允许，以后自动允许') : a.scope === 'task' ? t('已允许，这个任务里不再询问') : t('已允许'), rejected: t('已拒绝'), expired: t('超时未确认，按拒绝处理'), cancelled: t('任务已取消') }
   if (done) return <div className="sys-line">{a.status === 'approved' ? '✓' : '✕'} {label[a.status!] || a.status} <code>{a.tool}</code>{t('（任务 #{id}）', { id: a.task_id })}</div>
   const [app, tool] = a.tool.includes('__') ? a.tool.split('__', 2) : ['', a.tool]
+  const scopes = a.scopes ?? (a.once ? ['once'] : ['once', 'always'])   // 旧版服务没有 scopes
+  const shell = a.tool === 'computer_shell' && a.prefix !== undefined   // 终端：“总是允许”的是一个命令前缀，可以改
+  const okPrefix = !!prefix.trim() && !/^[*?[]|[;&|<>`$()]/.test(prefix.trim())   // 和 approvals._prefix_ok 一样
   return (
     <div className="approval-card">
       <div className="approval-title">{t('需要你确认')}{app && <> · {tn('应用 {app}', { app: <b>@{app}</b> })}</>} <code>{tool}</code></div>
       <div className="muted small">{tn('来自任务 #{id}{origin}：{goal}', { id: a.task_id, origin: <Origin a={a} />, goal: a.goal })}
         {a.expires ? ' · ' + t('后台任务，{time} 前没确认按拒绝处理', { time: new Date(a.expires * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }) : ''}</div>
       <pre className="approval-args">{a.args}</pre>
+      {shell && scopes.includes('always') && <div className="approval-prefix">
+        <span className="muted small">{t('以这个开头的命令：')}</span>
+        <input value={prefix} onChange={e => setPrefix(e.target.value)} spellCheck={false} aria-label={t('命令前缀')} />
+        <button className="btn" disabled={!okPrefix} title={t('以后以“{prefix}”开头的命令不再询问（带 ; | $( 这类符号的除外），可在设置 → 确认规则里撤销', { prefix: prefix.trim() })}
+          onClick={() => approve(a.id, true, note, true, undefined, 'always', prefix.trim())}>{t('总是允许这个前缀')}</button>
+      </div>}
+      {shell && a.compound && <div className="muted small">{t('这条命令带 ; | $( 这类符号，按前缀放行管不到它，下次还会问。')}</div>}
       <div className="approval-actions">
         <input value={note} onChange={e => setNote(e.target.value)} placeholder={t('附一句意见（可选）')} />
         <button className="btn" onClick={() => approve(a.id, false, note)}>{t('拒绝')}</button>
         <button className="btn" onClick={() => approve(a.id, true, note)}>{t('允许一次')}</button>
-        {!a.once && <button className="btn primary" title={t('以后 {tool} 不再询问，可在设置 → 确认规则里撤销', { tool: a.tool })} onClick={() => approve(a.id, true, note, true)}>{t('总是允许')}</button>}
+        {scopes.includes('task') && <button className={'btn' + (shell || !scopes.includes('always') ? ' primary' : '')} title={t('这个任务里 {tool} 不再询问，任务结束就失效', { tool: a.tool })}
+          onClick={() => approve(a.id, true, note, false, undefined, 'task')}>{t('本次任务内允许')}</button>}
+        {!shell && scopes.includes('always') && <button className="btn primary" title={t('以后 {tool} 不再询问，可在设置 → 确认规则里撤销', { tool: a.tool })} onClick={() => approve(a.id, true, note, true)}>{t('总是允许')}</button>}
       </div>
     </div>
   )

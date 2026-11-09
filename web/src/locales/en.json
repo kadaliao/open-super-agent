@@ -1402,5 +1402,15 @@
   "Bot 用 use_skill 取这些文件；脚本在电脑的工作文件夹里运行。": "The Bot reads these with use_skill; scripts run in the computer's workspace folder.",
   "这些不是文字文件，没有导入：": "These aren't text files and weren't imported: ",
   "带了脚本的技能会让 {name} 在电脑里运行它们，先点开下面的文件看一遍。": "{name} will run this skill's scripts on the computer. Open the files below and read them first.",
-  "带的文件：": "Files: "
+  "带的文件：": "Files: ",
+  "已允许，这个任务里不再询问": "Allowed, and won't ask again during this task",
+  "以这个开头的命令：": "Commands starting with:",
+  "命令前缀": "Command prefix",
+  "以后以“{prefix}”开头的命令不再询问（带 ; | $( 这类符号的除外），可在设置 → 确认规则里撤销": "Won't ask again for commands starting with “{prefix}” (except ones containing ; | $( and the like). You can undo this in Settings → Confirmation rules",
+  "总是允许这个前缀": "Always allow this prefix",
+  "这条命令带 ; | $( 这类符号，按前缀放行管不到它，下次还会问。": "This command contains ; | $( or similar, so a prefix rule won't cover it: you'll be asked again next time.",
+  "这个任务里 {tool} 不再询问，任务结束就失效": "Won't ask about {tool} again during this task; ends when the task does",
+  "本次任务内允许": "Allow for this task",
+  "也可以按参数匹配：{form}，冒号后面和工具的第一个参数比（终端是命令），例如 {shell}、{path}。本机终端只认这种带命令前缀的规则，命令里带 ; | $( 重定向这类符号的照样每次问。": "Rules can also match an argument: {form}. The part after the colon is compared with the tool's first argument (the command, for the terminal), e.g. {shell} or {path}. The terminal on this computer only honors rules with a command prefix, and still asks every time for commands containing ; | $( or redirects.",
+  "工具:参数": "tool:argument"
 }

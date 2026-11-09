@@ -50,12 +50,8 @@ QUICK_TIMED_OUT = "超时了，改派后台任务"
 
 
 def exec_mode() -> str:
-    """security.exec：off / sandbox / host。子任务 C 会把它并进 security.py 的策略表；写了就以它为准，
-    没写按 local_exec 推：True → host，False → sandbox。演示服务器一定不是 host。"""
-    v = str((CFG.get("security") or {}).get("exec") or "").strip()
-    if v not in ("off", "sandbox", "host"):
-        v = "host" if security.local_exec() else "sandbox"
-    return "sandbox" if v == "host" and security.demo() else v
+    """security.exec：off / sandbox / host，策略表在 security.py（没写时按 local_exec / demo 推）。"""
+    return security.exec_mode()
 
 
 # ---------- 在哪跑 ----------
