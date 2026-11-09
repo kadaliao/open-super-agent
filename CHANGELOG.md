@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.12.0] - 2026-11-09
 ### 新增
 - **事件**：从定时任务里分出来。定时任务按时间跑，事件是某件事发生时 Bot 处理一次，右栏多了“事件”标签，设置里“自动化”分组下定时任务、事件各一页。
   见 [事件](docs/events.md)
@@ -471,7 +473,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.11.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/kadaliao/open-super-agent/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kadaliao/open-super-agent/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kadaliao/open-super-agent/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kadaliao/open-super-agent/compare/v0.8.0...v0.9.0
