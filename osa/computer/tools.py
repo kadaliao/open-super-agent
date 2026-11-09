@@ -126,7 +126,7 @@ def _intro(c) -> str:
     if c.backend not in HOSTS:
         return """你有一台电脑（Linux + Chromium 浏览器 + 终端，和其他 Bot 共用）。你的任务有自己的浏览器窗口，
 别的任务同时在别的窗口里做、互不干扰；登录状态和文件是大家共用的。用 browser_* / computer_* 工具操作："""
-    shell = ("- 终端：computer_shell 在用户这台电脑上执行命令（工作目录是工作文件夹）。每条命令都要用户确认，只在必要时用，几步合成一条。"
+    shell = ("- 终端：computer_shell 在用户这台电脑上执行命令（工作目录是工作文件夹）。每条命令都要用户确认（用户“总是允许”过的命令开头除外，带 ; && | $( 重定向的命令每次都问），只在必要时用。"
              if c.shell_enabled() else "- 没有终端（用户没有打开）。下载文件用浏览器，读写文件用 computer_read_file / computer_write_file。")
     desk = DESK_HINT if c.desktop_enabled() else ""
     return f"""你有一台电脑：用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己日常用的 Chrome 分开，所有 Bot 共用，
@@ -280,9 +280,9 @@ async def _confirm(task, c, name: str, args: dict, key: str) -> str | None:
         if not info.get("submit"):
             return None
         tool, shown = "browser_submit", {"操作": info.get("what"), "页面": f"{info.get('title') or ''} | {info.get('url') or ''}"}
-    if not approvals.decide(tool, c.backend)[0]:
+    if not approvals.decide(tool, c.backend, args if tool != "browser_submit" else shown)[0]:
         return None
-    ok, note = await approvals.request(task, tool, shown, once=tool == "computer_shell" and c.backend in HOSTS)
+    ok, note = await approvals.request(task, tool, shown)   # 终端：卡片上能“总是允许这个命令前缀”（approvals.resolve）
     return None if ok else f"用户拒绝了这个操作，没有执行。{note}".strip()
 
 
@@ -372,7 +372,7 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
                     c.asking.pop(task.id, None)
             return (f"用户已处理完并交还电脑。{note}".strip() if ok else f"用户没有处理：{note}".strip()), None
         elif name == "ask_approval":
-            ok, note = await approvals.request(task, "ask_approval", {"操作": args["action"]})
+            ok, note = await approvals.request(task, "ask_approval", {"操作": args["action"]}, once=True)   # 每一步都是它自己判断要问的
             return (f"用户同意了。{note}".strip() if ok else f"用户拒绝了，不要执行这个操作。{note}".strip()), None
         else:
             return "未知的电脑工具", None
@@ -418,7 +418,7 @@ async def _desktop(task, c, name: str, args: dict, key: str, notify_progress) ->
         return no, None
     await c.desk_claim(key, _label(task, key), notify_progress)
     if not c.desk_allowed(ok_key):
-        if approvals.decide("desktop", c.backend)[0]:
+        if approvals.decide("desktop", c.backend, {"任务": task.goal[:300]})[0]:
             ok, note = await approvals.request(task, "desktop", {"任务": task.goal[:300]})
             if not ok:
                 c.desk_denied[ok_key] = time.time()
@@ -469,7 +469,7 @@ async def _desktop(task, c, name: str, args: dict, key: str, notify_progress) ->
         op, kw, done = "open_app", {"name": app}, f"已打开 {app}。"
     else:
         return "未知的电脑工具", None
-    if what and approvals.decide("desktop_submit", c.backend)[0]:
+    if what and approvals.decide("desktop_submit", c.backend, {"操作": what})[0]:
         ok, note = await approvals.request(task, "desktop_submit", {"操作": what})
         if not ok:
             return f"用户拒绝了这个操作，没有执行。{note}".strip(), None

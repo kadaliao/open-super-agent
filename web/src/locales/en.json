@@ -1382,5 +1382,15 @@
   "事件属于各个 Bot：在对话里说“这个网页有变化就告诉我”，或者在右栏 Bot 详情的“事件”里新建和管理。": "Each event belongs to a bot. Say \"tell me when this page changes\" in a chat, or create and manage them under Events in the bot details on the right.",
   "定时任务属于各个 Bot：在对话里说“每天 9 点帮我……”，或者在右栏 Bot 详情的“定时”里新建和管理。": "Each routine belongs to a bot. Say \"every day at 9, help me…\" in a chat, or create and manage them under Routines in the bot details on the right.",
   "什么事发生时让 Bot 处理？选一个常见用法（之后都能改），或者自己设置。": "What should the bot respond to? Pick a common use (you can change everything later) or set it up yourself.",
-  "（地址泄露了的时候）": " (if the address has leaked)"
+  "（地址泄露了的时候）": " (if the address has leaked)",
+  "已允许，这个任务里不再询问": "Allowed, and won't ask again during this task",
+  "以这个开头的命令：": "Commands starting with:",
+  "命令前缀": "Command prefix",
+  "以后以“{prefix}”开头的命令不再询问（带 ; | $( 这类符号的除外），可在设置 → 确认规则里撤销": "Won't ask again for commands starting with “{prefix}” (except ones containing ; | $( and the like). You can undo this in Settings → Confirmation rules",
+  "总是允许这个前缀": "Always allow this prefix",
+  "这条命令带 ; | $( 这类符号，按前缀放行管不到它，下次还会问。": "This command contains ; | $( or similar, so a prefix rule won't cover it: you'll be asked again next time.",
+  "这个任务里 {tool} 不再询问，任务结束就失效": "Won't ask about {tool} again during this task; ends when the task does",
+  "本次任务内允许": "Allow for this task",
+  "也可以按参数匹配：{form}，冒号后面和工具的第一个参数比（终端是命令），例如 {shell}、{path}。本机终端只认这种带命令前缀的规则，命令里带 ; | $( 重定向这类符号的照样每次问。": "Rules can also match an argument: {form}. The part after the colon is compared with the tool's first argument (the command, for the terminal), e.g. {shell} or {path}. The terminal on this computer only honors rules with a command prefix, and still asks every time for commands containing ; | $( or redirects.",
+  "工具:参数": "tool:argument"
 }

@@ -1,4 +1,5 @@
 """服务器锁（security.local_exec: false）和演示模式（security.demo: true）：网页上不能让服务器执行任意命令、不能把服务的密钥带走。
+策略表（security.exec / plugins / apps）：没写时按 local_exec / demo 推，写了以写的为准，演示服务器上有上限。
 还有不分模式的两条：换了模型服务的地址要重新填密钥；应用市场里填的值不能带 env: / vault: 引用。"""
 import json
 import time
@@ -43,7 +44,48 @@ def test_unlocked_by_default(cleanup):
     assert security.local_exec() and not security.demo()
     cleanup.append("mytool")
     mcp_hub.save("mytool", {"command": "/bin/sh", "args": ["-c", "true"], "env": {"X": "env:HOME"}})
-    assert settings.public()["security"] == {"local_exec": True, "demo": False}
+    assert settings.public()["security"] == {"local_exec": True, "demo": False, "exec": "host", "plugins": "any", "apps": "any"}
+
+
+# ---------- 策略表 ----------
+@pytest.mark.parametrize("cfg, want", [
+    ({}, ("host", "any", "any")),
+    ({"local_exec": True}, ("host", "any", "any")),
+    ({"local_exec": False}, ("sandbox", "market", "market")),
+    ({"demo": True}, ("sandbox", "off", "market")),
+    ({"demo": True, "local_exec": True}, ("sandbox", "off", "market")),      # 演示服务器不看 local_exec
+    ({"local_exec": False, "apps": "any"}, ("sandbox", "market", "any")),    # 写了新键就以新键为准
+    ({"local_exec": True, "exec": "sandbox", "plugins": "market"}, ("sandbox", "market", "any")),
+    ({"exec": False, "plugins": False}, ("off", "off", "any")),              # YAML 里不带引号的 off 读出来是 false
+    ({"exec": "HOST", "plugins": " Market "}, ("host", "market", "any")),
+    ({"exec": "hots", "plugins": "all", "apps": "yes"}, ("off", "off", "market")),   # 写错的按最严的算
+    ({"demo": True, "exec": "host", "plugins": "any", "apps": "any"}, ("sandbox", "market", "market")),   # 演示服务器有上限
+    ({"demo": True, "exec": "off"}, ("off", "off", "market")),
+])
+def test_policy_mapping(monkeypatch, cfg, want):
+    monkeypatch.setitem(CFG, "security", cfg)
+    assert (security.exec_mode(), security.plugins_mode(), security.apps_mode()) == want
+    assert security.local_exec() == (want[0] == "host")
+    assert security.public() == {"local_exec": want[0] == "host", "demo": bool(cfg.get("demo")),
+                                 "exec": want[0], "plugins": want[1], "apps": want[2]}
+
+
+def test_policy_reads_yaml_off(monkeypatch):
+    import yaml
+    monkeypatch.setitem(CFG, "security", yaml.safe_load("exec: off\nplugins: market\napps: any"))
+    assert security.policy() == {"exec": "off", "plugins": "market", "apps": "any"}
+
+
+def test_apps_policy_alone_decides_apps(monkeypatch, cleanup):
+    """apps 和 exec 分开管：能在本机跑命令也可以只认应用市场里的应用，反过来也行。"""
+    monkeypatch.setitem(CFG, "security", {"local_exec": True, "apps": "market"})
+    with pytest.raises(ValueError, match="security.apps"):
+        security.check_app("mytool", {"command": "/bin/sh", "args": ["-c", "id"]})
+    security.check_app("train", catalog.build("train", {}))
+    monkeypatch.setitem(CFG, "security", {"local_exec": False, "apps": "any"})
+    assert not security.local_exec()
+    security.check_app("mytool", {"command": "/bin/sh", "args": ["-c", "id"]})
+    security.check_market("train")
 
 
 # ---------- 服务器锁 ----------
@@ -134,9 +176,9 @@ def test_locked_computer_cannot_use_this_machine(locked, monkeypatch):
     assert computer.backend_name() != "host"
     assert not host.shell_on()
     assert next(b for b in computer.available() if b["id"] == "host") == {"id": "host", "ok": False, "locked": True}
-    with pytest.raises(ValueError, match="security.local_exec"):
+    with pytest.raises(ValueError, match="security.exec"):
         settings.save({"computer_backend": "host"})
-    with pytest.raises(ValueError, match="security.local_exec"):
+    with pytest.raises(ValueError, match="security.exec"):
         settings.save({"computer_host_shell": True})
     monkeypatch.setenv("OSA_DESKTOP", "1")
     monkeypatch.setitem(CFG, "computer", {**CFG["computer"], "backend": "auto"})

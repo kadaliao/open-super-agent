@@ -11,6 +11,7 @@ type Plugin = {
   name: string; title: string; description: string; version: string; author: string; kind: 'file' | 'folder'
   enabled: boolean; loaded: boolean; changed: boolean; error: string; tools: string[]
   config: Record<string, unknown>; default_config: Record<string, unknown>; from_catalog: boolean; update: boolean
+  blocked?: string   // security.plugins 是 market：这个不是插件市场里原样的，不能启用、不加载（原因）
   provide: string[]; inject: string[]; cycle: string[]
   waiting: { service: string; by: string[] }[]           // 启用了、在等的服务，by 是能提供它的插件（core 是内置的）
   dependents: { name: string; loaded: boolean }[]        // 要用它提供的服务的插件
@@ -98,7 +99,8 @@ function Row({ p, all, core, locked, reload }: { p: Plugin; all: Plugin[]; core:
           ? tn('等服务 {s}：先启用 {who}', { s: <code>{w.service}</code>, who: w.by.map(n => `「${titleOf(all, n)}」`).join(t('或')) })
           : tn('等服务 {s}：没有装能提供它的插件', { s: <code>{w.service}</code> })}</span>)}
         {p.cycle.length > 0 && <span className="plugin-wait bad">{t('循环依赖：{path}，这几个永远等不到对方，改掉其中一个的 inject', { path: p.cycle.map(n => titleOf(all, n)).join(' → ') })}</span>}
-        {p.error && <pre className="plugin-err">{p.error}</pre>}
+        {p.blocked && <span className="plugin-wait bad">{p.blocked}</span>}
+        {p.error && p.error !== p.blocked && <pre className="plugin-err">{p.error}</pre>}
         <span className="plugin-actions">
           <button className="link-btn" onClick={() => setOpen(open === 'source' ? '' : 'source')}>{open === 'source' ? t('收起代码') : t('查看代码')}</button>
           <button className="link-btn" onClick={() => setOpen(open === 'config' ? '' : 'config')}>{t('设置')}</button>
@@ -110,7 +112,7 @@ function Row({ p, all, core, locked, reload }: { p: Plugin; all: Plugin[]; core:
       </span>
       <label className="switch" title={p.enabled ? t('停用') : t('启用')}>
         {/* 确认框是异步的：点完开关、在框里决定之前，浏览器已经把勾改了；用 key 让它按服务端的状态重新画 */}
-        <input key={String(p.enabled && !p.changed)} type="checkbox" checked={p.enabled && !p.changed} disabled={busy || (locked && !p.enabled)}
+        <input key={String(p.enabled && !p.changed)} type="checkbox" checked={p.enabled && !p.changed} disabled={busy || ((locked || !!p.blocked) && !p.enabled)}
           onChange={e => toggle(e.target.checked)} /><span />
       </label>
     </div>

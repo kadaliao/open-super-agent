@@ -21,6 +21,12 @@
 ### 变更
 - 以前的“webhook 定时任务”升级后自动变成“收到 Webhook”事件，规则照旧；旧地址 `/hooks/<名字>` 照旧能用，也多了一个自带密钥的新地址
 - 插件里标了 `gated` 的工具（比如发邮件）默认每次先问你，点“总是允许”后不再问；以前没有确认规则时会直接执行
+- **确认卡片多了“本次任务内允许”**：这个任务里同一个工具不再问，任务结束就失效；聊天软件里的卡片也有这个按钮。
+  本机终端不再只能一条一条地允许，可以“总是允许这个前缀”（默认是命令的第一个词，能改），带 `;` `&&` `|` `$(` 重定向的命令照样每次问。
+  确认规则能按参数写：`computer_shell:git *`、`filesystem__write_file:/data/workspace/*`。见 [确认规则](docs/configuration.md#确认规则与保险库)
+- **服务器锁拆成三个策略**：`security.exec`（`host` / `sandbox` / `off`）、`security.plugins`（`any` / `market` / `off`）、`security.apps`（`any` / `market`），
+  不写时按 `local_exec` / `demo` 推，原来的配置不用改。服务器锁（`local_exec: false`）下插件不再整个关掉：插件市场里原样的插件能装、能启用，
+  改过的、自己写的照旧不行。见 [服务器锁和演示模式](docs/configuration.md#服务器锁和演示模式)
 
 ## [0.11.0] - 2026-11-09
 ### 新增

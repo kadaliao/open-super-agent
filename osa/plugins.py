@@ -9,7 +9,8 @@
 - **列出插件不执行代码**：名字、说明、版本用 ast 从源码里读（META 只认字面量），apply 有没有也是看语法树。
 - **启用时记下文件的 sha256，文件改了就不加载**，要用户看过改动再启用一次。Bot 或别的程序往 data/plugins 里写东西，
   不经用户在设置里点“启用”就跑不起来；Bot 也没有启用插件的工具。
-- 服务器锁（security.local_exec: false）和演示服务器上整个关掉：不加载、不能启用。
+- 服务器上按 security.plugins 收紧（见 security.py）：off 整个关掉，不加载、不能装、不能启用；market（服务器锁的默认）只加载
+  和插件市场里随版本发布的文件一模一样的（启用、加载时比指纹），自己写的、改过的、旧版本的都不行，装还是能装；演示服务器默认 off。
 - 卸载就是 ctx.dispose()：注册过的工具、监听器、后台任务按相反顺序撤销，然后从 sys.modules 里拿掉。
   插件自己开的线程、改过的全局状态管不到，要用 ctx.effect 登记清理。
 - 备份不带插件文件（只带启用状态和设置）：换机器后把文件拷过去，再启用一次。
@@ -88,11 +89,22 @@ class PluginContext(registry.Context):
 
 
 # ---------- 文件 ----------
-def locked() -> str:
-    """这台服务器能不能用插件；不能就返回原因。"""
-    if security.demo() or not security.local_exec():
-        return i18n.t("这台服务器不允许运行插件（config.yaml 的 security.local_exec）")
+def locked(name: str | None = None) -> str:
+    """这台服务器能不能用插件；不能就返回原因。name：问的是装着的这一个（security.plugins 是 market 时，
+    只有和插件市场里随版本发布的文件一模一样的能启用、加载）。"""
+    mode = security.plugins_mode()
+    if mode == "off":
+        return i18n.t("这台服务器不允许运行插件（config.yaml 的 security.plugins）")
+    if mode == "market" and name is not None and not original(name):
+        return i18n.t("这台服务器只能用随版本发布的原样插件（config.yaml 的 security.plugins）："
+                      "{name} 不是插件市场里的，或者文件和这个版本带的不一样（改过，或者是旧版本，在插件市场里更新一下）", name=name)
     return ""
+
+
+def original(name: str) -> bool:
+    """data/plugins 里的这个插件是不是和插件市场（osa/catalog/plugins）里的同名插件一模一样。"""
+    entry, cat = _entry(DIR, name), _entry(CATALOG, name)
+    return bool(entry and cat) and digest(entry) == digest(cat)
 
 
 def _entry(base: Path, name: str) -> Path | None:
@@ -211,7 +223,8 @@ def info(name: str) -> dict:
             "changed": bool(row["enabled"] and row["sha256"] and sha != row["sha256"]),
             "error": _errors.get(name) or meta.get("syntax_error") or ("" if not meta or meta.get("has_apply") else i18n.t("没有 apply(ctx) 函数")),
             "tools": tools, "config": config_of(name, entry), "default_config": meta.get("config") or {},
-            "from_catalog": bool(cat), "update": bool(cat and entry and digest(cat) != sha)}
+            "from_catalog": bool(cat), "update": bool(cat and entry and digest(cat) != sha),
+            "blocked": locked(name) if entry and security.plugins_mode() == "market" else ""}
 
 
 def _graph() -> dict[str, tuple[list[str], list[str]]]:
@@ -260,8 +273,8 @@ def listing() -> dict:
         meta = describe(_entry(CATALOG, n))
         catalog.append({"name": n, **{k: meta[k] for k in ("title", "description", "version", "author", "provide", "inject")},
                         "installed": n in installed})
-    return {"locked": locked(), "dir": str(DIR), "plugins": [info(n) for n in installed], "catalog": catalog,
-            "services": core_services()}
+    return {"locked": locked(), "policy": security.plugins_mode(), "dir": str(DIR), "plugins": [info(n) for n in installed],
+            "catalog": catalog, "services": core_services()}
 
 
 # ---------- 加载和卸载 ----------
@@ -282,6 +295,8 @@ async def load(name: str) -> bool:
         raise PermissionError(i18n.t("插件 {name} 还没启用", name=name))
     if digest(entry) != row["sha256"]:
         raise PermissionError(i18n.t("插件 {name} 的文件在启用之后改过了：先看一下改了什么，再重新启用", name=name))
+    if why := locked(name):   # security.plugins: market —— 和随版本发布的不一样就不加载
+        raise PermissionError(why)
     unload(name)
     _errors.pop(name, None)
     meta = describe(entry)
@@ -362,6 +377,8 @@ async def enable(name: str):
     entry = _entry(DIR, name)
     if not entry:
         raise LookupError(i18n.t("没有插件 {name}", name=name))
+    if why := locked(name):
+        raise PermissionError(why)
     _save(name, enabled=True, sha256=digest(entry))
     try:
         await load(name)
@@ -402,7 +419,8 @@ async def set_config(name: str, config):
 
 
 async def install(name: str):
-    """从插件市场（osa/catalog/plugins）复制到 data/plugins。已经启用的会先停掉：新文件要用户看过再启用。"""
+    """从插件市场（osa/catalog/plugins）复制到 data/plugins。已经启用的会先停掉：新文件要用户看过再启用。
+    security.plugins 是 market 时也能装（装的就是原样的）。"""
     if why := locked():
         raise PermissionError(why)
     src = _entry(CATALOG, name) if NAME.match(name or "") else None

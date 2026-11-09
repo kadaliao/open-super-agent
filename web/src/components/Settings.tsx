@@ -427,6 +427,7 @@ function Rules() {
   return (
     <div>
       <p className="muted">{tn('大多数操作直接执行；写操作默认先问你。规则按工具全名匹配，可以用 {star} 通配，例如 {example}。两类规则都命中时，“先问我”优先。', { star: <code>*</code>, example: <code>filesystem__*</code> })}</p>
+      <p className="muted small">{tn('也可以按参数匹配：{form}，冒号后面和工具的第一个参数比（终端是命令），例如 {shell}、{path}。本机终端只认这种带命令前缀的规则，命令里带 ; | $( 重定向这类符号的照样每次问。', { form: <code>{t('工具:参数')}</code>, shell: <code>computer_shell:git *</code>, path: <code>filesystem__write_file:/data/workspace/*</code> })}</p>
       {group('ask', t('先问我'), t('命中的操作一定弹确认卡片'))}
       {group('allow', t('自动允许'), t('命中的操作直接执行。确认卡片上点“总是允许”会加到这里'))}
       <h4>{t('添加规则')}</h4>

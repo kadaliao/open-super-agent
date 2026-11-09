@@ -1,5 +1,5 @@
 """插件（osa/plugins.py）：列出时不执行代码、启用记指纹、改了文件要重新启用、出错整个撤销、卸载撤销全部注册、
-服务器锁下关掉、插件市场的两个插件、Router / Worker 用插件的工具、事件。插件目录换成临时目录，碰不到 data/plugins。"""
+服务器锁下只认插件市场里原样的（security.plugins）、插件市场的两个插件、Router / Worker 用插件的工具、事件。插件目录换成临时目录，碰不到 data/plugins。"""
 import asyncio
 import importlib.util
 import sys
@@ -160,16 +160,69 @@ async def test_locked_server_has_no_plugins(pdir, monkeypatch):
     (pdir / "echo.py").write_text(ECHO)
     await plugins.enable("echo")
     plugins.unload("echo")
-    monkeypatch.setitem(CFG, "security", {"local_exec": False})
-    assert plugins.listing()["locked"]
-    with pytest.raises(PermissionError):
+    monkeypatch.setitem(CFG, "security", {"local_exec": False})   # 服务器锁：plugins 默认是 market，自己写的插件不行
+    assert not plugins.listing()["locked"] and plugins.listing()["policy"] == "market"
+    assert "随版本发布" in plugins.info("echo")["blocked"]
+    with pytest.raises(PermissionError, match="随版本发布"):
         await plugins.enable("echo")
-    with pytest.raises(PermissionError):
-        await plugins.install("date_calc")
     await plugins.start()
     assert "echo" not in plugins._loaded and registry.get("echo_plugin") is None
-    monkeypatch.setitem(CFG, "security", {"demo": True})
-    assert plugins.locked()
+    for sec in ({"demo": True}, {"plugins": "off"}, {"local_exec": False, "plugins": False}):   # 整个关掉
+        monkeypatch.setitem(CFG, "security", sec)
+        assert "security.plugins" in plugins.locked() and plugins.listing()["locked"]
+        with pytest.raises(PermissionError):
+            await plugins.enable("echo")
+        with pytest.raises(PermissionError):
+            await plugins.install("echo")
+        await plugins.start()
+        assert "echo" not in plugins._loaded
+
+
+@pytest.fixture
+def market(tmp_path, monkeypatch):
+    """插件市场换成临时目录，里面只有 echo（和 ECHO 一模一样）。"""
+    cat = tmp_path / "catalog"
+    cat.mkdir()
+    (cat / "echo.py").write_text(ECHO)
+    monkeypatch.setattr(plugins, "CATALOG", cat)
+    return cat
+
+
+async def test_market_policy_only_runs_original_files(pdir, market, monkeypatch):
+    """security.plugins: market —— 能装；启用、加载时比指纹，和插件市场里的一模一样才行；改过的、自己写的、旧版本的都不行。"""
+    monkeypatch.setitem(CFG, "security", {"plugins": "market"})
+    await plugins.install("echo")
+    assert plugins.original("echo") and not plugins.info("echo")["blocked"]
+    await plugins.enable("echo")
+    assert "echo" in plugins._loaded and registry.get("echo_plugin")
+
+    (pdir / "echo.py").write_text(ECHO.replace("回声", "回声 2"))   # 改了文件：照旧是“改过了”，重新启用也不行
+    with pytest.raises(PermissionError, match="启用之后改过了"):
+        await plugins.reload("echo")
+    with pytest.raises(PermissionError, match="随版本发布"):
+        await plugins.enable("echo")
+    assert plugins.info("echo")["blocked"]   # 已经在跑的是加载时核对过的那份，留着；新文件不会执行
+
+    await plugins.install("echo")                                 # 从市场装回原样的，又能用
+    await plugins.enable("echo")
+    assert "echo" in plugins._loaded
+
+    (pdir / "mine.py").write_text(ECHO.replace("echo_plugin", "mine_plugin"))   # 自己写的，市场里没有
+    with pytest.raises(PermissionError, match="随版本发布"):
+        await plugins.enable("mine")
+    assert not plugins.info("mine")["enabled"]
+
+    plugins.unload("echo")                                        # 升级以后市场里的版本变了：装着的旧版本不加载，提示更新
+    (market / "echo.py").write_text(ECHO.replace('"0.1"', '"0.2"'))
+    await plugins.start()
+    assert "echo" not in plugins._loaded and "随版本发布" in plugins._errors["echo"]
+    assert plugins.info("echo")["update"] and plugins.info("echo")["blocked"]
+
+    monkeypatch.setitem(CFG, "security", {"plugins": "any"})      # any：不比市场
+    await plugins.start()
+    assert "echo" in plugins._loaded and not plugins.info("echo")["blocked"]
+    await plugins.enable("mine")
+    assert registry.get("mine_plugin")
 
 
 def _catalog_module(name):

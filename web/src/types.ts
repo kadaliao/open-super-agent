@@ -64,7 +64,11 @@ export type Approval = {
   id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
   origin_thread?: number   // 任务是在讨论串里派的：origin_chat_id 是讨论串所在的对话，这个是讨论串
   args: string; ts: number; expires?: number | null; status?: string; always?: boolean
-  once?: boolean   // 只能一次一次地允许（本机电脑的终端命令），没有“总是允许”
+  once?: boolean   // 只能一次一次地允许（新建、修改、删除 Bot，Worker 的 ask_approval），没有“本次任务内允许”“总是允许”
+  scopes?: string[]   // 同意时能选的作用域：once / task（这个任务里不再问）/ always。旧版服务没有，按 once 推
+  prefix?: string     // 终端命令：“总是允许这个前缀”的默认前缀（命令的第一个词）
+  compound?: boolean  // 终端命令带 ; | $( 这类符号：按前缀放行管不到它
+  scope?: string      // 有了结果：用户选的作用域
   editable?: string[]   // 能在卡片上直接改的参数（args 里的键），同意时把改过的一起发回去
   edited?: string[]     // 同意时改过的
 }
@@ -104,7 +108,8 @@ export type Settings = {
   problem: string                         // 对话或后台任务的模型没法用的原因；能用是空
   language: 'zh' | 'en'                   // 界面语言
   // 服务器锁（local_exec 为 false：网页上不能让服务器执行任意命令）和演示模式，只能在服务器的 config.yaml 里改。旧版服务没有这一项
-  security?: { local_exec: boolean; demo: boolean }
+  // exec / plugins / apps：策略表（osa/security.py），没写新键时按 local_exec / demo 推出来
+  security?: { local_exec: boolean; demo: boolean; exec?: 'host' | 'sandbox' | 'off'; plugins?: 'any' | 'market' | 'off'; apps?: 'any' | 'market' }
 }
 export type SearchHit = { kind: 'memory' | 'page'; ref: number; title: string; snippet: string; bot_id: number | null; sub: string; score: number }
 export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'
