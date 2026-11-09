@@ -86,6 +86,7 @@ def public() -> dict:
         "computer_parallel": (CFG.get("computer") or {}).get("parallel", 3),
         "computer_backend": (CFG.get("computer") or {}).get("backend", "auto"),
         "computer_backends": computer.available(),
+        "computer_choices": computer.choices(),   # 电脑面板里给哪几种（config.yaml 的 computer.choices）
         "computer_on_desktop": bool(os.environ.get("OSA_DESKTOP")),   # 服务是桌面 App 自带的：“本机”就是用户面前这台电脑
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
@@ -131,6 +132,8 @@ def save(data: dict) -> dict:
         b = data["computer_backend"] or "auto"
         if b != "auto" and b not in computer.BACKENDS:
             raise ValueError(i18n.t("没有这种电脑：{name}", name=b))
+        if b in ("host", "local", "instabox") and b not in computer.choices() and b != CFG["computer"].get("backend"):
+            raise ValueError(i18n.t("这台服务器上不能选这种电脑（config.yaml 的 computer.choices）"))
         ok = {x["id"]: x["ok"] for x in computer.available()}
         if b == "instabox" and not ok["instabox"]:
             raise ValueError(i18n.t("还没填 Instabox 的 API Key"))

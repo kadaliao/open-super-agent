@@ -1147,5 +1147,6 @@
   "Docker 没在运行：先打开 Docker Desktop（或 OrbStack），再点启动": "Docker isn't running. Open Docker Desktop (or OrbStack), then click Start",
   "这台电脑没装 Docker": "Docker isn't installed on this computer",
   "第一次用要先准备电脑（下载、安装浏览器和桌面），要几分钟": "First run: setting up the computer (downloading and installing the browser and desktop). This takes a few minutes",
-  "演示服务器上不能换电脑": "You can't change the computer on the demo server"
+  "演示服务器上不能换电脑": "You can't change the computer on the demo server",
+  "这台服务器上不能选这种电脑（config.yaml 的 computer.choices）": "This server doesn't offer that computer (computer.choices in config.yaml)"
 }

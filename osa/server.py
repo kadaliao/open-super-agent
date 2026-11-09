@@ -1411,6 +1411,8 @@ async def pc_instabox_key(data: dict = Body(...)):
     from .computer import instabox
     if security.demo():
         raise HTTPException(403, i18n.t("演示服务器上不能换电脑"))
+    if "instabox" not in computer.choices():
+        raise HTTPException(403, i18n.t("这台服务器上不能选这种电脑（config.yaml 的 computer.choices）"))
     c = computer.get()
     if c.backend == "instabox" and (c.users or c.exclusive):
         raise HTTPException(400, i18n.t("电脑正在被用着（{who}），等用完再换", who=c.busy()))

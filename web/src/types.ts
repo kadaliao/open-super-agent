@@ -99,6 +99,7 @@ export type Settings = {
   computer_parallel: number
   computer_backend: string                              // auto / host / local / instabox
   computer_backends: { id: string; ok: boolean; locked?: boolean; key?: string }[]   // 这台机器上能用哪些；locked：服务器锁不让用；key：Instabox 的 API key 从哪来（saved / env / 空）
+  computer_choices?: string[]                           // 电脑面板里给哪几种（config.yaml 的 computer.choices）；旧版服务没有这一项
   computer_on_desktop: boolean                          // 服务是桌面 App 自带的（本地模式）；否则“本机”指服务器那台机器
   computer_host_shell: boolean
   embedding: { provider: string; model: string }

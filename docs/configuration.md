@@ -110,6 +110,7 @@ computer:
   chrome_path: ""        # 本机：Bot 的浏览器用哪个 Chrome，留空按常见位置找
   host_shell: false      # 本机的终端，默认关
   host_desktop: true     # 本机是 Mac 时，给了权限就能操作整个屏幕；false 只用浏览器
+  # choices: [instabox]  # 电脑面板里给哪几种（host / local / instabox），不写就是全部
 ```
 
 电脑面板上方能换电脑（存在设置里，覆盖 `backend`）：
@@ -121,6 +122,8 @@ computer:
 - 云电脑要 Instabox 的 API Key：第一次选时在面板里填，服务先试一下能不能用，能用才加密存进保险库（名字 `INSTABOX_API_KEY`）；
   面板里填的优先，没填用环境变量 `INSTABOX_API_KEY`。换了 Key（可能是另一个账号）会接着用那个账号里以前给这里建的机器。
 - 换电脑时旧的那台会暂停（本机关掉 Bot 的 Chrome，Docker 容器暂停，Instabox 挂起），下次换回来接着用。
+- 不想让人在面板里选某种（比如服务器内存小、不想在上面跑 Docker），在 `computer.choices` 里只列要给的，比如 `[instabox]`。
+  只剩一种时面板上不再出现下拉框；正在用的那种不受影响。“借给服务器”的 Mac 不归它管。
 
 | backend | 说明 |
 |---|---|

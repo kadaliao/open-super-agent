@@ -132,3 +132,14 @@ async def test_switching_pauses_the_old_computer(clean, monkeypatch):
     assert computer.get().backend == "instabox"
     await asyncio.sleep(0.01)
     assert paused == ["local"]
+
+
+def test_choices_limit_the_picker(clean, monkeypatch):
+    assert computer.choices() == ["host", "local", "instabox"]
+    monkeypatch.setitem(CFG["computer"], "choices", ["instabox"])   # 服务器上不想跑 Docker
+    assert computer.choices() == ["instabox"]
+    assert settings.public()["computer_choices"] == ["instabox"]
+    monkeypatch.setattr(computer.shutil, "which", lambda name: "/usr/bin/docker")
+    with pytest.raises(ValueError, match="computer.choices"):
+        settings.save({"computer_backend": "local"})
+    settings.save({"computer_backend": "auto"})                     # 回到自动照常可以

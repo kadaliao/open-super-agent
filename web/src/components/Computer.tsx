@@ -73,9 +73,12 @@ function ComputerPicker({ st, ls, reload, setErr, onKey }: {
   const here = !!ls?.available   // 在 Mac 的 App 里，能借出这台 Mac
   const linked = st.backend === 'linked'
   const can = (id: string) => s.computer_backends?.find(b => b.id === id)
-  // 服务器上不给“服务器本机”：没有屏幕、多半用 root 跑（Chrome 得关掉沙箱才能用 root 跑）。config.yaml 里写了 host 的照常显示
-  const ids = s.computer_on_desktop ? ['host', 'local', 'instabox'] : [...(st.backend === 'host' ? ['host'] : []), 'local', 'instabox']
+  // 服务器上不给“服务器本机”：没有屏幕、多半用 root 跑（Chrome 得关掉沙箱才能用 root 跑）。config.yaml 里写了 host 的照常显示。
+  // computer.choices 没列的不给（比如服务器上不想用 Docker），正在用的那种照常显示
+  const allowed = (id: string) => id === st.backend || !s.computer_choices || s.computer_choices.includes(id)
+  const ids = (s.computer_on_desktop ? ['host', 'local', 'instabox'] : [...(st.backend === 'host' ? ['host'] : []), 'local', 'instabox']).filter(allowed)
   const withMac = !s.computer_on_desktop && (here || st.link?.connected || linked)
+  if (ids.length + (withMac ? 1 : 0) < 2 && !linked) return <span className="pc-name">{names[st.backend] || t('Bot 电脑')}</span>
   const setBackend = async (b: string) => setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_backend: b } }))
   const change = async (v: string) => {
     if (v === 'instabox' && !can('instabox')?.ok) return onKey()

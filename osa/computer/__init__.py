@@ -63,6 +63,13 @@ def backend_name() -> str:
     return b
 
 
+def choices() -> list[str]:
+    """电脑面板里给哪几种（config.yaml 的 computer.choices，没写就是全部）。比如服务器上不想用 Docker 就只写 [instabox]。
+    “借用你的 Mac”（linked）不归这里管。"""
+    want = (CFG.get("computer") or {}).get("choices")
+    return [b for b in ("host", "local", "instabox") if not want or b in want]
+
+
 def available() -> list[dict]:
     """设置里能选的电脑，以及这台机器上能不能用。instabox 的 key：API key 从哪来（saved 界面里填的 / env 环境变量 / 空 还没有）。"""
     from .host import chrome_path

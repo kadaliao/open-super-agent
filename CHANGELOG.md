@@ -6,6 +6,7 @@
 ### 新增
 - **桌面 App 能换电脑**：电脑面板上方在 本机、Docker 沙盒、云电脑（Instabox）里选，默认还是本机。服务器上在 Docker 沙盒和云电脑之间选
   （不给“服务器本机”：服务器没有屏幕，用 root 跑时 Chrome 得关掉沙箱）。见 [桌面 App](docs/desktop.md)、[配置 → 电脑](docs/configuration.md#电脑)
+- `computer.choices`：电脑面板里给哪几种，不写就是全部（比如服务器上不想跑 Docker 就写 `[instabox]`）
 - **Instabox 的 API Key 能在电脑面板里填**：先试能不能用再加密存进保险库，填的优先于环境变量 `INSTABOX_API_KEY`；换了账号会接着用那边以前建的机器
 
 ### 改进
