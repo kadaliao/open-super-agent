@@ -1,7 +1,7 @@
 //! 服务器借用这台 Mac：App 连着服务器时，你在电脑面板里点“借给服务器”，网页向服务器要一个借用令牌，经桥接交给 App；
 //! App 在这里弹窗问你，同意了才存进钥匙串（按服务器地址分开），并在后台起 Mac 上的小程序（osa/computer/agent.py），
-//! 它主动连到服务器，替服务器上的 Bot 操作这台 Mac：浏览器、屏幕和鼠标键盘（要 App 有“辅助功能”和“屏幕录制”权限）、工作文件夹里的文件。
-//! 终端默认不给：你在这台 Mac 的电脑面板里勾上“允许 Bot 用终端”，这里弹窗问过你才打开（desktop_link_shell），服务器自己打不开。
+//! 它主动连到服务器，替服务器上的 Bot 操作这台 Mac：浏览器、屏幕和鼠标键盘（要 App 有“辅助功能”和“屏幕录制”权限）、工作文件夹里的文件，
+//! 以及电脑面板里打开了终端时的命令（每条都先问你）。
 //! 网页里电脑选“本机”就是借出，选“Bot 电脑”就是收回；菜单栏里也能断开。
 
 use std::sync::Arc;
@@ -36,8 +36,8 @@ fn ws_url(origin: &Url) -> String {
 /// 连着服务器、借用过：起 Mac 上的小程序（已经在跑就不动）
 pub fn start(app: &AppHandle) {
     let Some(origin) = remote(app) else { return };
-    let Some(lent) = store::link_get(&key(&origin)) else { return refresh(app) };
-    match server::agent_launch(app.path().resource_dir().ok(), &ws_url(&origin), &lent.token, lent.shell) {
+    let Some((token, _)) = store::link_get(&key(&origin)) else { return refresh(app) };
+    match server::agent_launch(app.path().resource_dir().ok(), &ws_url(&origin), &token) {
         Ok(launch) => state(app).agent.start(launch, |why| eprintln!("[desktop] agent gave up: {why}")),
         Err(e) => eprintln!("[desktop] agent: {e}"),
     }
@@ -78,8 +78,7 @@ pub fn desktop_link_state(app: AppHandle) -> serde_json::Value {
     json!({
         "available": origin.is_some(),
         "linked": saved.is_some(),
-        "id": saved.as_ref().map(|l| l.id),
-        "shell": saved.is_some_and(|l| l.shell),
+        "id": saved.map(|(_, id)| id),
         "running": state(&app).agent.alive(),
     })
 }
@@ -90,46 +89,17 @@ pub fn desktop_link(app: AppHandle, token: String, id: i64) -> Result<bool, Stri
     let origin = remote(&app).ok_or_else(|| tr("只有连着服务器时才能借出这台 Mac", "Only available when connected to a server").to_string())?;
     let host = origin.host_str().unwrap_or_default().to_string();
     let text = if crate::zh() {
-        format!("让 {host} 上的 Bot 使用这台 Mac？\n\n它们能看你的屏幕、用你的鼠标键盘操作这台 Mac 上的 App，和这台 Mac 独立运行时一样。每个任务第一次用屏幕会先在对话里问你；Bot 操作时你动一下鼠标或键盘它就停下。终端命令默认不能执行，要用的话在电脑面板里勾上“允许 Bot 用终端”。\n\n随时可以在电脑面板选回“Bot 电脑”，或者在菜单栏图标里断开。")
+        format!("让 {host} 上的 Bot 使用这台 Mac？\n\n它们能看你的屏幕、用你的鼠标键盘操作这台 Mac 上的 App，和这台 Mac 独立运行时一样。每个任务第一次用屏幕会先在对话里问你；Bot 操作时你动一下鼠标或键盘它就停下。终端默认关，可以在电脑面板里打开（手机上也行），打开后每条命令执行前都会问你。\n\n随时可以在电脑面板选回“Bot 电脑”，或者在菜单栏图标里断开。")
     } else {
-        format!("Let the bots on {host} use this Mac?\n\nThey can see your screen and use your mouse and keyboard in the apps on this Mac, just like when the app runs on its own. Each task asks in the chat before it first uses the screen; move the mouse or press a key and the bot stops. No terminal commands unless you tick “Allow bots to use the terminal” in the computer panel.\n\nSwitch back to “Bot computer” in the computer panel, or stop from the menu bar icon, any time.")
+        format!("Let the bots on {host} use this Mac?\n\nThey can see your screen and use your mouse and keyboard in the apps on this Mac, just like when the app runs on its own. Each task asks in the chat before it first uses the screen; move the mouse or press a key and the bot stops. The terminal is off by default; turn it on in the computer panel (from your phone too) and each command asks first.\n\nSwitch back to “Bot computer” in the computer panel, or stop from the menu bar icon, any time.")
     };
     if token.trim().is_empty() || !confirm(&app, tr("借出这台 Mac", "Lend this Mac"), &text, tr("借给它", "Lend")) {
         return Ok(false);
     }
-    if !store::link_set(&key(&origin), &store::Lent { token: token.trim().into(), id, shell: false }) {
+    if !store::link_set(&key(&origin), token.trim(), id) {
         return Err(tr("存不进钥匙串", "Couldn't save to the Keychain").into());
     }
     stop(&app); // 换了令牌：重起
-    start(&app);
-    Ok(true)
-}
-
-/// 允许（或不再允许）服务器上的 Bot 在这台 Mac 上执行终端命令。打开前弹窗问你；改了就重起小程序，它重新连上时告诉服务器。
-/// 返回改没改（你在弹窗里点了取消就是 false）
-#[tauri::command(async)]
-pub fn desktop_link_shell(app: AppHandle, on: bool) -> Result<bool, String> {
-    let origin = remote(&app).ok_or_else(|| tr("只有连着服务器时才能借出这台 Mac", "Only available when connected to a server").to_string())?;
-    let mut lent = store::link_get(&key(&origin)).ok_or_else(|| tr("这台 Mac 还没借给服务器", "This Mac isn't lent to the server").to_string())?;
-    if lent.shell == on {
-        return Ok(true);
-    }
-    if on {
-        let host = origin.host_str().unwrap_or_default().to_string();
-        let text = if crate::zh() {
-            format!("让 {host} 上的 Bot 在这台 Mac 上执行终端命令？\n\n命令在工作文件夹里、用你的账号运行，能访问你能访问的所有文件。每条命令执行前都会在对话里问你（你选过“总是允许”的命令开头除外）。\n\n能登录 {host} 的人也就能在这台 Mac 上执行命令。随时可以在电脑面板里取消勾选。")
-        } else {
-            format!("Let the bots on {host} run terminal commands on this Mac?\n\nCommands run in the workspace folder as your user and can reach every file you can. Each command asks in the chat first (except command prefixes you chose to always allow).\n\nAnyone who can sign in to {host} can then run commands on this Mac. Untick it in the computer panel any time.")
-        };
-        if !confirm(&app, tr("允许执行终端命令", "Allow terminal commands"), &text, tr("允许", "Allow")) {
-            return Ok(false);
-        }
-    }
-    lent.shell = on;
-    if !store::link_set(&key(&origin), &lent) {
-        return Err(tr("存不进钥匙串", "Couldn't save to the Keychain").into());
-    }
-    stop(&app); // 小程序启动时读这个开关
     start(&app);
     Ok(true)
 }
@@ -151,7 +121,7 @@ fn unlink(app: &AppHandle) {
 
 /// 菜单栏里断开：网页那边也让服务器作废这个令牌（osa-unlinked 事件，见 web/src/components/Computer.tsx）
 pub fn menu_unlink(app: &AppHandle) {
-    let id = remote(app).and_then(|o| store::link_get(&key(&o))).map(|l| l.id);
+    let id = remote(app).and_then(|o| store::link_get(&key(&o))).map(|(_, id)| id);
     unlink(app);
     if let (Some(id), Some(w)) = (id, main_window(app)) {
         let _ = w.eval(format!("window.dispatchEvent(new CustomEvent('osa-unlinked', {{ detail: {id} }}))"));

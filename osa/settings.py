@@ -36,6 +36,7 @@ def apply():
         b = None
     pc["backend"] = b or _PC.get("backend", "auto")
     pc["host_shell"] = o.get("computer_host_shell", bool(_PC.get("host_shell", False)))
+    pc["linked_shell"] = o.get("computer_linked_shell", bool(_PC.get("linked_shell", False)))
     if "embedding" in o:
         CFG["embedding"] = o["embedding"]
 
@@ -89,6 +90,7 @@ def public() -> dict:
         "computer_choices": computer.choices(),   # 电脑面板里给哪几种（config.yaml 的 computer.choices）
         "computer_on_desktop": bool(os.environ.get("OSA_DESKTOP")),   # 服务是桌面 App 自带的：“本机”就是用户面前这台电脑
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
+        "computer_linked_shell": bool((CFG.get("computer") or {}).get("linked_shell")),   # 借来的 Mac 的终端（不看服务器锁）
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
         "image_model": avatars.choice(),   # 画图用哪个模型（对话里画图、生成头像共用），没选过是空的
         "model_info": {f"{p}/{m}": _info(p, m) for p, m in used},
@@ -104,7 +106,7 @@ def save(data: dict) -> dict:
         raise ValueError(i18n.t("演示服务器上不能改用量上限"))
     if not security.local_exec() and (data.get("computer_backend") == "host" or data.get("computer_host_shell")):
         raise ValueError(security.no_local_exec())
-    if security.demo() and data.get("computer_backend") == "linked":
+    if security.demo() and (data.get("computer_backend") == "linked" or data.get("computer_linked_shell")):
         raise ValueError(i18n.t("演示服务器上不能借用你的电脑"))
     if "language" in data:
         i18n.set_lang(data["language"])
@@ -148,6 +150,8 @@ def save(data: dict) -> dict:
             o["computer_backend"] = b
     if "computer_host_shell" in data:
         o["computer_host_shell"] = bool(data["computer_host_shell"])
+    if "computer_linked_shell" in data:
+        o["computer_linked_shell"] = bool(data["computer_linked_shell"])
     if "embedding" in data:
         e = data["embedding"] or {}
         provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:200]

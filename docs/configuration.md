@@ -109,6 +109,7 @@ computer:
   instabox_machine: ""   # 使用已有的 Instabox 机器（免费版只能有一台）
   chrome_path: ""        # 本机：Bot 的浏览器用哪个 Chrome，留空按常见位置找
   host_shell: false      # 本机的终端，默认关
+  linked_shell: false    # 借来的 Mac 的终端，默认关
   host_desktop: true     # 本机是 Mac 时，给了权限就能操作整个屏幕；false 只用浏览器
   # choices: [instabox]  # 电脑面板里给哪几种（host / local / instabox），不写就是全部
 ```
@@ -163,7 +164,7 @@ computer:
   可以在 设置 → 确认规则 里撤销。用 Bot 电脑时这些默认不问，想问也可以在确认规则里加“先问我”。
 
 **借给服务器**（App 连着服务器时选“本机”，后台的电脑类型叫 `linked`）：和本机一样，只是 Bot 在服务器上、经 Mac 主动连过去的连接操作这台 Mac。
-不同的地方：终端的开关在 Mac 上（那台 Mac 的 App 里勾上“允许 Bot 用终端”，Mac 弹窗同意；`host_shell` 管不到它），每条命令照样先问；
+不同的地方：终端的开关是 `linked_shell`（电脑面板里那个勾，哪台设备上都能开关；`host_shell` 和服务器锁都管不到它），每条命令照样先问；
 借出时 Mac 上弹窗同意的就包括屏幕；服务器锁（`security.local_exec: false`、`security.exec`）不影响它，演示模式下不能用；
 Mac 掉线时电脑面板显示“你的 Mac 没连上”。细节见 [桌面 App](desktop.md)。
 

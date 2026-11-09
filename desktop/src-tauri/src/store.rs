@@ -90,8 +90,7 @@ pub fn secret() -> String {
 
 // ---------- 服务器借用这台 Mac（link.rs） ----------
 
-/// 借用令牌：服务器发的，按服务器地址（https://osa.example.com）分开存，值是 {"token", "id", "shell"}。
-/// shell 是你在这台 Mac 上允许了终端没有：和令牌存在一起，服务器改不了它。
+/// 借用令牌：服务器发的，按服务器地址（https://osa.example.com）分开存，值是 {"token", "id"}。
 /// 发布版在钥匙串里；开发版和测试目录在数据目录的 link-tokens.json 里（权限 600），理由同 secret()
 fn link_in_keychain() -> bool {
     !cfg!(debug_assertions) && std::env::var_os("OSA_DESKTOP_HOME").is_none()
@@ -114,24 +113,18 @@ fn write_private(path: &std::path::Path, data: &[u8]) {
     }
 }
 
-pub struct Lent {
-    pub token: String,
-    pub id: i64,     // 服务器那边的借用编号
-    pub shell: bool, // 允许服务器上的 Bot 在这台 Mac 上执行终端命令
-}
-
-pub fn link_get(origin: &str) -> Option<Lent> {
+pub fn link_get(origin: &str) -> Option<(String, i64)> {
     let v: serde_json::Value = if link_in_keychain() {
         let s = keyring::Entry::new(KEYCHAIN_SERVICE, &format!("link {origin}")).ok()?.get_password().ok()?;
         serde_json::from_str(&s).ok()?
     } else {
         read_link_file().get(origin)?.clone()
     };
-    Some(Lent { token: v["token"].as_str()?.to_string(), id: v["id"].as_i64().unwrap_or(0), shell: v["shell"].as_bool().unwrap_or(false) })
+    Some((v["token"].as_str()?.to_string(), v["id"].as_i64().unwrap_or(0)))
 }
 
-pub fn link_set(origin: &str, lent: &Lent) -> bool {
-    let v = serde_json::json!({ "token": lent.token, "id": lent.id, "shell": lent.shell });
+pub fn link_set(origin: &str, token: &str, id: i64) -> bool {
+    let v = serde_json::json!({ "token": token, "id": id });
     if link_in_keychain() {
         return keyring::Entry::new(KEYCHAIN_SERVICE, &format!("link {origin}")).and_then(|e| e.set_password(&v.to_string())).is_ok();
     }
@@ -151,26 +144,5 @@ pub fn link_clear(origin: &str) {
     let mut all = read_link_file();
     if all.remove(origin).is_some() {
         write_private(&link_file(), &serde_json::to_vec_pretty(&all).unwrap_or_default());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 借用令牌和终端开关存在一起；旧版 App 存的没有 shell，读出来是没允许
-    #[test]
-    fn link_keeps_the_terminal_switch() {
-        let dir = std::env::temp_dir().join(format!("osa-store-test-{}", std::process::id()));
-        std::env::set_var("OSA_DESKTOP_HOME", &dir); // 测试里不用钥匙串，存在这个目录的 link-tokens.json
-        let o = "https://osa.example.com";
-        assert!(link_set(o, &Lent { token: "t".into(), id: 3, shell: true }));
-        let l = link_get(o).unwrap();
-        assert_eq!((l.token.as_str(), l.id, l.shell), ("t", 3, true));
-        write_private(&link_file(), br#"{"https://osa.example.com": {"token": "old", "id": 1}}"#);
-        assert!(!link_get(o).unwrap().shell);
-        link_clear(o);
-        assert!(link_get(o).is_none());
-        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -1,5 +1,5 @@
 """服务器借用你的 Mac：桌面 App 连着服务器时，在 Mac 上起一个小程序（agent.py），它主动连到这里的 /api/computer/link，
-服务器把电脑的操作（Bot 的 Chrome、整个屏幕、工作文件夹里的文件，Mac 上允许了的话还有终端）经这条连接交给它在 Mac 上做（电脑类型 linked，见 linked.py）。
+服务器把电脑的操作（Bot 的 Chrome、整个屏幕、工作文件夹里的文件，电脑面板里打开了的话还有终端）经这条连接交给它在 Mac 上做（电脑类型 linked，见 linked.py）。
 
 - 借用凭据：电脑面板里点“让服务器上的 Bot 用这台 Mac”，服务器发一个随机令牌，网页交给 App，App 在 Mac 上弹窗问你同意后存进钥匙串。
   这里只存令牌的 SHA-256。在电脑面板或 Mac 的菜单栏里断开就作废。
@@ -77,7 +77,7 @@ class Link:
         self.desktop = bool(hello.get("desktop"))      # 是 Mac，能操作整个屏幕
         self.perms = dict(hello.get("perms") or {})   # 连上时那台 Mac 的两个权限
         self.workspace = str(hello.get("workspace") or "")
-        self.shell = bool(hello.get("shell"))         # 你在那台 Mac 上允许了终端（开关只在 Mac 上，改了 Mac 会重连）
+        self.shell = bool(hello.get("shell"))         # 那台 Mac 上的小程序能执行终端命令（旧版 App 的不能）
         self.version = str(hello.get("version") or "")
         self._ids = itertools.count(1)
         self._pending: dict[int, asyncio.Future] = {}

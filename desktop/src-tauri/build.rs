@@ -13,7 +13,6 @@ fn main() {
         "desktop_link_state",
         "desktop_link",
         "desktop_unlink",
-        "desktop_link_shell",
     ])))
     .expect("tauri build");
 }

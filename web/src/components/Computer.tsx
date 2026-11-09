@@ -163,22 +163,19 @@ function HostShell({ on }: { on: boolean }) {
   )
 }
 
-/** 借来的 Mac 的终端：开关在那台 Mac 上（勾上时 Mac 弹窗问你，服务器自己打不开），每条命令照样要你确认。
- *  别的设备上只显示开没开。改了 Mac 上的小程序会重起（Bot 的浏览器跟着关掉），所以有任务在用电脑时不让打开。 */
-function MacShell({ on, ls, inUse, reload }: { on: boolean; ls: LinkState | null; inUse: boolean; reload: () => void }) {
-  const [saving, setSaving] = useState(false)
-  const here = !!ls?.linked && !!desktop?.link?.shell   // 就在那台 Mac 的 App 里
-  const checked = here ? !!ls?.shell : on
+/** 借来的 Mac 的终端：默认关，哪台设备上都能开关（手机上也行），打开后 Bot 每条命令都要你确认。
+ *  ready：那台 Mac 上的 App 能执行命令（旧版不能，要先更新）。 */
+function MacShell({ on, ready }: { on: boolean; ready: boolean }) {
   const save = async (v: boolean) => {
-    setSaving(true)
-    try { await desktop!.link!.shell!(v) } catch (e: any) { notice(e.message) }
-    setSaving(false); reload()
+    if (v && !(await ask(t('让 Bot 能在你的 Mac 上执行终端命令？每条命令执行前都会问你，命令能访问那台 Mac 上你能访问的所有文件。'), { ok: t('打开终端') }))) return
+    try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_linked_shell: v } })) }
+    catch (e: any) { notice(e.message) }
   }
   return (
-    <label className="pc-shell muted small" title={here && inUse && !checked ? t('有任务在用电脑，用完再换') : undefined}>
-      <input type="checkbox" checked={checked} disabled={!here || saving || (inUse && !checked)} onChange={e => save(e.target.checked)} />
+    <label className="pc-shell muted small">
+      <input type="checkbox" checked={on} disabled={!ready && !on} onChange={e => save(e.target.checked)} />
       {t('允许 Bot 用终端（每条命令都要你确认）')}
-      {!here && <>{' · '}{t('在那台 Mac 的 App 里开关')}</>}
+      {!ready && <>{' · '}{t('那台 Mac 上的 App 要先更新到新版')}</>}
     </label>
   )
 }
@@ -420,7 +417,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
       )}
       {host && !offline && st.desktop?.supported && !(st.desktop.accessibility && st.desktop.screen) && <DeskPerms here={here} />}
       {st.backend === 'host' && <HostShell on={!!st.shell} />}
-      {st.backend === 'linked' && !offline && <MacShell on={!!st.shell} ls={ls} inUse={!!(st.users?.length || st.exclusive)} reload={reloadLink} />}
+      {st.backend === 'linked' && !offline && <MacShell on={!!settings?.computer_linked_shell} ready={!!st.link?.shell} />}
       {err && <div className="error-line">{err}</div>}
       {big && live && (
         <div className="modal-bg" ref={bigRef} onMouseDown={() => setBig(false)}>

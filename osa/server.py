@@ -1712,7 +1712,7 @@ async def put_settings(data: dict = Body(...)):
         _err(e)
     if "computer_parallel" in data:   # 并行数改大了，排队的任务马上能开始
         await computer.get().recheck()
-    if {"computer_parallel", "computer_backend", "computer_host_shell"} & data.keys():
+    if {"computer_parallel", "computer_backend", "computer_host_shell", "computer_linked_shell"} & data.keys():
         await broadcast({"type": "computer", "computer": await computer.public_state()})
     return out
 

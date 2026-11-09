@@ -125,7 +125,8 @@ async def public_state(bot_id: int = SHARED) -> dict:
     users = [{"key": k, "label": u["label"], "task_id": u.get("task_id"), "bot_id": u.get("bot_id"),
               "window": bool(u.get("window"))} for k, u in c.users.items()]
     lk = link.connected()
-    extra = {"link": {"connected": bool(lk), "name": lk.name if lk else ""}}   # 借给服务器的 Mac 连没连上（换电脑时用）
+    extra = {"link": {"connected": bool(lk), "name": lk.name if lk else "",   # 借给服务器的 Mac 连没连上（换电脑时用）
+                      "shell": bool(lk and lk.shell)}}                        # 那台 Mac 上的 App 能不能执行终端命令
     if c.backend in HOSTS:
         extra |= {"shell": c.shell_enabled(), "desktop": await c.desk_state()}
     return {"bot_id": bot_id, "backend": c.backend, "controller": c.controller, "width": c.width, "height": c.height,
