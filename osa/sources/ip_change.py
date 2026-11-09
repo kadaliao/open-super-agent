@@ -1,6 +1,6 @@
 """公网 IP 变了：这台机器的公网 IP 换了时，Bot 收到一个事件（原来的 → 现在的）。
 
-家里的宽带重新拨号、路由器重启后 IP 常常会换。在家里跑服务、用 DDNS、防火墙按 IP 放行的，装上它，IP 一换就知道该去改哪了。
+家里的宽带重新拨号、路由器重启后 IP 常常会换。在家里跑服务、用 DDNS、防火墙按 IP 放行的，建一个这样的事件，IP 一换就知道该去改哪了。
 在 Bot 的“事件”里选“公网 IP 变了”。默认 10 分钟看一次，问的是 ipify、icanhazip、ifconfig.me 这几个查 IP 的服务，
 一个不通换下一个；发现变了会再问另一家确认一次，免得某一家抽风误报。
 IPv6 看的是前缀（前 64 位）：电脑出门用的临时地址每天都会换，前缀变了才是运营商换了地址。
@@ -8,10 +8,10 @@ IPv6 看的是前缀（前 64 位）：电脑出门用的临时地址每天都�
 """
 import ipaddress
 import time
-from osa.registry import POLL, Source
-from osa.sources import _util
+from ..i18n import N_
+from ..registry import POLL, Source
+from . import _util
 
-META = {"title": "公网 IP 变了", "version": "1.0", "author": "open-super-agent"}
 SERVICES = {
     4: ["https://api.ipify.org", "https://ipv4.icanhazip.com", "https://ifconfig.me/ip"],
     6: ["https://api6.ipify.org", "https://ipv6.icanhazip.com"],
@@ -81,24 +81,22 @@ async def check(params: dict, state):
     return events, new
 
 
-SOURCE = Source(
-    id="ip_change", mode=POLL, category="系统", icon="🌐",
-    title="公网 IP 变了",
-    description="这台机器的公网 IP 换了时触发（家里宽带重新拨号之类），方便你去改 DNS、防火墙白名单。",
-    fields=[{"key": "ipv6", "label": "也看 IPv6", "type": "bool", "default": False,
-             "help": "IPv6 只看前缀（前 64 位），临时地址换了不算"}],
+IP_CHANGE = Source(
+    id="ip_change", mode=POLL, category=N_("系统"), icon="🌐",
+    title=N_("公网 IP 变了"),
+    description=N_("这台机器的公网 IP 换了时触发（家里宽带重新拨号之类），方便你去改 DNS、防火墙白名单。"),
+    fields=[{"key": "ipv6", "label": N_("也看 IPv6"), "type": "bool", "default": False,
+             "help": N_("IPv6 只看前缀（前 64 位），临时地址换了不算")}],
     check=check, every=10, min_every=5,
     summary=lambda p: "IPv4 和 IPv6" if p.get("ipv6") else "",
     sample={"title": "公网 IPv4 变了：203.0.113.7 → 198.51.100.24",
             "text": "原来：203.0.113.7\n现在：198.51.100.24\n2026-11-09 08:10 发现的（api.ipify.org 查到，换了一家确认过）。\n"
                     "有域名解析到这里（DDNS）、防火墙或别的服务按 IP 放行、端口转发写死了地址的，记得改。"},
     scenarios=[
-        {"title": "家里公网 IP 变了提醒我（改 DNS）", "description": "宽带重新拨号换了 IP，提醒你去改域名解析、防火墙白名单",
-         "name": "公网 IP 变了",
-         "prompt": "这台机器的公网 IP 变了。告诉我原来的和现在的 IP，提醒我检查：域名解析（DDNS 有没有自动更新）、"
-                   "云服务器安全组或防火墙里按 IP 放行的规则、别的服务里写死的地址。简短一点。"},
+        {"title": N_("家里公网 IP 变了提醒我（改 DNS）"), "description": N_("宽带重新拨号换了 IP，提醒你去改域名解析、防火墙白名单"),
+         "name": N_("公网 IP 变了"),
+         "prompt": N_("这台机器的公网 IP 变了。告诉我原来的和现在的 IP，提醒我检查：域名解析（DDNS 有没有自动更新）、"
+                      "云服务器安全组或防火墙里按 IP 放行的规则、别的服务里写死的地址。简短一点。")},
     ])
 
-
-def apply(ctx):
-    ctx.source(SOURCE)
+SOURCES = [IP_CHANGE]

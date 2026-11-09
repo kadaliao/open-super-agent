@@ -99,13 +99,13 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 | [功能一览](docs/features.md) | 全部功能，按主题分组 |
 | [用 Docker Compose 部署](docs/docker.md) | 一条命令跑起来、自动 HTTPS、数据和备份、国内网络 |
 | [配置](docs/configuration.md) | 模型服务和各项工作用的模型、限额与单价、电脑、应用、确认规则与保险库、定时任务、推送、远程访问 |
-| [事件](docs/events.md) | 某件事发生时让 Bot 处理：webhook、GitHub、订阅源、网页变化、邮件、日程、天气、价格……；地址和安全、写一个新来源 |
+| [事件](docs/events.md) | 某件事发生时让 Bot 处理：webhook、GitHub、订阅源、网页变化、邮件、日程、天气、地震、价格、公网 IP……；地址和安全、写一个新来源 |
 | [桌面 App](docs/desktop.md) | 在这台电脑上运行或连接服务器、让服务器上的 Bot 用这台 Mac、系统通知、菜单栏、自动更新 |
 | [iPhone App（内测）](docs/mobile.md) | 扫码连接、推送怎么送到手机、推送中转看得到什么、开发 |
 | [聊天软件](docs/channels.md) | 连接 Telegram、飞书、钉钉、企业微信、Discord，配对，权限和常见问题 |
 | [给应用市场加应用](docs/apps.md) | 应用清单的格式、图标、在本机试、提 PR |
 | [写一个 Bot 模板](docs/templates.md) | 模板的格式、从现有 Bot 导出、加进内置 |
-| [插件](docs/plugins.md) | 用 Python 给 Bot 加工具、订阅事件；安全说明和插件市场 |
+| [插件](docs/plugins.md) | 开发者预览：用 Python 扩展 osa 自己（订阅事件、碰内部状态）；先想清楚是不是插件、安全说明和插件市场 |
 | [架构](docs/architecture.md) | 各组件如何协作、代码目录、设计约定 |
 | [开发](docs/development.md) | 本地开发、测试方法、调试技巧 |
 | [和 OpenMausBot 比](docs/comparison.md) | 两个开源 Grok Bot 替代品的取舍 |

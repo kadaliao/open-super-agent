@@ -1,9 +1,8 @@
 """插件（osa/plugins.py）：列出时不执行代码、启用记指纹、改了文件要重新启用、出错整个撤销、卸载撤销全部注册、
-服务器锁下关掉、插件市场的两个插件、Router / Worker 用插件的工具、事件。插件目录换成临时目录，碰不到 data/plugins。"""
+服务器锁下关掉、插件市场里的插件、Router / Worker 用插件的工具、事件。插件目录换成临时目录，碰不到 data/plugins。"""
 import asyncio
 import importlib.util
 import sys
-from datetime import date
 import httpx
 import pytest
 from conftest import find, until
@@ -165,7 +164,7 @@ async def test_locked_server_has_no_plugins(pdir, monkeypatch):
     with pytest.raises(PermissionError):
         await plugins.enable("echo")
     with pytest.raises(PermissionError):
-        await plugins.install("date_calc")
+        await plugins.install("audit_log")
     await plugins.start()
     assert "echo" not in plugins._loaded and registry.get("echo_plugin") is None
     monkeypatch.setitem(CFG, "security", {"demo": True})
@@ -179,35 +178,23 @@ def _catalog_module(name):
     return m
 
 
-def test_date_calc_logic():
-    dc = _catalog_module("date_calc")
-    today = date(2026, 11, 9)
-    assert "相差 59 天" in dc.calc({"op": "diff", "from": "2026-01-01", "to": "2026-03-01"}, today)
-    assert "工作日（周一到周五，不算节假日）5 个" in dc.calc({"op": "diff", "from": "2026-11-09", "to": "2026-11-16"}, today)
-    assert "2024-02-29（星期四）" in dc.calc({"op": "add", "from": "2024-01-31", "months": 1}, today)
-    assert "2026-11-02（星期一）" in dc.calc({"op": "add", "weeks": -1}, today)
-    assert "2026-11-09（星期一）" in dc.calc({"op": "weekday"}, today) and "第 46 周" in dc.calc({"op": "weekday"}, today)
-    with pytest.raises(ValueError):
-        dc.calc({"op": "diff", "from": "2026-01-01"}, today)
-
-
 async def test_router_uses_catalog_plugin(pdir, llm, events, bot):
-    await plugins.install("date_calc")
-    assert (pdir / "date_calc.py").exists() and not plugins.info("date_calc")["enabled"]   # 装了还没启用
-    await plugins.enable("date_calc")
-    b = bot("Calendar")
-    llm.script("router:Calendar", Call("date_calc", {"op": "diff", "from": "2026-01-01", "to": "2026-03-01"}), "59 天")
-    await server.safe_handle(bots.chat(b["chat_id"]), "1 月 1 日到 3 月 1 日几天")
-    await until(lambda: find(b["chat_id"], role="assistant", text="59 天"), what="回复")
-    body = llm.bodies("router", "Calendar")[-1]
-    assert any(t["function"]["name"] == "date_calc" for t in body["tools"])
-    assert any(m["role"] == "tool" and "相差 59 天" in m["content"] for m in body["messages"])
-    assert "date_calc：日期计算" in body["messages"][0]["content"]          # 能力说明里也有
+    await plugins.install("audit_log")
+    assert (pdir / "audit_log.py").exists() and not plugins.info("audit_log")["enabled"]   # 装了还没启用
+    await plugins.enable("audit_log")
+    b = bot("Auditor")
+    llm.script("router:Auditor", Call("audit_search", {"tool": "send_email"}), "没有记录")
+    await server.safe_handle(bots.chat(b["chat_id"]), "昨天谁发过邮件")
+    await until(lambda: find(b["chat_id"], role="assistant", text="没有记录"), what="回复")
+    body = llm.bodies("router", "Auditor")[-1]
+    assert any(t["function"]["name"] == "audit_search" for t in body["tools"])
+    assert any(m["role"] == "tool" and "没有找到符合条件的工具调用记录" in m["content"] for m in body["messages"])
+    assert "audit_search：查 Bot 调用工具的记录" in body["messages"][0]["content"]          # 能力说明里也有
     # 市场里的新版本：装上会停掉旧的，要重新启用
-    (pdir / "date_calc.py").write_text((pdir / "date_calc.py").read_text() + "\n# 本地改过\n")
-    assert plugins.info("date_calc")["update"]
-    await plugins.install("date_calc")
-    assert not plugins.info("date_calc")["enabled"] and registry.get("date_calc") is None
+    (pdir / "audit_log.py").write_text((pdir / "audit_log.py").read_text() + "\n# 本地改过\n")
+    assert plugins.info("audit_log")["update"]
+    await plugins.install("audit_log")
+    assert not plugins.info("audit_log")["enabled"] and registry.get("audit_search") is None
 
 
 async def test_task_webhook_on_task_done(pdir, llm, events, bot, monkeypatch):
@@ -256,9 +243,10 @@ async def test_rest(pdir, no_password):
     async with http() as c:
         d = (await c.get("/api/plugins")).json()
         assert not d["locked"] and [p["name"] for p in d["plugins"]] == ["echo"]
-        assert {"date_calc", "task_webhook"} <= {p["name"] for p in d["catalog"]}
+        assert {"audit_log", "task_webhook"} <= {p["name"] for p in d["catalog"]}
+        assert not {"date_calc", "epic_free"} & {p["name"] for p in d["catalog"]}   # 下架的、改成内置来源的不在市场里
         assert "open(__file__" in (await c.get("/api/plugins/echo/source")).json()["source"]
-        assert "def calc" in (await c.get("/api/plugins/date_calc/source", params={"catalog": 1})).json()["source"]
+        assert "def redact" in (await c.get("/api/plugins/audit_log/source", params={"catalog": 1})).json()["source"]
         assert (await c.get("/api/plugins/nope/source")).status_code == 404
         assert (await c.get("/api/plugins/a.b/source")).status_code == 404
         assert (await c.post("/api/plugins/Bad/install")).status_code == 404
@@ -266,11 +254,11 @@ async def test_rest(pdir, no_password):
         assert r.status_code == 200 and r.json()["loaded"]
         assert (await c.put("/api/plugins/echo/config", json={"config": "x"})).status_code == 400
         assert (await c.post("/api/plugins/echo/explode")).status_code == 404
-        assert (await c.post("/api/plugins/date_calc/install")).status_code == 200
+        assert (await c.post("/api/plugins/audit_log/install")).status_code == 200
         assert (await c.post("/api/plugins/evil/install")).status_code == 404
         assert (await c.post("/api/plugins/echo/disable")).json()["loaded"] is False
         assert (await c.delete("/api/plugins/echo")).status_code == 200
-        assert [p["name"] for p in (await c.get("/api/plugins")).json()["plugins"]] == ["date_calc"]
+        assert [p["name"] for p in (await c.get("/api/plugins")).json()["plugins"]] == ["audit_log"]
 
 
 # ---------- 插件之间的依赖、内置服务 ----------

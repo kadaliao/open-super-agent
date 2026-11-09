@@ -1,17 +1,17 @@
 """Epic 免费游戏：Epic 游戏商城送新游戏时，Bot 收到一个事件（游戏名、免费到什么时候、商店链接）。
 
-装上、启用以后，在 Bot 的“事件”里选“Epic 免费游戏”。默认半天看一次，第一次只记下正在送的，之后有新的才报。
+在 Bot 的“事件”里选“Epic 免费游戏”。默认半天看一次，第一次只记下正在送的，之后有新的才报。
 用的是 Epic 商店自己的免费游戏接口，不用登录、不调模型。时间按服务器的时区写。
 """
 from datetime import datetime, timezone
-from osa.registry import POLL, Source
-from osa.sources import _util
+from ..i18n import N_
+from ..registry import POLL, Source
+from . import _util
 
-META = {"title": "Epic 免费游戏", "version": "1.0", "author": "open-super-agent"}
 API = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
 STORE = "https://store.epicgames.com/zh-CN"
 MAX_SEEN = 200
-COUNTRIES = [("CN", "中国大陆"), ("HK", "香港"), ("TW", "台湾"), ("US", "美国"), ("JP", "日本")]
+COUNTRIES = [("CN", N_("中国大陆")), ("HK", N_("香港")), ("TW", N_("台湾")), ("US", N_("美国")), ("JP", N_("日本"))]
 
 
 def _when(s: str) -> datetime | None:
@@ -94,13 +94,13 @@ async def check(params: dict, state):
     return [event(g, upcoming) for g in new], {"seen": seen}
 
 
-SOURCE = Source(
-    id="epic_free", mode=POLL, category="生活", icon="🎮",
-    title="Epic 免费游戏",
-    description="Epic 游戏商城开始送新的免费游戏时触发：游戏名、免费到什么时候、商店链接。",
-    fields=[{"key": "country", "label": "商店地区", "type": "select", "default": "CN",
+EPIC_FREE = Source(
+    id="epic_free", mode=POLL, category=N_("生活"), icon="🎮",
+    title=N_("Epic 免费游戏"),
+    description=N_("Epic 游戏商城开始送新的免费游戏时触发：游戏名、免费到什么时候、商店链接。"),
+    fields=[{"key": "country", "label": N_("商店地区"), "type": "select", "default": "CN",
              "options": [{"value": v, "label": l} for v, l in COUNTRIES],
-             "help": "不同地区送的游戏偶尔不一样"}],
+             "help": N_("不同地区送的游戏偶尔不一样")}],
     check=check, every=720, min_every=60,
     summary=lambda p: "" if (p.get("country") or "CN") == "CN" else dict(COUNTRIES).get(p["country"], p["country"]) + "商店",
     sample={"title": "Epic 免费送：浮游世界", "url": "https://store.epicgames.com/zh-CN/p/flotsam-266287",
@@ -108,12 +108,10 @@ SOURCE = Source(
                     "简介：漂浮垃圾城生存游戏！从海洋表面尽可能搜集珍贵的垃圾，发展你的城市。\n"
                     "下一批预告：斗阵骑士 Knightica（11月13日 00:00 起）"},
     scenarios=[
-        {"title": "Epic 送新游戏时告诉我", "description": "每周送的免费游戏一出来就告诉你，附上领取链接",
-         "name": "Epic 免费游戏",
-         "prompt": "Epic 在送新的免费游戏。用一两句话介绍这是什么类型的游戏、口碑大概怎样，告诉我领取截止时间，附上商店链接。"
-                   "有下一批预告的也顺带提一句。"},
+        {"title": N_("Epic 送新游戏时告诉我"), "description": N_("每周送的免费游戏一出来就告诉你，附上领取链接"),
+         "name": N_("Epic 免费游戏"),
+         "prompt": N_("Epic 在送新的免费游戏。用一两句话介绍这是什么类型的游戏、口碑大概怎样，告诉我领取截止时间，附上商店链接。"
+                      "有下一批预告的也顺带提一句。")},
     ])
 
-
-def apply(ctx):
-    ctx.source(SOURCE)
+SOURCES = [EPIC_FREE]

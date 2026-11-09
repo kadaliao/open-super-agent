@@ -1,14 +1,27 @@
-# 插件
+# 插件（开发者，预览）
 
-插件是放在 `data/plugins` 里的 Python 代码，和服务在同一个进程里运行：给 Bot 加工具，在有新消息、任务做完时做点事。
-要接一个外部服务，先看看能不能写成 [应用](apps.md)（MCP）：应用在单独的进程里跑，出了问题不影响服务，也能给别的 MCP 客户端用。
-插件适合那些要碰 osa 自己的东西的扩展：在对话里（Router）直接能用的快工具、订阅任务结果、往对话里写消息。
+插件是放在 `data/plugins` 里的 Python 代码，和服务在同一个进程里运行，用来扩展 osa 自己：订阅事件、碰 osa 内部的状态，
+给 Bot 加要用到这些的工具。这是给开发者的口子，还在预览，写法以后可能会变。设置里在 **高级 → 开发者插件（预览）**。
+
+## 先想清楚是不是插件
+
+插件在服务进程里跑，能做服务能做的一切，写坏了也会拖累服务。大多数“给 Bot 加个能力”的需求用不着它：
+
+| 想做的事 | 用什么 | 为什么 |
+|---|---|---|
+| 接外部服务（GitHub、Notion、网盘、公司内部的接口……） | [应用](apps.md)（MCP） | 在单独的进程里跑，出了问题不影响服务；写操作照样先问你；别的 MCP 客户端也能用 |
+| 教 Bot 一套做事的方法（周报怎么整理、资料怎么归档） | 技能 | 写成文字就行，不用写代码；输入 `/名字` 调用，定时任务、事件也能绑 |
+| 算东西：算数、换单位、算日期、农历节气、处理一份数据 | `run_code` | Bot 现写一小段代码在沙箱里跑，比心算准，不用为每种算法装一个插件 |
+| 某件事发生时让 Bot 处理一次 | [事件](events.md) | 先看内置的来源有没有（订阅源、网页变化、天气、行情、地震、公网 IP……） |
+| 碰 osa 自己的东西：订阅任务结果、看 Bot 调了哪些工具、往对话里写消息、给别的插件提供服务 | **插件** | 只有在服务进程里才拿得到 |
+
+拿不准就先用应用或技能做，做不出来再写插件。
 
 ## 先读这一段：插件能做什么
 
 插件和服务是同一个进程，**能做服务能做的一切**：读写这台机器上的文件、访问网络、读保险库、改数据库。所以：
 
-- **只启用你看过、信得过的插件。** 设置 → 插件里点“查看代码”就能看全文。
+- **只启用你看过、信得过的插件。** 设置 → 高级 → 开发者插件（预览）里点“查看代码”就能看全文。
 - **启用时会记下文件的指纹（sha256），文件改过就不再加载**，设置里显示“文件改过了”，要你看过改动再启用一次。
   文件夹插件里任何一个 `.py` 改了都算。Bot（或别的程序）往 `data/plugins` 里写东西，不经你在设置里点“启用”就跑不起来；Bot 也没有启用插件的工具。
 - 列出插件**不执行代码**：名字、说明、版本、默认设置是从源码的语法树里读的（`META` 只认字面量）。
@@ -39,7 +52,7 @@ def apply(ctx):
         run, where=frozenset({ROUTER, WORKER}), describe="跟人打招呼"))
 ```
 
-放好以后打开 设置 → 插件，看一遍代码，打开开关。不用重启服务；改了代码点“启用”（会先让你确认）或者“重新加载”。
+放好以后打开 设置 → 高级 → 开发者插件（预览），看一遍代码，打开开关。不用重启服务；改了代码点“启用”（会先让你确认）或者“重新加载”。
 
 要拆成几个文件就用文件夹：`data/plugins/hello/__init__.py` 里写 `apply`，同一个文件夹里的模块用相对导入（`from .helper import x`）。
 
@@ -71,18 +84,18 @@ def apply(ctx):
 from osa.registry import ROUTER, WORKER, APPLET, Tool
 
 Tool(
-    name="date_calc",              # 全局唯一。和别的插件、内置工具、应用的工具重名会加载失败（不能覆盖别人的）
+    name="my_tool",                # 全局唯一。和别的插件、内置工具、应用的工具重名会加载失败（不能覆盖别人的）
     schema={...},                  # OpenAI 风格的 function 工具定义
     run=run,                       # async def run(call) -> str，或者 (str, 截图 png 的 bytes)
     where=frozenset({ROUTER, WORKER}),   # 给谁用：对话里（ROUTER）、后台任务（WORKER）、小应用的界面（APPLET）
-    gated=False,                   # True：后台任务和小应用调用前先问用户（写操作、花钱的设成 True）；用户点“总是允许”或加了规则后不再问
+    gated=False,                   # True：调用前先问用户（写操作、花钱的设成 True），只能配 WORKER / APPLET；用户点“总是允许”或加了规则后不再问
     describe="一句话说明",          # 出现在 Bot 的“后台 Worker 当前能用的工具”里
     progress=lambda args: "…",     # 后台任务卡片上这一步显示什么
 )
 ```
 
-- **对话里（ROUTER）的工具要快**：Router 得随时能回话，几秒内做不完的事只给 WORKER。Router 里调工具不会按 `gated` 弹卡片（它不能等），
-  要确认的写操作别给 ROUTER。
+- **对话里（ROUTER）的工具要快**：Router 得随时能回话，几秒内做不完的事只给 WORKER。Router 也不能停下来等你点确认，
+  所以 `gated=True` 的工具不能给 ROUTER：`where` 里有 ROUTER 又标了 `gated`，注册时直接报错（`ValueError`），插件加载失败。
 - `run` 拿到的 `call`：`call.args`（模型给的参数）、`call.bot`（谁在调，`call.bot_id`）、`call.chat_id`（结果发到的对话）、
   `call.scope`（router / worker / applet）、`call.task`（后台任务里才有）、`call.post`（对话里才有：`await call.post("assistant", 文字, chat_id)` 往对话里写一条）。
   别去碰 Router 或任务的其他字段，以后会变。
@@ -105,33 +118,35 @@ Tool(
 ## 事件来源
 
 [事件](events.md)是“某件事发生时 Bot 处理一次”。插件能加新的来源：启用后出现在“新建事件”的“插件”分类里，用户选它、填参数、写要 Bot 做什么；
-插件停用时来源跟着撤掉，已经建好的事件还在，只是暂时不触发。osa 管调度、过滤、排队、派任务，插件只管“看有没有新的”：
+插件停用时来源跟着撤掉，已经建好的事件还在，只是暂时不触发。osa 管调度、过滤、排队、派任务，插件只管“看有没有新的”。
+大家都用得上的来源（以前市场里的 Epic 免费游戏、地震提醒、公网 IP 变了就是这样）更适合直接放进 [`osa/sources/`](../osa/sources/) 成为内置的，
+不用每个人装插件；插件来源适合只有你自己用得上的（自己网站的后台、自家的服务）：
 
 ```python
-"""Epic 免费游戏：Epic 商城开始送新游戏时触发。"""
+"""网店新订单：自己网店的后台接口里来了新订单时触发。"""
 from osa.registry import POLL, Source
 from osa.sources import _util            # 联网用 _util.get：只抓公网地址、自己跟跳转、限大小
 
-META = {"title": "Epic 免费游戏", "version": "1.0"}
+META = {"title": "网店新订单", "version": "1.0"}
 
 
 async def check(params, state):
     """state 第一次是 None：只记下现状。返回 (新事件, 新 state)，state 要能存成 JSON。"""
-    data = (await _util.get("https://…")).json()
-    games = {g["id"]: g for g in parse(data)}
+    orders = (await _util.get(params["url"], headers={"Authorization": f"Bearer {params['token']}"})).json()
     seen = set(state or [])
-    new = [{"title": f"Epic 在送：{g['title']}", "text": g["period"], "url": g["url"]} for i, g in games.items() if i not in seen]
-    return new, list(games)
+    new = [{"id": f"order-{o['id']}", "title": f"新订单：{o['item']} × {o['qty']}", "text": f"买家留言：{o.get('note') or '无'}",
+            "url": o["link"]} for o in orders if o["id"] not in seen]
+    return new, [o["id"] for o in orders][:500]
 
 
 def apply(ctx):
     ctx.source(Source(
-        id="epic_free", title="Epic 送免费游戏", description="Epic 商城开始送新的免费游戏时触发",
-        mode=POLL, check=check, every=720, min_every=60, category="生活", icon="🎮",
-        fields=[{"key": "country", "label": "地区", "type": "select", "default": "CN",
-                 "options": [{"value": "CN", "label": "中国大陆"}, {"value": "US", "label": "美国"}]}],
-        scenarios=[{"title": "Epic 送新游戏时告诉我", "name": "Epic 免费游戏",
-                    "prompt": "告诉我是什么游戏、免费到什么时候，一句话介绍它好不好玩。"}],
+        id="shop_orders", title="网店新订单", description="自己网店的后台接口里来了新订单时触发",
+        mode=POLL, check=check, every=10, min_every=5, category="通用", icon="🛒",
+        fields=[{"key": "url", "label": "订单接口", "type": "url", "required": True, "placeholder": "https://shop.example.com/api/orders"},
+                {"key": "token", "label": "接口 token", "type": "secret", "required": True}],
+        scenarios=[{"title": "新订单提醒", "name": "网店新订单",
+                    "prompt": "有新订单。告诉我买了什么、多少件，买家留言里有要特别处理的放在最前面。"}],
     ))
 ```
 
@@ -194,49 +209,11 @@ def apply(ctx):
 
 ## 插件市场
 
-设置 → 插件 → 插件市场里的插件随项目发布，在 [`osa/catalog/plugins/`](../osa/catalog/plugins/)，提 PR 时会有人看过代码。
+设置 → 高级 → 开发者插件（预览） → 插件市场里的插件随项目发布，在 [`osa/catalog/plugins/`](../osa/catalog/plugins/)，提 PR 时会有人看过代码。
 点“安装”把它复制到 `data/plugins`，仍然要你看过代码、自己启用；市场里出了新版本显示“更新”，换上新版本后要重新启用。
 不支持从任意网址安装插件。
 
-现在有 21 个，按用处分：
-
-**算得准（不联网，对话里直接能用）**：大模型心算、数字数、算日期常出错，这些交给工具。
-
-- **精确计算器**（`calc`）：加减乘除用十进制精确算（0.1+0.2 就是 0.3），认百分比、万/亿、乘方开方、对数、三角函数（按度）、排列组合，
-  还能算房贷月供（等额本息、等额本金）和复利定投。
-- **单位换算**（`unit_convert`）：长度、重量、面积、体积、温度、速度、时间、数据大小和网速、能量、功率、压强，认中文英文单位名和斤、两、亩、尺、寸这些市制单位，
-  也能算“5尺3寸”“5 ft 11 in”这种加在一起的。
-- **日期计算**（`date_calc`）：相差几天、几个工作日，加减天数和月数，星期几。
-- **中国节假日**（`cn_holiday`）：某天要不要上班（法定节假日、调休补班）、几个工作日以后是哪天、两个日期之间有几个工作日、一年的放假安排。
-  数据来自 holiday-cn，第一次用到某年时下载、存在本地；还没公布的年份按周一到周五算。
-- **农历**（`lunar`）：公历农历互换（1900–2100 年）、闰月、干支生肖、二十四节气、春节端午中秋这些传统节日的日期，还能算农历生日今年是公历哪天。
-- **时区换算**（`world_clock`）：某个城市现在几点，某地的某个时间换成别处是几点（“北京时间明天 9 点是纽约几点”），说清夏令时、次日还是前一天。
-  设置里的 `home` 是你所在的时区，默认北京。
-- **抽签和随机**（`random_pick`）：从名单里抽人、打乱顺序、随机数、掷骰子、抛硬币、随机分组，用系统的安全随机数。
-- **字数统计**（`text_count`）：按 Word 的算法数字数，还有汉字、英文单词、字符数、行数段落，估算阅读和朗读时间，数某个词出现几次。
-
-**查一下（联网，不用设置）**
-
-- **汇率换算**（`exchange_rate`）：多少美元是多少人民币，日元、欧元、港币……写代码或中文名都行，一次能换成好几种。参考汇率每天更新一次，不是银行的买入卖出价。
-- **天气查询**（`weather_now`）：某个城市现在的天气和未来 1 到 7 天的预报（气温、降水概率、风力、紫外线、日出日落）。设置里的 `default_city` 是没说城市时查哪里。
-- **行情查询**（`stock_quote`）：A 股、港股、美股、指数和常见加密货币的最新价和涨跌，代码或常见名字（茅台、腾讯、恒指、比特币）都行。可能有延迟，不构成投资建议。
-
-**通知和发送**
-
-- **推送到手机**（`push_phone`）：Bot 能把通知推到你手机上（Bark、Server酱、PushPlus、ntfy、Telegram、Gotify、企业微信、飞书、钉钉），
-  `on_task_done` 设成 `failed` 或 `all` 后台任务做完也推。还提供 `notify` 服务给别的插件用。设置里选 `channel`，填它下面那一组（token 写 `vault:名字`）。
-- **发邮件**（`smtp_mail`）：Bot 能用你的邮箱（SMTP）发纯文字邮件，只在后台任务里用，每封默认先弹卡片问你。
-  设置里填 `user`、`password`（授权码，写 `vault:名字`），`host` 不填按邮箱后缀猜；`allowed_domains` 能限制只发给哪些域名。
-- **任务完成推送到群机器人**（`task_webhook`）：后台任务做完或失败时推到飞书、钉钉、企业微信、Slack、Discord 的群机器人，或任意接收 JSON 的地址。
-  设置里填 `url`（建议 `vault:名字`）和 `kind`。
-- **订阅 RSS**（`rss_watch`）：定时看几个订阅源，有新文章就以 Bot 的名义原样发到它的对话里，不调模型、不花钱。
-  要 Bot 读完、筛选、总结再告诉你，用 [事件](events.md) 里的“订阅源有新文章”。
-
-**新的事件来源**（启用后在 Bot 的“事件”里选）
-
-- **Epic 免费游戏**（`epic_free`）：Epic 商城开始送新的免费游戏时触发，带游戏名、免费到什么时候、商店链接，默认半天看一次。
-- **地震提醒**（`earthquake`）：全球或你附近（城市名或“纬度,经度”加范围）发生地震时触发，带震级、地点、时间、深度、离你多远，数据来自 USGS。
-- **公网 IP 变了**（`ip_change`）：这台机器的公网 IPv4（可选 IPv6 前缀）换了时触发，几家查 IP 的服务轮流问、变了再换一家确认；家里跑服务、用 DDNS 的，IP 一换就知道去改解析。
+现在有 7 个：
 
 **看着点**
 
@@ -246,9 +223,30 @@ def apply(ctx):
   以 Bot 的名义提醒你，每条线每天最多一次。不调模型、不花钱。
 - **关键词提醒**（`keyword_alert`）：你在哪个对话里（群聊、别的 Bot 的私聊、Telegram、钉钉……）说了 `keywords` 里的词，就在指定 Bot 的私聊里记一笔提醒；
   同一个对话同一个词 `cooldown_minutes` 分钟内只提醒一次。
+- **订阅 RSS**（`rss_watch`）：定时看几个订阅源，有新文章就以 Bot 的名义原样发到它的对话里，不调模型、不花钱。
+  要 Bot 读完、筛选、总结再告诉你，用 [事件](events.md) 里的“订阅源有新文章”。
 
-想把自己的插件放进市场：放进 `osa/catalog/plugins/`，加上测试（参考 `tests/test_plugins.py` 里的 `test_date_calc_logic`），提 PR。
-不收：要绕过验证码或人机校验的、偷偷往外发数据的、要额外装包的。
+**通知和发送**
+
+- **推送到手机**（`push_phone`）：Bot 能把通知推到你手机上（Bark、Server酱、PushPlus、ntfy、Telegram、Gotify、企业微信、飞书、钉钉），
+  `on_task_done` 设成 `failed` 或 `all` 后台任务做完也推。还提供 `notify` 服务给别的插件用。设置里选 `channel`，填它下面那一组（token 写 `vault:名字`）。
+- **发邮件**（`smtp_mail`）：Bot 能用你的邮箱（SMTP）发纯文字邮件，只在后台任务里用，每封默认先弹卡片问你。
+  设置里填 `user`、`password`（授权码，写 `vault:名字`），`host` 不填按邮箱后缀猜；`allowed_domains` 能限制只发给哪些域名。
+- **任务完成推送到群机器人**（`task_webhook`）：后台任务做完或失败时推到飞书、钉钉、企业微信、Slack、Discord 的群机器人，或任意接收 JSON 的地址。
+  设置里填 `url`（建议 `vault:名字`）和 `kind`。
+
+以前市场里还有十几个，后来按“先想清楚是不是插件”归了位：
+
+- **计算器、单位换算、日期计算、中国节假日、农历、时区换算、抽签、字数统计、汇率、天气、行情**下架了。算数、换算、算日期、处理数据让 Bot 用
+  `run_code` 现写代码在沙箱里跑；汇率、天气、行情这类查询让 Bot 上网查（后台任务里的 `web_search`、`fetch_url`），或者接一个对应的[应用](apps.md)；
+  要到时提醒的用内置的事件“天气提醒”“价格到线”。
+  已经装在 `data/plugins` 里的不受影响，照旧能用，只是市场里不再更新。
+- **Epic 免费游戏、地震提醒、公网 IP 变了**成了内置的事件来源，不用装，在 Bot 的“事件”里直接选。
+  装过这几个插件的，停用、删掉就行（不删的话加载时会报“已经内置了”），用它们建好的事件照常触发。
+
+想把自己的插件放进市场：先对一遍上面那张表，确定它要碰 osa 内部状态；放进 `osa/catalog/plugins/`，加上测试（参考 `tests/test_catalog_ops.py`
+里的 `test_audit_log_plugin`），提 PR。纯计算、联网查询、接外部服务的不收（分别用 `run_code`、`web_search` / `fetch_url`、应用）；大家都用得上的事件来源
+直接加进 `osa/sources/`。也不收：要绕过验证码或人机校验的、偷偷往外发数据的、要额外装包的。
 
 ## 在测试里用
 

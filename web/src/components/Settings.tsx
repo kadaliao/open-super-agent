@@ -22,7 +22,8 @@ const GROUPS: { name: string; items: [string, string, string][] }[] = [
   { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell'], ['mobile', t('手机 App'), 'smartphone']] },
   { name: t('自动化'), items: [['triggers', t('定时任务'), 'clock'], ['events', t('事件'), 'zap']] },
   { name: t('数据'), items: [['backup', t('备份与迁移'), 'archive']] },
-  { name: t('扩展'), items: [['plugins', t('插件'), 'puzzle']] },
+  // 插件是给开发者扩展 osa 自己的（预览），平常加能力用应用和技能，所以放在最后的“高级”里
+  { name: t('高级'), items: [['plugins', t('开发者插件（预览）'), 'puzzle']] },
 ]
 const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k, v])))
 const DESC: Record<string, string> = {
@@ -31,7 +32,7 @@ const DESC: Record<string, string> = {
   limits: t('防止任务跑太久、花太多。改完离开输入框就保存。'),
   triggers: t('所有 Bot 的定时任务，在这里就能开关。'),
   events: t('所有 Bot 的事件：某件事发生时（收到 webhook、订阅源有新文章、网页变了……）Bot 处理一次。在这里就能开关。'),
-  plugins: t('在服务里运行的 Python 代码：给 Bot 加工具，在有消息、任务做完时做点事。写法见 docs/plugins.md。'),
+  plugins: t('给开发者扩展 osa 自己用的 Python 代码，在服务进程里运行：订阅事件、碰 osa 内部的状态。还在预览，写法以后可能会变。'),
 }
 const LIMIT_NAMES: Record<string, [string, string]> = {
   daily_token_budget: [t('每天最多用多少 token'), t('超过以后不再派新的任务，第二天恢复')],

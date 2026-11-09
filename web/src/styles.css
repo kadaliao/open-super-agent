@@ -1163,7 +1163,7 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 .page-card:hover { border-color: var(--fg3); }
 .page-card .lib-main b { font-size: 14px; }
 
-/* 设置 → 插件（Plugins.tsx） */
+/* 设置 → 高级 → 开发者插件（预览）（Plugins.tsx） */
 .plugin-row { align-items: flex-start; }
 .plugin-row > span { min-width: 0; }
 .plugin-row b .chip { margin-left: 6px; vertical-align: 1px; font-weight: 500; }

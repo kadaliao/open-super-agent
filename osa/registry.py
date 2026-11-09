@@ -56,7 +56,7 @@ class Tool:
     run: Callable[[Call], Awaitable]                    # 返回给模型的文字，或 (文字, 截图 png)
     where: frozenset = frozenset({ROUTER, WORKER})      # 在哪些场合能用
     when: Callable[[dict], bool] | None = None          # 按这一轮的 env 决定给不给模型；None 就是总给
-    gated: bool = False                                 # 跑之前按确认规则（approvals.decide）问不问用户（Router 里不问，它不能等）
+    gated: bool = False                                 # 跑之前按确认规则（approvals.decide）问不问用户；Router 不能等，所以不能和 ROUTER 一起用（注册时报错）
     progress: Callable[[dict], str] | None = None       # Worker 任务卡片上这一步的说明
     describe: str = ""                                  # 给 Router 看的一句话能力说明（“后台 Worker 当前能用的工具”）
     group: str = ""                                     # 来自哪个应用（MCP 服务器名），空是内置
@@ -129,7 +129,11 @@ class Context:
         return dispose
 
     def tool(self, tool: Tool) -> Callable[[], None]:
-        """同名工具已经由别的 Context 注册时报错，不覆盖：覆盖了再撤销，原来那个就没了（插件盖掉内置的 save_page 再卸载）。"""
+        """同名工具已经由别的 Context 注册时报错，不覆盖：覆盖了再撤销，原来那个就没了（插件盖掉内置的 save_page 再卸载）。
+        gated 的工具不能给 ROUTER：Router 要几秒内回话，不能停下来等用户点确认，在那里 gated 等于没写。"""
+        if tool.gated and ROUTER in tool.where:
+            raise ValueError(f"工具 {tool.name} 标了 gated（跑之前要用户确认），不能给 ROUTER：对话里 Router 不能停下来等确认，"
+                             "标了也不会问。要确认的操作只给 WORKER / APPLET，对话里要用的快工具别标 gated")
         tool.owner = self.name
         if (old := TOOLS.get(tool.name)) and old.owner != self.name:
             raise ValueError(f"工具 {tool.name} 已经由 {old.owner} 注册了，换个名字")
@@ -180,6 +184,8 @@ class Context:
             raise ValueError(f"事件来源 {src.id}：poll 要写 check，push 要写 parse，internal 要写 on 和 match")
         src.owner = self.name
         if (old := SOURCES.get(src.id)) and old.owner != self.name:
+            if old.owner == "builtin":   # 以前插件市场里的来源（epic_free 这几个）后来内置了：旧插件停用、删掉就行，建好的事件照常
+                raise ValueError(f"事件来源 {src.id} 已经内置了，不用再装插件：停用、删掉这个插件就行，用它建的事件照常触发")
             raise ValueError(f"事件来源 {src.id} 已经由 {old.owner} 登记了，换个名字")
         SOURCES[src.id] = src
 
