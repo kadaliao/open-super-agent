@@ -313,7 +313,6 @@
   "删除这个群聊": "Delete this group chat",
   "删除页面「{title}」？分享链接也会失效。": "Delete page \"{title}\"? Its share link will stop working too.",
   "判断定时任务收到的事件要不要处理、把导入的记忆拆成条目。便宜的就行。": "Decides whether events a routine receives need handling, and splits imported memories into entries. A cheap model is fine.",
-  "别人分享的 …/skill/… 链接，或 GitHub 上的 SKILL.md": "A shared …/skill/… link, or a SKILL.md on GitHub",
   "刷新": "Refresh",
   "加密保存到保险库": "Stored encrypted in the Vault",
   "加载中…": "Loading…",
@@ -556,7 +555,6 @@
   "找不到麦克风": "No microphone found",
   "技能": "Skills",
   "技能 /{name}": "Skill /{name}",
-  "技能是一个 Markdown 文件（开头写 name 和 description），和 Claude 等用的 SKILL.md 一样。导入后先给你看一遍，保存了才生效。": "A skill is a Markdown file with name and description at the top, the same SKILL.md format Claude and others use. You'll review it after importing; it only takes effect once you save it.",
   "技能是交给 {name} 照着做的说明，还没保存。先看一遍做法：别装来路不明的，也留意有没有让它把资料发到别处。": "A skill is instructions for {name} to follow. It's not saved yet. Read the steps first: don't install skills from unknown sources, and watch for anything that sends your data elsewhere.",
   "技能链接": "Skill link",
   "把“凭证与基础信息”里的 App ID 和 App Secret 填到下面，点连接": "Enter the App ID and App Secret from \"Credentials & Basic Info\" below and click Connect",
@@ -727,7 +725,6 @@
   "没有麦克风权限，请在浏览器设置里允许": "No microphone permission. Allow it in your browser settings",
   "没认出 embedding 模型，可以在上面直接填名字": "No embedding models found. Type a name above",
   "没连上": "Couldn't connect",
-  "没连接的应用可以在侧栏“应用”里连上。": "Connect missing apps under \"Apps\" in the sidebar.",
   "测试": "Test",
   "测试中…": "Testing…",
   "测试模型": "Model tests",
@@ -996,7 +993,6 @@
   "（任务 #{id}）": " (task #{id})",
   "（后台在算）": " (computing in the background)",
   "（没有返回内容）": "(No output)",
-  "（还没连接）": " (not connected)",
   "，算好向量 {n} 段": ", {n} with vectors",
   "这张图片打不开，换一张 PNG 或 JPG 试试": "Can't open this image. Try a PNG or JPG",
   "扁平插画风格，正脸，居中，背景是干净的纯色，画面里不要有文字。": "Flat illustration style, facing forward, centered, on a clean solid-color background, no text in the image.",
@@ -1384,5 +1380,27 @@
   "事件属于各个 Bot：在对话里说“这个网页有变化就告诉我”，或者在右栏 Bot 详情的“事件”里新建和管理。": "Each event belongs to a bot. Say \"tell me when this page changes\" in a chat, or create and manage them under Events in the bot details on the right.",
   "定时任务属于各个 Bot：在对话里说“每天 9 点帮我……”，或者在右栏 Bot 详情的“定时”里新建和管理。": "Each routine belongs to a bot. Say \"every day at 9, help me…\" in a chat, or create and manage them under Routines in the bot details on the right.",
   "什么事发生时让 Bot 处理？选一个常见用法（之后都能改），或者自己设置。": "What should the bot respond to? Pick a common use (you can change everything later) or set it up yourself.",
-  "（地址泄露了的时候）": " (if the address has leaked)"
+  "（地址泄露了的时候）": " (if the address has leaked)",
+  "随 open-super-agent 发布的现成技能": "Ready-made skills that ship with open-super-agent",
+  "技能市场": "Skill market",
+  "{n} 个文件": [
+    "{n} file",
+    "{n} files"
+  ],
+  "压缩包太大了，最多 {n} MB": "The zip is too large; at most {n} MB",
+  "别人分享的 …/skill/… 链接，或 GitHub 上的 SKILL.md、技能文件夹": "A shared …/skill/… link, or a SKILL.md or skill folder on GitHub",
+  "技能是一个 Markdown 文件（开头写 name 和 description），和 Claude 等用的 SKILL.md 一样；带 scripts/、references/ 的技能包用 zip 或 GitHub 文件夹链接。导入后先给你看一遍，保存了才生效。": "A skill is a Markdown file (name and description at the top), the same as the SKILL.md used by Claude and others; for a package with scripts/ or references/, use a zip or a GitHub folder link. You review it before it's saved.",
+  "已经有 /{name} 了，重新安装会替换掉它，包括你改过的地方。": "/{name} already exists. Reinstalling replaces it, including any changes you made.",
+  "随 open-super-agent 发布、看过的技能。装上就是 {name} 的，可以接着改。": "Reviewed skills that ship with open-super-agent. Once installed they belong to {name}, and you can edit them.",
+  "重新安装": "Reinstall",
+  "带的文件（{n} 个）": "Files ({n})",
+  "{n} 个字": [
+    "{n} character",
+    "{n} characters"
+  ],
+  "不带这个文件": "Remove this file",
+  "Bot 用 use_skill 取这些文件；脚本在电脑的工作文件夹里运行。": "The Bot reads these with use_skill; scripts run in the computer's workspace folder.",
+  "这些不是文字文件，没有导入：": "These aren't text files and weren't imported: ",
+  "带了脚本的技能会让 {name} 在电脑里运行它们，先点开下面的文件看一遍。": "{name} will run this skill's scripts on the computer. Open the files below and read them first.",
+  "带的文件：": "Files: "
 }

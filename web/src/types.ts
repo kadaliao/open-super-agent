@@ -130,8 +130,15 @@ export type Rule = { id: number; pattern: string; action: 'allow' | 'ask'; note:
 export type Skill = {
   id: number; bot_id: number | null; name: string; description: string; body: string; source: string; created: number; updated: number
   share_token: string | null
+  files: Record<string, string>   // 技能带的文件：相对路径 → 文字（scripts/、references/）
+  apps: string[] | null           // frontmatter 里声明的应用；null 是没声明（按做法里的 @名字 找）
 }
-export type SkillDraft = { name: string; description: string; body: string; apps: { name: string; title: string; connected: boolean }[]; exists: boolean }
+export type SkillDraft = {
+  name: string; description: string; body: string; exists: boolean
+  apps: { name: string; title: string; connected: boolean; in_market: boolean }[]
+  declared_apps: string[] | null; files: Record<string, string>; skipped: string[]; warning?: string
+}
+export type MarketSkill = { id: string; name: string; description: string; body: string; files: string[]; apps: string[]; installed: boolean }
 export type EventTrigger = {
   kind: 'event'; source: string; params: Record<string, any>; every?: number
   include: string[]; exclude: string[]; llm_filter: string; key?: string; path?: string
