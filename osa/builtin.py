@@ -1,10 +1,10 @@
-"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、技能、发文件、画图、定时任务和事件；给插件用的 llm、messenger；
+"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、技能、发文件、画图、定时任务和事件、在沙箱里跑代码；给插件用的 llm、messenger；
 内置的事件来源（osa/sources/）。
 
 每个工具只在这里写一次，Router 和 Worker 都从注册表（registry.py）找；在哪些场合给模型用、要不要走确认规则，都在 Tool 上写明。
 电脑工具、Router 自己的几个、botadmin 还没迁过来（见 registry.py 开头）。
 """
-from . import i18n, images, library, media, registry, routines, search, skills, tools
+from . import i18n, images, library, media, registry, routines, sandbox, search, skills, tools
 from .registry import APPLET, ROUTER, WORKER, Call, Tool
 
 ctx = registry.Context("builtin")
@@ -73,6 +73,10 @@ def load():
     ctx.tool(Tool("list_routines", routines.LIST_ROUTINES, lambda c: routines.tool_list(c.bot, c.args), where=router))
     ctx.tool(Tool("update_routine", routines.UPDATE_ROUTINE, lambda c: routines.tool_update(c.bot, c.args), where=router))
     ctx.tool(Tool("delete_routine", routines.DELETE_ROUTINE, lambda c: routines.tool_delete(c.bot, c.args), where=router))
+    # 跑代码：在沙箱里（电脑里，或者本机的受限子进程），所以不走确认。Router 那个只跑几秒的 Python、不联网，算数换单位用
+    ctx.tool(Tool("run_code", sandbox.RUN_CODE, sandbox.tool_run, where=frozenset({WORKER}), when=lambda env: bool(sandbox.place()),
+                  progress=sandbox.progress, describe="在沙箱里跑 Python / bash / node 代码：算数、处理表格和数据、画图表、转换格式"))
+    ctx.tool(Tool("quick_code", sandbox.QUICK_CODE, sandbox.tool_quick, where=router, when=lambda env: bool(sandbox.place(quick=True))))
     # 给插件用的服务（插件在 META 的 inject 里写要哪个），见 services.py
     from . import services, sources
     services.register(ctx)

@@ -379,6 +379,7 @@
   "第 {i} 个技能应该写 name、description、body": "Skill {i} should have name, description and body",
   "等你在弹出的窗口里登录授权…": "Waiting for you to sign in in the pop-up window…",
   "终端：{cmd}": "Terminal: {cmd}",
+  "跑代码：{what}": "Run code: {what}",
   "绑定的对话不存在了，请在网页的 设置 → 聊天软件 里重新选择。": "The linked chat no longer exists. Pick another one under Settings → Messaging apps on the web.",
   "缺少启动命令": "Missing start command",
   "缺少密钥：{names}": "Missing secrets: {names}",
