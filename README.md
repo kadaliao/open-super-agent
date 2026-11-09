@@ -37,7 +37,7 @@
 
 | 用法 | 说明 |
 |---|---|
-| 💻 **macOS 桌面 App** | 下载 dmg 打开就能用：约 45 MB，自带运行环境，不用装 Docker 和 Python，Bot 直接用这台电脑：浏览器，给了权限还有屏幕和鼠标键盘。关掉窗口后在菜单栏接着跑；也能连到你的服务器，让服务器上的 Bot 用这台 Mac。见 [桌面 App](docs/desktop.md) |
+| 💻 **macOS 桌面 App** | 下载 dmg 打开就能用：约 45 MB，自带运行环境，不用装 Docker 和 Python。Bot 默认直接用这台电脑：浏览器，给了权限还有屏幕和鼠标键盘；也能换成 Docker 沙盒或云电脑。关掉窗口后在菜单栏接着跑；也能连到你的服务器，让服务器上的 Bot 用这台 Mac。见 [桌面 App](docs/desktop.md) |
 | 🖥️ **服务器** | 一条 `docker compose up` 放到 VPS 或家里的机器上，一直开着；浏览器、桌面 App、手机、聊天软件都能连。见 [用 Docker Compose 部署](docs/docker.md) |
 | 📱 **iPhone App**（TestFlight 内测） | 用相机扫电脑上的二维码就连上；要你确认的事、做完的任务推送到手机，内容加密，锁屏上就能看。见 [iPhone App](docs/mobile.md) |
 | 💬 **聊天软件** | 在 Telegram、飞书、钉钉、企业微信、Discord 里直接和 Bot 说话，要你确认的操作变成消息里的按钮。见 [聊天软件](docs/channels.md) |
@@ -54,6 +54,24 @@
 <p align="center"><sub>上：macOS 桌面 App（<a href="docs/images/mac-control.mp4">看 Bot 操作整台 Mac 的录屏</a>）。下：iPhone App（TestFlight 内测），对话 · 后台任务 · 确认卡片 · 看 Bot 的电脑</sub></p>
 
 同类项目 OpenMausBot 的取舍不一样，见 [和 OpenMausBot 比](docs/comparison.md)。
+
+## 系统要求
+
+模型跑在模型服务那边，不需要显卡（用本机的 Ollama 跑模型另算）。要多少资源主要看 Bot 的电脑放在哪：
+
+| 怎么用 | 最低 | 建议 | 硬盘 |
+|---|---|---|---|
+| macOS 桌面 App，电脑用本机 | macOS 12，Apple 芯片或 Intel，8 GB 内存 | 16 GB 内存 | App 约 130 MB |
+| 服务器，电脑用云电脑（Instabox） | 1 核 1 GB | 2 核 2 GB | 5 GB |
+| 服务器，电脑用本地 Docker | 2 核 4 GB | 4 核 8 GB | 10 GB |
+
+- 服务本身约占 110–170 MB 内存，每个用 `npx` / `uvx` 跑的应用另占 20–60 MB；应用的 npm、uv 缓存会长到 1 GB 左右。
+- Docker 电脑：空桌面约 30 MB，开一个网页约 250 MB；三个窗口同时开着 B 站、淘宝这类页面约 0.9 GB 内存、半个 CPU 核；镜像约 1.2 GB。
+  机器小就把 设置 → 限制与预算 →“同时用电脑的任务”调成 1 或 2。
+- 云电脑跑在 Instabox 上，不占你的机器。作为参考：一台 2 核 2 GB 的 VPS 上，正式服务、演示服务和另外几个服务加起来用了约 1 GB 内存。
+- 桌面 App：Bot 的 Chrome 每个窗口 200–400 MB。在 App 里选“Docker 沙盒”还要装 Docker Desktop，这时建议 16 GB 内存。
+
+以上是 2026 年 11 月在 v0.12 上实测的数字。
 
 ## 快速开始
 

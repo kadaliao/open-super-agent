@@ -37,7 +37,7 @@ See [Features](docs/features.en.md) for the full list.
 
 | Client | What you get |
 |---|---|
-| 💻 **macOS desktop app** | Download the dmg and open it: about 45 MB with its own runtime, no Docker or Python; Bots use this computer: a browser, plus the screen, mouse and keyboard once you grant the permissions. It keeps running in the menu bar after you close the window, and can also connect to your server and let the Bots there use this Mac. See [Desktop app](docs/desktop.md) (Chinese) |
+| 💻 **macOS desktop app** | Download the dmg and open it: about 45 MB with its own runtime, no Docker or Python. By default Bots use this computer: a browser, plus the screen, mouse and keyboard once you grant the permissions; you can switch to a Docker sandbox or a cloud computer. It keeps running in the menu bar after you close the window, and can also connect to your server and let the Bots there use this Mac. See [Desktop app](docs/desktop.md) (Chinese) |
 | 🖥️ **Server** | One `docker compose up` on a VPS or a machine at home keeps it always on; connect from a browser, the desktop app, your phone or a chat app. See [Deploy with Docker Compose](docs/docker.md) (Chinese) |
 | 📱 **iPhone app** (TestFlight) | Scan a QR code on your computer with the Camera to connect; approvals and finished tasks are pushed to your phone, encrypted, and readable on the lock screen. See [iPhone app](docs/mobile.md) (Chinese) |
 | 💬 **Chat apps** | Talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, with approvals as message buttons. See [Chat apps](docs/channels.md) (Chinese) |
@@ -54,6 +54,24 @@ See [Features](docs/features.en.md) for the full list.
 <p align="center"><sub>Top: the macOS desktop app (<a href="docs/images/mac-control.mp4">watch a Bot use the whole Mac</a>). Bottom: the iPhone app (TestFlight): chat · background task · approval · the Bot's computer. Screenshots show the Chinese UI.</sub></p>
 
 OpenMausBot, a similar project, makes different trade-offs; see [Compared with OpenMausBot](docs/comparison.en.md).
+
+## System requirements
+
+Models run at the model provider, so no GPU is needed (running models locally with Ollama is extra). What you need depends mostly on where the Bots' computer lives:
+
+| Setup | Minimum | Recommended | Disk |
+|---|---|---|---|
+| macOS desktop app, computer = this Mac | macOS 12, Apple silicon or Intel, 8 GB RAM | 16 GB RAM | app about 130 MB |
+| Server, cloud computer (Instabox) | 1 core, 1 GB | 2 cores, 2 GB | 5 GB |
+| Server, local Docker computer | 2 cores, 4 GB | 4 cores, 8 GB | 10 GB |
+
+- The service itself takes about 110–170 MB of RAM, plus 20–60 MB for each app run with `npx` / `uvx`; the apps' npm and uv caches grow to about 1 GB.
+- Docker computer: about 30 MB with an empty desktop, about 250 MB with one page open; three windows on heavy sites such as Bilibili and Taobao take about 0.9 GB and half a CPU core. The image is about 1.2 GB.
+  On a small machine, set Settings → Limits & budget → "Tasks using the computer at once" to 1 or 2.
+- The cloud computer runs on Instabox and uses none of your machine. For reference: on a 2-core, 2 GB VPS, the main service, the demo service and a few other services together use about 1 GB of RAM.
+- Desktop app: the Bots' Chrome takes 200–400 MB per window. Choosing "Docker sandbox" in the app also needs Docker Desktop; 16 GB of RAM is recommended then.
+
+Figures measured on v0.12 in November 2026.
 
 ## Quick start
 
