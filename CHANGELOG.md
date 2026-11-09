@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.15.0] - 2026-11-09
 ### 移除
 - **开发者插件整个去掉**：设置 → 高级 → 开发者插件（预览）、插件市场（7 个）、`/api/plugins`、给插件用的 llm / messenger 服务、
   `security.plugins` 策略键都没了。插件主要解决第三方开发者的分发问题，osa 用不着。扩展 osa 用应用（接外部服务）、技能（教 Bot 做事）、
@@ -497,7 +499,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.14.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/kadaliao/open-super-agent/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/kadaliao/open-super-agent/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/kadaliao/open-super-agent/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kadaliao/open-super-agent/compare/v0.11.0...v0.12.0
