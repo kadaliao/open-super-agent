@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.16.0] - 2026-11-09
 ### 新增
 - **明亮 / 夜间可以自己选**：设置左下角“外观”三选一：跟随系统、明亮、夜间。记在这台设备上，别的设备各管各的；刷新时不会先闪成另一种。
   应用自带的界面（MCP Apps）、X 的嵌入卡片也按选的来。桌面 App 的标题栏、手机 App 的状态栏和弹出页跟着换，下次启动一开始就是选的那种，
@@ -507,7 +509,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.15.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/kadaliao/open-super-agent/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/kadaliao/open-super-agent/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/kadaliao/open-super-agent/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/kadaliao/open-super-agent/compare/v0.12.0...v0.13.0
