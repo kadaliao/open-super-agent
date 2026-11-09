@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.13.0] - 2026-11-09
 ### 新增
 - **桌面 App 能换电脑**：电脑面板上方在 本机、Docker 沙盒、云电脑（Instabox）里选，默认还是本机。服务器上在 Docker 沙盒和云电脑之间选
   （不给“服务器本机”：服务器没有屏幕，用 root 跑时 Chrome 得关掉沙箱）。见 [桌面 App](docs/desktop.md)、[配置 → 电脑](docs/configuration.md#电脑)
@@ -13,6 +15,7 @@
 - 换电脑时旧的那台会暂停（以前只有本机会关掉 Chrome，Docker 容器、Instabox 一直开着等闲置暂停）
 - Docker 没装、没打开时，电脑面板直接说清楚（以前显示“还没有创建”）；第一次准备电脑镜像要几分钟，面板上显示正在准备
 - 桌面 App 找 docker 命令时也看 `~/.docker/bin`、`~/.orbstack/bin`
+- README 加上系统要求：按 Bot 的电脑放在哪（本机、云电脑、本地 Docker）给最低和建议配置，附实测内存
 
 ## [0.12.0] - 2026-11-09
 ### 新增
@@ -483,7 +486,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.12.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/kadaliao/open-super-agent/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kadaliao/open-super-agent/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kadaliao/open-super-agent/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kadaliao/open-super-agent/compare/v0.9.0...v0.10.0
