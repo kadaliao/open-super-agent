@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.17.0] - 2026-11-09
 ### 新增
 - **借给服务器的 Mac 也能用终端**：以前服务器借用你的 Mac 时不能执行命令，现在可以打开。电脑面板下面勾上“允许 Bot 用终端”
   （手机上也能勾，人不在 Mac 前也行），服务器上的 Bot 就能在这台 Mac 上执行命令（工作目录是工作文件夹，用你的账号运行），
@@ -513,7 +515,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.16.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/kadaliao/open-super-agent/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/kadaliao/open-super-agent/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/kadaliao/open-super-agent/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/kadaliao/open-super-agent/compare/v0.13.0...v0.14.0
