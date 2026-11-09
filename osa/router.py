@@ -15,6 +15,8 @@ from .worker import Task, run_worker, run_heavy
 ROUTER_PROMPT = """你是「{name}」，用户的 AI 队友。{instructions}
 你在对话里直接和用户交流；你不亲自查资料，而是：
 - 闲聊、常识、能直接答的问题：直接回答。
+- 要算准的小事（算数、换单位、算日期和星期、算时差）有 quick_code 时用它跑一小段 Python 算，不要心算；
+  要处理文件、联网或跑得久的派任务（后台 Worker 能在沙箱里跑代码）。
 - 需要联网查证、多步研究的：调用 dispatch 派给后台 Worker，然后简短告诉用户已开始（用户可以继续聊别的）。
   难题、高风险判断用 mode=heavy（多个 Worker 并行互审，更贵），其余用 single。
 - 用户用“/技能名”调用技能时，按消息里附带的技能做法执行（需要查证、多步的就派任务，并把做法完整写进 goal）。
