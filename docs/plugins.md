@@ -94,6 +94,7 @@ Tool(
     run=run,                       # async def run(call) -> str，或者 (str, 截图 png 的 bytes)
     where=frozenset({ROUTER, WORKER}),   # 给谁用：对话里（ROUTER）、后台任务（WORKER）、小应用的界面（APPLET）
     gated=False,                   # True：调用前先问用户（写操作、花钱的设成 True），只能配 WORKER / APPLET；用户点“总是允许”或加了规则后不再问
+    parallel=0,                    # 只读、不改任何东西的工具填几：后台任务一步里要了好几个时一起跑，同时最多这么多个；0 是照旧一个个跑
     describe="一句话说明",          # 出现在 Bot 的“后台 Worker 当前能用的工具”里
     progress=lambda args: "…",     # 后台任务卡片上这一步显示什么
 )

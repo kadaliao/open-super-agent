@@ -45,25 +45,26 @@ def load():
         return
     _loaded = True
     web = frozenset({WORKER, APPLET})
+    # parallel：只读的工具，Worker 一轮里要了好几个时一起跑。搜索只给 2：DuckDuckGo 一下子来太多会限流
     ctx.simple("web_search", tools.schema("web_search", "搜索网页，返回标题、链接和摘要", {"query": "搜索词"}), tools.web_search,
-               where=web, gated=True, describe="搜索网页，返回标题、链接和摘要",
+               where=web, gated=True, parallel=2, describe="搜索网页，返回标题、链接和摘要",
                progress=lambda a: i18n.t("搜索：{what}", what=str(a.get("query") or "")[:60]))
     ctx.simple("fetch_url", tools.schema("fetch_url", "抓取网页正文（截断到 8000 字）", {"url": "网址"}), tools.fetch_url,
-               where=web, gated=True, describe="抓取网页正文（截断到 8000 字）",
+               where=web, gated=True, parallel=3, describe="抓取网页正文（截断到 8000 字）",
                progress=lambda a: i18n.t("读取网页：{what}", what=str(a.get("url") or "")[:60]))
     ctx.tool(Tool("save_page", library.SAVE_PAGE, _save_page, when=_not_draft,
                   progress=lambda a: i18n.t("保存页面：{title}", title=str(a.get("title", ""))[:40])))
-    ctx.tool(Tool("read_page", library.READ_PAGE, lambda c: _sync(library.tool_read_page(c.args)),
+    ctx.tool(Tool("read_page", library.READ_PAGE, lambda c: _sync(library.tool_read_page(c.args)), parallel=3,
                   progress=lambda a: i18n.t("读页面 #{id}", id=a.get("page_id"))))
     ctx.tool(Tool("page_data", library.PAGE_DATA, lambda c: library.tool_page_data(c.bot_id, c.args),
                   progress=lambda a: i18n.t("小应用 #{id} 的数据", id=a.get("page_id"))))
     ctx.tool(Tool("send_file", media.SEND_FILE, _send_file, when=_not_draft,
                   progress=lambda a: i18n.t("发文件：{path}", path=str(a.get("path", ""))[:60])))
     ctx.tool(Tool("generate_image", images.GENERATE_IMAGE, _generate_image, where=frozenset({ROUTER})))
-    ctx.tool(Tool("search_memory", search.SEARCH_TOOL, lambda c: search.tool(c.bot_id, c.args),
+    ctx.tool(Tool("search_memory", search.SEARCH_TOOL, lambda c: search.tool(c.bot_id, c.args), parallel=3,
                   progress=lambda a: i18n.t("查记忆和资料库：{query}", query=str(a.get("query", ""))[:40])))
     # 技能：Bot 自己取做法和带的文件（用户 /名字 调用时做法已经附在消息里了）。只读，不用确认
-    ctx.tool(Tool("use_skill", skills.USE_SKILL, lambda c: _sync(skills.tool_use(c.bot_id, c.scope, c.args)),
+    ctx.tool(Tool("use_skill", skills.USE_SKILL, lambda c: _sync(skills.tool_use(c.bot_id, c.scope, c.args)), parallel=3,
                   describe="按技能名取技能的做法和它带的文件（脚本、参考资料）",
                   progress=lambda a: i18n.t("看技能 /{name}", name=str(a.get("name", "")).lstrip("/")[:40])))
     # 定时任务和事件：只在对话里用（Worker 跑的就是它们，不让它自己改）。自己的随便管，主 Bot 管所有 Bot 的

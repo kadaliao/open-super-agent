@@ -196,6 +196,63 @@ async def _call_tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: s
         return f"工具出错：{e}", "error"
 
 
+def _lane(call: dict, env: dict) -> tuple[str, int] | None:
+    """这个调用能不能和相邻的只读调用一起跑：能就返回 (组, 同组同时最多几个)。
+    只有标了 parallel 的（只读、不改任何东西），而且这次不用问用户；电脑工具、写的、要确认的都不行。"""
+    name = call["function"]["name"]
+    tool = None if name in ctools.NAMES else registry.available(name, registry.WORKER, env)
+    if not tool or tool.parallel < 1:
+        return None
+    try:
+        args = json.loads(call["function"]["arguments"] or "{}")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(args, dict) or (tool.gated and approvals.decide(name, args=args)[0]):
+        return None
+    return tool.group or tool.name, tool.parallel
+
+
+async def _run_calls(task: Task, log: tasklog.Log, calls: list, env: dict) -> list[tuple[str, list]]:
+    """执行一轮的工具调用，按调用的顺序返回 [(给模型的结果, 截图)]。
+    相邻的只读调用（见 _lane）一起跑；别的照旧一个个跑，它前面的都做完才开始、做完了后面的才开始，
+    所以写操作、电脑操作、要确认的，和别的调用之间的先后跟以前一样。"""
+    def progress_for(step: dict):
+        async def progress(text: str):
+            task.last_action = text
+            await log.update(step, title=text)
+            if PROGRESS:
+                await PROGRESS(task, text)
+        return progress
+
+    async def one(call: dict, step: dict, sem: asyncio.Semaphore | None) -> tuple[str, list]:
+        name, raw, shots = call["function"]["name"], call["function"]["arguments"], []
+        if sem:
+            async with sem:
+                out, status = await _tool(task, log, step, name, raw, progress_for(step), env, shots)
+        else:
+            out, status = await _tool(task, log, step, name, raw, progress_for(step), env, shots)
+        await log.finish(step, status, out)
+        task.last_progress = time.time()
+        return out, shots
+
+    results, i = [], 0
+    while i < len(calls):
+        lanes = [_lane(calls[i], env)]
+        while lanes[0] and i + len(lanes) < len(calls) and (nxt := _lane(calls[i + len(lanes)], env)):
+            lanes.append(nxt)
+        group = calls[i:i + len(lanes)]
+        steps = []
+        for call in group:   # 先按顺序把这几步记上：任务过程里的顺序和模型给的一样
+            name, raw = call["function"]["name"], call["function"]["arguments"]
+            task.recent_calls = (task.recent_calls + [f"{name}:{raw}"])[-6:]
+            steps.append(await log.start("tool", name, detail=raw[:2000]))
+        sems = {lane[0]: asyncio.Semaphore(lane[1]) for lane in lanes if lane} if len(group) > 1 else {}
+        results += await asyncio.gather(*(one(c, s, sems.get(lane[0]) if lane else None)
+                                          for c, s, lane in zip(group, steps, lanes)))
+        i += len(group)
+    return results
+
+
 async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     client, model = client_for("worker")
     use_pc = (CFG.get("computer") or {}).get("enabled", True)
@@ -209,13 +266,6 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
     schemas = registry.schemas(registry.WORKER, env) + (ctools.schemas() if use_pc else [])
     log = tasklog.Log(task, label)
 
-    async def progress(text: str):
-        task.last_action = text
-        if log.current:
-            await log.update(log.current, title=text)
-        if PROGRESS:
-            await PROGRESS(task, text)
-
     for _ in range(CFG["limits"]["worker_max_steps"]):
         ctools.prune_images(msgs)
         m = await _reply(task, log, "worker", client, model, msgs, schemas)
@@ -225,14 +275,9 @@ async def _run_worker(task: Task, goal: str, label: str = "") -> str:
             return m.get("content") or ""
         msgs.append(m)
         shots = []   # 截图要等这一轮的工具结果都追加完再附上
-        for call in m["tool_calls"]:
-            name, raw = call["function"]["name"], call["function"]["arguments"]
-            task.recent_calls = (task.recent_calls + [f"{name}:{raw}"])[-6:]
-            step = log.current = await log.start("tool", name, detail=raw[:2000])
-            out, status = await _tool(task, log, step, name, raw, progress, env, shots)
+        for call, (out, got) in zip(m["tool_calls"], await _run_calls(task, log, m["tool_calls"], env)):
             msgs.append({"role": "tool", "tool_call_id": call["id"], "content": out[:8000]})
-            await log.finish(step, status, out)
-            task.last_progress = time.time()
+            shots += got
         if shots:
             msgs.append(ctools.image_message(shots[-1]))
     await log.note(i18n.t("步数用完了，根据已有信息写结果"))

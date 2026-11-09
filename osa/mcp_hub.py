@@ -486,6 +486,15 @@ def _needs_confirm(name: str, a: dict, tool) -> bool:
     return default_confirm(a.get("confirm", "auto"), tool)
 
 
+def _parallel(name: str, a: dict, tool, ui) -> int:
+    """Worker 一轮里这个应用的只读调用能同时跑几个（Tool.parallel）。写的、带界面的（结果下面的界面要按顺序挂）是 0。
+    远程应用是网络服务，同时来几个请求很平常；本机起的（stdio）一次一个：不知道它里面（比如共用一条 IMAP 连接）经不经得起。"""
+    from .approvals import read_only
+    if ui or not read_only(tool, name):
+        return 0
+    return 3 if a.get("type") in ("http", "sse") else 1
+
+
 async def _changed():
     if notify:
         await notify({"type": "apps_changed"})
@@ -584,7 +593,7 @@ async def _serve(name: str, a: dict, ready: asyncio.Future, stop: asyncio.Event,
                 ctx.tool(registry.Tool(full, {"type": "function", "function": {
                     "name": full, "description": (t.description or "")[:1000], "parameters": params}}, run,
                     where=frozenset({registry.WORKER, registry.APPLET}) if "model" in vis else frozenset(),
-                    gated=True, group=name,
+                    gated=True, group=name, parallel=_parallel(name, a, t, ui),
                     meta={"mcp": {"tool": t.name, "ui": ui, "visibility": vis, "description": t.description or "",
                                   "inputSchema": params}}))
                 if _needs_confirm(name, a, t):

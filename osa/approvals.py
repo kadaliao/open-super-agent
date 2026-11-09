@@ -47,16 +47,41 @@ def default_confirm(rule, tool) -> bool:
         return False
     if rule == "all":
         return True
-    ann = getattr(tool, "annotations", None)
-    if rule == "auto" and ann is not None:
-        ro = getattr(ann, "read_only_hint", None)
-        if ro is None:
-            ro = getattr(ann, "readOnlyHint", None)
-        if ro is True:
-            return False
+    if rule == "auto" and _read_only_hint(tool) is True:
+        return False
     words = DEFAULT_WORDS if rule == "auto" else rule
     name = tool.name.lower()
     return any(w.lower() in name for w in words)
+
+
+def _read_only_hint(tool) -> bool | None:
+    ann = getattr(tool, "annotations", None)
+    if ann is None:
+        return None
+    ro = getattr(ann, "read_only_hint", None)
+    return getattr(ann, "readOnlyHint", None) if ro is None else ro
+
+
+# 没标 readOnlyHint 的应用工具，名字以这些词开头才可能算只读。没有 query：数据库应用的 query 往往什么 SQL 都能跑
+READ_VERBS = {"get", "list", "search", "read", "fetch", "find", "lookup", "view", "show", "describe", "count", "ask"}
+# 名字里带了这些词就不算只读（写入词之外的）；and / or / then 是“查完再改”这种一个工具做两件事的
+NOT_READ = {"and", "or", "then", "mark", "save", "replace", "clear", "reset", "run", "execute", "exec", "apply", "merge",
+            "toggle", "sync", "submit", "lock", "unlock", "upsert", "put", "modify", "change", "trigger", "sql"}
+
+
+def read_only(tool, app: str = "") -> bool:
+    """应用的这个工具是不是只读（决定一轮里能不能和别的只读调用一起跑，见 worker._lane）。
+    服务端标了 readOnlyHint 就听它的；没标的，名字（去掉开头的应用名）第一个词是读的动词、又不带写入词才算。
+    拿不准就当成写：写的照旧一个个按顺序跑，错判成写只是慢一点，错判成读可能乱了先后。"""
+    ro = _read_only_hint(tool)
+    if ro is not None:
+        return ro is True
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", tool.name).lower()   # getUser → get_user
+    words = [w for w in re.split(r"[^a-z0-9]+", name) if w]
+    if words and words[0] == app.lower():   # notion-fetch
+        words = words[1:]
+    return (bool(words) and words[0] in READ_VERBS and not NOT_READ & set(words)
+            and not any(w in name for w in DEFAULT_WORDS))
 
 
 # ---------- 规则 ----------

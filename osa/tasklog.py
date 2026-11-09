@@ -44,7 +44,6 @@ class Log:
 
     def __init__(self, task, worker: str = ""):
         self.task, self.worker = task, worker
-        self.current: dict | None = None   # 正在执行的工具：进度说明（排队等电脑、动作）写进它的标题
 
     async def _emit(self, ev: dict):
         if notify:
@@ -92,8 +91,6 @@ class Log:
         s["body"] = s["body"][:LIMIT.get(s["kind"], 60000)]
         save(s)
         LIVE.pop(s["id"], None)
-        if self.current is s:
-            self.current = None
         await self._emit({"step": public(s)})
 
 

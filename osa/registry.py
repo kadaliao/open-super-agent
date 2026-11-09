@@ -57,6 +57,7 @@ class Tool:
     where: frozenset = frozenset({ROUTER, WORKER})      # 在哪些场合能用
     when: Callable[[dict], bool] | None = None          # 按这一轮的 env 决定给不给模型；None 就是总给
     gated: bool = False                                 # 跑之前按确认规则（approvals.decide）问不问用户；Router 不能等，所以不能和 ROUTER 一起用（注册时报错）
+    parallel: int = 0                                   # 只读、不改任何东西的工具填几：Worker 一轮里相邻的这种调用一起跑，同一组（group，没有就是工具名）同时最多这么多个；0 照旧一个个跑
     progress: Callable[[dict], str] | None = None       # Worker 任务卡片上这一步的说明
     describe: str = ""                                  # 给 Router 看的一句话能力说明（“后台 Worker 当前能用的工具”）
     group: str = ""                                     # 来自哪个应用（MCP 服务器名），空是内置

@@ -243,7 +243,10 @@ web/src/
 
 ### 工具注册表与插件
 - Router、Worker、小应用都从 `registry.TOOLS` 找工具；一个工具一个 `Tool`：`schema`、`run(call)`、`where`（router / worker / applet）、
-  `when(env)`（这一轮给不给模型：Heavy 的草稿不存页面）、`gated`（跑之前按确认规则问不问；Router 里从不问，它不能等）、`progress`、`describe`。
+  `when(env)`（这一轮给不给模型：Heavy 的草稿不存页面）、`gated`（跑之前按确认规则问不问；Router 里从不问，它不能等）、`progress`、`describe`、
+  `parallel`（只读工具填同一组同时最多几个）。
+- **Worker 一轮里相邻的只读调用一起跑**（`worker._run_calls`）：`parallel > 0` 而且这次不用确认的才算（`worker._lane`）；别的调用单独跑、前后都等它，所以写操作、电脑操作、要确认的和别的调用之间的先后不变。结果、截图按调用的顺序交回模型，任务过程里的步骤也按这个顺序记。
+  应用的工具在连上时定 `parallel`（`mcp_hub._parallel`、`approvals.read_only`）：服务端的 `readOnlyHint` 优先，没标的看名字，拿不准就当成写；带界面的是 0（结果下面的界面按顺序挂）；远程 3，stdio 1（不知道它里面经不经得起同时几个请求）。Router 的工具都是本地的快操作，没做并行。
   `run` 只看 `Call`（谁在调、结果发到哪、卡片发到哪、`post` 写消息、`files` 收附件、`env`），不碰 Router 或 Task 的内部状态。
 - **谁提供工具谁拿一个 `Context`**，每次注册返回 disposer，`dispose()` 反向撤销全部：MCP 应用每个一个 `Context`（`mcp:<名字>`），
   断开、重连时先 dispose，不留孤儿工具。新加一个内置工具：在 `builtin.py` 里注册一次就行，Router 和 Worker 都有了。
