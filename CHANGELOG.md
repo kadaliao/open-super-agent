@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.14.0] - 2026-11-09
 ### 改进
 - **后台任务里一次要查好几样东西时一起查**：模型在同一步里要了几个只读工具（搜网页、读网页、查资料库和记忆、看技能，应用里只读的工具），它们同时跑，不再一个等一个。实测一步里两次搜索加一次 DeepWiki 提问从约 11.6 秒变成 9.2 秒。
   写的、要确认的、电脑操作照旧一个个按顺序跑，和别的调用之间的先后不变；结果、截图还是按调用的顺序交给模型。
@@ -490,7 +492,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.13.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/kadaliao/open-super-agent/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/kadaliao/open-super-agent/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kadaliao/open-super-agent/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kadaliao/open-super-agent/compare/v0.10.0...v0.11.0
