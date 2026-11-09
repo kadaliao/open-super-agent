@@ -25,7 +25,7 @@ h4{margin:14px 0 6px;font-size:12px;color:var(--mut);font-weight:600}.bars{displ
 </style></head><body>
 <main><div id="log"></div>
 <form id="f"><textarea id="q" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea><button>发送</button></form></main>
-<aside><nav><a data-p="tasks" class="on">任务</a><a data-p="cost">费用</a><a data-p="ext">触发与插件</a></nav>
+<aside><nav><a data-p="tasks" class="on">任务</a><a data-p="cost">费用</a><a data-p="ext">触发与应用</a></nav>
 <div class="p" id="p-tasks"><div id="tasks"></div></div>
 <div class="p" id="p-cost" hidden></div><div class="p" id="p-ext" hidden></div></aside>
 <script>
@@ -58,7 +58,7 @@ async function refresh(){
   <h4>按角色（30 天）</h4>${u.by_role.map(r=>row(r.role+' · '+r.model,f(r.cost))).join('')||'暂无'}
   <h4>按任务</h4>${u.by_task.map(t=>row('#'+t.id+' '+t.goal,f(t.cost))).join('')||'暂无'}`}
  if(!$('p-ext').hidden){const s=await (await fetch('/api/status')).json();
-  $('p-ext').innerHTML=`<h4>MCP 插件</h4>${Object.entries(s.mcp).map(([k,v])=>row(k,v)).join('')||'未配置'}
+  $('p-ext').innerHTML=`<h4>应用（MCP）</h4>${Object.entries(s.mcp).map(([k,v])=>row(k,v)).join('')||'未配置'}
   <h4>定时任务</h4>${(s.routines||[]).map(t=>row(t.name+' ('+t.trigger+')',t.enabled?'启用':'暂停')).join('')}
   <h4>最近触发</h4>${s.trigger_log.map(l=>row(l.ts+' '+l.trigger+'：'+l.detail,l.verdict)).join('')||'暂无'}`}}
 setInterval(refresh,8000);

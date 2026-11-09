@@ -204,9 +204,6 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
         elif r == "task" and meta.get("kind") == "image":   # generate_image 画好的图
             whose = name(b) if others and b else "你"
             msgs.append({"role": "user", "content": f"（系统通知：{whose}画好了一张图，已经显示给用户。描述：{defang(meta.get('prompt') or c)}）"})
-        elif r == "task" and meta.get("kind") == "plugin":   # 插件以 Bot 的名义发进对话的（services.Messenger）
-            msgs.append({"role": "user", "content": f"（系统通知，非用户发言；插件「{meta.get('plugin', '')}」发到对话里的消息，"
-                                                    f"用户已经看到）{defang(c)}"})
         elif r == "task" and meta.get("kind") in ("dm", "dm_reply"):
             msgs.append({"role": "user", "content": _dm_line(meta, defang(c), b, me, name)})
         elif r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式

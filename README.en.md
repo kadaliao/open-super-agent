@@ -116,7 +116,6 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 - [Adding an app to the market](docs/apps.md)
 - [Writing a Bot template](docs/templates.md)
 - [Skills](docs/skills.md): writing skills, packages with scripts and references, import, export and sharing, the skill market, compatibility with Claude's SKILL.md
-- [Plugins](docs/plugins.md) (Chinese)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
 - [Roadmap](docs/roadmap.md): what comes next; finished plans are in [docs/plans](docs/plans/)

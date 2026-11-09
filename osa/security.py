@@ -5,23 +5,21 @@
 - 电脑选“本机”、打开本机终端：Bot 的命令直接在这台机器上执行；
 - 自定义应用的启动命令，或者改应用的 command / args / env（比如塞个 NODE_OPTIONS）：任意程序在这台机器上跑；
 - “文件夹”应用指到工作文件夹以外：能改系统文件；
-- 应用配置里引用服务的环境变量（env:名字）：服务自己的密钥（登录密码、模型的 API key）被带到别的地址；
-- 插件：在服务进程里跑的 Python 代码。
+- 应用配置里引用服务的环境变量（env:名字）：服务自己的密钥（登录密码、模型的 API key）被带到别的地址。
 
-策略表，三个键分开管（policy()）：
+策略表，两个键分开管（policy()）：
 - security.exec: host | sandbox | off —— 命令在哪跑。host：电脑能选“本机”、能开本机终端；sandbox：只在沙箱里跑（Docker / Instabox
   的电脑，或者受限子进程）；off：都不行。
-- security.plugins: any | market | off —— 插件。market：只加载和插件市场（osa/catalog/plugins）里随版本发布的文件一模一样的。
 - security.apps: any | market —— 本地进程的应用。market：只认应用市场内置清单（osa/catalog/apps）里原样的命令，用户填的值只能进
   模板里留的位置，“文件夹”只能在工作文件夹里；不能新加 env: 引用。config.yaml 的 mcp_servers 里写的应用不受限（能改那个文件的人
   本来就能管这台机器）。检查放在连接应用之前（mcp_hub._transport），恢复备份、直接改数据库进来的配置也挡得住。
 
-没写这三个键时按旧的两个开关推：local_exec: true（默认）→ host / any / any；local_exec: false（服务器锁）→ sandbox / market / market；
-demo: true → sandbox / off / market。写了就以写的为准，写错的值按最严的算。
+没写这两个键时按旧的两个开关推：local_exec: true（默认）→ host / any；local_exec: false（服务器锁）→ sandbox / market；
+demo: true → sandbox / market。写了就以写的为准，写错的值按最严的算。以前还有 security.plugins（开发者插件，已去掉），写着也不管。
 
 security.demo: true（演示服务器：密码公开给别人试用）另外再关掉：所有本地进程的应用（npx / uvx 会下载、运行第三方代码，fetch 这类
 还能访问服务器上只对本机开放的服务）、自定义应用和应用的高级设置、本机或内网的模型服务地址、改用量上限、备份的导出和恢复。
-演示服务器上三个键最多到 exec: sandbox、plugins: market、apps: market，写得更宽也不认。
+演示服务器上两个键最多到 exec: sandbox、apps: market，写得更宽也不认。
 """
 import logging
 import os
@@ -43,8 +41,8 @@ def _cfg() -> dict:
 
 
 # 每个键能写的值，从严到宽
-LEVELS = {"exec": ("off", "sandbox", "host"), "plugins": ("off", "market", "any"), "apps": ("market", "any")}
-DEMO_MAX = {"exec": "sandbox", "plugins": "market", "apps": "market"}   # 演示服务器上最宽到这里
+LEVELS = {"exec": ("off", "sandbox", "host"), "apps": ("market", "any")}
+DEMO_MAX = {"exec": "sandbox", "apps": "market"}   # 演示服务器上最宽到这里
 _warned: set = set()
 
 
@@ -61,14 +59,14 @@ def _level(key: str, raw) -> str:
 
 
 def policy() -> dict:
-    """{"exec", "plugins", "apps"} 三个策略。没写的按 local_exec / demo 推，写了的以写的为准。"""
+    """{"exec", "apps"} 两个策略。没写的按 local_exec / demo 推，写了的以写的为准。"""
     c = _cfg()
     if c.get("demo"):
-        out = {"exec": "sandbox", "plugins": "off", "apps": "market"}
+        out = {"exec": "sandbox", "apps": "market"}
     elif c.get("local_exec", True):
-        out = {"exec": "host", "plugins": "any", "apps": "any"}
+        out = {"exec": "host", "apps": "any"}
     else:
-        out = {"exec": "sandbox", "plugins": "market", "apps": "market"}
+        out = {"exec": "sandbox", "apps": "market"}
     for k in LEVELS:
         if c.get(k) is not None:
             out[k] = _level(k, c[k])
@@ -80,11 +78,6 @@ def policy() -> dict:
 def exec_mode() -> str:
     """命令在哪跑：host（能在这台机器上直接跑）/ sandbox（只在沙箱里）/ off。"""
     return policy()["exec"]
-
-
-def plugins_mode() -> str:
-    """插件：any / market（只认随版本发布的原样插件）/ off。"""
-    return policy()["plugins"]
 
 
 def apps_mode() -> str:

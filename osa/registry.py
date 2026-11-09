@@ -1,4 +1,4 @@
-"""工具注册表和插件上下文：Router、Worker、小应用都从这里找工具。
+"""工具注册表：Router、Worker、小应用都从这里找工具。
 
 以前工具散在五处（tools.TOOLS、mcp_hub.TOOLS、ctools、botadmin、Router / Worker 里一长串 if name == ...），
 加一个工具要改好几个文件，Router 和 Worker 各写一遍。现在：
@@ -6,15 +6,13 @@
 - 一个工具一个 Tool：schema、怎么跑（run）、在哪些场合能用（where：router / worker / applet）、这一轮给不给模型（when）、
   跑之前要不要按确认规则问用户（gated）。
 - 谁提供工具谁拿一个 Context 注册，每次注册返回一个 disposer，Context.dispose() 反向撤销全部注册，不留孤儿状态
-  （MCP 应用断开时就是这么把它的工具收走的）。插件的边界就是 Context。
+  （MCP 应用断开时就是这么把它的工具收走的）。
 - 事件也在这里：on(event, fn) / emit(event, **kw)。服务端用它把“页面变了”“小应用数据变了”广播给网页，
   工具的实现不用知道有 WebSocket 这回事。
-- 服务：provide(name, value) 把一个对象按名字登记出去（内置的 llm、messenger，插件自己提供的），插件在 META 里 inject 要用的；
-  依赖谁、谁先加载、提供者停了依赖它的先停，这些在 plugins.py。
 - 事件来源：source(Source(...)) 登记一种“某件事发生了”的来源（收到 webhook、订阅源有新文章、网页变了……），
   用户在 Bot 的“事件”里选它、填参数，事件来了 Bot 在后台处理一次。调度、过滤、派任务在 events.py。
-- 插件不能改 Agent 的循环（调模型、调工具的那一圈）：只能注册工具、订阅事件（只读）、提供和使用服务。
-  试过在调模型、调工具前后开钩子，去掉了：提示词缓存、defang、Router 要快这些约定插件都能悄悄破坏，出了问题很难查。
+- 以前有一套开发者插件（data/plugins 里的 Python 代码）也走 Context，2026-11-09 整个去掉了：扩展 osa 用应用、技能、run_code，
+  或者直接改仓库里的代码（加内置工具、加 osa/sources/ 里的事件来源）。
 
 还没迁过来的：电脑工具（computer/tools.py，和任务、窗口、控制权绑得紧，自成一套）、Router 自己的几个（dispatch、cancel_task 这类
 要改 Router 状态的）、botadmin（要弹卡片、叫醒 Bot）。它们仍由 Router / Worker 直接处理，注册表是最后一道。
@@ -113,13 +111,12 @@ class Source:
 
 TOOLS: dict[str, Tool] = {}
 _LISTENERS: dict[str, list[Callable]] = {}
-SERVICES: dict[str, tuple[str, Any, str]] = {}   # 名字 -> (谁提供的, 对象, 一句话说明)
 SOURCES: dict[str, Source] = {}
 internal_hook: Callable | None = None            # events.py 设置：internal 来源的事件到了交给它
 
 
 class Context:
-    """插件拿到的句柄：注册工具、订阅事件，每个注册都返回 disposer；dispose() 反向撤销全部。"""
+    """注册用的句柄（内置工具、每个 MCP 应用、服务端各一个）：注册工具、订阅事件，每个注册都返回 disposer；dispose() 反向撤销全部。"""
 
     def __init__(self, name: str):
         self.name = name
@@ -130,7 +127,7 @@ class Context:
         return dispose
 
     def tool(self, tool: Tool) -> Callable[[], None]:
-        """同名工具已经由别的 Context 注册时报错，不覆盖：覆盖了再撤销，原来那个就没了（插件盖掉内置的 save_page 再卸载）。
+        """同名工具已经由别的 Context 注册时报错，不覆盖：覆盖了再撤销，原来那个就没了（MCP 应用盖掉内置的 save_page 再断开）。
         gated 的工具不能给 ROUTER：Router 要几秒内回话，不能停下来等用户点确认，在那里 gated 等于没写。"""
         if tool.gated and ROUTER in tool.where:
             raise ValueError(f"工具 {tool.name} 标了 gated（跑之前要用户确认），不能给 ROUTER：对话里 Router 不能停下来等确认，"
@@ -165,17 +162,6 @@ class Context:
                 _LISTENERS[event].remove(fn)
         return self.effect(undo)
 
-    def provide(self, name: str, value, describe: str = "") -> Callable[[], None]:
-        """按名字登记一个服务。别的 Context 已经登记过这个名字就报错（和工具一样不覆盖）。"""
-        if (old := SERVICES.get(name)) and old[0] != self.name:
-            raise ValueError(f"服务 {name} 已经由 {old[0]} 提供了")
-        SERVICES[name] = (self.name, value, describe)
-
-        def undo():
-            if SERVICES.get(name, (None,))[0] == self.name:
-                del SERVICES[name]
-        return self.effect(undo)
-
     def source(self, src: Source) -> Callable[[], None]:
         """登记一种事件来源。和工具一样不覆盖别人的同名来源。停用时已经建好的事件还在，只是暂时不会触发。"""
         if src.mode not in (PUSH, POLL, INTERNAL):
@@ -185,8 +171,6 @@ class Context:
             raise ValueError(f"事件来源 {src.id}：poll 要写 check，push 要写 parse，internal 要写 on 和 match")
         src.owner = self.name
         if (old := SOURCES.get(src.id)) and old.owner != self.name:
-            if old.owner == "builtin":   # 以前插件市场里的来源（epic_free 这几个）后来内置了：旧插件停用、删掉就行，建好的事件照常
-                raise ValueError(f"事件来源 {src.id} 已经内置了，不用再装插件：停用、删掉这个插件就行，用它建的事件照常触发")
             raise ValueError(f"事件来源 {src.id} 已经由 {old.owner} 登记了，换个名字")
         SOURCES[src.id] = src
 
@@ -233,22 +217,11 @@ def by_group() -> dict[str, list[Tool]]:
     return out
 
 
-def service(name: str):
-    return SERVICES[name][1] if name in SERVICES else None
-
-
-def listening(event: str) -> bool:
-    """有没有插件在听这个事件：没有的话，发事件前那些准备工作（查 Bot、拼参数）都可以省掉。"""
-    return bool(_LISTENERS.get(event))
-
-
-
-
 _firing: set = set()
 
 
 def fire(event: str, **kw):
-    """发事件但不等监听器跑完：用在对话、任务这些不能被插件拖慢的地方。"""
+    """发事件但不等监听器跑完：用在对话、任务这些不能被监听器拖慢的地方。"""
     if not _LISTENERS.get(event):
         return
     t = asyncio.get_running_loop().create_task(emit(event, **kw))

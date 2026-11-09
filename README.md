@@ -124,7 +124,6 @@ docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/co
 | [给应用市场加应用](docs/apps.md) | 应用清单的格式、图标、在本机试、提 PR |
 | [写一个 Bot 模板](docs/templates.md) | 模板的格式、从现有 Bot 导出、加进内置 |
 | [技能](docs/skills.md) | 技能的写法、带脚本和参考资料的技能包、导入导出和分享、技能市场、和 Claude SKILL.md 的兼容 |
-| [插件](docs/plugins.md) | 开发者预览：用 Python 扩展 osa 自己（订阅事件、碰内部状态）；先想清楚是不是插件、安全说明和插件市场 |
 | [架构](docs/architecture.md) | 各组件如何协作、代码目录、设计约定 |
 | [开发](docs/development.md) | 本地开发、测试方法、调试技巧 |
 | [和 OpenMausBot 比](docs/comparison.md) | 两个开源 Grok Bot 替代品的取舍 |

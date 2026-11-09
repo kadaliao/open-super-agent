@@ -148,21 +148,6 @@ async def _reply(task: Task, log: tasklog.Log, role: str, client, model: str, ms
     return msg
 
 
-async def _tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, progress, env: dict,
-                shots: list) -> tuple[str, str]:
-    """调一个工具；调完发 tool_done 事件（只读，插件能看不能改，不等它们）。"""
-    out, status = await _call_tool(task, log, step, name, raw, progress, env, shots)
-    if registry.listening("tool_done"):
-        from . import bots
-        try:
-            args = json.loads(raw or "{}")
-        except json.JSONDecodeError:
-            args = {}
-        registry.fire("tool_done", scope="worker", bot=bots.get(task.bot_id) or {"id": task.bot_id}, chat_id=task.chat_id,
-                      task=task.public(), name=name, args=args, result=out, status=status)
-    return out, status
-
-
 async def _call_tool(task: Task, log: tasklog.Log, step: dict, name: str, raw: str, progress, env: dict,
                      shots: list) -> tuple[str, str]:
     """执行一个工具调用，返回 (给模型的结果, 这一步的状态)。工具出错交给模型自己处理。
@@ -228,9 +213,9 @@ async def _run_calls(task: Task, log: tasklog.Log, calls: list, env: dict) -> li
         name, raw, shots = call["function"]["name"], call["function"]["arguments"], []
         if sem:
             async with sem:
-                out, status = await _tool(task, log, step, name, raw, progress_for(step), env, shots)
+                out, status = await _call_tool(task, log, step, name, raw, progress_for(step), env, shots)
         else:
-            out, status = await _tool(task, log, step, name, raw, progress_for(step), env, shots)
+            out, status = await _call_tool(task, log, step, name, raw, progress_for(step), env, shots)
         await log.finish(step, status, out)
         task.last_progress = time.time()
         return out, shots

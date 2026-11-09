@@ -133,7 +133,7 @@ def test_unknown_tool_for_scope():
 
 def test_gated_tool_cannot_go_to_router():
     """gated 是“跑之前问用户”，Router 不能停下来等确认：两个一起写，注册时就报错，不让它悄悄不问。"""
-    ctx = Context("plugin:gate")
+    ctx = Context("gate")
     with pytest.raises(ValueError, match="不能给 ROUTER"):
         ctx.simple("gate_both", _schema("gate_both"), _echo, gated=True)            # where 默认含 ROUTER
     with pytest.raises(ValueError, match="不能给 ROUTER"):
@@ -143,16 +143,3 @@ def test_gated_tool_cannot_go_to_router():
     assert registry.get("gate_worker").gated
     ctx.dispose()
     assert registry.get("gate_worker") is None
-
-
-def test_plugin_source_clashing_with_builtin():
-    """以前市场里的来源插件（epic_free 这几个）现在内置了：旧插件再登记同名来源时说清楚怎么办，内置的不受影响。"""
-    old = registry.SOURCES["epic_free"]
-    ctx = Context("plugin:epic_free")
-
-    async def check(params, state):
-        return [], state
-    with pytest.raises(ValueError, match="已经内置了"):
-        ctx.source(registry.Source(id="epic_free", title="Epic", description="", mode=registry.POLL, check=check))
-    ctx.dispose()
-    assert registry.SOURCES["epic_free"] is old and old.owner == "builtin"

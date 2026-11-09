@@ -53,7 +53,7 @@ uv run pytest -q
 
 ## 加一个工具
 
-工具都在注册表里（`osa/registry.py`，设计约定见 [架构](architecture.md#工具注册表与插件)）。加一个内置工具：
+工具都在注册表里（`osa/registry.py`，设计约定见 [架构](architecture.md#工具注册表)）。加一个内置工具：
 
 1. 写 OpenAI 风格的 schema 和一个 `async def run(call: registry.Call) -> str` （或 `(str, png)`）。`call.bot`、`call.chat_id`、`call.args`、
    `call.post`（写消息）、`call.files`（收附件）、`call.task`（Worker 里才有）够用了，不要去碰 Router 或 Task 的别的字段。
@@ -62,6 +62,8 @@ uv run pytest -q
 3. 要用户确认的：`gated=True` 后 Worker 和小应用会按确认规则（`approvals.decide`）弹卡片；Router 不会等，自己在 `run` 里处理
    （像画图那样后台等卡片）。
 4. 测试里用 `registry.Context("test").simple(...)` 注册假工具，结束 `dispose()`；冒充应用的工具用 `mcp_tool` fixture。
+
+加一个事件来源见 [事件](events.md#写一个新来源)。osa 没有插件，要加的能力直接写进仓库（怎么分见 [架构](architecture.md#扩展-osa)）。
 
 ## 不要用真实数据测试
 

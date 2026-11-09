@@ -6,7 +6,7 @@ import { ask } from './Dialog'
 import { Runs, STATUS, describe, when } from './Routines'
 
 // 事件：某件事发生时（收到 webhook、订阅源有新文章、网页变了……），Bot 在后台处理一次。
-// 和定时任务存在同一张表里（category 区分），来源和每种来源要填的参数从 /api/event-sources 拿（内置的 + 插件加的）
+// 和定时任务存在同一张表里（category 区分），来源和每种来源要填的参数从 /api/event-sources 拿
 
 let cache: Promise<EventSource[]> | null = null
 export function useSources() {
@@ -14,10 +14,6 @@ export function useSources() {
   useEffect(() => {
     cache = cache || api<EventSource[]>('/api/event-sources').catch(e => { cache = null; throw e })
     cache.then(setList).catch(() => setList([]))
-    // 插件启用、停用以后来源会变
-    const h = () => { cache = null; api<EventSource[]>('/api/event-sources').then(setList).catch(() => {}) }
-    window.addEventListener('osa-plugins', h)
-    return () => window.removeEventListener('osa-plugins', h)
   }, [])
   return list
 }
@@ -68,7 +64,7 @@ export function EventsPanel({ bot }: { bot: Bot }) {
               <span className="muted small">{!r.enabled ? t('已暂停') : r.running ? t('运行中') : ''}</span>
             </div>
             <div className="muted small">{describe(r.trigger, r.describe)}{r.skill && <> · {t('技能 /{name}', { name: r.skill })}</>}</div>
-            {ev?.missing && <div className="small warn">{t('这种事件来源现在没有了（提供它的插件停用了？），暂时不会触发。')}</div>}
+            {ev?.missing && <div className="small warn">{t('这种事件来源现在没有了，暂时不会触发。')}</div>}
             {ev?.mode === 'push' && hookUrl(r) && <div className="env-row ev-url"><input readOnly value={hookUrl(r)} onFocus={e => e.target.select()} /><Copy text={hookUrl(r)} /></div>}
             <div className="muted small">
               {ev?.mode === 'poll' && (ev.checked ? t('上次看 {when}', { when: when(ev.checked) }) : t('还没看过'))}
@@ -100,11 +96,11 @@ type Pick = { source: EventSource; scenario?: Scenario }
 function Picker({ sources, onPick, onCancel }: { sources: EventSource[]; onPick: (p: Pick) => void; onCancel: () => void }) {
   const [cat, setCat] = useState('')
   const [q, setQ] = useState('')
-  const cats = useMemo(() => [...new Set(sources.map(s => s.plugin ? t('插件') : s.category))], [sources])
+  const cats = useMemo(() => [...new Set(sources.map(s => s.category))], [sources])
   const cards = useMemo(() => {
     const out: Pick[] = []
     for (const s of sources) {
-      if (cat && (s.plugin ? t('插件') : s.category) !== cat) continue
+      if (cat && s.category !== cat) continue
       for (const sc of s.scenarios) out.push({ source: s, scenario: sc })
       out.push({ source: s })   // 不用现成的用法，自己填
     }
@@ -134,7 +130,7 @@ function Picker({ sources, onPick, onCancel }: { sources: EventSource[]; onPick:
             </button>
           )
         })}
-        {!cards.length && <div className="muted small">{t('没找到。可以选“收到 Webhook”接任何能发 webhook 的服务，或者在插件里装更多来源。')}</div>}
+        {!cards.length && <div className="muted small">{t('没找到。可以选“收到 Webhook”接任何能发 webhook 的服务。')}</div>}
       </div>
       <div className="row-actions"><button className="btn" onClick={onCancel}>{t('返回')}</button></div>
     </div>
@@ -194,7 +190,7 @@ function EventEditor({ bot, routine, sources, onDone }: { bot: Bot; routine: Par
   useEffect(() => { if (tr && sources && !src) setSrc(sources.find(s => s.id === tr.source) || null) }, [sources])
   if (!sources) return <div className="muted">{t('加载中…')}</div>
   if (tr && !src) return <div>
-    <p className="error-line">{t('这个事件的来源（{source}）现在没有：提供它的插件停用了或者删了。启用插件后再来改。', { source: tr.source })}</p>
+    <p className="error-line">{t('这个事件的来源（{source}）现在没有了，改不了，可以删掉。', { source: tr.source })}</p>
     <div className="row-actions"><button className="btn" onClick={onDone}>{t('返回')}</button><DeleteBtn r={cur as Routine} onDone={onDone} /></div></div>
   if (!src) return <Picker sources={sources} onCancel={onDone} onPick={({ source, scenario }) => {
     setSrc(source)

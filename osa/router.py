@@ -483,7 +483,7 @@ class Router:
                         args = json.loads(c["args"] or "{}")
                     except json.JSONDecodeError:
                         args = {}
-                    out = await self._tool(c["name"], args)
+                    out = await self._call_tool(c["name"], args)
                     if isinstance(out, tuple):          # look_at_screen、computer_*：文字 + 截图
                         out, png = out
                         shots.append((png, c["name"] == "look_at_screen"))
@@ -515,14 +515,6 @@ class Router:
             if m and m["name"].lower() == key:
                 return m
         return None
-
-    async def _tool(self, name: str, args: dict):
-        """调一个工具；调完发 tool_done 事件（只读，插件能看不能改，不等它们）。"""
-        out = await self._call_tool(name, args)
-        if registry.listening("tool_done"):
-            registry.fire("tool_done", scope="router", bot=self.bot, chat_id=self.chat["id"], task=None, name=name,
-                          args=dict(args), result=out[0] if isinstance(out, tuple) else out, status="done")
-        return out
 
     async def _call_tool(self, name: str, args: dict):
         if name == "dispatch":
@@ -746,7 +738,7 @@ class Router:
                        status=task.status, elapsed=round(time.time() - task.started),
                        **({"attachments": task.files} if task.files else {}), **({"apps": task.apps} if task.apps else {}))
         await self.emit({"type": "task", "task": task.public()}, task.chat_id)
-        registry.fire("task_done", task=task.public(), bot=self.bot, result=task.result)   # 插件能订阅；不等它们
+        registry.fire("task_done", task=task.public(), bot=self.bot, result=task.result)   # “任务失败”事件来源在听；不等它
         if task.handoff:
             from . import groups
             asyncio.create_task(groups.after_task(task))

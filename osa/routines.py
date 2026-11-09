@@ -553,7 +553,7 @@ def _when(r: dict, full: bool = False) -> str:
     if t["kind"] == "event":
         st = r.get("event") or {}
         if st.get("missing"):
-            s += "，来源现在没有（提供它的插件停用了？）"
+            s += "，来源现在没有了"
         if st.get("mode") == "poll" and st.get("checked"):
             s += "，上次看是 " + _hm(st["checked"])
         if st.get("error"):

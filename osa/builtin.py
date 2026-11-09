@@ -1,4 +1,4 @@
-"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、技能、发文件、画图、定时任务和事件、在沙箱里跑代码；给插件用的 llm、messenger；
+"""内置工具的注册：网页、资料库、小应用数据、按意思检索、技能、发文件、画图、定时任务和事件、在沙箱里跑代码；
 内置的事件来源（osa/sources/）。
 
 每个工具只在这里写一次，Router 和 Worker 都从注册表（registry.py）找；在哪些场合给模型用、要不要走确认规则，都在 Tool 上写明。
@@ -78,9 +78,7 @@ def load():
     ctx.tool(Tool("run_code", sandbox.RUN_CODE, sandbox.tool_run, where=frozenset({WORKER}), when=lambda env: bool(sandbox.place()),
                   progress=sandbox.progress, describe="在沙箱里跑 Python / bash / node 代码：算数、处理表格和数据、画图表、转换格式"))
     ctx.tool(Tool("quick_code", sandbox.QUICK_CODE, sandbox.tool_quick, where=router, when=lambda env: bool(sandbox.place(quick=True))))
-    # 给插件用的服务（插件在 META 的 inject 里写要哪个），见 services.py
-    from . import services, sources
-    services.register(ctx)
+    from . import sources
     sources.register(ctx)
 
 

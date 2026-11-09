@@ -3,6 +3,11 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+### 移除
+- **开发者插件整个去掉**：设置 → 高级 → 开发者插件（预览）、插件市场（7 个）、`/api/plugins`、给插件用的 llm / messenger 服务、
+  `security.plugins` 策略键都没了。插件主要解决第三方开发者的分发问题，osa 用不着。扩展 osa 用应用（接外部服务）、技能（教 Bot 做事）、
+  `run_code`（在沙箱里算东西），或者直接给仓库加内置工具、加 `osa/sources/` 里的事件来源。
+  以前装过的 `data/plugins` 文件夹、数据库里的 `plugins` 表、config.yaml 里的 `security.plugins` 都留着不管，不会报错
 
 ## [0.14.0] - 2026-11-09
 ### 改进

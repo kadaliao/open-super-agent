@@ -109,8 +109,8 @@ export type Settings = {
   problem: string                         // 对话或后台任务的模型没法用的原因；能用是空
   language: 'zh' | 'en'                   // 界面语言
   // 服务器锁（local_exec 为 false：网页上不能让服务器执行任意命令）和演示模式，只能在服务器的 config.yaml 里改。旧版服务没有这一项
-  // exec / plugins / apps：策略表（osa/security.py），没写新键时按 local_exec / demo 推出来
-  security?: { local_exec: boolean; demo: boolean; exec?: 'host' | 'sandbox' | 'off'; plugins?: 'any' | 'market' | 'off'; apps?: 'any' | 'market' }
+  // exec / apps：策略表（osa/security.py），没写新键时按 local_exec / demo 推出来
+  security?: { local_exec: boolean; demo: boolean; exec?: 'host' | 'sandbox' | 'off'; apps?: 'any' | 'market' }
 }
 export type SearchHit = { kind: 'memory' | 'page'; ref: number; title: string; snippet: string; bot_id: number | null; sub: string; score: number }
 export type AppState = 'connected' | 'connecting' | 'login' | 'needs_login' | 'off' | 'error'
@@ -180,7 +180,7 @@ export type Scenario = {
 }
 export type EventSource = {
   id: string; title: string; description: string; mode: 'push' | 'poll' | 'internal'; category: string; icon: string
-  fields: SourceField[]; every: number; min_every: number; setup: string; plugin: string; unavailable: string
+  fields: SourceField[]; every: number; min_every: number; setup: string; unavailable: string
   scenarios: Scenario[]
 }
 export type Memory = {

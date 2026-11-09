@@ -71,8 +71,7 @@ osa/
     apps/          每个应用一份清单（<名字>.yaml），格式见 docs/apps.md；本机还会读 data/apps/
     checks.py      添加应用前的检查（邮箱先试登录一次）
     skills/        技能市场：每个技能一个文件夹（<名字>/SKILL.md，英文界面装 SKILL.en.md），格式见 docs/skills.md
-  registry.py      工具注册表和插件上下文：Tool（schema、run、在哪些场合能用、要不要确认）、Context（注册返回 disposer，dispose 反向撤销）、事件 on / emit
-  plugins.py       插件（开发者，预览）：data/plugins 里的 Python 代码，ast 读说明不执行、启用记 sha256、加载 / 卸载 / 重新加载、插件市场（osa/catalog/plugins，7 个）
+  registry.py      工具注册表：Tool（schema、run、在哪些场合能用、要不要确认）、Source（事件来源）、Context（注册返回 disposer，dispose 反向撤销）、事件 on / emit / fire
   builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、search_memory、use_skill
   tools.py         内置的网页工具：web_search、fetch_url 的实现
   unfurl.py        链接卡片：服务器取网页的标题、摘要、配图（og:*），不抓内网，缓存在 unfurls 表；YouTube 走 oEmbed
@@ -241,36 +240,30 @@ web/src/
 - 因私信而起的一轮里 Bot 自己 `cancel_task`：原因写成“X 收到 Y 的新消息后自己取消的”，不写成用户取消；被取消的任务和这一轮回给同一个 Bot 的话，不再单独送“已取消”（这一轮的回复或新派的任务会接着回它）。
 - 等回信只在内存里：服务重启后没回的私信不会再回；服务关闭时被取消的任务也不送“已取消”。
 
-### 工具注册表与插件
+### 工具注册表
 - Router、Worker、小应用都从 `registry.TOOLS` 找工具；一个工具一个 `Tool`：`schema`、`run(call)`、`where`（router / worker / applet）、
   `when(env)`（这一轮给不给模型：Heavy 的草稿不存页面）、`gated`（跑之前按确认规则问不问；Router 里从不问，它不能等）、`progress`、`describe`、
   `parallel`（只读工具填同一组同时最多几个）。
 - **Worker 一轮里相邻的只读调用一起跑**（`worker._run_calls`）：`parallel > 0` 而且这次不用确认的才算（`worker._lane`）；别的调用单独跑、前后都等它，所以写操作、电脑操作、要确认的和别的调用之间的先后不变。结果、截图按调用的顺序交回模型，任务过程里的步骤也按这个顺序记。
   应用的工具在连上时定 `parallel`（`mcp_hub._parallel`、`approvals.read_only`）：服务端的 `readOnlyHint` 优先，没标的看名字，拿不准就当成写；带界面的是 0（结果下面的界面按顺序挂）；远程 3，stdio 1（不知道它里面经不经得起同时几个请求）。Router 的工具都是本地的快操作，没做并行。
   `run` 只看 `Call`（谁在调、结果发到哪、卡片发到哪、`post` 写消息、`files` 收附件、`env`），不碰 Router 或 Task 的内部状态。
-- **谁提供工具谁拿一个 `Context`**，每次注册返回 disposer，`dispose()` 反向撤销全部：MCP 应用每个一个 `Context`（`mcp:<名字>`），
+- **谁注册东西谁拿一个 `Context`**（工具、事件监听、事件来源、后台任务、清理函数），每次注册返回 disposer，`dispose()` 反向撤销全部：
+  内置工具和 `osa/sources/` 里的事件来源都登记在 `builtin.py` 的那个 `Context` 上；MCP 应用每个一个 `Context`（`mcp:<名字>`），
   断开、重连时先 dispose，不留孤儿工具。新加一个内置工具：在 `builtin.py` 里注册一次就行，Router 和 Worker 都有了。
+  同名工具不能覆盖：`Context.tool` 遇到别人注册过的名字直接报错；`gated=True` 的工具不能给 ROUTER（Router 不能停下来等确认），注册时 `ValueError`。
   注册的**顺序就是给模型的顺序**，顺序稳定模型服务的前缀缓存才命中，别随手调换。
 - 事件：工具的实现只 `registry.emit("pages_changed")`，服务端在自己的 `Context` 上 `on(...)` 再广播给网页；
-  工具不需要知道有 WebSocket。
+  工具不需要知道有 WebSocket。`registry.fire` 发出去不等监听器，现在只有 `task_done`（任务做完或失败、结果写进对话之后），
+  内置的“后台任务失败了”事件来源听它；任务这种不能被拖慢的地方用 `fire`，要等结果的才用 `emit`。没人听时 `fire` 直接返回。
 - 还没迁的：电脑工具（`computer/tools.py`，和任务、窗口、控制权绑得紧）、Router 自己的几个（dispatch、cancel_task 这类改 Router 状态的）、
   botadmin（弹卡片、叫醒 Bot）。Router / Worker 先处理这些，注册表是最后一道。
 - 前端对应的是 `web/src/cards.tsx`：按消息的 `meta.kind` 注册卡片，`registerCard` 返回撤销函数，内置的在 `Chat.tsx` 末尾注册。
 
-### 插件
-- 写法见 [插件](plugins.md)，设计见 [计划文档](plans/applets.md#第-4-步的设计插件)。插件拿到的 `PluginContext` 就是 `registry.Context`
-  加上设置、数据目录、日志、读保险库；停用、删除、重新加载都是 `dispose()`。
-- **插件只收要碰 osa 内部状态的**（订阅事件、看任务结果、往对话里写消息、提供服务）：算东西用 `run_code`，接外部服务写成应用，
-  大家都用得上的事件来源放进 `osa/sources/`。插件市场因此从 21 个减到 7 个（见 [扩展体系改造](plans/extensions.md)）。
-- `gated=True` 的工具不能给 ROUTER（Router 不能停下来等确认）：`Context.tool` 注册时直接 `ValueError`。
-- **启用记 sha256，加载时比对**，不一样就不加载：这是“Bot 不能让自己写的代码进进程”的那道闸，改插件相关代码时别绕过它。
-  只有设置页（用户）能启用，不要给 Bot 加管插件的工具。服务器锁、演示服务器上整个关掉。
-- `registry.fire` 发的事件不等监听器（`user_message`、`task_done`、`tool_done`），在对话、任务这种不能被插件拖慢的地方用它；要等结果的才用 `emit`。
-  发之前先 `registry.listening(...)`，没人听就连参数都不拼。
-- **服务和依赖**：`META` 的 `provide` / `inject`；缺服务的插件在 `_waiting` 里等，提供者加载后 `_wake` 叫醒；`unload` 一个提供者时
-  先卸载用它服务的插件（还启用着的回到等待）。内置服务在 `services.py`（`llm`、`messenger`），插件拿到的是 `bind(插件名)` 之后的那份。
-- **插件不能改 Agent 的循环**：试过调模型、调工具前后的钩子，去掉了（原因见计划文档）。别再给 Router / Worker 加让插件改请求、改结果的口子，
-  要扩展就加只读事件或者新的工具、服务。
+### 扩展 osa
+- 没有进程内的插件：开发者插件（`data/plugins` 里的 Python）做过，后来整个去掉了。插件主要解决第三方开发者怎么分发代码，osa 用不着（见 [扩展体系改造](plans/extensions.md)）。
+- 要加能力按这个分：接外部服务写成应用（MCP，进程外，见 [apps.md](apps.md)）；教 Bot 做事写成技能；算东西用 `run_code`（沙箱）；
+  要碰 osa 自己的东西，直接改仓库：新工具加进 `builtin.py`，新事件来源加进 `osa/sources/`（见 [事件](events.md#写一个新来源)）。
+- **Agent 的循环由项目自己负责**：别给 Router / Worker 加让外部代码改请求、改结果的钩子（提示词缓存、defang、Router 要快这些约定很容易被悄悄破坏）。
 
 ### 应用自带的界面（MCP Apps）
 - 设计见 [小应用计划](plans/applets.md#第-3-步的设计mcp-apps-宿主)。工具的 `_meta.ui.resourceUri` 指向 `ui://` 资源；

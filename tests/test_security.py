@@ -1,5 +1,5 @@
 """服务器锁（security.local_exec: false）和演示模式（security.demo: true）：网页上不能让服务器执行任意命令、不能把服务的密钥带走。
-策略表（security.exec / plugins / apps）：没写时按 local_exec / demo 推，写了以写的为准，演示服务器上有上限。
+策略表（security.exec / apps）：没写时按 local_exec / demo 推，写了以写的为准，演示服务器上有上限。
 还有不分模式的两条：换了模型服务的地址要重新填密钥；应用市场里填的值不能带 env: / vault: 引用。"""
 import json
 import time
@@ -44,36 +44,37 @@ def test_unlocked_by_default(cleanup):
     assert security.local_exec() and not security.demo()
     cleanup.append("mytool")
     mcp_hub.save("mytool", {"command": "/bin/sh", "args": ["-c", "true"], "env": {"X": "env:HOME"}})
-    assert settings.public()["security"] == {"local_exec": True, "demo": False, "exec": "host", "plugins": "any", "apps": "any"}
+    assert settings.public()["security"] == {"local_exec": True, "demo": False, "exec": "host", "apps": "any"}
 
 
 # ---------- 策略表 ----------
 @pytest.mark.parametrize("cfg, want", [
-    ({}, ("host", "any", "any")),
-    ({"local_exec": True}, ("host", "any", "any")),
-    ({"local_exec": False}, ("sandbox", "market", "market")),
-    ({"demo": True}, ("sandbox", "off", "market")),
-    ({"demo": True, "local_exec": True}, ("sandbox", "off", "market")),      # 演示服务器不看 local_exec
-    ({"local_exec": False, "apps": "any"}, ("sandbox", "market", "any")),    # 写了新键就以新键为准
-    ({"local_exec": True, "exec": "sandbox", "plugins": "market"}, ("sandbox", "market", "any")),
-    ({"exec": False, "plugins": False}, ("off", "off", "any")),              # YAML 里不带引号的 off 读出来是 false
-    ({"exec": "HOST", "plugins": " Market "}, ("host", "market", "any")),
-    ({"exec": "hots", "plugins": "all", "apps": "yes"}, ("off", "off", "market")),   # 写错的按最严的算
-    ({"demo": True, "exec": "host", "plugins": "any", "apps": "any"}, ("sandbox", "market", "market")),   # 演示服务器有上限
-    ({"demo": True, "exec": "off"}, ("off", "off", "market")),
+    ({}, ("host", "any")),
+    ({"local_exec": True}, ("host", "any")),
+    ({"local_exec": False}, ("sandbox", "market")),
+    ({"demo": True}, ("sandbox", "market")),
+    ({"demo": True, "local_exec": True}, ("sandbox", "market")),      # 演示服务器不看 local_exec
+    ({"local_exec": False, "apps": "any"}, ("sandbox", "any")),       # 写了新键就以新键为准
+    ({"local_exec": True, "exec": "sandbox"}, ("sandbox", "any")),
+    ({"exec": False}, ("off", "any")),                                # YAML 里不带引号的 off 读出来是 false
+    ({"exec": "HOST", "apps": " Market "}, ("host", "market")),
+    ({"exec": "hots", "apps": "yes"}, ("off", "market")),             # 写错的按最严的算
+    ({"demo": True, "exec": "host", "apps": "any"}, ("sandbox", "market")),   # 演示服务器有上限
+    ({"demo": True, "exec": "off"}, ("off", "market")),
+    ({"local_exec": False, "plugins": "any"}, ("sandbox", "market")),  # 去掉的开发者插件留下的旧键：不管它
 ])
 def test_policy_mapping(monkeypatch, cfg, want):
     monkeypatch.setitem(CFG, "security", cfg)
-    assert (security.exec_mode(), security.plugins_mode(), security.apps_mode()) == want
+    assert (security.exec_mode(), security.apps_mode()) == want
     assert security.local_exec() == (want[0] == "host")
     assert security.public() == {"local_exec": want[0] == "host", "demo": bool(cfg.get("demo")),
-                                 "exec": want[0], "plugins": want[1], "apps": want[2]}
+                                 "exec": want[0], "apps": want[1]}
 
 
 def test_policy_reads_yaml_off(monkeypatch):
     import yaml
     monkeypatch.setitem(CFG, "security", yaml.safe_load("exec: off\nplugins: market\napps: any"))
-    assert security.policy() == {"exec": "off", "plugins": "market", "apps": "any"}
+    assert security.policy() == {"exec": "off", "apps": "any"}   # 旧的 plugins 键不认
 
 
 def test_apps_policy_alone_decides_apps(monkeypatch, cleanup):

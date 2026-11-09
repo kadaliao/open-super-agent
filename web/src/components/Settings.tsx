@@ -9,7 +9,6 @@ import Backup from './Backup'
 import BotAvatar from './BotAvatar'
 import { describe, STATUS, when } from './Routines'
 import Channels from './Channels'
-import Plugins from './Plugins'
 import ModelSettings, { ROLE_NAMES } from './ModelSettings'
 import { priceSource, priceText, ToastHost, useToast } from './settingsKit'
 import { ask } from './Dialog'
@@ -22,8 +21,6 @@ const GROUPS: { name: string; items: [string, string, string][] }[] = [
   { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell'], ['mobile', t('手机 App'), 'smartphone']] },
   { name: t('自动化'), items: [['triggers', t('定时任务'), 'clock'], ['events', t('事件'), 'zap']] },
   { name: t('数据'), items: [['backup', t('备份与迁移'), 'archive']] },
-  // 插件是给开发者扩展 osa 自己的（预览），平常加能力用应用和技能，所以放在最后的“高级”里
-  { name: t('高级'), items: [['plugins', t('开发者插件（预览）'), 'puzzle']] },
 ]
 const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k, v])))
 const DESC: Record<string, string> = {
@@ -32,7 +29,6 @@ const DESC: Record<string, string> = {
   limits: t('防止任务跑太久、花太多。改完离开输入框就保存。'),
   triggers: t('所有 Bot 的定时任务，在这里就能开关。'),
   events: t('所有 Bot 的事件：某件事发生时（收到 webhook、订阅源有新文章、网页变了……）Bot 处理一次。在这里就能开关。'),
-  plugins: t('给开发者扩展 osa 自己用的 Python 代码，在服务进程里运行：订阅事件、碰 osa 内部的状态。还在预览，写法以后可能会变。'),
 }
 const LIMIT_NAMES: Record<string, [string, string]> = {
   daily_token_budget: [t('每天最多用多少 token'), t('超过以后不再派新的任务，第二天恢复')],
@@ -87,7 +83,6 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
               {title === 'notify' && (desktop?.push ? <PhoneNotifications /> : <Notifications />)}
               {title === 'mobile' && <MobileApp />}
               {title === 'backup' && <Backup />}
-              {title === 'plugins' && <Plugins />}
             </div>
           </div>
         </ToastHost>
@@ -156,7 +151,7 @@ function Usage() {
       <h4>{t('近 30 天每日')}</h4>
       <div className="bars">{u.by_day.map((d: any) => <div key={d.day} title={`${d.day}  ${f(d.cost)}`} style={{ height: `${Math.max(2, (d.cost / max) * 100)}%` }} />)}</div>
       <div className="two-col">
-        <div><h4>{t('按用途')}</h4>{u.by_role.map((r: any) => <div className="kv" key={r.role + r.model}><span>{ROLE_NAMES[r.role] || (r.role.startsWith('plugin:') ? t('插件 {name}', { name: r.role.slice(7) }) : r.role)} · {r.model}{r.role === 'image' ? ' · ' + t('{n} 张', { n: r.calls }) : ''}</span><span>{f(r.cost)}</span></div>)}</div>
+        <div><h4>{t('按用途')}</h4>{u.by_role.map((r: any) => <div className="kv" key={r.role + r.model}><span>{ROLE_NAMES[r.role] || r.role} · {r.model}{r.role === 'image' ? ' · ' + t('{n} 张', { n: r.calls }) : ''}</span><span>{f(r.cost)}</span></div>)}</div>
         <div><h4>{t('按任务（最近 20 个）')}</h4>{u.by_task.map((tk: any) => <div className="kv" key={tk.id}><span>#{tk.id} {tk.goal}</span><span>{f(tk.cost)}</span></div>)}</div>
       </div>
       <Prices />

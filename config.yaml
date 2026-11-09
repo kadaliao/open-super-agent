@@ -32,18 +32,17 @@ server:
 # 网页上能做到什么程度。只能在这里改，网页上改不了（详见 SECURITY.md）
 security:
   # 网页上能不能让这台机器执行任意命令：电脑选“本机”和本机终端、自定义启动命令的应用（以及改应用的命令、参数、环境变量）、
-  # “文件夹”应用访问工作文件夹以外的目录、应用配置引用服务的环境变量（env:名字）、插件。
+  # “文件夹”应用访问工作文件夹以外的目录、应用配置引用服务的环境变量（env:名字）。
   # 自己电脑上、桌面 App 里保持 true；放到公网服务器上建议改成 false（服务器锁）：登录密码万一泄露，别人也拿不到这台服务器。
-  # 改成 false 后，应用市场里的应用、插件市场里原样的插件照常能用，下面 mcp_servers 里写的应用也不受影响
+  # 改成 false 后，应用市场里的应用照常能用，下面 mcp_servers 里写的应用也不受影响
   local_exec: true
   # 演示服务器（登录密码公开给别人试用）：除了上面那些，还不能用在服务器上运行程序的应用（npx / uvx）和自定义应用、
-  # 不能用本机或内网的模型服务地址、不能改用量上限、不能导出或恢复备份、不能用插件
+  # 不能用本机或内网的模型服务地址、不能改用量上限、不能导出或恢复备份
   demo: false
-  # 想分开管就写下面三个，写了以写的为准；不写按上面两个推：local_exec: true → host / any / any，
-  # local_exec: false → sandbox / market / market，demo: true → sandbox / off / market（演示服务器上最宽到 sandbox / market / market）。
+  # 想分开管就写下面两个，写了以写的为准；不写按上面两个推：local_exec: true → host / any，
+  # local_exec: false → sandbox / market，demo: true → sandbox / market（演示服务器上最宽到 sandbox / market）。
   # 写错的值按最严的算。
   # exec: host      # 命令在哪跑：host 能在这台机器上直接跑（电脑选“本机”、本机终端）；sandbox 只在沙箱里；off 都不行
-  # plugins: any    # 插件：any 都行；market 只认和插件市场里随版本发布的文件一模一样的（能装，改过的、自己写的不行）；off 整个关掉
   # apps: any       # 本地进程的应用：any 都行；market 只认应用市场里原样的命令，填的值只能进模板留的位置
 
 limits:

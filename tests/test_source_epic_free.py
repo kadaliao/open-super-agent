@@ -86,11 +86,11 @@ async def test_epic_free(web):
 
 
 def test_builtin_source():
-    """内置的来源（以前在插件市场里）：不用装，网页的“新建事件”里就有；常见用法的参数都过得了检查。"""
+    """内置的来源：网页的“新建事件”里就有；常见用法的参数都过得了检查。"""
     src = registry.SOURCES["epic_free"]
     assert src is epic_free.EPIC_FREE and src.owner == "builtin" and src.mode == registry.POLL and src.sample and src.icon
     assert src.category in engine.CATEGORIES
     got = next(s for s in engine.catalog() if s["id"] == "epic_free")
-    assert got["plugin"] == "" and got["scenarios"]
+    assert got["scenarios"]
     for sc in src.scenarios:
         engine.clean_params(src, sc.get("params") or {})

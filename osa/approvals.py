@@ -190,10 +190,7 @@ def decide(tool: str, backend: str | None = None, args: dict | None = None) -> t
         return backend in HOSTS and tool in PC_ASK, "默认策略"
     if tool in ASK:
         return True, "默认策略"
-    from . import mcp_hub, registry
-    t = registry.get(tool)
-    if t and t.gated and t.owner.startswith("plugin:"):
-        return True, "默认策略"   # 插件标了 gated 的工具（发邮件这类）默认每次都问，点“总是允许”后不再问
+    from . import mcp_hub
     return (tool in mcp_hub.CONFIRM), "默认策略"
 
 

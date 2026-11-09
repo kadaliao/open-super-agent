@@ -19,7 +19,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, events, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
-from . import mcpapps, observe, outputs, plugins, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
+from . import mcpapps, observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
 from .computer import link
 from .computer.base import HOSTS
 from . import builtin, registry  # noqa: F401  builtin：导入即注册内置工具
@@ -62,7 +62,6 @@ tasklog.notify = broadcast
 _events = registry.Context("server")
 _events.on("pages_changed", lambda: broadcast({"type": "pages_changed"}))
 _events.on("page_data", lambda page_id, data: broadcast({"type": "page_data", "page_id": page_id, "data": data}))
-_events.on("plugins_changed", lambda: broadcast({"type": "plugins_changed"}))
 
 
 async def parent_watch(pid: int, every: float = 2):
@@ -90,7 +89,6 @@ async def lifespan(app):
     settings.apply()
     routines.import_legacy(bots.primary()["id"])
     await mcp_hub.start()
-    await plugins.start()   # 启用了的插件（服务器锁下不加载）
     await channels.start()
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
           asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop()),
@@ -102,7 +100,6 @@ async def lifespan(app):
     for t in bg:
         t.cancel()
     await channels.stop()
-    await plugins.stop()
     await mcp_hub.stop()
     await computer.shutdown()
     if backup.RESTART:   # 网页上确认了恢复：用同样的命令行重新启动，启动时换上备份
@@ -941,60 +938,6 @@ async def mcp_app_say(app_name: str, data: dict = Body(...)):
     return {"ok": True}
 
 
-# ---------- 插件（osa/plugins.py）：只有用户在设置里能启用，Bot 没有对应的工具 ----------
-def _plugin_errors(e: Exception):
-    if isinstance(e, PermissionError):
-        raise HTTPException(403, str(e))
-    if isinstance(e, LookupError):
-        raise HTTPException(404, str(e))
-    if isinstance(e, (ValueError, TypeError)):
-        raise HTTPException(400, str(e))
-    raise HTTPException(500, str(e))
-
-
-@app.get("/api/plugins")
-async def list_plugins():
-    return plugins.listing()
-
-
-@app.get("/api/plugins/{name}/source")
-async def plugin_source(name: str, catalog: bool = False):
-    try:
-        return {"source": plugins.read_source(name, catalog)}
-    except Exception as e:
-        _plugin_errors(e)
-
-
-@app.post("/api/plugins/{name}/{action}")
-async def plugin_action(name: str, action: str):
-    fn = {"enable": plugins.enable, "disable": plugins.disable, "reload": plugins.reload, "install": plugins.install}.get(action)
-    if not fn:
-        raise HTTPException(404, i18n.t("没有这个操作"))
-    try:
-        await fn(name)
-    except Exception as e:
-        _plugin_errors(e)
-    return plugins.info(name) if action != "install" else {"ok": True}
-
-
-@app.put("/api/plugins/{name}/config")
-async def plugin_config(name: str, data: dict = Body(...)):
-    try:
-        await plugins.set_config(name, data.get("config"))
-    except Exception as e:
-        _plugin_errors(e)
-    return plugins.info(name)
-
-
-@app.delete("/api/plugins/{name}")
-async def delete_plugin(name: str):
-    try:
-        await plugins.remove(name)
-    except Exception as e:
-        _plugin_errors(e)
-    return {"ok": True}
-
-
 @app.get("/api/bots/{bot_id}/outputs")
 async def bot_outputs(bot_id: int, request: Request):
     """右栏“资料库”：这个 Bot 交出来的页面、文件、图片、链接，新的在前（见 outputs.py）。"""
@@ -1182,7 +1125,7 @@ async def all_routines():
 
 @app.get("/api/event-sources")
 async def event_sources():
-    """“新建事件”里能选的来源（内置的和插件提供的）、它们的参数和常见用法。"""
+    """“新建事件”里能选的来源、它们的参数和常见用法。"""
     return events.catalog()
 
 
@@ -1976,7 +1919,6 @@ async def safe_handle(chat: dict, text: str, via: str = "", attachments: list | 
     正文后面照旧接上“[附件] 路径”，附件本身记在消息的 meta.attachments 里。"""
     atts = attachments or []
     text = media.with_marks(text, atts)
-    registry.fire("user_message", chat=chat, text=text, via=via)   # 插件能订阅；不等它们
     try:
         if chat["kind"] == "group":
             await groups.on_user(chat, text, via, atts)

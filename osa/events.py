@@ -3,7 +3,7 @@
 和定时任务的区别只在“什么时候跑”：定时任务按时间，事件按外面发生的事。所以两者存在同一张表（routines），
 运行、运行记录、“无新内容不打扰”都共用 routines.py；这里管事件特有的部分：
 - trigger 写成 {"kind": "event", "source": 来源, "params": {...}, "every": 分钟, "include", "exclude", "llm_filter", "key"}。
-- 来源是 registry.Source：内置的在 osa/sources/，插件也能用 ctx.source 加。三种：
+- 来源是 registry.Source，都在 osa/sources/。三种：
   push（POST /hooks/<key>，key 是每个事件自己的随机密钥，地址本身就是凭据）、poll（osa 隔一段时间去看）、
   internal（osa 自己的事件，比如后台任务失败了）。
 - 来的事件先逐条过关键词（include / exclude），剩下的合成一次运行，再过 LLM 过滤（llm_filter），最后派给 Bot。
@@ -86,10 +86,9 @@ def catalog() -> list[dict]:
         out.append({"id": src.id, "title": i18n.t(src.title), "description": i18n.t(src.description), "mode": src.mode,
                     "category": i18n.t(src.category), "icon": src.icon, "fields": [_field_public(f) for f in src.fields],
                     "every": src.every, "min_every": src.min_every, "setup": i18n.t(src.setup) if src.setup else "",
-                    "plugin": src.owner.removeprefix("plugin:") if src.owner.startswith("plugin:") else "",
                     "unavailable": unavailable(src), "scenarios": [_scenario_public(src, sc) for sc in src.scenarios]})
     order = {c: i for i, c in enumerate(CATEGORIES)}
-    out.sort(key=lambda s: (order.get(next((c for c in CATEGORIES if i18n.t(c) == s["category"]), ""), 99), bool(s["plugin"])))
+    out.sort(key=lambda s: order.get(next((c for c in CATEGORIES if i18n.t(c) == s["category"]), ""), 99))
     return out
 
 
@@ -252,7 +251,7 @@ def forget(r: dict):
 def describe(t: dict, lang: str | None = None) -> str:
     src = get_source(t.get("source", ""))
     if not src:
-        return i18n.t("事件来源 {source} 现在没有（插件停用了？）", lang, source=t.get("source", ""))
+        return i18n.t("事件来源 {source} 现在没有了", lang, source=t.get("source", ""))
     title = i18n.t(src.title, lang)
     what = ""
     if src.summary:
@@ -412,7 +411,7 @@ async def on_push(r: dict, headers: dict, body: bytes, query: dict) -> dict:
         return {"accepted": False, "reason": i18n.t("这个事件暂停了")}
     src = get_source(r["trigger"].get("source", ""))
     if not src or src.mode != PUSH:
-        return {"accepted": False, "reason": i18n.t("事件来源 {source} 现在没有（插件停用了？）", source=r["trigger"].get("source", ""))}
+        return {"accepted": False, "reason": i18n.t("事件来源 {source} 现在没有了", source=r["trigger"].get("source", ""))}
     req = {"headers": {k.lower(): v for k, v in headers.items()}, "body": body, "json": data, "query": dict(query)}
     try:
         out = src.parse(req, resolve(src, r["trigger"].get("params") or {}) | {"_key": r["trigger"].get("key", "")})
@@ -509,7 +508,7 @@ async def test(r: dict) -> dict:
     """点“测试”：poll 的先真看一次；没有新的就拿最近看到的一条（或来源自带的示例）跑一遍，结果照常发出来。"""
     src = get_source(r["trigger"].get("source", ""))
     if not src:
-        return {"accepted": False, "reason": i18n.t("事件来源 {source} 现在没有（插件停用了？）", source=r["trigger"].get("source", ""))}
+        return {"accepted": False, "reason": i18n.t("事件来源 {source} 现在没有了", source=r["trigger"].get("source", ""))}
     if src.mode == POLL:
         out = await poll(r, now=True)
         if out.get("accepted"):

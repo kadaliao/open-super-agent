@@ -60,7 +60,7 @@ export function dur(s: number | null | undefined): string {
 }
 const secs = (ms: number | null | undefined) => ms == null ? '—' : t('{n} 秒', { n: +(ms / 1000).toFixed(ms < 10000 ? 1 : 0) })
 const toolName = (n: string) => n.includes('__') ? `@${n.split('__')[0]} · ${n.split('__').slice(1).join('__')}` : n
-const roleName = (r: string) => ROLE_NAMES[r] || (r.startsWith('plugin:') ? t('插件 {name}', { name: r.slice(7) }) : r)
+const roleName = (r: string) => ROLE_NAMES[r] || r
 const bucketLabel = (ts: number, size: number, long = false) => {
   const d = new Date(ts * 1000)
   if (size === 3600) return long ? d.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : `${d.getHours()}:00`

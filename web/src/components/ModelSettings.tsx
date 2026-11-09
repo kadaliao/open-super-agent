@@ -19,7 +19,7 @@ export const ROLES: RoleDef[] = [
   { key: 'reviewer', name: t('Heavy 汇总'), desc: t('Heavy 模式里，把几个并行任务的结果汇总成一份。') },
   { key: 'filter', name: t('整理和过滤'), desc: t('判断定时任务收到的事件要不要处理、把导入的记忆拆成条目。便宜的就行。') },
 ]
-export const ROLE_NAMES: Record<string, string> = { ...Object.fromEntries(ROLES.map(r => [r.key, r.name])), embedding: t('按意思检索'), test: t('测试模型'), image: t('画图'), plugin: t('插件') }
+export const ROLE_NAMES: Record<string, string> = { ...Object.fromEntries(ROLES.map(r => [r.key, r.name])), embedding: t('按意思检索'), test: t('测试模型'), image: t('画图') }
 
 // ---------- 各个服务的模型列表：打开页面时拉一次，服务端缓存 10 分钟 ----------
 type Lists = Record<string, ModelList | undefined>
