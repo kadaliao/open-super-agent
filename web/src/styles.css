@@ -553,6 +553,10 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .skill-share { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
 .skill-desc { font-size: 15px; color: var(--fg2); }
 .skill-howto { border: 1px solid var(--line); border-radius: 12px; padding: 4px 14px 12px; margin: 14px 0 20px; }
+.skill-market-item { padding-top: 6px; border-top: 1px solid var(--line); }
+.skill-market-item .ghost-btn { color: var(--fg); font-size: 13.5px; padding-left: 0; }
+.skills-head { align-items: flex-start; gap: 8px; }
+.skills-head h4 { flex-shrink: 0; padding-top: 6px; }
 
 /* 设置 → 备份与迁移 */
 .bk-box { border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px 12px; margin: 14px 0; }

@@ -57,6 +57,9 @@ The README lists the highlights; this is the full list. For setup see [Configura
   - Ask a Bot to save what it just did as a skill, or edit skills in the side panel.
   - **Teach a task**: do it once yourself on the computer, and the Bot turns the recording into a draft skill for you to review.
   - Export a skill as a file or share it by link, and others install it by pasting the link; `SKILL.md` files from Claude and similar tools import as is.
+  - No need to remember names: when a request is what one of its skills is for, the Bot fetches the steps itself and follows them.
+  - Skills can carry scripts and reference files (`scripts/`, `references/`), imported and exported as a zip or a GitHub folder link; scripts run in the computer's workspace folder.
+  - **Skill market**: weekly report, save a web page to the library as Markdown, and meeting notes, installed in one click. See [Skills](skills.md) (Chinese).
 - **Bot templates**: start a new Bot from a ready-made template (news digest, inbox helper, GitHub watcher, trip planner) with skills and routines already set up.
   Turn a Bot you've tuned into a template and share it; [write one](templates.md) (Chinese) and open a PR to make it built in.
 

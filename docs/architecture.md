@@ -70,12 +70,13 @@ osa/
   catalog/         应用市场的目录：读取和检查清单，按模板生成连接配置（python -m osa.catalog 检查所有清单）
     apps/          每个应用一份清单（<名字>.yaml），格式见 docs/apps.md；本机还会读 data/apps/
     checks.py      添加应用前的检查（邮箱先试登录一次）
+    skills/        技能市场：每个技能一个文件夹（<名字>/SKILL.md，英文界面装 SKILL.en.md），格式见 docs/skills.md
   registry.py      工具注册表和插件上下文：Tool（schema、run、在哪些场合能用、要不要确认）、Context（注册返回 disposer，dispose 反向撤销）、事件 on / emit
   plugins.py       插件：data/plugins 里的 Python 代码，ast 读说明不执行、启用记 sha256、加载 / 卸载 / 重新加载、插件市场（osa/catalog/plugins）
-  builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、search_memory
+  builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、search_memory、use_skill
   tools.py         内置的网页工具：web_search、fetch_url 的实现
   unfurl.py        链接卡片：服务器取网页的标题、摘要、配图（og:*），不抓内网，缓存在 unfurls 表；YouTube 走 oEmbed
-  skills.py        技能：增删改、/名字 解析、展开成给模型的说明；导出成文件、分享链接、从文件或链接导入
+  skills.py        技能：增删改、/名字 解析、展开成给模型的说明、use_skill；带文件的技能包；导出成 .md / zip、分享链接、从文件、zip 或链接（含 GitHub 文件夹）导入；技能市场（catalog/skills）
   templates.py     Bot 模板：检查、内置模板（templates/*.yaml）、从 Bot 导出、分享、安装
   search.py        按意思检索记忆和页面：中文两字一组的 FTS5、可选的 embedding、排名融合、search_memory 工具
   routines.py      定时任务和事件的共用部分：触发方式、调度、运行记录、Bot 管它们的工具、旧 triggers 导入
@@ -286,13 +287,28 @@ web/src/
 - 对话里的 `/library/pages/<id>` 链接展开成卡片（`Markdown.tsx` 的 `isPage`）：单独一行的原地换掉，写在句子里的放在那一段后面；小应用高度由页面里的 SDK 上报（`resize` 事件）。
 
 ### 技能文件与分享
-- 一个技能一个 Markdown 文件：开头的 YAML 写 `name`、`description`，导出时加上 `apps`（做法里 `@` 到的应用），后面是做法。
-  和 Claude 等用的 `SKILL.md` 一样，导入别处的技能时不认识的键直接忽略；名字里的空格、点换成 `-`。
+- 一个技能一个 `SKILL.md`：开头的 YAML 写 `name`、`description`、`apps`，后面是做法。和 Claude 等用的 `SKILL.md` 一样，
+  导入别处的技能时不认识的键直接忽略；名字里的空格、点换成 `-`。写法见 [技能](skills.md)。
+- `apps` 以 frontmatter 的声明为准，存在 `skills.apps`（JSON 列表，NULL 是没声明）；没声明时 `apps_of` 才回退到正则找做法里的 `@名字`。
+- 技能包：`skills.files` 是 JSON（相对路径 → 文字），对应包里的 `scripts/`、`references/`。只收 UTF-8 文字，最多 50 个、合计 20 万字；
+  路径不能是绝对路径、不能有 `..`、不能以 `.` 开头（`clean_path`）。`save()` 不传 `files` / `apps` 时保持原样，
+  所以对话里的 `save_skill`、botadmin 改做法不会把文件弄丢。导出时带文件的是 zip（`SKILL.md` 在根上），不带的照旧是 `.md`。
+  zip 导入认外面包一层文件夹的，跳过 `__MACOSX`、隐藏文件和二进制文件（列进 `skipped` 给用户看）；解开前按 `file_size` 拦压缩炸弹。
+- `use_skill`（ROUTER + WORKER，不用确认）：不给 `file` 返回做法（`expand(by_user=False)`），带文件的附上清单和每个文件开头 400 字；
+  给 `file` 返回那个文件的全文。超过 7000 字的分段给（`offset`），因为 Worker 的工具结果截到 8000 字。
+  系统提示词里技能列表只有名字和描述（`summary`），不变的部分写了“要按某个技能做时先 use_skill 取做法”，缓存前缀不受影响。
+  用户 `/名字` 调用时做法照旧附在消息后面（`expand`），带文件的只列文件名，让 Bot 要用时再取。
 - 分享和页面一样：生成不可猜的 `share_token`，公开页是 `/skill/<token>`（前端只渲染这一页），原文件是 `/api/shared/skills/<token>/raw`。
   这两个前缀不用登录；取消分享就把 token 清掉。
 - 导入（`POST /api/bots/<id>/skills/parse`）只解析不保存，结果交给技能编辑器给用户审核：技能就是 Bot 照着做的指令，
   来路不明的可能让 Bot 把资料发到别处。粘贴链接时由服务器去取：别人的 `/skill/<token>` 换成原文件地址，
-  GitHub 的文件、文件夹链接换成 raw.githubusercontent.com（文件夹取里面的 `SKILL.md`，名字用文件夹名）；网页、超过 200 KB 的都拒绝。
+  GitHub 的文件链接换成 raw.githubusercontent.com；文件夹（或文件夹里 `SKILL.md` 的链接）用 contents 接口列目录（往下 3 层），
+  逐个取 raw，名字用文件夹名。列目录失败（没登录时每小时 60 次）就只取 `SKILL.md`，草稿里带 `warning`。
+  网页、超过 200 KB 的 `.md`、超过 2 MB 的 zip 都拒绝；取回来的内容以 `PK` 开头就当 zip 解。
+  分享出去的技能带文件时，`/raw` 给的是 zip。上传 zip 时网页把文件 base64 后放进 `zip` 字段。
+- 技能市场：`osa/catalog/skills/<名字>/`，和导入走同一个 `_package`（英文界面有 `SKILL.en.md` 就用它）。
+  `GET /api/bots/<id>/skills/market` 列出来并标上这个 Bot 有没有同名的，`POST …/market/<名字>` 复制进 skills 表（`source=market`），
+  同名的直接替换（网页上先问）。
 - 做法最长 2 万字（别处的 SKILL.md 常有几千字），只在 `/名字` 调用时才放进提示词。
 
 ### 演示一遍

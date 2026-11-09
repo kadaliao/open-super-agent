@@ -27,7 +27,7 @@ apps: [exa, fetch]              # 要用的应用，写应用市场里的名字�
 skills:
   - name: 早报                  # 聊天里用 /早报 调用
     description: 搜集过去 24 小时的新闻，整理成一份早报页面
-    body: |                     # 做法，最多 2 万字
+    body: |                     # 做法，最多 2 万字；还可以写 files（技能带的文件）和 apps，见 docs/skills.md
       1. 用 @exa 搜……
       2. 用 save_page 存成页面
 routines:

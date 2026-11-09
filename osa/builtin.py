@@ -1,10 +1,10 @@
-"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、发文件、画图、定时任务和事件；给插件用的 llm、messenger；
+"""内置工具和服务的注册：网页、资料库、小应用数据、按意思检索、技能、发文件、画图、定时任务和事件；给插件用的 llm、messenger；
 内置的事件来源（osa/sources/）。
 
 每个工具只在这里写一次，Router 和 Worker 都从注册表（registry.py）找；在哪些场合给模型用、要不要走确认规则，都在 Tool 上写明。
 电脑工具、Router 自己的几个、botadmin 还没迁过来（见 registry.py 开头）。
 """
-from . import i18n, images, library, media, registry, routines, search, tools
+from . import i18n, images, library, media, registry, routines, search, skills, tools
 from .registry import APPLET, ROUTER, WORKER, Call, Tool
 
 ctx = registry.Context("builtin")
@@ -62,6 +62,10 @@ def load():
     ctx.tool(Tool("generate_image", images.GENERATE_IMAGE, _generate_image, where=frozenset({ROUTER})))
     ctx.tool(Tool("search_memory", search.SEARCH_TOOL, lambda c: search.tool(c.bot_id, c.args),
                   progress=lambda a: i18n.t("查记忆和资料库：{query}", query=str(a.get("query", ""))[:40])))
+    # 技能：Bot 自己取做法和带的文件（用户 /名字 调用时做法已经附在消息里了）。只读，不用确认
+    ctx.tool(Tool("use_skill", skills.USE_SKILL, lambda c: _sync(skills.tool_use(c.bot_id, c.scope, c.args)),
+                  describe="按技能名取技能的做法和它带的文件（脚本、参考资料）",
+                  progress=lambda a: i18n.t("看技能 /{name}", name=str(a.get("name", "")).lstrip("/")[:40])))
     # 定时任务和事件：只在对话里用（Worker 跑的就是它们，不让它自己改）。自己的随便管，主 Bot 管所有 Bot 的
     router = frozenset({ROUTER})
     ctx.tool(Tool("create_routine", routines.CREATE_ROUTINE, lambda c: routines.tool_create(c.bot, c.args), where=router))

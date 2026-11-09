@@ -425,7 +425,26 @@ async def create_skill(bot_id: int, data: dict = Body(...)):
     _bot_or_404(bot_id)
     try:
         s = skills.save(None if data.get("shared") else bot_id, data.get("name", ""), data.get("body", ""),
-                        data.get("description", ""), data["source"] if data.get("source") in ("teach", "import") else "manual")
+                        data.get("description", ""), data["source"] if data.get("source") in ("teach", "import") else "manual",
+                        files=data.get("files") or {}, apps=data.get("apps"))
+    except ValueError as e:
+        _err(e)
+    await broadcast({"type": "skills_changed"})
+    return s
+
+
+# 技能市场：osa/catalog/skills 里随项目发布的技能，装就是复制一份给这个 Bot
+@app.get("/api/bots/{bot_id}/skills/market")
+async def skill_market(bot_id: int):
+    _bot_or_404(bot_id)
+    return skills.market(bot_id)
+
+
+@app.post("/api/bots/{bot_id}/skills/market/{mid}")
+async def install_market_skill(bot_id: int, mid: str):
+    _bot_or_404(bot_id)
+    try:
+        s = skills.install(bot_id, mid)
     except ValueError as e:
         _err(e)
     await broadcast({"type": "skills_changed"})
@@ -490,9 +509,11 @@ async def update_skill(sid: int, data: dict = Body(...)):
     if not old:
         raise HTTPException(404, i18n.t("没有这个技能"))
     owner = old["bot_id"] if "shared" not in data else (None if data["shared"] else data.get("bot_id", old["bot_id"]))
-    try:
+    try:   # files、apps 没传就保持原样
         s = skills.save(owner, data.get("name", old["name"]), data.get("body", old["body"]),
-                        data.get("description", old["description"]), old["source"], sid=sid)
+                        data.get("description", old["description"]), old["source"], sid=sid,
+                        files=(data["files"] or {}) if "files" in data else None,
+                        **({"apps": data["apps"]} if "apps" in data else {}))
     except ValueError as e:
         _err(e)
     await broadcast({"type": "skills_changed"})
@@ -507,8 +528,9 @@ async def delete_skill(sid: int):
 
 
 def _skill_file(s: dict) -> Response:
-    return Response(skills.to_file(s), media_type="text/markdown; charset=utf-8",
-                    headers={"content-disposition": f"attachment; filename*=UTF-8''{quote(s['name'] + '.md')}"})
+    """导出的文件：不带文件的是 .md，带了的是 zip（SKILL.md 加上文件）。"""
+    data, name, kind = skills.export(s)
+    return Response(data, media_type=kind, headers={"content-disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
 
 
 @app.get("/api/skills/{sid}/export")
@@ -531,19 +553,33 @@ async def share_skill(sid: int, data: dict = Body(...)):
 
 @app.post("/api/bots/{bot_id}/skills/parse")
 async def parse_skill(bot_id: int, data: dict = Body(...)):
-    """导入前先解析：粘贴的文件内容或者一个链接 → 技能草稿，交给编辑器给用户审核，不保存。"""
+    """导入前先解析：一个链接、粘贴的文件内容（text）或者上传的 zip（zip：base64）→ 技能草稿，交给编辑器给用户审核，不保存。
+    apps 是给界面看的（连没连），declared_apps 是 frontmatter 里写的（没写是 null），保存时原样传回来。"""
     _bot_or_404(bot_id)
     try:
         if (data.get("url") or "").strip():
             d = await skills.fetch(data["url"])
+        elif data.get("zip"):
+            try:
+                raw = base64.b64decode(data["zip"], validate=True)
+            except ValueError:
+                raise ValueError(i18n.t("不是能打开的 zip 文件（{e}）", e="base64"))
+            d = skills.from_zip(raw, data.get("filename") or "")
         else:
-            d = skills.from_file(data.get("text") or "", data.get("filename") or "")
+            d = skills.from_file(data.get("text") or "", data.get("filename") or "") | {"skipped": []}
     except ValueError as e:
         _err(e)
-    apps = mcp_hub.all_apps()
-    d["apps"] = [{"name": a, "title": catalog.title(a), "connected": a in apps} for a in skills.apps_in(d["body"])]
+    d["declared_apps"] = d.pop("apps")
+    d["apps"] = _app_status(skills.apps_of(d | {"apps": d["declared_apps"]}))
     d["exists"] = bool(skills.find(bot_id, d["name"]))
     return d
+
+
+def _app_status(names: list[str]) -> list[dict]:
+    """技能要用的应用连没连上；应用市场里没有、本机也没装的标出来（没处连）。"""
+    have, known = mcp_hub.all_apps(), catalog.items()
+    return [{"name": a, "title": catalog.title(a) if a in known or a in have else "@" + a,
+             "connected": a in have, "in_market": a in known} for a in names]
 
 
 @app.get("/api/shared/skills/{token}")
@@ -552,7 +588,7 @@ async def shared_skill(token: str):
     if not s:
         raise HTTPException(404, i18n.t("链接已失效"))
     b = bots.get(s["bot_id"]) if s["bot_id"] else None
-    return {k: s[k] for k in ("name", "description", "body", "updated")} | {"apps": skills.apps_in(s["body"])} | (
+    return {k: s[k] for k in ("name", "description", "body", "updated")} | {"apps": skills.apps_of(s), "files": list(s["files"])} | (
         {"bot": {"name": b["name"], "avatar": b["avatar"]}} if b else {})
 
 

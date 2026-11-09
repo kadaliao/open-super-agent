@@ -336,7 +336,7 @@ def goal_for(r: dict, event: str = "") -> str:
     parts = [f"这是事件「{r['name']}」（{describe(r['trigger'], 'zh')}）触发的一次运行。" if is_event(r) else
              f"这是定时任务「{r['name']}」（{describe(r['trigger'], 'zh')}）的一次运行。"]
     if r["skill"] and (s := skills.find(r["bot_id"], r["skill"])):
-        parts.append(f"按技能 /{s['name']} 的做法执行：\n{s['body']}")
+        parts.append(f"按技能 /{s['name']} 的做法执行：\n{s['body']}{skills.files_hint(s)}")
     if r["prompt"]:
         parts.append(f"要求：{r['prompt']}")
     if event:

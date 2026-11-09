@@ -27,7 +27,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 - **Connects to the apps you use**: 40 apps in the market, including Notion, Gmail, GitHub, Feishu, DingTalk and Tencent Docs, connected with a login or a token; any MCP server works too.
 - **Asks before acting**: sending mail, submitting forms and similar actions show a card first; secrets are encrypted in a vault and never enter the chat.
 - **Any model, with visible cost**: DeepSeek, Kimi, Zhipu, OpenAI, Ollama on your own machine, or any OpenAI-compatible endpoint. Spend is tracked per task and per day, with a daily budget.
-- **Show it once**: with Teach a task, do the job yourself on the computer and the Bot turns it into a skill you run again with `/name`; say "every day at 9, ..." to set up a routine.
+- **Show it once**: with Teach a task, do the job yourself on the computer and the Bot turns it into a [skill](docs/skills.md) you run again with `/name`. Skills can carry scripts and reference files, come ready-made from the skill market, or be imported from Claude's SKILL.md. Say "every day at 9, ..." to set up a routine.
 - **Works in mainland China**: talk to your Bots in Feishu, DingTalk or WeCom; the default setup needs no paid foreign service; the UI comes in Chinese and English.
 - **Your data stays yours**: it runs on your own machine, and all data, secrets included, exports as one encrypted file you can carry to another machine.
 
@@ -97,6 +97,7 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 - [Chat apps](docs/channels.md): connecting Telegram, Feishu/Lark, DingTalk, WeCom and Discord
 - [Adding an app to the market](docs/apps.md)
 - [Writing a Bot template](docs/templates.md)
+- [Skills](docs/skills.md): writing skills, packages with scripts and references, import, export and sharing, the skill market, compatibility with Claude's SKILL.md
 - [Plugins](docs/plugins.md) (Chinese)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
