@@ -3,8 +3,8 @@
 // 手机版：多了推送订阅、弹出页、切换服务器；点了推送通知，外壳发 osa-open-url 事件（detail 是站内地址，如 /?chat=12&thread=34）。
 export type PushSub = { endpoint: string; keys: { p256dh: string; auth: string } }
 // 服务器借用这台 Mac（macOS 桌面 App 连着服务器时，电脑选“本机”）：available 是能借（连着服务器），linked 借出去了没有，
-// id 是服务器那边的借用编号，running 是 Mac 上的小程序在不在跑
-export type LinkState = { available: boolean; linked: boolean; id: number | null; running: boolean }
+// id 是服务器那边的借用编号，running 是 Mac 上的小程序在不在跑，shell 是在这台 Mac 上允许了终端没有（旧版 App 没有）
+export type LinkState = { available: boolean; linked: boolean; id: number | null; running: boolean; shell?: boolean }
 
 export type Bridge = {
   notify(title: string, body: string, chatId?: number, active?: boolean): void   // active：是不是当前打开的对话，外壳看窗口在前台时就不弹
@@ -17,6 +17,7 @@ export type Bridge = {
     state(): Promise<LinkState>
     connect(token: string, id: number): Promise<boolean>
     disconnect(): Promise<void>
+    shell?(on: boolean): Promise<boolean>   // 允许服务器上的 Bot 在这台 Mac 上执行终端命令（打开前 Mac 上弹窗问你），返回改没改。旧版 App 没有
   }
   // 下面这些只有手机 App 有
   platform?: 'macos' | 'ios'

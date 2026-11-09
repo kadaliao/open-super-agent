@@ -5,10 +5,12 @@
 - 文件：读写、列目录、删除、往网页上传都只在工作文件夹里（服务器给的路径在 Mac 上再查一遍）；
 - 整个屏幕：借出时你在 Mac 上同意的就包括屏幕；能不能做看 App 有没有“辅助功能”和“屏幕录制”权限；
   屏幕上的动作在 Mac 上照样不碰 Open Super Agent 自己的窗口；
-- 不执行终端命令。
+- 终端：默认不能用。你在这台 Mac 的 App 里勾上“允许 Bot 用终端”（Mac 上弹窗同意）后，App 带着 OSA_LINK_SHELL=1 重起它，
+  才执行服务器发来的命令：在工作文件夹里、以你的身份运行，环境变量里的密钥不传过去。每条命令先在对话里问你（服务器上的 approvals.py）。
+  开关只在 Mac 上：服务器自己打不开。
 断了隔几秒重连；令牌作废了（4401）隔几分钟再试；App 退出时跟着退出（OSA_PARENT_PID），退出前关掉 Bot 的 Chrome。
 
-环境变量：OSA_LINK_URL（wss://服务器/api/computer/link）、OSA_LINK_TOKEN、OSA_DATA_DIR。
+环境变量：OSA_LINK_URL（wss://服务器/api/computer/link）、OSA_LINK_TOKEN、OSA_DATA_DIR、OSA_LINK_SHELL（1 = 允许终端）。
 """
 import asyncio
 import base64
@@ -30,6 +32,7 @@ from .host import HostComputer
 log = logging.getLogger("osa.agent")
 MAX_MSG = 64 << 20
 RETRY = {4401: 300, 4409: 60}   # 令牌作废了、已经借了另一台：隔久一点再试
+SHELL = False                   # 你在 Mac 上允许了终端（main 里按 OSA_LINK_SHELL 设）
 
 
 def computer_name() -> str:
@@ -63,6 +66,12 @@ async def handle(pc: HostComputer, op: str, a: dict):
         return await pc.stat_paths([str(p) for p in a["paths"]])
     if op == "rm":
         return await pc.rm(str(a["path"]))
+    if op == "exec":
+        if not SHELL:
+            raise ComputerError("这台 Mac 没有允许终端（在这台 Mac 的 App 里，电脑面板勾上“允许 Bot 用终端”）")
+        stdin = a.get("stdin")
+        r = await pc._run(str(a["cmd"]), max(1, min(600, int(a.get("secs") or 120))), None if stdin is None else str(stdin))
+        return {"exit_code": r.exit_code, "stdout": r.stdout, "stderr": r.stderr, "timed_out": r.timed_out}
     if op == "desk_info":
         return await pc._desk_info() if macdesk.supported() else {"supported": False}
     if op in ("desk", "capture", "front", "grant"):
@@ -98,7 +107,7 @@ async def reply(ws, pc: HostComputer, msg: dict):
 
 async def connect_loop(pc: HostComputer, url: str, token: str):
     hello = {"type": "hello", "name": computer_name(), "platform": sys.platform, "desktop": macdesk.supported(),
-             "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace}
+             "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace, "shell": SHELL}
     wait, tasks = 1, set()
     while True:
         code = None
@@ -123,9 +132,11 @@ async def connect_loop(pc: HostComputer, url: str, token: str):
 
 
 async def main():
+    global SHELL
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)   # 每次看 Chrome 开没开都记一行，太多
     url, token = os.environ.get("OSA_LINK_URL", ""), os.environ.pop("OSA_LINK_TOKEN", "")
+    SHELL = os.environ.pop("OSA_LINK_SHELL", "") == "1"
     if not url or not token:
         sys.exit("要 OSA_LINK_URL 和 OSA_LINK_TOKEN")
     cfg = CFG.get("computer") or {}

@@ -116,6 +116,11 @@ def _no_sandbox() -> str:
         if host.shell_on():
             return s + "可以改用 computer_shell 在终端里跑（每条命令要用户确认）。"
         return s + "用户在电脑面板打开“允许 Bot 用终端”后，可以用 computer_shell 跑（每条命令要用户确认）。"
+    if computer.backend_name() == "linked":
+        from .computer import link
+        if (lk := link.connected()) and lk.shell:
+            return s + "可以改用 computer_shell 在用户的 Mac 上跑（每条命令要用户确认）。"
+        return s + "用户在那台 Mac 的 App 里打开“允许 Bot 用终端”后，可以用 computer_shell 在 Mac 上跑（每条命令要用户确认）。"
     return s
 
 

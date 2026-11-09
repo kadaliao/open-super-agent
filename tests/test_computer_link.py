@@ -1,5 +1,5 @@
 """服务器借用你的 Mac（link.py、linked.py、agent.py）：借用令牌、服务器和 Mac 上的小程序之间一来一回、
-文件只在 Mac 的工作文件夹里、没有终端、Mac 上没允许就不能动屏幕、令牌不对连不上。
+文件只在 Mac 的工作文件夹里、Mac 上允许了才有终端、Mac 上没允许就不能动屏幕、令牌不对连不上。
 服务器和 Mac 的小程序在同一个进程里直接对接（不走网络），屏幕的系统接口换成假的。"""
 import asyncio
 import json
@@ -86,16 +86,48 @@ async def test_files_live_on_the_mac(mac):
     assert not (mac.mac.root / "notes" / "a.txt").exists()
 
 
-async def test_no_terminal_and_uploads_stay_in_workspace(mac):
-    with pytest.raises(ComputerError, match="终端"):
+async def test_no_terminal_by_default_and_uploads_stay_in_workspace(mac):
+    with pytest.raises(ComputerError, match="没有允许终端"):
         await mac.exec("ls")
     assert not mac.shell_enabled()
     assert "computer_shell" not in {s["function"]["name"] for s in ctools.schemas(mac)}
+    assert "exec" not in mac.pipe.sent                                    # 服务器这边就拦下了，没发到 Mac
     with pytest.raises(ComputerError, match="工作文件夹"):
         await mac._helper_run({"op": "upload", "files": ["/etc/hosts"]})
     await mac.write_bytes("a.pdf", b"%PDF")
     await mac._helper_run({"op": "upload", "files": ["a.pdf"]})
     assert mac.mac.helper_calls[-1]["files"] == [str(mac.mac.root / "a.pdf")]   # Mac 上换成真实路径
+
+
+async def test_terminal_when_the_mac_allows_it(mac, monkeypatch):
+    """Mac 上允许了终端（App 带 OSA_LINK_SHELL=1 起小程序，hello 里报 shell）：命令在 Mac 的工作文件夹里跑，密钥不传，
+    每条照样先问你。开关只认 Mac：服务器这边以为有，Mac 没允许，Mac 照样拒绝。"""
+    monkeypatch.setattr(link.current, "shell", True)
+    with pytest.raises(ComputerError, match="没有允许终端"):
+        await mac.exec("ls")                                              # 发到了 Mac，Mac 拒绝
+    assert mac.pipe.sent[-1] == "exec"
+
+    monkeypatch.setattr(agent, "SHELL", True)
+    monkeypatch.setenv("FOO_API_KEY", "k")
+    monkeypatch.setenv("PLAIN_VAR", "ok")
+    r = await mac.shell("pwd; echo hi > a.txt; env")
+    assert r.exit_code == 0 and r.stdout.splitlines()[0] == mac.mac.workspace
+    assert (mac.mac.root / "a.txt").read_text() == "hi\n"
+    assert "PLAIN_VAR=ok" in r.stdout and "FOO_API_KEY" not in r.stdout
+    assert (await mac.exec("cat", stdin="from stdin")).stdout == "from stdin"
+    r = await mac.shell("sleep 5", timeout=1)
+    assert r.timed_out and r.exit_code == 124
+
+    assert "computer_shell" in {s["function"]["name"] for s in ctools.schemas(mac)}
+    assert "每条命令都要用户确认" in ctools.system_hint(mac)
+    user = Recorder(True)
+    monkeypatch.setattr(approvals, "request", user)
+    task = SimpleNamespace(id=6, bot_id=1, chat_id=1, goal="g", background=False)
+    out, _ = await ctools.call(task, "computer_shell", {"cmd": "echo hi"}, _noop, key="6:")
+    assert "hi" in out and user.asked[-1][0] == "computer_shell"         # 每条命令先问
+    user.answer = False
+    out, _ = await ctools.call(task, "computer_shell", {"cmd": "touch b.txt"}, _noop, key="6:")
+    assert not (mac.mac.root / "b.txt").exists()                          # 你拒绝了就不执行
 
 
 async def test_screen_through_the_link(mac, monkeypatch):
@@ -147,6 +179,7 @@ def test_handshake(password, monkeypatch):
                 import time
                 time.sleep(0.02)
             assert link.connected() and link.connected().name == "我的 Mac mini"
+            assert not link.connected().shell                               # 没说允许终端就没有
             assert next(x for x in link.links() if x["id"] == lid)["connected"]
             with pytest.raises(WebSocketDisconnect) as e:
                 with client.websocket_connect("/api/computer/link", headers={"Authorization": f"Bearer {token2}"}) as ws2:

@@ -163,6 +163,26 @@ function HostShell({ on }: { on: boolean }) {
   )
 }
 
+/** 借来的 Mac 的终端：开关在那台 Mac 上（勾上时 Mac 弹窗问你，服务器自己打不开），每条命令照样要你确认。
+ *  别的设备上只显示开没开。改了 Mac 上的小程序会重起（Bot 的浏览器跟着关掉），所以有任务在用电脑时不让打开。 */
+function MacShell({ on, ls, inUse, reload }: { on: boolean; ls: LinkState | null; inUse: boolean; reload: () => void }) {
+  const [saving, setSaving] = useState(false)
+  const here = !!ls?.linked && !!desktop?.link?.shell   // 就在那台 Mac 的 App 里
+  const checked = here ? !!ls?.shell : on
+  const save = async (v: boolean) => {
+    setSaving(true)
+    try { await desktop!.link!.shell!(v) } catch (e: any) { notice(e.message) }
+    setSaving(false); reload()
+  }
+  return (
+    <label className="pc-shell muted small" title={here && inUse && !checked ? t('有任务在用电脑，用完再换') : undefined}>
+      <input type="checkbox" checked={checked} disabled={!here || saving || (inUse && !checked)} onChange={e => save(e.target.checked)} />
+      {t('允许 Bot 用终端（每条命令都要你确认）')}
+      {!here && <>{' · '}{t('在那台 Mac 的 App 里开关')}</>}
+    </label>
+  )
+}
+
 /** 本机（或借来的 Mac）还没给 macOS 权限时：Bot 只能用浏览器。给了“辅助功能”和“屏幕录制”，它就能看屏幕、用鼠标键盘操作别的 App。
  *  here：就在那台 Mac 上，可以点按钮弹系统的授权提示。 */
 function DeskPerms({ here }: { here: boolean }) {
@@ -400,6 +420,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
       )}
       {host && !offline && st.desktop?.supported && !(st.desktop.accessibility && st.desktop.screen) && <DeskPerms here={here} />}
       {st.backend === 'host' && <HostShell on={!!st.shell} />}
+      {st.backend === 'linked' && !offline && <MacShell on={!!st.shell} ls={ls} inUse={!!(st.users?.length || st.exclusive)} reload={reloadLink} />}
       {err && <div className="error-line">{err}</div>}
       {big && live && (
         <div className="modal-bg" ref={bigRef} onMouseDown={() => setBig(false)}>

@@ -129,11 +129,13 @@ pub fn launch(resources: Option<PathBuf>, port: u16, secret: &str) -> Result<Lau
 }
 
 /// 服务器借用这台 Mac 时在后台跑的小程序（osa/computer/agent.py）：连到 ws_url，替服务器上的 Bot 操作这台 Mac。
-/// 数据目录和“在这台电脑上运行”共用：Bot 的 Chrome 里登录过的网站、工作文件夹里的文件两边都能用
-pub fn agent_launch(resources: Option<PathBuf>, ws_url: &str, token: &str) -> Result<Launch, String> {
+/// 数据目录和“在这台电脑上运行”共用：Bot 的 Chrome 里登录过的网站、工作文件夹里的文件两边都能用。
+/// shell：你在这台 Mac 上允许了终端（OSA_LINK_SHELL=1），小程序才执行服务器发来的命令
+pub fn agent_launch(resources: Option<PathBuf>, ws_url: &str, token: &str, shell: bool) -> Result<Launch, String> {
     python_launch(resources, &["-m", "osa.computer.agent"], "agent.log", vec![
         ("OSA_LINK_URL".into(), ws_url.into()),
         ("OSA_LINK_TOKEN".into(), token.into()),
+        ("OSA_LINK_SHELL".into(), if shell { "1" } else { "0" }.into()),
     ])
 }
 

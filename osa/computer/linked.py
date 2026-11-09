@@ -2,8 +2,9 @@
 
 和本机电脑（host.py）一样：Bot 用 Mac 上单独开的 Chrome，文件只在 Mac 的工作文件夹里，打开“操作整台电脑”后还能用屏幕和鼠标键盘。
 排队、确认卡片、你一动鼠标就停这些都在服务器上照常做（继承 HostComputer），只是真正动手的那一步经连接交给 Mac：
-浏览器控制脚本、整个屏幕的动作、截图、读写文件。不同的地方：
-- 没有终端：服务器不能让 Mac 执行命令。
+浏览器控制脚本、整个屏幕的动作、截图、读写文件、终端命令。不同的地方：
+- 终端看那台 Mac：你在 Mac 的 App 里勾上“允许 Bot 用终端”（Mac 上弹窗同意）才有，服务器这边打不开它；
+  每条命令照样先问你（approvals.py 把借来的 Mac 和本机一样对待）。
 - 操作整个屏幕和本机一样看那台 Mac 的两个权限（借出时你在 Mac 上同意的就包括屏幕）。
 - 不看服务器的服务器锁（security.local_exec）：动手的是你的 Mac，不是服务器。
 """
@@ -85,15 +86,16 @@ class LinkedComputer(HostComputer):
     def upload_paths(self, paths: list[str]) -> list[str]:
         return paths   # Mac 收到上传时自己查在不在工作文件夹里（agent.py）
 
-    # ---------- 终端：没有 ----------
+    # ---------- 终端：那台 Mac 允许了才有 ----------
     def shell_enabled(self) -> bool:
-        return False
+        lk = link.connected()
+        return bool(lk and lk.shell)
 
     async def exec(self, cmd: str, timeout: int = 120, stdin: str | None = None) -> ExecResult:
-        raise ComputerError(i18n.t("借用的 Mac 不能用终端"))
-
-    async def shell(self, cmd: str, timeout: int = 120) -> ExecResult:
-        return await self.exec(cmd)
+        if not self.shell_enabled():
+            raise ComputerError(i18n.t("借用的 Mac 没有允许终端（在那台 Mac 的 App 里，电脑面板勾上“允许 Bot 用终端”）"))
+        r = await self._call("exec", cmd=cmd, secs=timeout, stdin=stdin, timeout=timeout + 15)
+        return ExecResult(int(r["exit_code"]), str(r["stdout"]), str(r["stderr"]), bool(r.get("timed_out")))
 
     # ---------- 整个屏幕：经连接让 Mac 做 ----------
     def desk_supported(self) -> bool:

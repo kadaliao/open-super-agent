@@ -530,6 +530,10 @@ class HostComputer(Computer):
     async def exec(self, cmd: str, timeout: int = 120, stdin: str | None = None) -> ExecResult:
         if not shell_on():
             raise ComputerError(i18n.t("本机电脑的终端没有打开（电脑面板里可以打开，打开后每条命令都要你确认）"))
+        return await self._run(cmd, timeout, stdin)
+
+    async def _run(self, cmd: str, timeout: int, stdin: str | None = None) -> ExecResult:
+        """在这台电脑上执行一条命令（工作目录是工作文件夹）。开没开终端由调用的一方查：本机看 shell_on()，借出的 Mac 看 agent.py。"""
         sh = shutil.which("bash") or "/bin/sh"
         p = await asyncio.create_subprocess_exec(
             sh, "-c", cmd, cwd=self.root, env=_env(), start_new_session=True,

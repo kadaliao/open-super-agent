@@ -566,7 +566,7 @@
   "重新连上了": "Reconnected",
   "你的 Mac 没有回应（超时）": "Your Mac didn't respond (timed out)",
   "你的 Mac 断开了": "Your Mac disconnected",
-  "借用的 Mac 不能用终端": "A lent Mac can't run terminal commands",
+  "借用的 Mac 没有允许终端（在那台 Mac 的 App 里，电脑面板勾上“允许 Bot 用终端”）": "The lent Mac hasn't allowed the terminal (on that Mac, tick “Allow bots to use the terminal” in the computer panel)",
   "演示服务器上不能借用你的电脑": "The demo server can't borrow your computer",
   "这台电脑不能让 Bot 操作整个屏幕（只有 Mac 可以）": "This computer can't let bots use the whole screen (only a Mac can)",
   "删了不能恢复。": "This can't be undone.",

@@ -51,7 +51,7 @@ export type ComputerUser = { key: string; label: string; task_id: number | null;
 export type ComputerState = {
   bot_id: number; backend: string; controller: 'bot' | 'human'; state: string; detail: string; width: number; height: number
   parallel?: number; users?: ComputerUser[]; waiting?: string[]; watch?: string | null; exclusive?: string
-  workspace?: string; shell?: boolean   // shell：本机电脑的终端开没开
+  workspace?: string; shell?: boolean   // shell：终端开没开（本机电脑看设置，借来的 Mac 看那台 Mac 上允许了没有）
   desktop?: DesktopState                // 本机电脑的“操作整台电脑”（只有 Mac）
   link?: { connected: boolean; name: string }   // 借给服务器的 Mac 连没连上（backend 是 linked 时用的就是它）
 }
