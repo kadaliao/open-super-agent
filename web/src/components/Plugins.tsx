@@ -4,8 +4,9 @@ import { t, tn } from '../i18n'
 import { ask } from './Dialog'
 import { Section, useToast } from './settingsKit'
 
-// 设置 → 插件：data/plugins 里的 Python 代码（osa/plugins.py）。启用要用户自己点，启用时记下文件指纹，
+// 设置 → 高级 → 开发者插件（预览）：data/plugins 里的 Python 代码（osa/plugins.py）。启用要用户自己点，启用时记下文件指纹，
 // 文件改过就不加载，要再看一遍、再启用。插件市场是随项目发布、审查过的插件（osa/catalog/plugins）。
+const DOC = <a href="https://github.com/kadaliao/open-super-agent/blob/main/docs/plugins.md" target="_blank" rel="noreferrer">docs/plugins.md</a>
 
 type Plugin = {
   name: string; title: string; description: string; version: string; author: string; kind: 'file' | 'folder'
@@ -46,6 +47,7 @@ export default function Plugins() {
   const updates = new Set(d.plugins.filter(p => p.update).map(p => p.name))
   return (
     <div>
+      <p>{tn('先想清楚是不是插件：接外部服务用应用（MCP），教 Bot 做事的方法写成技能，只有要碰 osa 自己的东西（订阅事件、看任务结果、往对话里写消息）才写插件，见 {doc}。', { doc: DOC })}</p>
       <p className="muted">{tn('插件是放在 {dir} 里的 Python 代码，和服务在同一个进程里运行，能做服务能做的一切（读写这台机器上的文件、访问网络）。只启用你看过、信得过的。启用时会记下文件的指纹，文件改过就不再加载，要你看过改动再启用一次。', { dir: <code>{d.dir}</code> })}</p>
       {d.locked && <div className="error-line">{d.locked}</div>}
       <Section title={t('已安装')}>

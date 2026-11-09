@@ -7,10 +7,10 @@
 import math
 import re
 from datetime import datetime
-from osa.registry import POLL, Source
-from osa.sources import _util
+from ..i18n import N_
+from ..registry import POLL, Source
+from . import _util
 
-META = {"title": "地震提醒", "version": "1.0", "author": "open-super-agent"}
 FEED = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/{}_day.geojson"
 GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 KEEP_MS = 3 * 86400 * 1000      # 记多久之内报过的（源只有最近一天的）
@@ -137,17 +137,17 @@ def summary(p: dict) -> str:
     return f"全球 {mag}"
 
 
-SOURCE = Source(
-    id="earthquake", mode=POLL, category="生活", icon="🌏",
-    title="地震提醒",
-    description="全球或你附近发生地震时触发：震级、地点、时间、深度、离你多远。数据来自 USGS。",
+EARTHQUAKE = Source(
+    id="earthquake", mode=POLL, category=N_("生活"), icon="🌏",
+    title=N_("地震提醒"),
+    description=N_("全球或你附近发生地震时触发：震级、地点、时间、深度、离你多远。数据来自 USGS。"),
     fields=[
-        {"key": "min_magnitude", "label": "最低震级", "type": "number", "default": 5, "min": 2.5, "max": 10,
-         "help": "低于这个震级的不报。4.5 级以下的只有部分地区（主要是美国）收得全"},
-        {"key": "near", "label": "在哪", "type": "text", "placeholder": "比如 成都，或者 30.66,104.07",
-         "help": "城市名或者“纬度,经度”，不填就是全球。中文名有时查不准（事件里会写按哪算的），换英文名或经纬度"},
-        {"key": "radius_km", "label": "范围（公里）", "type": "number", "default": 500, "min": 10, "max": 20000,
-         "help": "填了“在哪”才有用：离那里多远以内的才报"},
+        {"key": "min_magnitude", "label": N_("最低震级"), "type": "number", "default": 5, "min": 2.5, "max": 10,
+         "help": N_("低于这个震级的不报。4.5 级以下的只有部分地区（主要是美国）收得全")},
+        {"key": "near", "label": N_("在哪"), "type": "text", "placeholder": N_("比如 成都，或者 30.66,104.07"),
+         "help": N_("城市名或者“纬度,经度”，不填就是全球。中文名有时查不准（事件里会写按哪算的），换英文名或经纬度")},
+        {"key": "radius_km", "label": N_("范围（公里）"), "type": "number", "default": 500, "min": 10, "max": 20000,
+         "help": N_("填了“在哪”才有用：离那里多远以内的才报")},
     ],
     check=check, validate=validate, summary=summary, every=10, min_every=5,
     sample={"title": "M5.8 地震：43 km E of Onagawa Chō, Japan，离东京约 340 公里",
@@ -155,16 +155,14 @@ SOURCE = Source(
             "text": "震级：M5.8（mww）\n地点：43 km E of Onagawa Chō, Japan（38.38, 141.94）\n时间：2026年11月9日 14:23\n"
                     "深度：56 公里\n离你：约 340 公里（按“東京（日本 东京都）”算）\n数据来自 USGS，刚发生的震级、位置之后可能会修正。"},
     scenarios=[
-        {"title": "附近发生地震时提醒", "description": "你所在的城市附近有感地震，第一时间告诉你（把“在哪”改成你的城市）",
-         "name": "附近地震", "params": {"min_magnitude": 4, "near": "", "radius_km": 300},
-         "prompt": "附近发生了地震。用两三句话告诉我：几级、在哪、离我多远、大概会不会有感或者有影响；"
-                   "有海啸信息或影响评估是橙色、红色的放在最前面。地点是英文的翻成中文。"},
-        {"title": "全球 6 级以上地震", "description": "世界上任何地方发生 6 级以上的强震",
-         "name": "全球强震", "params": {"min_magnitude": 6},
-         "prompt": "发生了 6 级以上的强震。告诉我在哪个国家、哪个地区，几级、多深，可能的影响（人口多不多、有没有海啸风险）。"
-                   "地点是英文的翻成中文，两三句话就够。"},
+        {"title": N_("附近发生地震时提醒"), "description": N_("你所在的城市附近有感地震，第一时间告诉你（把“在哪”改成你的城市）"),
+         "name": N_("附近地震"), "params": {"min_magnitude": 4, "near": "", "radius_km": 300},
+         "prompt": N_("附近发生了地震。用两三句话告诉我：几级、在哪、离我多远、大概会不会有感或者有影响；"
+                      "有海啸信息或影响评估是橙色、红色的放在最前面。地点是英文的翻成中文。")},
+        {"title": N_("全球 6 级以上地震"), "description": N_("世界上任何地方发生 6 级以上的强震"),
+         "name": N_("全球强震"), "params": {"min_magnitude": 6},
+         "prompt": N_("发生了 6 级以上的强震。告诉我在哪个国家、哪个地区，几级、多深，可能的影响（人口多不多、有没有海啸风险）。"
+                      "地点是英文的翻成中文，两三句话就够。")},
     ])
 
-
-def apply(ctx):
-    ctx.source(SOURCE)
+SOURCES = [EARTHQUAKE]

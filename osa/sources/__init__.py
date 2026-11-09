@@ -11,7 +11,8 @@
 import importlib
 import pkgutil
 
-ORDER = ["webhook", "feeds", "web", "github_repo", "mail", "calendar", "weather", "market", "files", "system"]
+ORDER = ["webhook", "feeds", "web", "github_repo", "mail", "calendar", "weather", "earthquake", "epic_free", "market",
+         "files", "ip_change", "system"]
 
 
 def modules() -> list[str]:

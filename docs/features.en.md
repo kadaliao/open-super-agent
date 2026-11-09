@@ -77,7 +77,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - **Events** run when something happens instead of at a time. Sources: an incoming webhook, GitHub webhooks, a new post in a feed,
   a web page changing (or a word appearing / disappearing), a site going down, a GitHub repo getting a release or a new issue (no webhook needed),
   new email, a calendar event about to start, rain or a cold snap tomorrow, a stock / crypto / FX price crossing a line, new files in a folder,
-  a background task failing — and plugins can add more (free Epic games, earthquakes, public IP changes). Pick a ready-made use case and the form fills itself in.
+  a background task failing, earthquakes, free Epic games, a change of public IP — and plugins can add more. Pick a ready-made use case and the form fills itself in.
   See [Events](events.md) (Chinese).
 - Each event has its own webhook address, and the address is the secret, so GitHub, forms and monitoring tools can call it directly.
   Events go through keyword filters, then a cheap model decides whether to act; several at once are handled in one run, and ones that arrive mid-run are queued, not dropped.
