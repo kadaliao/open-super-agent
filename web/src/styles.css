@@ -6,11 +6,10 @@
   font-size: 15px; line-height: 1.6; color: var(--fg); background: var(--bg);
   -webkit-font-smoothing: antialiased; color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root { --bg: #fbfbfa; --bg2: #f2f2f0; --bg3: #e9e9e6; --line: #e2e2df; --fg: #18181a; --fg2: #57575c; --fg3: #8d8d92;
-    --acc: #18181a; --acc-fg: #fbfbfa; --link: #2f5fd0; --good: #1f9d63; color-scheme: light; }
-  .md pre, .code-wrap pre { background: #16161a !important; }
-}
+/* 明亮：<html data-theme="light">，由 theme.ts 按设置或系统设好 */
+:root[data-theme="light"] { --bg: #fbfbfa; --bg2: #f2f2f0; --bg3: #e9e9e6; --line: #e2e2df; --fg: #18181a; --fg2: #57575c; --fg3: #8d8d92;
+  --acc: #18181a; --acc-fg: #fbfbfa; --link: #2f5fd0; --good: #1f9d63; color-scheme: light; }
+[data-theme="light"] .md pre, [data-theme="light"] .code-wrap pre { background: #16161a !important; }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
 /* 像 App 一样：整页不会被拖着走、回弹露出背景，也不会双击放大（缩放在 index.html 的 viewport 里关掉）；对话、列表各自照常滚动 */
@@ -216,13 +215,6 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   border: 2px dashed var(--fg3); border-radius: 18px; background: color-mix(in srgb, var(--bg) 82%, transparent); color: var(--fg); font-size: 15px; }
 .pill { font-size: 12.5px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--line); }
 .pill.ok { color: var(--good); } .pill.bad { color: var(--bad); }
-.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.stat { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-.big { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
-.bars { display: flex; align-items: flex-end; gap: 3px; height: 80px; }
-.bars div { flex: 1; background: var(--fg2); border-radius: 3px 3px 0 0; min-width: 4px; max-width: 28px; } .bars div:hover { background: var(--fg); }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.two-col > * { min-width: 0; }
 .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .kv span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -279,7 +271,6 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .app.with-panel .panel { width: 100vw; }
   .thread { padding: 16px 14px 8px; } .composer-wrap { padding: 6px 10px calc(10px + env(safe-area-inset-bottom)); }
   .task-card, .approval-card { margin-left: 0; }
-  .stat-row, .two-col { grid-template-columns: 1fr; }
   .msg-actions { opacity: 1; }
 }
 
@@ -607,6 +598,10 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .set-item.on { background: var(--line); color: var(--fg); font-weight: 600; }
 .set-item .icon { color: var(--fg3); } .set-item.on .icon { color: var(--fg); }
 .set-nav form { margin-top: 10px; }
+.set-theme, .set-theme:hover { background: none; color: var(--fg2); cursor: default; }
+.set-theme .seg { flex: none; flex-wrap: nowrap; padding: 1px; align-self: center; }
+.set-theme .seg button { display: grid; place-items: center; padding: 3px 7px; }
+.set-theme .seg button .icon { color: inherit; }
 .set-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .set-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 22px 6px 32px; }
 .set-head h2 { margin: 0; font-size: 21px; letter-spacing: -.2px; }
@@ -1042,10 +1037,8 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
    深色、浅色各自一套，已按各自的底色核对过色盲下的区分度 */
 :root { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s-other: #6e6e74;
   --h1: #104281; --h2: #1c5cab; --h3: #3987e5; --h4: #86b6ef; }
-@media (prefers-color-scheme: light) {
-  :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s-other: #a3a3a8;
-    --h1: #b7d3f6; --h2: #6da7ec; --h3: #2a78d6; --h4: #184f95; }
-}
+:root[data-theme="light"] { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s-other: #a3a3a8;
+  --h1: #b7d3f6; --h2: #6da7ec; --h3: #2a78d6; --h4: #184f95; }
 .observe .chat-head { gap: 10px; justify-content: flex-start; }
 .ob-refresh { order: 3; }
 .ob-filters { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }

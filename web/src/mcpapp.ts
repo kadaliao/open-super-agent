@@ -1,6 +1,7 @@
 import { api } from './store'
 import { desktop, phone } from './desktop'
 import { locale } from './i18n'
+import { isDark, onThemeChange } from './theme'
 
 // 应用自带的界面（MCP Apps）的宿主：界面在 iframe 里，和我们之间是 postMessage 上的 JSON-RPC 2.0。
 // 协议见 MCP Apps 扩展（io.modelcontextprotocol/ui，2026-01-26）；服务端在 osa/mcpapps.py。
@@ -17,7 +18,6 @@ export type AppView = {
 }
 
 const PROTOCOL = '2026-01-26'
-const dark = () => matchMedia('(prefers-color-scheme: dark)').matches
 
 type Msg = { jsonrpc: '2.0'; id?: number | string; method?: string; params?: any; result?: any; error?: any }
 
@@ -29,7 +29,7 @@ export function attachMcpApp(frame: HTMLIFrameElement, view: AppView, botId: num
   const notify = (method: string, params: any = {}) => ready && send({ method, params })
   const context = () => ({
     toolInfo: { tool: { name: view.tool, inputSchema: { type: 'object' } } },
-    theme: dark() ? 'dark' : 'light',
+    theme: isDark() ? 'dark' : 'light',
     displayMode: 'inline', availableDisplayModes: ['inline'],
     containerDimensions: { width: frame.clientWidth || 600, maxHeight: 900 },
     locale, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -91,13 +91,11 @@ export function attachMcpApp(frame: HTMLIFrameElement, view: AppView, botId: num
       send({ id: d.id, error: { code: err?.code ?? -32000, message: err?.message || String(err) } })
     }
   }
-  const scheme = matchMedia('(prefers-color-scheme: dark)')
-  const onScheme = () => notify('ui/notifications/host-context-changed', { theme: dark() ? 'dark' : 'light' })
   window.addEventListener('message', onMessage)
-  scheme.addEventListener('change', onScheme)
+  const offTheme = onThemeChange(() => notify('ui/notifications/host-context-changed', { theme: isDark() ? 'dark' : 'light' }))
   return () => {
     if (ready) send({ id: `teardown-${++seq}`, method: 'ui/resource-teardown', params: {} })
     window.removeEventListener('message', onMessage)
-    scheme.removeEventListener('change', onScheme)
+    offTheme()
   }
 }

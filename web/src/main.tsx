@@ -4,6 +4,7 @@ import { SharedPage } from './components/Library'
 import { SharedSkill } from './components/Routines'
 import { SharedTemplate } from './components/Templates'
 import { handleExternalLinks } from './desktop'
+import { initTheme } from './theme'
 import './styles.css'
 import 'highlight.js/styles/github-dark.css'
 
@@ -12,6 +13,7 @@ const page = location.pathname.match(/^\/s\/([\w-]+)$/)
 const skill = location.pathname.match(/^\/skill\/([\w-]+)$/)
 const template = location.pathname.match(/^\/template\/([\w-]+)$/)
 const shared = page || skill || template
+initTheme()   // 明亮还是夜间：按设置或跟随系统
 createRoot(document.getElementById('root')!).render(
   page ? <SharedPage token={page[1]} /> : skill ? <SharedSkill token={skill[1]} />
     : template ? <SharedTemplate token={template[1]} /> : <App />)

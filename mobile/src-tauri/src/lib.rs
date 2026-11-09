@@ -31,6 +31,7 @@ const BRIDGE: &str = r#"(function () {
     notify: function () {},
     setBadge: function (count) { quiet('mobile_set_badge', { count: count | 0 }); },
     openExternal: function (url) { quiet('mobile_open_external', { url: String(url) }); },
+    setTheme: function (theme) { quiet('mobile_set_theme', { theme: theme === 'light' || theme === 'dark' ? theme : null }); },
     speech: false,
     push: {
       current: function (key) { return call('mobile_push_current', { key: String(key) }); },
@@ -168,7 +169,7 @@ fn grant(app: &AppHandle, origin: &Url) {
         return;
     }
     let mut cap = CapabilityBuilder::new(format!("server-{}", granted.len())).remote(server_pattern(origin)).local(false).window("main");
-    for cmd in ["set-badge", "open-external", "log", "push-current", "push-subscribe", "push-unsubscribe", "open-sheet", "switch-server", "take-pending-open"] {
+    for cmd in ["set-badge", "open-external", "log", "set-theme", "push-current", "push-subscribe", "push-unsubscribe", "open-sheet", "switch-server", "take-pending-open"] {
         cap = cap.permission(format!("allow-mobile-{cmd}"));
     }
     if app.add_capability(cap).is_ok() {
@@ -315,6 +316,13 @@ async fn mobile_set_badge(app: AppHandle, count: i64) -> Result<(), String> {
     app.osa_ios().call::<Value>("setBadge", json!({ "count": count.max(0) })).await.map(|_| ())
 }
 
+/// 网页设置里选了明亮 / 夜间（None 是跟随系统）：整个 App 跟着换，状态栏的字才看得清
+#[tauri::command(async)]
+async fn mobile_set_theme(app: AppHandle, theme: Option<String>) -> Result<(), String> {
+    let theme = theme.filter(|t| t == "light" || t == "dark");
+    app.osa_ios().call::<Value>("setTheme", json!({ "theme": theme })).await.map(|_| ())
+}
+
 #[tauri::command]
 fn mobile_open_external(app: AppHandle, url: String) {
     if let Ok(u) = Url::parse(&url) {
@@ -445,7 +453,7 @@ pub fn run() {
         .plugin(tauri_plugin_osa_ios::init())
         .invoke_handler(tauri::generate_handler![
             setup_state, choose_remote, confirm_pair, cancel_pair,
-            mobile_set_badge, mobile_open_external, mobile_log, mobile_push_current, mobile_push_subscribe,
+            mobile_set_badge, mobile_set_theme, mobile_open_external, mobile_log, mobile_push_current, mobile_push_subscribe,
             mobile_push_unsubscribe, mobile_open_sheet, mobile_switch_server, mobile_take_pending_open
         ])
         .setup(|app| {

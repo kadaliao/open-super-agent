@@ -12,6 +12,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Super Agent" />
     <title>Open Super Agent</title>
+    <!-- 明亮还是夜间：在页面画出来之前先设好，免得闪一下。之后由 src/theme.ts 接管 -->
+    <script>try{var p=localStorage.getItem('osa.theme')}catch(e){}document.documentElement.dataset.theme=p==='light'||p==='dark'?p:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'</script>
   </head>
   <body>
     <div id="root"></div>

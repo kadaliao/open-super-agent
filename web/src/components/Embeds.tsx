@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '../store'
 import { lang, t } from '../i18n'
+import { isDark } from '../theme'
 
 // 链接卡片和嵌入（像 Notion、Slack）：YouTube、B 站显示封面，点了才加载播放器；X 的推文用官方的嵌入页；
 // 其他网页由服务器取标题、摘要、配图（/api/unfurl），显示成书签卡片。抓不到就退回普通链接（fallback）。
@@ -160,7 +161,6 @@ function Bilibili({ e, href }: { e: Extract<Embed, { kind: 'bilibili' }>; href: 
 function Tweet({ id, href }: { id: string; href: string }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [h, setH] = useState(0)
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches
   useEffect(() => {
     const on = (e: MessageEvent) => {
       if (e.origin !== 'https://platform.twitter.com' || e.source !== ref.current?.contentWindow) return
@@ -173,7 +173,7 @@ function Tweet({ id, href }: { id: string; href: string }) {
     window.addEventListener('message', on)
     return () => window.removeEventListener('message', on)
   }, [])
-  const src = `https://platform.twitter.com/embed/Tweet.html?id=${id}&theme=${dark ? 'dark' : 'light'}&dnt=true&lang=${lang === 'en' ? 'en' : 'zh-cn'}`
+  const src = `https://platform.twitter.com/embed/Tweet.html?id=${id}&theme=${isDark() ? 'dark' : 'light'}&dnt=true&lang=${lang === 'en' ? 'en' : 'zh-cn'}`
   return (
     <div className="emb tweet">
       <iframe ref={ref} src={src} title="X" sandbox={SANDBOX} style={{ height: h || 240 }} className={h ? '' : 'loading'} />

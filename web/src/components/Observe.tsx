@@ -144,7 +144,7 @@ export default function Observe() {
               {data.tasks.length > 0 && <Tasks s={data} name={name} />}
             </>}
             <Calls range={range} bot={bot} name={name} currency={data.currency} />
-            <p className="muted small ob-foot">{t('费用按各个模型的单价估算（设置 → 费用）。任务的过程只留 90 天，更早的工具调用统计不到。时间按这台设备的时区。')}</p>
+            <p className="muted small ob-foot">{t('费用按各个模型的单价估算（设置 → 模型）。任务的过程只留 90 天，更早的工具调用统计不到。时间按这台设备的时区。')}</p>
           </>}
         </div>
       </div>

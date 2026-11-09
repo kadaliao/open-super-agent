@@ -16,6 +16,9 @@ pub struct Config {
     pub url: Option<String>,
     /// 本机服务的端口。定下来就别再变：应用的登录授权回调地址里有它
     pub port: Option<u16>,
+    /// 网页设置里选的外观："light" / "dark"；None 是跟随系统。下次启动一开始就用它，启动页不会先闪成另一种
+    #[serde(default)]
+    pub theme: Option<String>,
 }
 
 pub fn home() -> PathBuf {

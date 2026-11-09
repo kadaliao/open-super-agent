@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde_json::json;
 use tauri::ipc::CapabilityBuilder;
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
@@ -37,6 +37,7 @@ const BRIDGE: &str = r#"(function () {
     notify: function (title, body, chatId, active) { call('desktop_notify', { title: String(title), body: String(body), chatId: chatId == null ? null : chatId, active: !!active }); },
     setBadge: function (count) { call('desktop_set_badge', { count: count | 0 }); },
     openExternal: function (url) { call('desktop_open_external', { url: String(url) }); },
+    setTheme: function (theme) { call('desktop_set_theme', { theme: theme === 'light' || theme === 'dark' ? theme : null }); },
     link: {
       state: function () { return ask('desktop_link_state'); },
       connect: function (token, id) { return ask('desktop_link', { token: String(token), id: id | 0 }); },
@@ -201,6 +202,7 @@ fn grant(app: &AppHandle, origin: &Url) {
         .permission("allow-desktop-set-badge")
         .permission("allow-desktop-open-external")
         .permission("allow-desktop-log")
+        .permission("allow-desktop-set-theme")
         .permission("allow-desktop-link-state")
         .permission("allow-desktop-link")
         .permission("allow-desktop-unlink");
@@ -287,6 +289,27 @@ fn desktop_notify(app: AppHandle, title: String, body: String, chat_id: Option<i
 #[tauri::command]
 fn desktop_log(msg: String) {
     trace(format_args!("{msg}"));
+}
+
+fn parse_theme(theme: Option<&str>) -> Option<Theme> {
+    match theme {
+        Some("light") => Some(Theme::Light),
+        Some("dark") => Some(Theme::Dark),
+        _ => None,
+    }
+}
+
+/// 网页设置里选了明亮 / 夜间（None 是跟随系统）：所有窗口的标题栏跟着换，记下来下次启动就用
+#[tauri::command]
+fn desktop_set_theme(app: AppHandle, theme: Option<String>) {
+    let theme = theme.filter(|t| t == "light" || t == "dark");
+    app.set_theme(parse_theme(theme.as_deref()));
+    let st = state(&app);
+    let mut cfg = st.cfg.lock().unwrap();
+    if cfg.theme != theme {
+        cfg.theme = theme;
+        store::save(&cfg);
+    }
 }
 
 #[tauri::command]
@@ -533,7 +556,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             setup_state, choose_local, choose_remote, open_logs,
-            desktop_notify, desktop_set_badge, desktop_open_external, desktop_log,
+            desktop_notify, desktop_set_badge, desktop_open_external, desktop_log, desktop_set_theme,
             link::desktop_link_state, link::desktop_link, link::desktop_unlink
         ])
         .on_window_event(|w, e| {
@@ -547,6 +570,7 @@ pub fn run() {
         })
         .setup(move |app| {
             let handle = app.handle().clone();
+            handle.set_theme(parse_theme(state(&handle).cfg.lock().unwrap().theme.as_deref()));
             build_main(&handle, !hidden)?;
             #[cfg(debug_assertions)]
             start_autotest(&handle);

@@ -93,7 +93,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 
 - **Asks before acting**: write operations show a card first (allow once / deny / always allow), with rules you manage in Settings.
 - **Vault**: secrets are stored encrypted and never enter the chat.
-- **Visible cost**: tokens and money tracked per role, task and day, with a daily budget.
+- **Visible cost**: tokens and money tracked per role, task and day (see Observe), with a daily budget.
 - **Insights**: the Insights page in the sidebar covers today, 7 days, 30 days or everything, for all Bots or just one:
   - Cost (compared with the previous period), tokens and cache hits, tasks with success rate and average time, routine runs, time to first word, and error counts
   - Daily (hourly for today) cost, tokens, tasks and model calls, stacked by Bot
@@ -121,5 +121,6 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - **Any model**: add model providers in Settings (DeepSeek, OpenAI, OpenRouter, SiliconFlow, Alibaba Bailian, Zhipu, Kimi, Ollama,
   or any OpenAI-compatible endpoint), paste an API key and test it in one click. Pick a model per role; prices are fetched automatically.
 - **English and Chinese**: the UI, notifications and chat-app messages come in both languages; switch in Settings. In the English UI, Bots reply in English by default.
+- **Light / dark**: follows the system by default, or pick one under "Theme" at the bottom left of Settings. Each device remembers its own choice; the desktop and iPhone apps switch their title bar and status bar too.
 - **Backup and migration**: export all data, secrets included, as one encrypted file and upload it on the new machine to carry on;
   servers can also back up on a schedule from the command line.

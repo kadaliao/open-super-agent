@@ -11,6 +11,7 @@ export type Bridge = {
   setBadge(count: number): void   // 菜单栏、程序坞或手机图标上显示的待确认数
   openExternal(url: string): void // 用系统浏览器打开
   speech?: boolean                // 外壳里能用语音识别时为 true；否则不显示麦克风
+  setTheme?(theme: 'light' | 'dark' | null): void   // 窗口外壳（标题栏、状态栏）固定明亮或夜间，null 是跟随系统。旧版外壳没有
   // 桌面 App：把这台 Mac 借给服务器（connect 会先在 Mac 上弹窗问你，返回你同不同意）
   link?: {
     state(): Promise<LinkState>

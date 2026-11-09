@@ -70,7 +70,7 @@ API Key 先看保险库（界面上填的），没有再看 `api_key_env` 写的
 - `config.yaml` 的 `pricing.models` 里写了的以它为准。DeepSeek 分高峰和空闲两档（`[高峰, 空闲]`），models.dev 没有，所以默认配置里写着。
 - 本机和内网的模型按 0 计。找不到单价的也按 0 计，设置页上显示“没有单价”。
 - 连不上 models.dev 时用上一次存下的；一次都没取到过的话，只有 `pricing.models` 里写了的有单价。国内服务器可以设 `HTTPS_PROXY`，
-  或者用 `pricing.source` 换一个地址。费用页的“单价”下面能看到上次更新的时间，也能点“现在更新”。
+  或者用 `pricing.source` 换一个地址。设置 → 模型 最下面能看到上次更新的时间，也能点“现在更新”。
 
 ```yaml
 pricing:
@@ -88,7 +88,7 @@ pricing:
 
 **画图按张计价**：models.dev 没有按张的价格，所以写在 `pricing.images` 里，按实际用的服务和模型查。默认配置写了硅基流动的几个
 （2026-11 抄自官网：Kolors 免费，Z-Image-Turbo 每张 0.1 元，Qwen-Image、Z-Image 每张 0.3 元）。用别家的画图模型，照这个格式加上。
-没写的在设置页和确认卡片上显示“价格未知”，费用按 0 记；本机的按 0 计。每画一张（对话里画的、生成头像的）在费用里“画图”下面记一次。
+没写的在设置页和确认卡片上显示“价格未知”，费用按 0 记；本机的按 0 计。每画一张（对话里画的、生成头像的）在观测页“按用途”的“画图”下面记一次。
 
 **限额**在 设置 → 限制与预算 里改：每天最多用多少 token、每个任务最多几步、任务最长跑多久、后台任务等确认多久、Heavy 模式同时跑几个。
 对应 `config.yaml` 的 `limits`（`daily_token_budget`、`worker_max_steps`、`task_timeout_s`、`approval_timeout_s`，另外还有 `watchdog_interval_s`）和 `heavy.workers`。

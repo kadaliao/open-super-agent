@@ -14,6 +14,9 @@ struct BadgeArgs: Decodable { let count: Int }
 struct UrlArgs: Decodable { let url: String }
 struct ShareArgs: Decodable { let path: String }
 struct OriginArgs: Decodable { let origin: String }
+struct ThemeArgs: Decodable { let theme: String? }
+
+private let themeKey = "osa.theme"
 
 struct SubKeys: Encodable { let p256dh: String; let auth: String }
 struct Sub: Encodable { let endpoint: String; let keys: SubKeys }
@@ -41,6 +44,9 @@ class OsaPlugin: Plugin, UNUserNotificationCenterDelegate {
         // 系统为了露出输入框自己推页面不受影响，对话和列表在网页里有自己的滚动，也不受影响
         webview.scrollView.bounces = false
         webview.scrollView.isScrollEnabled = false
+        // 上次在网页设置里选的明亮 / 夜间：一启动就用，连接页不会先闪成另一种
+        let theme = UserDefaults.standard.string(forKey: themeKey)
+        DispatchQueue.main.async { OsaPlugin.applyTheme(theme) }
         DeviceToken.installHooks()
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -99,6 +105,25 @@ class OsaPlugin: Plugin, UNUserNotificationCenterDelegate {
     @objc public func setBadge(_ invoke: Invoke) throws {
         let args = try invoke.parseArgs(BadgeArgs.self)
         UNUserNotificationCenter.current().setBadgeCount(max(0, args.count)) { _ in invoke.resolve() }
+    }
+
+    // ---------- 明亮 / 夜间 ----------
+    /// 网页设置里选了明亮 / 夜间（nil 是跟随系统）：所有窗口跟着换，状态栏的字和弹出页也跟着变，记下来下次启动就用
+    @objc public func setTheme(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(ThemeArgs.self)
+        let theme = args.theme == "light" || args.theme == "dark" ? args.theme : nil
+        UserDefaults.standard.set(theme, forKey: themeKey)
+        DispatchQueue.main.async {
+            OsaPlugin.applyTheme(theme)
+            invoke.resolve()
+        }
+    }
+
+    static func applyTheme(_ theme: String?) {
+        let style: UIUserInterfaceStyle = theme == "light" ? .light : theme == "dark" ? .dark : .unspecified
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows { window.overrideUserInterfaceStyle = style }
+        }
     }
 
     // ---------- 弹出页、分享 ----------

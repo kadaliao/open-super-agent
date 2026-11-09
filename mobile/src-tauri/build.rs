@@ -8,6 +8,7 @@ fn main() {
         "mobile_set_badge",
         "mobile_open_external",
         "mobile_log",
+        "mobile_set_theme",
         "mobile_push_current",
         "mobile_push_subscribe",
         "mobile_push_unsubscribe",

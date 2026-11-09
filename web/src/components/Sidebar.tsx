@@ -132,7 +132,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
         </div>
       )}
       <div className="side-bottom">
-        <button className="side-link" onClick={onSettings}>⚙ {t('设置与费用')}</button>
+        <button className="side-link" onClick={onSettings}>⚙ {t('设置')}</button>
         <span className={'conn' + (connected ? ' on' : '')} title={connected ? t('已连接') : t('连接中断，正在重连')} />
       </div>
     </aside>
