@@ -327,7 +327,6 @@
   "没有权限": "Not allowed",
   "没有权限（403）：可能没开通这个模型，或者账户欠费。{detail}": "No permission (403). The model may not be enabled, or the account is out of credit. {detail}",
   "没有等待恢复的备份，请重新上传": "No backup is waiting to be restored. Upload it again",
-  "没有设置 INSTABOX_API_KEY": "INSTABOX_API_KEY isn't set",
   "没有这个 Bot": "Bot not found",
   "没有这个任务": "Task not found",
   "没有这个对话": "Chat not found",
@@ -1141,5 +1140,12 @@
   "本次任务内允许": "Allow for this task",
   "本次任务": "This task",
   "✓ 已允许，这个任务里不再问": "✓ Allowed for this task",
-  "总是允许 {prefix} 开头的": "Always allow {prefix} …"
+  "总是允许 {prefix} 开头的": "Always allow {prefix} …",
+  "还没填 Instabox 的 API Key": "No Instabox API key yet",
+  "Instabox 不认这个 API Key（{code}），检查一下有没有复制完整、权限里有没有 machines:write": "Instabox rejected this API key ({code}). Check that you copied all of it and that it has the machines:write scope",
+  "连不上 Instabox：{error}": "Can't reach Instabox: {error}",
+  "Docker 没在运行：先打开 Docker Desktop（或 OrbStack），再点启动": "Docker isn't running. Open Docker Desktop (or OrbStack), then click Start",
+  "这台电脑没装 Docker": "Docker isn't installed on this computer",
+  "第一次用要先准备电脑（下载、安装浏览器和桌面），要几分钟": "First run: setting up the computer (downloading and installing the browser and desktop). This takes a few minutes",
+  "演示服务器上不能换电脑": "You can't change the computer on the demo server"
 }

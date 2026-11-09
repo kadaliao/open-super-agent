@@ -131,6 +131,11 @@ def save(data: dict) -> dict:
         b = data["computer_backend"] or "auto"
         if b != "auto" and b not in computer.BACKENDS:
             raise ValueError(i18n.t("没有这种电脑：{name}", name=b))
+        ok = {x["id"]: x["ok"] for x in computer.available()}
+        if b == "instabox" and not ok["instabox"]:
+            raise ValueError(i18n.t("还没填 Instabox 的 API Key"))
+        if b == "local" and not ok["local"]:
+            raise ValueError(i18n.t("这台电脑没装 Docker"))
         c = computer.get()
         if (c.users or c.exclusive) and b != CFG["computer"].get("backend"):
             raise ValueError(i18n.t("电脑正在被用着（{who}），等用完再换", who=c.busy()))

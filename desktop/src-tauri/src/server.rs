@@ -174,11 +174,13 @@ fn python_launch(resources: Option<PathBuf>, args: &[&str], log_name: &str, extr
     Err("App 里没有找到运行环境".into())
 }
 
-/// 从访达打开的 App 拿到的 PATH 很短，找不到 npx、uvx；补上常见的位置
+/// 从访达打开的 App 拿到的 PATH 很短，找不到 npx、uvx、docker；补上常见的位置
+/// （Docker Desktop 没装命令行工具到 /usr/local/bin 时在 ~/.docker/bin，OrbStack 在 ~/.orbstack/bin）
 fn search_path(bundled: Option<&Path>) -> String {
     let home = dirs::home_dir().unwrap_or_default();
     let mut dirs: Vec<String> = bundled.map(|p| p.display().to_string()).into_iter().collect();
     dirs.extend(["/opt/homebrew/bin".into(), "/usr/local/bin".into(), home.join(".local/bin").display().to_string()]);
+    dirs.extend([".docker/bin", ".orbstack/bin"].map(|d| home.join(d).display().to_string()));
     dirs.extend(std::env::var("PATH").unwrap_or_default().split(':').filter(|s| !s.is_empty()).map(String::from));
     dirs.extend(["/usr/bin", "/bin", "/usr/sbin", "/sbin"].map(String::from));
     let mut seen = std::collections::HashSet::new();

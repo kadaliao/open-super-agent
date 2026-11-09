@@ -1412,5 +1412,12 @@
   "这个任务里 {tool} 不再询问，任务结束就失效": "Won't ask about {tool} again during this task; ends when the task does",
   "本次任务内允许": "Allow for this task",
   "也可以按参数匹配：{form}，冒号后面和工具的第一个参数比（终端是命令），例如 {shell}、{path}。本机终端只认这种带命令前缀的规则，命令里带 ; | $( 重定向这类符号的照样每次问。": "Rules can also match an argument: {form}. The part after the colon is compared with the tool's first argument (the command, for the terminal), e.g. {shell} or {path}. The terminal on this computer only honors rules with a command prefix, and still asks every time for commands containing ; | $( or redirects.",
-  "工具:参数": "tool:argument"
+  "工具:参数": "tool:argument",
+  "服务器本机": "This server",
+  "Docker 沙盒": "Docker sandbox",
+  "云电脑": "Cloud computer",
+  "（没装 Docker）": " (Docker not installed)",
+  "云电脑用的是 Instabox：在 {site} 注册，建一个 API Key（权限要有 machines:write），粘贴到这里。Key 加密保存，之后不会再显示。": "The cloud computer runs on Instabox. Sign up at {site}, create an API key with the machines:write scope, and paste it here. The key is stored encrypted and won't be shown again.",
+  "删掉这里填的 Key": "Remove the key saved here",
+  "换 API Key": "Change API key"
 }

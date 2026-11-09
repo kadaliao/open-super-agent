@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
 import { api, useStore, setComputer, setSettings, setTeachDraft } from '../store'
 import type { ComputerState, DesktopState, Settings, Teach } from '../types'
-import { lang, t } from '../i18n'
+import { lang, t, tn } from '../i18n'
 import BotAvatar from './BotAvatar'
 import { ask, notice } from './Dialog'
 import { isEnter } from '../keys'
@@ -58,18 +58,27 @@ function TypeBar({ botId }: { botId: number }) {
 const STATE: Record<string, string> = {
   none: t('还没启动'), starting: t('启动中'), running: t('运行中'), paused: t('已暂停'), stopped: t('已停止'), error: t('出错了'),
 }
-/** 用哪台电脑。App 自己独立运行时就是本机，不用选；连着服务器时只在“Bot 电脑”（服务器那边配好的）和“本机”（这台 Mac）之间选。
- *  在这台 Mac 的 App 里选“本机”就是把它借给服务器：向服务器要一个借用令牌交给 App，App 弹窗问你同意了才借；选回“Bot 电脑”就收回。
- *  在别处（手机、浏览器）只能在 Bot 电脑和已经连上的那台 Mac 之间切换。ls 是这个 App 所在的 Mac 借出去了没有（见 desktop.ts）。 */
-function ComputerPicker({ st, ls, reload, setErr }: { st: ComputerState; ls: LinkState | null; reload: () => void; setErr: (e: string) => void }) {
+/** 用哪台电脑。
+ *  App 自己独立运行时在三台里选：本机（这台 Mac 上 Bot 自己的 Chrome，能操作整个屏幕）、Docker 沙盒、云电脑（Instabox）。
+ *  服务器上（Linux，没有屏幕）在 Docker 沙盒和云电脑里选；连着服务器的 Mac App 还能选“本机”，就是把这台 Mac 借给服务器：
+ *  向服务器要一个借用令牌交给 App，App 弹窗问你同意了才借；换回别的就收回。手机、浏览器里能选已经连上的那台 Mac。
+ *  ls 是这个 App 所在的 Mac 借出去了没有（见 desktop.ts）。云电脑还没填 API Key 时选它，先弹出填 Key 的框（onKey）。 */
+function ComputerPicker({ st, ls, reload, setErr, onKey }: {
+  st: ComputerState; ls: LinkState | null; reload: () => void; setErr: (e: string) => void; onKey: () => void
+}) {
   const s = useStore(x => x.settings)
   const [busy, setBusy] = useState(false)
-  if (!s || s.computer_on_desktop) return <span className="pc-name">{t('本机')}</span>
+  const names: Record<string, string> = { host: s?.computer_on_desktop ? t('本机') : t('服务器本机'), local: t('Docker 沙盒'), instabox: t('云电脑') }
+  if (!s || s.security?.demo) return <span className="pc-name">{names[st.backend] || t('Bot 电脑')}</span>
   const here = !!ls?.available   // 在 Mac 的 App 里，能借出这台 Mac
   const linked = st.backend === 'linked'
-  if (!(here || st.link?.connected || linked) || s.security?.demo) return <span className="pc-name">{t('Bot 电脑')}</span>
+  const can = (id: string) => s.computer_backends?.find(b => b.id === id)
+  // 服务器上不给“服务器本机”：没有屏幕、多半用 root 跑（Chrome 得关掉沙箱才能用 root 跑）。config.yaml 里写了 host 的照常显示
+  const ids = s.computer_on_desktop ? ['host', 'local', 'instabox'] : [...(st.backend === 'host' ? ['host'] : []), 'local', 'instabox']
+  const withMac = !s.computer_on_desktop && (here || st.link?.connected || linked)
   const setBackend = async (b: string) => setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_backend: b } }))
   const change = async (v: string) => {
+    if (v === 'instabox' && !can('instabox')?.ok) return onKey()
     setBusy(true); setErr('')
     try {
       if (v === 'linked') {
@@ -82,7 +91,7 @@ function ComputerPicker({ st, ls, reload, setErr }: { st: ComputerState; ls: Lin
         }
         await setBackend('linked')
       } else {
-        await setBackend('auto')
+        await setBackend(v)
         if (ls?.linked) {   // 收回这台 Mac
           await desktop!.link!.disconnect()
           if (ls.id) await api(`/api/computer/links/${ls.id}`, { method: 'DELETE' })
@@ -93,12 +102,46 @@ function ComputerPicker({ st, ls, reload, setErr }: { st: ComputerState; ls: Lin
   }
   const inUse = !!(st.users?.length || st.exclusive)
   const mac = here ? t('本机') : st.link?.name || t('我的 Mac')   // 在这台 Mac 的 App 里就叫“本机”
+  const noDocker = !can('local')?.ok
   return (
-    <select className="pc-backend" value={linked ? 'linked' : 'bot'} disabled={busy || inUse}
+    <select className="pc-backend" value={st.backend} disabled={busy || inUse}
       title={inUse ? t('有任务在用电脑，用完再换') : t('用哪台电脑')} onChange={e => change(e.target.value)}>
-      <option value="bot">{t('Bot 电脑')}</option>
-      <option value="linked" disabled={!here && !st.link?.connected}>{mac}{linked && !st.link?.connected ? t('（没连上）') : ''}</option>
+      {ids.map(id => (
+        <option key={id} value={id} disabled={id === 'local' && noDocker && st.backend !== 'local'}>
+          {names[id]}{id === 'local' && noDocker ? t('（没装 Docker）') : ''}
+        </option>
+      ))}
+      {withMac && <option value="linked" disabled={!here && !st.link?.connected}>{mac}{linked && !st.link?.connected ? t('（没连上）') : ''}</option>}
     </select>
+  )
+}
+
+/** 填云电脑（Instabox）的 API Key：服务器先试一下能不能用，能用才加密存起来。saved：以前在这里填过（可以删掉，回到环境变量）。 */
+function InstaboxKey({ saved, onDone, onClose }: { saved: boolean; onDone: () => void; onClose: () => void }) {
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async (k: string) => {
+    setBusy(true); setErr('')
+    try { setSettings(await api<Settings>('/api/computer/instabox-key', { method: 'PUT', body: { key: k } })); onDone() }
+    catch (e: any) { setErr(e.message) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="pc-key">
+      <div className="muted small">
+        {tn('云电脑用的是 Instabox：在 {site} 注册，建一个 API Key（权限要有 machines:write），粘贴到这里。Key 加密保存，之后不会再显示。',
+          { site: <a href="https://instabox.sh" target="_blank" rel="noreferrer">instabox.sh</a> })}
+      </div>
+      <div className="env-row">
+        <input type="password" value={key} autoFocus placeholder="API Key" autoComplete="off" disabled={busy}
+          onChange={e => setKey(e.target.value)} onKeyDown={e => { if (isEnter(e) && key.trim()) save(key) }} />
+        <button className="btn primary" disabled={busy || !key.trim()} onClick={() => save(key)}>{busy ? t('检查中…') : t('保存')}</button>
+        <button className="btn" disabled={busy} onClick={onClose}>{t('取消')}</button>
+      </div>
+      {saved && <button className="ghost-btn" disabled={busy} onClick={() => save('')}>{t('删掉这里填的 Key')}</button>}
+      {err && <div className="error-line">{err}</div>}
+    </div>
   )
 }
 
@@ -276,6 +319,10 @@ export function ComputerPanel({ botId }: { botId: number }) {
   const bigRef = useRef<HTMLDivElement>(null)
   useBack(() => setBig(false), bigRef, big)
   const [ls, setLs] = useState<LinkState | null>(null)   // 这个 App 所在的 Mac 借给服务器了没有（只有连着服务器的桌面 App 有）
+  const [keyOpen, setKeyOpen] = useState(false)   // 正在填云电脑的 API Key
+  const [keyVer, setKeyVer] = useState(0)          // 换过 Key：重新列账号里的机器
+  const settings = useStore(s => s.settings)
+  const ibox = settings?.computer_backends?.find(b => b.id === 'instabox')
   const reloadLink = () => { if (desktop?.link && !phone) desktop.link.state().then(setLs).catch(() => setLs(null)) }
   useEffect(reloadLink, [st?.link?.connected, st?.backend])
   useEffect(() => { if (teach) setBig(true) }, [teach?.started])   // 开始录制就放大画面
@@ -309,11 +356,18 @@ export function ComputerPanel({ botId }: { botId: number }) {
     <div className="pc-panel">
       <div className="pc-bar">
         <span className={'pc-dot ' + (host ? (offline ? 'error' : 'running') : st.state)} />
-        <ComputerPicker st={st} ls={ls} reload={reloadLink} setErr={setErr} />
+        <ComputerPicker st={st} ls={ls} reload={reloadLink} setErr={setErr} onKey={() => setKeyOpen(true)} />
         {!host && <span className="muted small">{STATE[st.state] || st.state}</span>}
         <span className="grow" />
         {live && <button className="ghost-btn" onClick={() => setBig(true)} title={t('放大')}>⤢ {t('放大')}</button>}
       </div>
+      {keyOpen && <InstaboxKey saved={ibox?.key === 'saved'} onClose={() => setKeyOpen(false)} onDone={async () => {
+        setKeyOpen(false); setKeyVer(v => v + 1)
+        if (st.backend !== 'instabox') {
+          try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_backend: 'instabox' } })) }
+          catch (e: any) { setErr(e.message) }
+        }
+      }} />}
       {live && <Users st={st} />}
       {live ? view : (
         <div className="pc-empty">
@@ -321,7 +375,8 @@ export function ComputerPanel({ botId }: { botId: number }) {
             : <p className="muted small">{t('所有 Bot 共用一台电脑（浏览器 + 终端）。几个任务可以同时用，每个任务一个浏览器窗口，登录状态和文件共用；')}
             {' '}{t('最多同时 {n} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。', { n: st.parallel || 3 })}</p>}
           {st.state === 'error' && st.detail && !offline && <div className="error-line">{st.detail}</div>}
-          {st.backend === 'instabox' && <MachinePicker key={st.detail} botId={botId} onErr={setErr} />}
+          {st.backend === 'instabox' && <MachinePicker key={st.detail + keyVer} botId={botId} onErr={setErr} />}
+          {st.backend === 'instabox' && !keyOpen && !settings?.security?.demo && <button className="ghost-btn" onClick={() => setKeyOpen(true)}>{t('换 API Key')}</button>}
           {!host && <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? t('启动中…（首次需要一会儿）') : st.state === 'paused' ? t('恢复') : st.state === 'none' ? t('新建并启动电脑') : t('启动电脑')}</button>}
         </div>
       )}

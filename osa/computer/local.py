@@ -46,8 +46,11 @@ while True:
 
 
 async def _run(*args, stdin: str | None = None, timeout: float = 120) -> tuple[int, str, str]:
-    p = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE if stdin is not None else None,
-                                             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        p = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE if stdin is not None else None,
+                                                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    except FileNotFoundError:
+        return 127, "", i18n.t("这台电脑没装 Docker")
     try:
         out, err = await asyncio.wait_for(p.communicate(stdin.encode() if stdin is not None else None), timeout)
     except asyncio.TimeoutError:
@@ -58,6 +61,14 @@ async def _run(*args, stdin: str | None = None, timeout: float = 120) -> tuple[i
 
 
 _platform: str | None = None
+
+
+def _problem(err: str) -> str:
+    """docker 命令失败的原因，说成人话：没装、没开，否则原样。"""
+    e = err.lower()
+    if "cannot connect to the docker daemon" in e or "docker daemon is not running" in e or "docker.sock" in e:
+        return i18n.t("Docker 没在运行：先打开 Docker Desktop（或 OrbStack），再点启动")
+    return err.strip()[-500:]
 
 
 async def platform() -> str:
@@ -82,10 +93,15 @@ class LocalComputer(Computer):
         self.name = "osa-computer"
         self.data = os.environ.get("OSA_COMPUTER_DATA") or str(DATA / "computers" / "shared")
         self._starting = asyncio.Lock()
+        self.building = False   # 第一次用：正在构建电脑镜像（几分钟）
 
     async def status(self) -> dict:
-        code, out, _ = await _run("docker", "inspect", "-f", "{{json .State}}", self.name, timeout=15)
+        if self.building:
+            return {"state": "starting", "detail": i18n.t("第一次用要先准备电脑（下载、安装浏览器和桌面），要几分钟")}
+        code, out, err = await _run("docker", "inspect", "-f", "{{json .State}}", self.name, timeout=15)
         if code:
+            if code == 127 or "no such" not in err.lower():   # 没装 Docker、Docker 没开
+                return {"state": "error", "detail": _problem(err)}
             return {"state": "none", "detail": i18n.t("还没有创建")}
         st = json.loads(out)
         state = {"running": "running", "paused": "paused", "exited": "stopped", "created": "stopped",
@@ -93,10 +109,18 @@ class LocalComputer(Computer):
         return {"state": state, "detail": st.get("Status", "")}
 
     async def _ensure_image(self):
-        code, _, _ = await _run("docker", "image", "inspect", IMAGE, timeout=15)
+        code, _, err = await _run("docker", "image", "inspect", IMAGE, timeout=15)
+        if code and (code == 127 or "no such" not in err.lower()):
+            raise ComputerError(_problem(err))
         if code:
-            code, out, err = await _run("docker", "build", "--platform", await platform(), "-t", IMAGE,
-                                        str(IMAGE_DIR), timeout=1800)
+            self.building = True
+            self.changed()
+            try:
+                code, out, err = await _run("docker", "build", "--platform", await platform(), "-t", IMAGE,
+                                            str(IMAGE_DIR), timeout=1800)
+            finally:
+                self.building = False
+                self.changed()
             if code:
                 raise ComputerError(i18n.t("电脑镜像构建失败：{error}", error=(err or out)[-800:]))
 

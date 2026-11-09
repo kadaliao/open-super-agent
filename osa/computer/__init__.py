@@ -1,7 +1,7 @@
 """所有 Bot 共用一台电脑（和 Grok Bot 一样），几个任务可以同时用，各自一个浏览器窗口（见 base.py）。
 后端由 config.yaml 的 computer.backend 决定（设置里也能换）：host（本机的 Chrome，见 host.py）/ linked（服务器借用你的 Mac，见 linked.py）/
 local（本地 Docker）/ instabox，
-auto 是桌面 App 里用 host，否则有 INSTABOX_API_KEY 用 Instabox、没有用本地 Docker。
+auto 是桌面 App 里用 host，否则有 Instabox 的 API key（界面里填的或环境变量 INSTABOX_API_KEY）用 Instabox、没有用本地 Docker。
 """
 import asyncio
 import os
@@ -58,27 +58,37 @@ def backend_name() -> str:
     if b == "auto" and os.environ.get("OSA_DESKTOP"):
         b = "host"
     if b == "auto" or (b == "host" and not security.local_exec()) or (b == "linked" and security.demo()):   # 服务器锁：不用这台机器当电脑
-        return "instabox" if os.environ.get("INSTABOX_API_KEY") else "local"
+        from .instabox import key_source
+        return "instabox" if key_source() else "local"
     return b
 
 
 def available() -> list[dict]:
-    """设置里能选的电脑，以及这台机器上能不能用。"""
+    """设置里能选的电脑，以及这台机器上能不能用。instabox 的 key：API key 从哪来（saved 界面里填的 / env 环境变量 / 空 还没有）。"""
     from .host import chrome_path
+    from .instabox import key_source
     host = {"id": "host", "ok": bool(chrome_path())} if security.local_exec() else {"id": "host", "ok": False, "locked": True}
     lk = link.connected()
     linked = {"id": "linked", "ok": bool(lk), **({"name": lk.name} if lk else {})}   # 服务器借用你的 Mac：连上了才能选
+    key = key_source()
     return [host, *([] if security.demo() else [linked]), {"id": "local", "ok": bool(shutil.which("docker"))},
-            {"id": "instabox", "ok": bool(os.environ.get("INSTABOX_API_KEY"))}]
+            {"id": "instabox", "ok": bool(key), "key": key}]
+
+
+async def _quietly(coro):
+    try:
+        await coro
+    except Exception:
+        pass   # 比如 Docker 已经关了、Instabox 的 key 删掉了：暂停不了也不影响换过去的那台
 
 
 def get(bot_id: int = SHARED) -> Computer:
     bot_id = SHARED
     c = _computers.get(bot_id)
     if c is None or c.backend != backend_name():
-        if c is not None and c.backend == "host":   # 换成别的电脑了：关掉本机的 Chrome
+        if c is not None and c.backend != "linked":   # 换成别的电脑了：旧的那台暂停（本机关掉 Chrome，Docker、Instabox 暂停省资源）
             try:
-                background(c.pause())
+                background(_quietly(c.pause()))
             except RuntimeError:
                 pass   # 不在事件循环里（测试）
         cfg = CFG.get("computer") or {}

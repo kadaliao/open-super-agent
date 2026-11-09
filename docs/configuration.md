@@ -100,7 +100,7 @@ pricing:
 ```yaml
 computer:
   enabled: true
-  backend: auto          # Bot 电脑用哪种：auto（桌面 App 独立运行时是本机；否则有 INSTABOX_API_KEY 用 Instabox、没有用本地 Docker），也可以写 instabox / local / host
+  backend: auto          # Bot 电脑用哪种：auto（桌面 App 独立运行时是本机；否则有 Instabox 的 API Key 用 Instabox、没有用本地 Docker），也可以写 instabox / local / host
   parallel: 3            # 几个任务可以同时用电脑，多了排队；设置 → 限制与预算 里也能改
   width: 1280
   height: 800
@@ -112,11 +112,15 @@ computer:
   host_desktop: true     # 本机是 Mac 时，给了权限就能操作整个屏幕；false 只用浏览器
 ```
 
-用哪台电脑只有两种：
+电脑面板上方能换电脑（存在设置里，覆盖 `backend`）：
 
-- **本机**：你自己的电脑。桌面 App 独立运行时就是这台电脑，不用选。App 连着服务器时，电脑面板上方选“本机”，就是把这台 Mac 借给服务器上的 Bot
-  （Mac 上会弹窗问你），选回“Bot 电脑”就收回。见下面“借给服务器”。
-- **Bot 电脑**：服务器那边给 Bot 的电脑，用哪种由上面的 `backend` 定：
+- 桌面 App 独立运行时：**本机**（这台 Mac）、**Docker 沙盒**（`local`）、**云电脑**（`instabox`）三选一，默认本机。
+- 服务器上：**Docker 沙盒**、**云电脑** 二选一。不给“服务器本机”：服务器没有屏幕，而且多半用 root 跑，Chrome 要关掉自己的沙箱才能以 root 运行，不安全；
+  `config.yaml` 里写了 `host` 的照常能用。App 连着服务器时还能选 **本机**，就是把这台 Mac 借给服务器上的 Bot（Mac 上会弹窗问你），
+  换回别的就收回。见下面“借给服务器”。
+- 云电脑要 Instabox 的 API Key：第一次选时在面板里填，服务先试一下能不能用，能用才加密存进保险库（名字 `INSTABOX_API_KEY`）；
+  面板里填的优先，没填用环境变量 `INSTABOX_API_KEY`。换了 Key（可能是另一个账号）会接着用那个账号里以前给这里建的机器。
+- 换电脑时旧的那台会暂停（本机关掉 Bot 的 Chrome，Docker 容器暂停，Instabox 挂起），下次换回来接着用。
 
 | backend | 说明 |
 |---|---|
@@ -509,7 +513,7 @@ server {
 
 改完 `nginx -t && systemctl reload nginx`。
 
-服务器内存小或者不想装 Docker 时，电脑用 Instabox：设置 `INSTABOX_API_KEY`，并把 `computer.backend` 写成 `instabox`。
+服务器内存小或者不想装 Docker 时，电脑用 Instabox：在电脑面板上选“云电脑”、填 API Key；或者设置环境变量 `INSTABOX_API_KEY`，并把 `computer.backend` 写成 `instabox`。
 
 应用（MCP）里用 `npx` 的（文件系统、GitHub、Notion）要装 Node ≥ 20，用 `uvx` 的（网页抓取）要装 uv。
 Ubuntu 18.04 这类 glibc 低于 2.28 的系统跑不了官方的 Node，可以用 [unofficial-builds](https://unofficial-builds.nodejs.org/download/release/) 里的 `linux-x64-glibc-217` 版本。

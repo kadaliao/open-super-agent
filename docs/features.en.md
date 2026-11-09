@@ -43,6 +43,8 @@ The README lists the highlights; this is the full list. For setup see [Configura
     when the service runs on a server, choose "This computer" in the Mac desktop app and the Bots on the server use that Mac;
   - a Linux desktop (Chromium and a terminal) in local Docker;
   - an [Instabox](https://instabox.sh) cloud machine.
+
+  Switch at the top of the computer panel at any time: all three in the desktop app; Docker or the cloud machine on a server.
 - On this computer it is more careful: uploading files, writing files and clicking "send / publish / pay" all ask first, files stay inside the workspace folder, and the terminal is off by default;
   each task asks before it first uses the screen, and the Bot stops as soon as you move the mouse or press a key.
 

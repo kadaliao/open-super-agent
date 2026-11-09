@@ -123,7 +123,7 @@ mcp_servers: {}
 # 电脑：所有 Bot 共用一台（浏览器 + 终端）；用户能实时观看、接手
 computer:
   enabled: true
-  backend: auto              # auto：桌面 App 里用 host，否则有 INSTABOX_API_KEY 用 Instabox、没有用本地 Docker；也可以写 host / local / instabox
+  backend: auto              # auto：桌面 App 里用 host，否则有 Instabox 的 API Key（电脑面板里填的或环境变量 INSTABOX_API_KEY）用 Instabox、没有用本地 Docker；也可以写 host / local / instabox；电脑面板里也能换
                              # host：用这台电脑上装的 Chrome（单独的配置目录），不用 Docker；设置里也能换
   parallel: 3                # 几个任务可以同时用电脑，每个一个浏览器窗口（登录状态共用），多了排队；电脑内存小就调小
   width: 1280

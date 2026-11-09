@@ -3,6 +3,15 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+### 新增
+- **桌面 App 能换电脑**：电脑面板上方在 本机、Docker 沙盒、云电脑（Instabox）里选，默认还是本机。服务器上在 Docker 沙盒和云电脑之间选
+  （不给“服务器本机”：服务器没有屏幕，用 root 跑时 Chrome 得关掉沙箱）。见 [桌面 App](docs/desktop.md)、[配置 → 电脑](docs/configuration.md#电脑)
+- **Instabox 的 API Key 能在电脑面板里填**：先试能不能用再加密存进保险库，填的优先于环境变量 `INSTABOX_API_KEY`；换了账号会接着用那边以前建的机器
+
+### 改进
+- 换电脑时旧的那台会暂停（以前只有本机会关掉 Chrome，Docker 容器、Instabox 一直开着等闲置暂停）
+- Docker 没装、没打开时，电脑面板直接说清楚（以前显示“还没有创建”）；第一次准备电脑镜像要几分钟，面板上显示正在准备
+- 桌面 App 找 docker 命令时也看 `~/.docker/bin`、`~/.orbstack/bin`
 
 ## [0.12.0] - 2026-11-09
 ### 新增

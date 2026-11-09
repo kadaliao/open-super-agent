@@ -318,6 +318,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .mention-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .machine-list { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 12px; }
 .machine-list .kv { align-items: center; }
+.pc-key { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 8px 0; }
+.pc-key .env-row { align-self: stretch; }
 
 /* ---------- 记忆 ---------- */
 .panel-head .panel-tabs { gap: 0; } .panel-head .panel-tabs button { padding: 6px 3px; font-size: 13.5px; }   /* 8 个标签在 340px 的右栏里放得下 */

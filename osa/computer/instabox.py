@@ -1,14 +1,14 @@
 """Instabox 后端：所有 Bot 共用一台 Firecracker 微虚拟机（agent-browser 模板，自带 Xfce 桌面和 Chromium）。
 
 接口依据 https://api.instabox.sh/v1/openapi.json 和 Instabox 文档编写。
-需要环境变量 INSTABOX_API_KEY（scope 至少 machines:write）。
+需要 Instabox 的 API key（scope 至少 machines:write）：界面里填的（加密存在保险库里）优先，没填用环境变量 INSTABOX_API_KEY。
 """
 import asyncio
 import os
 import uuid
 import httpx
 import websockets
-from .. import i18n
+from .. import i18n, vault
 from ..memory import conn
 from .base import Computer, ComputerError, ExecResult, check_enabled
 
@@ -18,11 +18,54 @@ STATE = {"running": "running", "suspended": "paused", "stopped": "stopped", "cre
          "error": "error", "deleting": "error", "deleted": "none"}
 
 
+KEY = "INSTABOX_API_KEY"   # 保险库里和环境变量里都叫这个
+
+
+def key_source() -> str:
+    """API key 从哪来：saved（界面里填的）/ env（环境变量）/ 空（没有）。"""
+    if vault.get(KEY):
+        return "saved"
+    return "env" if os.environ.get(KEY) else ""
+
+
 def _headers(extra: dict | None = None) -> dict:
-    key = os.environ.get("INSTABOX_API_KEY")
+    key = vault.get(KEY) or os.environ.get(KEY)
     if not key:
-        raise ComputerError(i18n.t("没有设置 INSTABOX_API_KEY"))
+        raise ComputerError(i18n.t("还没填 Instabox 的 API Key"))
     return {"X-API-Key": key, **(extra or {})}
+
+
+async def save_key(key: str):
+    """界面里填 API key：先试一下能不能列出机器，能用才存。换了 key 可能是另一个账号，忘掉之前记下的机器；
+    那个账号里有以前给这里建的机器就直接接着用。key 为空：删掉界面里填的（回到环境变量）。"""
+    key = key.strip()
+    ours = None
+    if key:
+        try:
+            async with httpx.AsyncClient(base_url=API, timeout=15) as h:
+                r = await h.get("/v1/machines", headers={"X-API-Key": key})
+        except httpx.HTTPError as e:
+            raise ComputerError(i18n.t("连不上 Instabox：{error}", error=str(e) or type(e).__name__)) from None
+        if r.status_code in (401, 403):
+            raise ComputerError(i18n.t("Instabox 不认这个 API Key（{code}），检查一下有没有复制完整、权限里有没有 machines:write",
+                                       code=r.status_code))
+        if r.status_code >= 400:
+            raise ComputerError(f"Instabox {r.status_code} {r.text[:200]}")
+        try:
+            ours = next((m["id"] for m in r.json().get("machines", []) if m.get("state") not in ("deleting", "deleted")
+                         and (m.get("metadata") or {}).get("app") == "open-super-agent"), None)
+        except (ValueError, AttributeError, KeyError):
+            pass
+    if key == (vault.get(KEY) or ""):
+        return
+    if key:
+        vault.put(KEY, key)
+    else:
+        vault.delete(KEY)
+    conn.execute("delete from computers where backend='instabox'")
+    if ours:
+        conn.execute("insert or replace into computers(bot_id, backend, ref) values(0, 'instabox', ?)", (ours,))
+    conn.commit()
 
 
 class InstaboxComputer(Computer):

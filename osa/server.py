@@ -1405,6 +1405,23 @@ async def pc_use(data: dict = Body(...)):
     return state
 
 
+@app.put("/api/computer/instabox-key")
+async def pc_instabox_key(data: dict = Body(...)):
+    """填 Instabox 的 API key（试过能用才加密存进保险库）；key 为空是删掉界面里填的，回到环境变量。"""
+    from .computer import instabox
+    if security.demo():
+        raise HTTPException(403, i18n.t("演示服务器上不能换电脑"))
+    c = computer.get()
+    if c.backend == "instabox" and (c.users or c.exclusive):
+        raise HTTPException(400, i18n.t("电脑正在被用着（{who}），等用完再换", who=c.busy()))
+    try:
+        await instabox.save_key(str(data.get("key") or ""))
+    except computer.ComputerError as e:
+        _err(e)
+    await broadcast({"type": "computer", "computer": await computer.public_state()})
+    return settings.public()
+
+
 # ---------- 服务器借用你的 Mac（computer/link.py） ----------
 @app.get("/api/computer/links")
 async def pc_links():
