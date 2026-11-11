@@ -33,6 +33,9 @@ iOS 的原生 App，用 Tauri 2 做（和桌面 App 同一套），代码在 `mo
 中转**看不到**通知的内容，也拿不到解密的钥匙。它看得到的是：手机的推送令牌、手机和服务器的 IP、服务器的推送公钥
 （相当于一个固定编号）、推送的时间和大小。它不写访问日志，90 天没成功推送过的地址自动清掉。
 
+开推送有两个入口：连上服务器后 App 会问一次要不要开（点了“开启”才弹系统的权限框，选“以后再说”就不再问），
+之后随时可以在“设置 → 通知”里开关。在系统的权限框里点过“不允许”的，要先到 iPhone 的“设置 → 通知”里改回来。
+
 限制：每个地址每分钟 60 条、每天 2000 条；每条加密后不超过 2900 字节（服务器的推送标题最长 80 字、正文 200 字，远小于这个）。
 苹果说令牌失效时中转回 410，服务器就删掉这个订阅。
 
@@ -66,7 +69,7 @@ cd src-tauri && cargo test --lib                      # 地址、配对链接、
   `swift/WebPushCrypto/` 是 App 和通知扩展共用的解密和钥匙存取。
 - Xcode 工程在 `src-tauri/gen/apple/`，提交进仓库。改 `project.yml` 后在那个目录里跑 `xcodegen generate`；
   别再跑 `tauri ios init`，它会把通知扩展、权限、文案这些改动冲掉。
-- 网页和 App 之间的接口是 `window.osaDesktop`（`web/src/desktop.ts`），手机版多了 `platform: 'ios'`、`push`、`openSheet`、
+- 网页和 App 之间的接口是 `window.osaDesktop`（`web/src/desktop.ts`），手机版多了 `platform: 'ios'`、`push`（含只查不问的 `status()`）、`openSheet`、
   `switchServer`、`takePendingOpen`。只有服务器的网页界面（`/`、`/apps`、`/library`）能调，Bot 生成的报告页调不到。
 - 要在模拟器上点系统界面（通知权限框的“允许”、锁屏、点一条通知），用 `mobile/uitest/run.sh <设备 UDID> <步骤> [文字]`，
   它是一个 XCUITest，步骤见脚本开头。真实推送的完整测法：本机起带密码的服务，App 配对后开推送（`AllowNotifications` 点掉权限框），

@@ -31,9 +31,11 @@ watching: dict[WebSocket, bool] = {}   # 每个页面现在是不是正被看着
 
 
 async def broadcast(event: dict):
-    # 讨论串里的新消息：带上上级对话和“N 条回复”，前端据此更新被回复的那条消息、未读数和通知
-    if event.get("type") == "message" and event.get("chat_id") and (th := bots.thread_event(event["chat_id"])):
-        event = {**event, "thread": th}
+    # 讨论串里的新消息：带上上级对话和“N 条回复”，前端据此更新被回复的那条消息、未读数和通知；
+    # 私聊、群聊里的带上这个对话的未读数（服务端算的，侧栏的数字跟着它走）
+    if event.get("type") == "message" and event.get("chat_id"):
+        th = bots.thread_event(event["chat_id"])
+        event = {**event, "thread": th} if th else {**event, "unread": bots.unread(event["chat_id"])}
     channels.on_event(event)   # 聊天软件（Telegram、飞书、钉钉……）里也发一份
     for ws in list(clients):
         try:
@@ -169,6 +171,19 @@ async def delete_bot(bot_id: int):
 @app.get("/api/chats/{chat_id}/messages")
 async def messages(chat_id: int, before: int | None = None, limit: int = 60):
     return memory.page(chat_id, before, min(limit, 200))
+
+
+@app.post("/api/chats/{chat_id}/seen")
+async def chat_seen(chat_id: int, data: dict = Body(default={})):
+    """看过了私聊或群聊里到 id 为止的消息（不给 id 就是全部）。其他打开着的页面、手机跟着改侧栏的未读数。"""
+    try:
+        n = bots.mark_chat_seen(chat_id, data.get("id"))
+    except (TypeError, ValueError) as e:
+        _err(e)
+    if n is None:
+        raise HTTPException(404, i18n.t("没有这个对话"))
+    await broadcast({"type": "chat_seen", "chat_id": chat_id, "unread": n})
+    return {"unread": n}
 
 
 # ---------- 讨论串 ----------

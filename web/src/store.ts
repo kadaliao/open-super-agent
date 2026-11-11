@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
 import type { App, Approval, Attachment, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadInfo, ThreadSummary } from './types'
-import { notice } from './components/Dialog'
+import { ask, notice } from './components/Dialog'
 import { desktop, phone } from './desktop'
 
 type State = {
@@ -99,7 +99,7 @@ export async function bootstrap() {
   if (fromUrl) history.replaceState(null, '', location.pathname)
   const saved = fromUrl || Number(localStorage.getItem('osa.active'))
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
-  set({ bots: b.bots, chats: b.chats, settings: b.settings, shapes: b.shapes, colors: b.colors, threads: byId(b.threads),
+  set({ bots: b.bots, chats: b.chats, unread: unreadOf(b.chats), settings: b.settings, shapes: b.shapes, colors: b.colors, threads: byId(b.threads),
         tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], categories: b.categories || [], oauthCallback: b.oauth_callback || '', teach: b.teach || null, auth: !!b.auth, onboarding: !!b.onboarding, ready: true })
   if (active) {
     const opened = openChat(active)
@@ -124,17 +124,44 @@ async function syncPush() {
     const { key } = await api('/api/push')
     const sub = await desktop.push.current(key)
     if (sub) await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub } })
+    else await askPush(key)
   } catch { /* 下次打开再试 */ }
+}
+
+// 手机 App：在这台手机上开推送（要通知权限、向推送中转登记、把订阅交给服务器）。设置里的按钮和连上后的询问共用
+export async function enablePush(key: string) {
+  const sub = await desktop!.push!.subscribe(key)
+  await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub } })
+  return sub
+}
+
+// 手机 App：这台手机还没给这台服务器开推送时，连上后问一次（记在这台手机上，回答过就不再问）。
+// 系统的权限框一台手机只弹一次，所以先用自己的对话框问，点了“开启”才去要权限；以前拒绝过的只说一声去哪里改。
+// 引导开着时先不问，下次打开再问
+async function askPush(key: string) {
+  const push = desktop!.push!
+  if (!push.status || state.onboarding || localStorage.getItem('osa.pushAsked')) return
+  if (await push.status() === 'denied') {
+    await notice(t('这台手机没有允许 Open Super Agent 发通知，所以 App 不在前台时收不到 Bot 的消息。要开的话，先到 iPhone 的“设置 → 通知 → Open Super Agent”里允许，再到这里的“设置 → 通知”开启推送。'))
+    localStorage.setItem('osa.pushAsked', '1')
+    return
+  }
+  const yes = await ask(t('要开启消息推送吗？App 不在前台时，Bot 的回复、任务结果和等你确认的操作会推送到这台手机。现在不开，以后也能在“设置 → 通知”里开。'),
+                        { ok: t('开启'), cancel: t('以后再说') })
+  localStorage.setItem('osa.pushAsked', '1')
+  if (yes) await enablePush(key).catch((e: any) => notice(e.message || String(e)))
 }
 
 // 有新回复的讨论串（bootstrap 里的 threads）按 id 放好
 const byId = (list: ThreadInfo[] = []) => Object.fromEntries(list.map(x => [x.id, x]))
+// 每个对话的未读数：服务端按“看到哪了”算好的（bootstrap 里的 chats），刷新、断线重连、手机 App 重新打开都还在
+const unreadOf = (chats: Chat[]) => Object.fromEntries(chats.map(c => [c.id, c.unread || 0]))
 
 export const setTeachDraft = (d: TeachDraft | null) => set({ teachDraft: d })
 
 export async function refreshLists() {
   const b = await api('/api/bootstrap')
-  set({ bots: b.bots, chats: b.chats, settings: b.settings, apps: b.apps || [] })
+  set({ bots: b.bots, chats: b.chats, unread: unreadOf(b.chats), settings: b.settings, apps: b.apps || [] })
 }
 
 export async function refreshApps() {
@@ -158,8 +185,19 @@ export async function pinChat(chatId: number, pinned: boolean) {
 
 export async function openChat(chatId: number) {
   localStorage.setItem('osa.active', String(chatId))
-  set(s => ({ active: chatId, view: 'chat', unread: { ...s.unread, [chatId]: 0 }, thread: s.active === chatId ? s.thread : null }))
+  set(s => ({ active: chatId, view: 'chat', thread: s.active === chatId ? s.thread : null }))
   await loadChat(chatId)
+  if (state.active === chatId) seeActive()
+}
+
+// 当前对话里的新消息看过了：先在本页去掉数字，再告诉服务端（其他页面、手机收到 chat_seen 也去掉）。
+// 页面没被看着、主区不是对话时不算看过；只报到本页已经加载的最后一条，没显示出来的不算
+function seeActive() {
+  const id = state.active
+  if (!id || !state.visible || state.view !== 'chat' || !state.unread[id]) return
+  const list = state.messages[id]
+  set(s => ({ unread: { ...s.unread, [id]: 0 } }))
+  api(`/api/chats/${id}/seen`, { method: 'POST', body: list?.length ? { id: list[list.length - 1].id } : {} }).catch(() => {})
 }
 
 // ---------- 讨论串 ----------
@@ -293,6 +331,7 @@ document.addEventListener('visibilitychange', () => {
     return
   }
   reportVisibility()
+  seeActive()   // 切回来了：藏着的那段时间当前对话里来的消息，现在算看过
 })
 
 export function connect() {
@@ -315,7 +354,7 @@ async function resync() {
   const tasks: Record<number, Task> = {}
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   set({ messages: {}, streams: {}, tasks, teach: b.teach || null, threads: byId(b.threads) })
-  if (state.active) loadChat(state.active)
+  if (state.active) loadChat(state.active).then(seeActive)
   if (state.thread) openThread(state.thread.chat, state.thread.rootId)
   Object.keys(state.taskSteps).forEach(id => loadTask(Number(id)))   // 断线期间漏掉的过程
 }
@@ -354,18 +393,23 @@ function handle(d: any) {
         const said = m.role !== 'user' && !!m.content
         const threads = th ? { ...s.threads, [th.id]: { ...s.threads[th.id], ...th, unread: th.unread ?? 0,
           ...(said ? { preview: m.content.slice(0, 200), preview_bot: m.bot_id } : {}) } } : s.threads
-        const unread = !th && home !== s.active && m.role !== 'user' ? { ...s.unread, [home]: (s.unread[home] || 0) + 1 } : s.unread
+        // 私聊、群聊的未读数用服务端算好的，不在页面里自己加：页面关着、断线时来的消息也不会漏
+        const unread = !th && typeof d.unread === 'number' ? { ...s.unread, [cid]: d.unread } : s.unread
         const streams = m.role === 'assistant' ? { ...s.streams, [cid]: undefined } : s.streams
         return { chats, threads, unread, streams, messages, ...(learned ? { thread: { ...s.thread!, id: cid } } : {}) }
       })
       if (learned) loadChat(cid)
       if (th && state.thread?.id === cid && state.visible) markThreadSeen(cid)   // 正开着这个讨论串
+      if (!th && cid === state.active) seeActive()                               // 正开着这个对话
       // 桌面 App 里窗口藏起来时，当前对话的回复也要通知
       if (m.role !== 'user' && (home !== state.active || (th && state.thread?.id !== cid) || desktop)) notifyOS(home, m, undefined, th && { id: cid, root: th.root })
       break
     }
     case 'thread_seen':   // 别的页面或手机上看过了这个讨论串
       set(s => ({ threads: { ...s.threads, [d.thread.id]: { ...s.threads[d.thread.id], ...d.thread, parent: d.thread.parent, root: d.thread.root } } }))
+      break
+    case 'chat_seen':   // 别的页面或手机上看过了这个对话
+      set(s => ({ unread: { ...s.unread, [cid]: d.unread } }))
       break
     case 'stream_start':
       set(s => ({ streams: { ...s.streams, [cid]: { sid: d.sid, text: '', thinking: '', started: Date.now(), bot_id: d.bot_id } } }))

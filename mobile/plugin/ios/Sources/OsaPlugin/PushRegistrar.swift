@@ -102,6 +102,15 @@ final class PushRegistrar {
         return [.authorized, .provisional, .ephemeral].contains(s.authorizationStatus)
     }
 
+    /// 通知权限：default 是还没问过（可以弹系统的权限框），denied 是拒绝过（只能去系统设置里改），其余算 granted
+    func status() async -> String {
+        switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+        case .notDetermined: return "default"
+        case .denied: return "denied"
+        default: return "granted"
+        }
+    }
+
     /// 这台手机给 origin 开着推送时，返回订阅（必要时先和中转核对、重新登记）；没开返回 nil
     func current(origin: String, vapid: String) async throws -> Registration? {
         guard var reg = store.forOrigin(origin), await authorized() else { return nil }

@@ -22,8 +22,8 @@ function open(r: Omit<Req, 'resolve'>): Promise<boolean> {
 }
 
 /** 问一句，点了确认得到 true。删除这类操作传 danger 和按钮文字（比如“删除”）。 */
-export const ask = (text: string, o: { ok?: string; danger?: boolean } = {}) =>
-  open({ text, ok: o.ok || t('好的'), cancel: t('取消'), danger: o.danger })
+export const ask = (text: string, o: { ok?: string; cancel?: string; danger?: boolean } = {}) =>
+  open({ text, ok: o.ok || t('好的'), cancel: o.cancel || t('取消'), danger: o.danger })
 
 /** 告诉你一件事，只有一个按钮。 */
 export const notice = (text: string) => open({ text, ok: t('好的') }).then(() => undefined)

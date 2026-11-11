@@ -24,6 +24,20 @@ if "seen" not in _cols:
 conn.execute("create index if not exists chats_thread on chats(parent, root)")
 conn.commit()
 
+
+def _init_seen():
+    """私聊和群聊的未读也按 seen 算（以前只有讨论串用）。升级上来时已有的消息都算看过，免得侧栏一屏全是数字。
+    只做一次，记在 settings 里：之后新建的对话 seen 是空的，重启时不能再被当成“都看过了”。"""
+    if conn.execute("select 1 from settings where key='chat_seen_init'").fetchone():
+        return
+    conn.execute("update chats set seen=(select coalesce(max(id), 0) from messages where chat_id=chats.id) "
+                 "where kind != 'thread' and seen is null")
+    conn.execute("insert or replace into settings(key, value) values('chat_seen_init', '1')")
+    conn.commit()
+
+
+_init_seen()
+
 SHAPES = ["square", "sparkle", "clover", "flower", "heart", "house", "star", "circle"]
 COLORS = ["#7c9cff", "#ff8a65", "#4fc3a1", "#f6c453", "#c792ea", "#ff6b9a", "#5cc8ff", "#a3a3a3"]
 MAX_BOTS = 50
@@ -165,7 +179,8 @@ def _chat(row) -> dict:
         conn.execute("select count(*) from chats where kind='thread' and parent=?", (i,)).fetchone()[0]
     return {"id": i, "kind": kind, "title": title, "bot_ids": json.loads(ids or "[]"), "pinned": pinned or 0,
             "updated": updated, "preview": (last[0][:80] if last else ""), "lead": lead, "image": image,
-            "threads": threads}   # 下面有几个讨论串：有的话对话顶上显示“讨论串”按钮
+            "threads": threads,   # 下面有几个讨论串：有的话对话顶上显示“讨论串”按钮
+            "unread": unread(i)}
 
 
 def list_chats() -> list[dict]:
@@ -198,7 +213,7 @@ def chat(chat_id: int) -> dict | None:
     if not up:
         return None
     author = conn.execute("select bot_id from messages where id=?", (r[8],)).fetchone()
-    return {**up, "id": c["id"], "updated": c["updated"], "preview": c["preview"], "pinned": 0,
+    return {**up, "id": c["id"], "updated": c["updated"], "preview": c["preview"], "pinned": 0, "unread": c["unread"],
             "parent": up["id"], "root": r[8], "root_bot": author[0] if author and author[0] in up["bot_ids"] else None}
 
 
@@ -226,6 +241,13 @@ def thread(parent: int, root: int) -> dict:
 # 讨论串里算作“回复”的消息：用户和 Bot 说的话、任务结果；派任务、交接这类记录不算
 _REPLY = ("(m.role = 'user' or (m.role = 'assistant' and m.content != '') "
           "or json_extract(m.meta, '$.kind') in ('result', 'dm_reply', 'image'))")
+
+
+def unread(chat_id: int) -> int:
+    """这个对话里你还没看过的 Bot 消息数：seen 之后的，不算你自己说的和派任务这类记录，也不算它下面讨论串里的
+    （讨论串的新回复由 thread_summaries 另外算）。存在服务端，刷新、断线重连、手机 App 重新打开都还在。"""
+    return conn.execute(f"select count(*) from messages m where m.chat_id=? and m.role != 'user' and {_REPLY} "
+                        "and m.id > (select coalesce(seen, 0) from chats where id=?)", (chat_id, chat_id)).fetchone()[0]
 
 
 def thread_summaries(parent: int, roots: list[int]) -> dict[int, dict]:
@@ -269,13 +291,21 @@ def thread_list(parent: int | None = None, unread: bool = False) -> list[dict]:
 
 def mark_seen(thread_id: int, upto: int | None = None) -> dict | None:
     """你看过了讨论串里到 upto（默认到最新一条）为止的消息。返回和 thread_event 一样的摘要；不是讨论串返回 None。"""
-    top = conn.execute("select coalesce(max(id), 0) from messages where chat_id=?", (thread_id,)).fetchone()[0]
+    return thread_event(thread_id) if _see(thread_id, upto, "kind = 'thread'") else None
+
+
+def mark_chat_seen(chat_id: int, upto: int | None = None) -> int | None:
+    """你看过了私聊或群聊里到 upto（默认到最新一条）为止的消息。返回还剩几条没看；不是私聊、群聊返回 None。"""
+    return unread(chat_id) if _see(chat_id, upto, "kind != 'thread'") else None
+
+
+def _see(chat_id: int, upto: int | None, kind: str) -> bool:
+    """把 seen 往前推到 upto（不超过最新一条，也不往回退）。kind 限定是讨论串还是私聊、群聊；没有这样的对话返回 False。"""
+    top = conn.execute("select coalesce(max(id), 0) from messages where chat_id=?", (chat_id,)).fetchone()[0]
     upto = min(int(upto), top) if upto else top
-    if not conn.execute("update chats set seen=max(coalesce(seen, 0), ?) where id=? and kind='thread'",
-                        (upto, thread_id)).rowcount:
-        return None
+    n = conn.execute(f"update chats set seen=max(coalesce(seen, 0), ?) where id=? and {kind}", (upto, chat_id)).rowcount
     conn.commit()
-    return thread_event(thread_id)
+    return bool(n)
 
 
 def thread_event(chat_id: int) -> dict | None:
