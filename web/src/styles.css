@@ -331,6 +331,10 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .head-actions .ghost-btn { font-size: 13px; padding: 5px 9px; }
 .topic-line { display: flex; align-items: center; gap: 12px; margin: 22px 0; color: var(--fg3); font-size: 12px; }
 .topic-line::before, .topic-line::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
+/* 消息流里换了一天（Chat.tsx 的 MessageList）：实线，和“新话题”的虚线区分开 */
+.day-line { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--fg3); font-size: 12px; }
+.day-line::before, .day-line::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.day-line:first-child { margin-top: 0; }
 
 /* ---------- 附件 ---------- */
 .composer { padding-left: 8px; }

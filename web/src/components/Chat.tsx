@@ -71,7 +71,7 @@ function ThreadLink({ m, reply }: { m: Message; reply: Reply }) {
       {who.length > 0 && <GroupAvatars bots={who} size={18} />}
       <b>{t('{n} 条回复', { n: m.thread.count })}</b>
       {fresh > 0 ? <span className="th-new">{t('{n} 条新回复', { n: fresh })}</span>
-        : m.thread.last && <span className="muted">{t('最后回复 {time}', { time: time(m.thread.last) })}</span>}
+        : m.thread.last && <span className="muted">{t('最后回复 {time}', { time: stamp(m.thread.last) })}</span>}
     </button>
   )
 }
@@ -175,9 +175,19 @@ function ThreadsMenu({ chat, open, setOpen }: { chat: ChatT; open: boolean; setO
   )
 }
 
+const today = (ts: number) => new Date(ts * 1000).toDateString() === new Date().toDateString()
 // 今天的只写时间，更早的写日期
-const when = (ts: number) => new Date(ts * 1000).toDateString() === new Date().toDateString()
-  ? time(ts) : new Date(ts * 1000).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' })
+const when = (ts: number) => today(ts) ? time(ts) : new Date(ts * 1000).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' })
+// 消息底下的时间：更早的连日期一起写，往回翻时那天的分隔线可能已经翻出屏幕
+const stamp = (ts: number) => today(ts) ? time(ts) : when(ts) + ' ' + time(ts)
+// 消息流里的日期分隔线：今天 / 昨天 / 11月6日 周四，不是今年的加上年份（和资料库的写法一样）
+function day(ts: number) {
+  const d = new Date(ts * 1000), now = new Date()
+  const n = Math.round((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000)
+  if (n === 0) return t('今天')
+  if (n === 1) return t('昨天')
+  return d.toLocaleDateString(locale, { month: 'long', day: 'numeric', weekday: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
+}
 
 function BotMessage({ bot, m, children, showName, reply }: { bot?: Bot; m: Message; children?: React.ReactNode; showName?: boolean; reply?: Reply }) {
   return (
@@ -190,7 +200,7 @@ function BotMessage({ bot, m, children, showName, reply }: { bot?: Bot; m: Messa
         <Attachments items={m.meta.attachments} />
         {children}
         <ThreadLink m={m} reply={reply} />
-        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} /><ReplyBtn m={m} reply={reply} /></div>
+        <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={m.content} /><ReplyBtn m={m} reply={reply} /></div>
       </div>
     </div>
   )
@@ -218,7 +228,7 @@ function ImageMessage({ bot, m, chat, showName, reply }: { bot?: Bot; m: Message
         <div className="img-caption" title={m.meta.prompt}>🎨 {m.meta.prompt}</div>
         <div className="img-meta">{m.meta.model}{m.meta.price !== undefined ? ' · ' + imagePrice(m.meta.price, cur) : ''}{done && <> · <b>{done}</b></>}</div>
         <ThreadLink m={m} reply={reply} />
-        <div className="msg-actions"><span>{time(m.ts)}</span>
+        <div className="msg-actions"><span>{stamp(m.ts)}</span>
           {att?.media && <a className="ghost-btn" href={mediaUrl(att.media) + '?download=1'} download={att.name}>{t('下载')}</a>}
           {actions.map(a => <button key={a.label} className="ghost-btn" onClick={a.run}>{a.label}</button>)}
           <CopyBtn text={m.meta.prompt || ''} /><ReplyBtn m={m} reply={reply} /></div>
@@ -290,7 +300,7 @@ function ResultMessage({ bot, m, goal, showName, reply }: { bot?: Bot; m: Messag
         <Attachments items={m.meta.attachments} />
         {(m.meta.apps as AppView[] | undefined)?.map((v, i) => <McpAppView key={i} view={v} botId={m.bot_id} />)}
         <ThreadLink m={m} reply={reply} />
-        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text} />
+        <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={text} />
           {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}
           {taskKind(m).taskId && <button className="ghost-btn" onClick={() => showTask(taskKind(m).taskId!)}>{t('查看过程')}</button>}
           <ReplyBtn m={m} reply={reply} /></div>
@@ -540,7 +550,7 @@ function DmReply({ m, bot, to, reply }: { m: Message; bot?: Bot; to?: Bot; reply
         <div className={open ? '' : 'clamp'}><Markdown text={m.content} embeds /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
         <ThreadLink m={m} reply={reply} />
-        <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={m.content} />
+        <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={m.content} />
           {bot && <button className="ghost-btn" onClick={() => openChat(bot.chat_id)}>{t('去 {name} 的私聊', { name: bot.name })}</button>}
           {m.meta.task_id && <button className="ghost-btn" onClick={() => showTask(m.meta.task_id)}>{t('查看过程')}</button>}
           <ReplyBtn m={m} reply={reply} /></div>
@@ -569,7 +579,8 @@ export function GroupAvatars({ bots, size = 26 }: { bots: Bot[]; size?: number }
 }
 
 // 一串消息，主对话和讨论串共用。reply：能针对消息回复（主对话里给；讨论串里不给，不能再套讨论串）
-export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[]; reply?: Reply }) {
+// since：前面紧挨着的那条消息的时间（讨论串的回复接在原消息后面），同一天就不再插日期
+export function MessageList({ chat, list, reply, since }: { chat: ChatT; list: Message[]; reply?: Reply; since?: number }) {
   const allBots = useStore(s => s.bots)
   const tasks = useStore(s => s.tasks)
   const group = chat.kind === 'group'
@@ -582,7 +593,7 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
   const task = (tid: number) => byId.get(tid) && <TaskCard key={tid} m={byId.get(tid)!} task={tasks[tid]}
     owner={group ? botOf(byId.get(tid)!.bot_id) : undefined} handoffTo={botOf(byId.get(tid)!.meta.handoff_to)}
     replyTo={botOf(byId.get(tid)!.meta.reply_to)} />
-  return <>{list.map(m => {
+  const one = (m: Message): React.ReactNode => {
     if (m.role === 'user') {
       // “[附件] 路径”这几行不显示，换成缩略图和文件卡片
       const { text, items } = splitMarks(m.content, m.meta.attachments)
@@ -597,7 +608,7 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
             {!text && items.length > 0 && m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
             {text && textEmbeds(text).map(u => <div key={u} className="user-embed"><LinkEmbed href={u} fallback={null} /></div>)}
             <ThreadLink m={m} reply={reply} />
-            {reply && <div className="msg-actions"><span>{time(m.ts)}</span><CopyBtn text={text || m.content} /><ReplyBtn m={m} reply={reply} /></div>}
+            {reply && <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={text || m.content} /><ReplyBtn m={m} reply={reply} /></div>}
           </div>
         </div>)
     }
@@ -607,8 +618,18 @@ export function MessageList({ chat, list, reply }: { chat: ChatT; list: Message[
       </BotMessage>) : null
     const k = taskKind(m)
     const card = cardFor(k.kind)   // 按种类找卡片（cards.tsx）；没登记的种类显示成一行系统消息
-    if (card) return <Fragment key={m.id}>{card({ m, kind: k.kind, taskId: k.taskId, chat, group, bot: speaker(m), botOf, reply, tasks, byId, attached, task })}</Fragment>
+    if (card) return card({ m, kind: k.kind, taskId: k.taskId, chat, group, bot: speaker(m), botOf, reply, tasks, byId, attached, task })
     return <div key={m.id} className="sys-line">{m.content.replace(/^\[|\]$/g, '').slice(0, 160)}</div>
+  }
+  // 和上一条显示出来的消息不是同一天，就在前面插一条日期：只显示时分，回看时分不清是哪天。
+  // 不显示的消息（挂到回复下面的任务卡片、没新内容的定时任务）不算，免得日期下面是空的
+  let last = since ? new Date(since * 1000).toDateString() : ''
+  return <>{list.map(m => {
+    const node = one(m)
+    if (node == null || node === false) return null
+    const d = new Date(m.ts * 1000).toDateString(), head = d !== last
+    last = d
+    return <Fragment key={m.id}>{head && <div className="day-line"><span>{day(m.ts)}</span></div>}{node}</Fragment>
   })}</>
 }
 
