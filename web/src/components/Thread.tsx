@@ -65,7 +65,7 @@ export default function ThreadPanel() {
         <div className="th-body">
           {th.root ? <MessageList chat={chat} list={[th.root]} /> : <div className="muted small">{t('加载中…')}</div>}
           <div className="th-divider"><span>{count ? t('{n} 条回复', { n: count }) : t('针对这条消息的回复只在这里，不进主对话')}</span></div>
-          {list && <MessageList chat={chat} list={list} />}
+          {list && <MessageList chat={chat} list={list} since={th.root?.ts} />}
           {th.id && <StreamMessage chat={chat} chatId={th.id} />}
           {th.id && <PendingApprovals here={a => a.origin_thread === th.id && a.chat_id === th.chat} from={a => a.origin_thread === th.id} />}
           {error && <div className="error-line">{error}</div>}
