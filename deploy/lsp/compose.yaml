@@ -60,7 +60,7 @@ services:
   # 不要任何特权，只挂它自己的目录，看不到正式服务的数据、密钥和推送中转
   demo:
     <<: *image
-    user: "998:998"
+    user: "998:996"   # 以前 systemd 里的 osa-demo 用户
     env_file: /opt/osa/demo/env
     environment:
       TZ: Asia/Shanghai
