@@ -1366,5 +1366,8 @@
   "外观": "Theme",
   "跟随系统": "Match system",
   "明亮": "Light",
-  "夜间": "Dark"
+  "夜间": "Dark",
+  "要开启消息推送吗？App 不在前台时，Bot 的回复、任务结果和等你确认的操作会推送到这台手机。现在不开，以后也能在“设置 → 通知”里开。": "Turn on push notifications? When the app isn't in the foreground, bot replies, task results and actions waiting for your approval are pushed to this phone. You can also turn this on later in Settings → Notifications.",
+  "以后再说": "Not now",
+  "这台手机没有允许 Open Super Agent 发通知，所以 App 不在前台时收不到 Bot 的消息。要开的话，先到 iPhone 的“设置 → 通知 → Open Super Agent”里允许，再到这里的“设置 → 通知”开启推送。": "Notifications for Open Super Agent are turned off on this phone, so you won't hear from your bots when the app isn't in the foreground. To change that, allow them in iPhone Settings → Notifications → Open Super Agent, then turn on push here in Settings → Notifications."
 }

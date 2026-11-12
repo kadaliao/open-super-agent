@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { encode } from 'uqr'
-import { api, setSettings, useStore } from '../store'
+import { api, enablePush, setSettings, useStore } from '../store'
 import { desktop, phone } from '../desktop'
 import { Icon } from '../icons'
 import { lang, syncLang, t, tc, tn } from '../i18n'
@@ -284,9 +284,7 @@ function PhoneNotifications() {
   const on = async () => {
     setBusy(true); setMsg('')
     try {
-      const s = await push.subscribe(key)
-      await api('/api/push/subscribe', { method: 'POST', body: { subscription: s } })
-      setSub(s); setMsg(t('已开启'))
+      setSub(await enablePush(key)); setMsg(t('已开启'))
     } catch (e: any) { setMsg(e.message || String(e)) }
     setBusy(false)
   }

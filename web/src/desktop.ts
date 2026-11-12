@@ -25,6 +25,8 @@ export type Bridge = {
     current(serverKey: string): Promise<PushSub | null>
     subscribe(serverKey: string): Promise<PushSub>   // 申请通知权限、向推送中转登记
     unsubscribe(serverKey: string): Promise<void>
+    // 通知权限：default 是还没问过（可以弹系统的权限框），denied 是拒绝过（只能去系统设置里改）。旧版 App 没有
+    status?(): Promise<'default' | 'granted' | 'denied'>
   }
   openSheet?(url: string): Promise<void>       // 在 App 里弹出一页打开同站地址（报告页、应用授权），关掉时完成
   switchServer?(): void                        // 回到 App 的连接页

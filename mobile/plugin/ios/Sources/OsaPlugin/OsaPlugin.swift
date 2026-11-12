@@ -22,6 +22,7 @@ struct SubKeys: Encodable { let p256dh: String; let auth: String }
 struct Sub: Encodable { let endpoint: String; let keys: SubKeys }
 struct SubResult: Encodable { let subscription: Sub? }
 struct OpenResult: Encodable { let url: String? }
+struct StatusResult: Encodable { let status: String }
 
 /// App 的 Rust 部分（mobile/src-tauri）通过 run_mobile_plugin 调这里；服务器的网页调不到（没有给网页开这个插件的命令）。
 /// 命令在 Tauri 的后台队列里执行，碰界面的地方都切回主线程。
@@ -100,6 +101,11 @@ class OsaPlugin: Plugin, UNUserNotificationCenterDelegate {
             await push.unsubscribe(origin: args.origin)
             invoke.resolve()
         }
+    }
+
+    /// 只查不问：页面拿它决定连上后要不要提示开推送
+    @objc public func pushStatus(_ invoke: Invoke) throws {
+        Task { invoke.resolve(StatusResult(status: await push.status())) }
     }
 
     @objc public func setBadge(_ invoke: Invoke) throws {

@@ -12,6 +12,7 @@ fn main() {
         "mobile_push_current",
         "mobile_push_subscribe",
         "mobile_push_unsubscribe",
+        "mobile_push_status",
         "mobile_open_sheet",
         "mobile_switch_server",
         "mobile_take_pending_open",

@@ -36,7 +36,8 @@ const BRIDGE: &str = r#"(function () {
     push: {
       current: function (key) { return call('mobile_push_current', { key: String(key) }); },
       subscribe: function (key) { return call('mobile_push_subscribe', { key: String(key) }); },
-      unsubscribe: function (key) { return call('mobile_push_unsubscribe', { key: String(key) }); }
+      unsubscribe: function (key) { return call('mobile_push_unsubscribe', { key: String(key) }); },
+      status: function () { return call('mobile_push_status'); }
     },
     openSheet: function (url) { return call('mobile_open_sheet', { url: String(url) }); },
     switchServer: function () { quiet('mobile_switch_server'); },
@@ -169,7 +170,7 @@ fn grant(app: &AppHandle, origin: &Url) {
         return;
     }
     let mut cap = CapabilityBuilder::new(format!("server-{}", granted.len())).remote(server_pattern(origin)).local(false).window("main");
-    for cmd in ["set-badge", "open-external", "log", "set-theme", "push-current", "push-subscribe", "push-unsubscribe", "open-sheet", "switch-server", "take-pending-open"] {
+    for cmd in ["set-badge", "open-external", "log", "set-theme", "push-current", "push-subscribe", "push-unsubscribe", "push-status", "open-sheet", "switch-server", "take-pending-open"] {
         cap = cap.permission(format!("allow-mobile-{cmd}"));
     }
     if app.add_capability(cap).is_ok() {
@@ -358,6 +359,13 @@ async fn mobile_push_unsubscribe(app: AppHandle, key: String) -> Result<(), Stri
     app.osa_ios().call::<Value>("pushUnsubscribe", json!({ "origin": origin })).await.map(|_| ())
 }
 
+/// 通知权限现在的样子：default（还没问过）、granted、denied（拒绝过）。网页据此决定连上后要不要问、怎么问
+#[tauri::command(async)]
+async fn mobile_push_status(app: AppHandle) -> Result<String, String> {
+    let r: Value = app.osa_ios().call("pushStatus", json!({})).await?;
+    Ok(r.get("status").and_then(Value::as_str).unwrap_or("default").to_string())
+}
+
 /// 在弹出页里打开同一台服务器上的地址，等它关掉。别的网站用系统浏览器
 #[tauri::command(async)]
 async fn mobile_open_sheet(app: AppHandle, url: String) -> Result<(), String> {
@@ -454,7 +462,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             setup_state, choose_remote, confirm_pair, cancel_pair,
             mobile_set_badge, mobile_set_theme, mobile_open_external, mobile_log, mobile_push_current, mobile_push_subscribe,
-            mobile_push_unsubscribe, mobile_open_sheet, mobile_switch_server, mobile_take_pending_open
+            mobile_push_unsubscribe, mobile_push_status, mobile_open_sheet, mobile_switch_server, mobile_take_pending_open
         ])
         .setup(|app| {
             let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());

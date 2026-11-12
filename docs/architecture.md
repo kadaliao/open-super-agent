@@ -222,6 +222,9 @@ web/src/
 - **新回复**：`chats.seen` 记着你在讨论串里看到过的最后一条消息，之后 Bot 的回复（不算你自己说的）是新回复，存在服务端，
   所以刷新、换设备都还在。讨论串开着、页面正被看着时前端 `POST /api/threads/<id>/seen`，服务端广播 `thread_seen`，各处一起去掉。
   `bootstrap` 带上所有有新回复的讨论串，对话底部据此浮一条提醒，侧栏的数字也算上它们；`GET /api/chats/<id>/threads` 是对话顶上的讨论串列表。
+- **私聊、群聊的未读也一样存在服务端**：同一个 `chats.seen`，`bots.unread()` 数它之后 Bot 说的话（口径和新回复一样，不含讨论串里的），
+  `bootstrap` 的 `chats`、每个 `message` 事件都带着 `unread`，前端不自己累加，所以断线重连、手机 App 重新打开后侧栏的数字还在。
+  对话开着、页面正被看着时前端 `POST /api/chats/<id>/seen`，服务端广播 `chat_seen`。升级时已有的消息都算看过（`bots._init_seen`，只做一次）。
 - 确认卡片的 `origin_chat_id` 是讨论串所在的私聊或群聊（聊天软件、“在群聊里派的”提示照旧），`origin_thread` 是讨论串。
 - 讨论串只在网页上用：聊天软件绑定的是私聊或群聊，讨论串里的消息不发过去。删除 Bot 或群聊时它下面的讨论串一起删。
 
@@ -373,6 +376,8 @@ web/src/
 - Service Worker 不缓存接口和页面，只在连不上服务器时返回一个提示页。
 - iPhone App 也走这条路，服务器不分网页和 App：App 在推送中转（`osa/relay.py`）登记，拿到一个地址，连同手机上生成的公钥当成普通的推送订阅交给 `/api/push/subscribe`。
   中转验 VAPID 签名（只认登记时那台服务器的公钥）后把密文转给苹果，手机上的通知扩展解密。中转看不到内容，见 docs/mobile.md。
+- App 连上一台服务器后、这台手机还没给它开推送时，页面用自己的对话框问一次（`store.ts` 的 `askPush`，回答过记在 `localStorage osa.pushAsked`）：
+  点了“开启”才弹系统的权限框（一台手机只弹一次，不能一启动就用掉）；拒绝过的（`push.status()` 是 `denied`）只提示去系统设置里改。
 - 推送内容带 `badge`（待确认数，App 显示在图标上）；带 RFC 8030 的 `Topic` 头（tag 的哈希），同一个对话的新推送替换还没送到的旧推送。
 
 ### 记忆与资料库
