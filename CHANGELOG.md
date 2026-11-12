@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.19.0] - 2026-11-12
 ### 改动
 - **“借用本机”换成“把任务派到你的 Mac”**：以前 App 连着服务器时，电脑可以选“本机”，等于把整台 Mac 借给服务器，所有 Bot、所有任务都用它，
   概念容易搞混，一次也只能借一台。现在 Bot 平时照常用服务器那边的电脑（Docker 沙盒或云电脑）；有的事只有你的 Mac 上才做得了
@@ -560,7 +562,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.18.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/kadaliao/open-super-agent/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/kadaliao/open-super-agent/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/kadaliao/open-super-agent/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/kadaliao/open-super-agent/compare/v0.15.0...v0.16.0

@@ -2665,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "open-super-agent"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "dirs 5.0.1",
  "getrandom 0.2.17",
