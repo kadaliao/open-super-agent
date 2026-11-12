@@ -1374,5 +1374,8 @@
   "有新版本了": "A new version is available",
   "重启更新": "Restart to update",
   "更新": "Update",
-  "稍后": "Later"
+  "稍后": "Later",
+  "对话样式": "Chat style",
+  "平铺": "Plain",
+  "气泡": "Bubbles"
 }

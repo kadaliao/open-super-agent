@@ -79,7 +79,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .chat-head { height: 54px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--line); }
 .head-bot { display: flex; align-items: center; gap: 9px; padding: 5px 9px; border-radius: 10px; } .head-bot:hover { background: var(--bg2); }
 .head-name { font-weight: 650; font-size: 15.5px; }
-.scroller { flex: 1; overflow-y: auto; }
+.scroller { flex: 1; overflow-y: auto; overflow-x: hidden; }   /* 哪条消息里冒出一个比正文宽的东西，也不能让整个消息流左右拖着跑（手机上尤其明显）；宽的东西各自在里面横向滑动 */
 .thread { max-width: 780px; margin: 0 auto; padding: 24px 20px 12px; }
 .msg { display: flex; gap: 12px; margin: 18px 0; }
 .msg.user { justify-content: flex-end; }
@@ -88,6 +88,12 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 /* 同一个 Bot 连着说的第二条起不再画头像（Chat.tsx 的 MessageList），位置留着，正文还是对齐的 */
 .same-bot > .msg.bot > .bot-avatar { visibility: hidden; height: 0; }
 .msg-body { flex: 1; min-width: 0; }
+/* 气泡样式（设置里“对话样式”，<html data-bubbles>）：Bot 的正文也装进一张卡片，靠左；你的在右。
+   只包正文，思考过程、任务卡片、时间这些还在卡片外面；短的话卡片跟着字收窄 */
+[data-bubbles] .msg.bot .msg-body .md:not(.md .md) { width: fit-content; max-width: min(100%, 88%); background: var(--bg2); border: 1px solid var(--line);
+  padding: 9px 15px; border-radius: 6px 20px 20px 20px; }
+[data-bubbles] .msg.bot .msg-body .md:not(.md .md) th { background: var(--bg3); }
+@media (max-width: 760px) { [data-bubbles] .msg.bot .msg-body .md:not(.md .md) { max-width: 100%; } }
 .msg-actions { display: flex; gap: 10px; align-items: center; color: var(--fg3); font-size: 12px; opacity: 0; transition: opacity .15s; margin-top: 2px; }
 .msg:hover .msg-actions { opacity: 1; }
 .ghost-btn { color: var(--fg3); font-size: 12px; padding: 2px 6px; border-radius: 6px; } .ghost-btn:hover { color: var(--fg); background: var(--bg3); }
@@ -1188,7 +1194,7 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 .applet-head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg2); font-size: 13px; }
 .applet-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .applet-frame { display: block; width: 100%; border: 0; background: #fff; transition: height .15s; }
-.page-card { display: flex; gap: 10px; align-items: center; margin: 8px 0; max-width: 540px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); text-align: left; }
+.page-card { display: flex; gap: 10px; align-items: center; margin: 8px 0; max-width: min(540px, 100%); padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); text-align: left; }   /* 按钮按内容撑宽，标题又不换行：不限到 100% 会把正文顶宽 */
 .page-card:hover { border-color: var(--fg3); }
 .page-card .lib-main b { font-size: 14px; }
 

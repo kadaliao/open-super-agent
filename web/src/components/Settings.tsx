@@ -11,7 +11,7 @@ import { describe, STATUS, when } from './Routines'
 import Channels from './Channels'
 import ModelSettings from './ModelSettings'
 import { ToastHost, useToast } from './settingsKit'
-import { canSetTheme, setThemePref, themePref, type ThemePref } from '../theme'
+import { bubblePref, canSetTheme, setBubblePref, setThemePref, themePref, type BubblePref, type ThemePref } from '../theme'
 import { ask } from './Dialog'
 import { useBack } from '../swipe'
 
@@ -64,6 +64,7 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
             <span className="grow" />
             <button className="set-item" onClick={() => window.dispatchEvent(new CustomEvent('osa-onboarding'))}><Icon name="sparkles" />{t('新手引导')}</button>
             <ThemeSwitch />
+            <BubbleSwitch />
             <LangSwitch />
             {auth && <form method="post" action="/logout"><button className="set-item" type="submit"><Icon name="logout" />{t('退出登录')}</button></form>}
           </nav>
@@ -113,6 +114,23 @@ function ThemeSwitch() {
         {THEMES.map(([v, icon, label]) => (
           <button key={v} className={pref === v ? 'on' : ''} role="radio" aria-checked={pref === v} title={label} aria-label={label}
             onClick={() => { setThemePref(v); setPref(v) }}><Icon name={icon} size={14} /></button>))}
+      </div>
+    </div>
+  )
+}
+
+// 对话的排法：平铺 / 气泡（你在右、Bot 在左），也只记在这台设备上
+const BUBBLES: [BubblePref, string][] = [['flat', t('平铺')], ['bubbles', t('气泡')]]
+
+function BubbleSwitch() {
+  const [pref, setPref] = useState(bubblePref)
+  return (
+    <div className="set-item set-theme">
+      <Icon name="message" />{t('对话样式')}<span className="grow" />
+      <div className="seg" role="radiogroup" aria-label={t('对话样式')}>
+        {BUBBLES.map(([v, label]) => (
+          <button key={v} className={pref === v ? 'on' : ''} role="radio" aria-checked={pref === v}
+            onClick={() => { setBubblePref(v); setPref(v) }}>{label}</button>))}
       </div>
     </div>
   )

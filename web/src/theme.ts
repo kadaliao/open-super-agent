@@ -41,7 +41,29 @@ export function onThemeChange(fn: () => void) {
 
 export function initTheme() {
   apply()
+  applyBubbles()
   system.addEventListener('change', apply)
-  window.addEventListener('storage', e => { if (e.key === KEY) apply() })   // 别的标签页改了
+  window.addEventListener('storage', e => { if (e.key === KEY) apply(); if (e.key === BUBBLE_KEY) applyBubbles() })   // 别的标签页改了
   if (canSetTheme && desktop?.setTheme) { const p = themePref(); desktop.setTheme(p === 'system' ? null : p) }
+}
+
+// 对话的排法：平铺（Bot 的话直接铺在正文里，默认）或气泡（你在右、Bot 在左，各自一张卡片）。也记在这台设备上。
+// 写在 <html data-bubbles>，只是 CSS 换个样子
+export type BubblePref = 'flat' | 'bubbles'
+const BUBBLE_KEY = 'osa.bubbles'
+
+export function bubblePref(): BubblePref {
+  try { if (localStorage.getItem(BUBBLE_KEY) === 'bubbles') return 'bubbles' } catch { /* 无痕窗口 */ }
+  return 'flat'
+}
+
+function applyBubbles() {
+  const root = document.documentElement
+  if (bubblePref() === 'bubbles') root.dataset.bubbles = ''
+  else delete root.dataset.bubbles
+}
+
+export function setBubblePref(pref: BubblePref) {
+  try { pref === 'flat' ? localStorage.removeItem(BUBBLE_KEY) : localStorage.setItem(BUBBLE_KEY, pref) } catch { /* 无痕窗口 */ }
+  applyBubbles()
 }
