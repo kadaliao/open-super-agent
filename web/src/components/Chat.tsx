@@ -587,6 +587,14 @@ export function MessageList({ chat, list, reply, since }: { chat: ChatT; list: M
   const botOf = (id: number | null | undefined) => allBots.find(b => b.id === id)
   const bot = group ? undefined : botOf(chat.bot_ids[0])
   const speaker = (m: Message) => (group ? botOf(m.bot_id) : bot)
+  // 这条消息显示成哪个 Bot 说的话（左边带头像的那几种：回复、任务结果、画的图、私信的回信）；别的返回 null
+  const saidBy = (m: Message): number | null => {
+    if (m.role === 'user') return null
+    if (m.role === 'assistant') return speaker(m)?.id ?? null
+    const kind = taskKind(m).kind
+    if (kind === 'result' || kind === 'image') return speaker(m)?.id ?? null
+    return kind === 'dm_reply' && !m.meta.sent ? botOf(m.bot_id)?.id ?? null : null
+  }
   // 回复里记录了本轮派发的任务：任务卡片挂到回复下面，不再单独显示
   const byId = new Map(list.map(m => [m.id, m]))
   const attached = new Set(list.flatMap(m => (m.role === 'assistant' ? m.meta.tasks || [] : [])))
@@ -624,12 +632,17 @@ export function MessageList({ chat, list, reply, since }: { chat: ChatT; list: M
   // 和上一条显示出来的消息不是同一天，就在前面插一条日期：只显示时分，回看时分不清是哪天。
   // 不显示的消息（挂到回复下面的任务卡片、没新内容的定时任务）不算，免得日期下面是空的
   let last = since ? new Date(since * 1000).toDateString() : ''
+  // 同一个 Bot 连着说的几条只有第一条画头像（styles.css 的 .same-bot）：每条都画，左边那一列在手机上白占地方。
+  // 中间隔了你的消息、任务卡片、交接、日期这些就重新画
+  let prev: number | null = null
   return <>{list.map(m => {
     const node = one(m)
     if (node == null || node === false) return null
     const d = new Date(m.ts * 1000).toDateString(), head = d !== last
     last = d
-    return <Fragment key={m.id}>{head && <div className="day-line"><span>{day(m.ts)}</span></div>}{node}</Fragment>
+    const who = saidBy(m), same = !head && who != null && who === prev
+    prev = who
+    return <Fragment key={m.id}>{head && <div className="day-line"><span>{day(m.ts)}</span></div>}{same ? <div className="same-bot">{node}</div> : node}</Fragment>
   })}</>
 }
 

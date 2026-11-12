@@ -85,6 +85,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .msg.user { justify-content: flex-end; }
 .msg.user .bubble { background: var(--bg3); padding: 9px 15px; border-radius: 20px 20px 6px 20px; max-width: 78%; white-space: pre-wrap; word-break: break-word; }
 .msg.bot .bot-avatar { margin-top: 2px; }
+/* 同一个 Bot 连着说的第二条起不再画头像（Chat.tsx 的 MessageList），位置留着，正文还是对齐的 */
+.same-bot > .msg.bot > .bot-avatar { visibility: hidden; height: 0; }
 .msg-body { flex: 1; min-width: 0; }
 .msg-actions { display: flex; gap: 10px; align-items: center; color: var(--fg3); font-size: 12px; opacity: 0; transition: opacity .15s; margin-top: 2px; }
 .msg:hover .msg-actions { opacity: 1; }
@@ -152,10 +154,18 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .md p { margin: .55em 0; } .md ul, .md ol { padding-left: 1.4em; margin: .5em 0; } .md li { margin: .2em 0; }
 .md h1, .md h2, .md h3, .md h4 { margin: 1.1em 0 .45em; line-height: 1.35; } .md h1 { font-size: 1.35em; } .md h2 { font-size: 1.2em; } .md h3 { font-size: 1.05em; }
 .md blockquote { margin: .6em 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--fg2); }
-.md table { border-collapse: collapse; margin: .7em 0; display: block; overflow-x: auto; font-size: 14px; }
+/* 表格包在 .md-table 里（Markdown.tsx）：太宽就在里面横向滑动，还有没露出来的列时那一侧渐隐 */
+.md-table { margin: .7em 0; overflow-x: auto; container: md-table / inline-size; }
+.md-table.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.md-table.more-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+.md-table.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+.md table { border-collapse: collapse; font-size: 14px; }
 .md th, .md td { border: 1px solid var(--line); padding: 5px 10px; word-break: normal; overflow-wrap: break-word; } .md th { background: var(--bg2); }   /* 单词不从中间断开；表格太宽就横向滑动 */
-/* 窄屏上列太多时别把每列挤成一个字宽：保留最小宽度，表格横向滑动 */
-@media (max-width: 760px) { .md th, .md td { min-width: 6.5em; } }
+/* 正文窄的时候（手机上，或者电脑上右边开着面板、讨论串）列太多别把每列挤成一个字宽：保留最小宽度，字和间距收一点，再放不下就横向滑动。
+   按正文的宽度算，不按窗口：窗口够宽、正文只剩三四百像素时也要生效 */
+@container md-table (max-width: 520px) {
+  .md table { font-size: 13px; } .md th, .md td { min-width: 4.5em; padding: 4px 8px; }
+}
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .code-wrap { position: relative; margin: .7em 0; }
 .code-wrap pre { background: #16161a; color: #e6e6e6; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; overflow-x: auto; font-size: 13px; margin: 0; }
@@ -269,7 +279,10 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .sidebar, .app.with-panel .panel { padding-top: env(safe-area-inset-top); }
   .chat-head { padding-left: 46px; }
   .app.with-panel .panel { width: 100vw; }
-  .thread { padding: 16px 14px 8px; } .composer-wrap { padding: 6px 10px calc(10px + env(safe-area-inset-bottom)); }
+  /* 手机屏幕窄：头像小一号、离正文近一点、两边少留一点，正文从 42px 起（原来 54px） */
+  .thread { padding: 16px 12px 8px; } .th-body { padding: 8px 12px 12px; }
+  .msg { gap: 8px; } .msg.bot > .bot-avatar { width: 22px; height: 22px; }
+  .composer-wrap { padding: 6px 10px calc(10px + env(safe-area-inset-bottom)); }
   .task-card, .approval-card { margin-left: 0; }
   .msg-actions { opacity: 1; }
 }
@@ -866,7 +879,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .th-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-left: 4px; }
 .th-title .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .th-body { padding: 8px 16px 12px; }
-.th-body .msg { margin: 14px 0; }
+.th-body .msg { margin: 14px 0; gap: 8px; }
+.th-body .msg.bot > .bot-avatar { width: 22px; height: 22px; }   /* 讨论串面板本来就窄，头像和手机上一样小一号 */
 .th-body .msg.user .user-col { max-width: 88%; }
 .th-divider { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; color: var(--fg3); font-size: 12px; }
 .th-divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
