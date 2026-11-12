@@ -1,5 +1,5 @@
 //! 菜单栏图标：旁边显示有几个操作等你确认；菜单里打开窗口、在浏览器里打开、切换服务器、开机启动、退出，
-//! 以及服务器借用这台 Mac 时的“断开”（见 link.rs），没借出时是灰的。
+//! 以及服务器借用这台 Mac 时的“断开”（见 link.rs），没借出时是灰的；新版本装好后“检查更新”变成“重启更新”。
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -10,12 +10,14 @@ use crate::tr;
 
 struct Autostart(CheckMenuItem<Wry>);
 struct Link(MenuItem<Wry>);
+struct Update(MenuItem<Wry>);
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let enabled = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", tr("开机时启动", "Open at login"), true, enabled, None::<&str>)?;
     let unlink = MenuItem::with_id(app, "unlink", tr("断开服务器借用这台 Mac", "Stop lending this Mac to the server"), false, None::<&str>)?;
+    let update = item("update", tr("检查更新…", "Check for updates…"))?;
     let menu = Menu::with_items(
         app,
         &[
@@ -27,13 +29,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &autostart,
             &item("logs", tr("打开日志文件夹", "Open logs folder"))?,
-            &item("update", tr("检查更新…", "Check for updates…"))?,
+            &update,
             &PredefinedMenuItem::separator(app)?,
             &item("quit", tr("退出 Open Super Agent", "Quit Open Super Agent"))?,
         ],
     )?;
     app.manage(Autostart(autostart));
     app.manage(Link(unlink));
+    app.manage(Update(update));
     let mut tray = TrayIconBuilder::with_id("main")
         .tooltip("Open Super Agent")
         .menu(&menu)
@@ -72,5 +75,12 @@ pub fn toggle_autostart(app: &AppHandle) {
 pub fn set_link(app: &AppHandle, linked: bool) {
     if let Some(l) = app.try_state::<Link>() {
         let _ = l.0.set_enabled(linked);
+    }
+}
+
+/// 新版本装好、等重启时，“检查更新…”换成“重启更新到 x.y.z”（点了重启，见 lib.rs 的 on_menu）
+pub fn set_update(app: &AppHandle, version: &str) {
+    if let Some(u) = app.try_state::<Update>() {
+        let _ = u.0.set_text(format!("{}{version}", tr("重启更新到 ", "Restart to update to ")));
     }
 }

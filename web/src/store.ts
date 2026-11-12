@@ -37,12 +37,14 @@ type State = {
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
   auth: boolean                      // 服务端开了登录（设置了 OSA_PASSWORD）
   onboarding: boolean                // 第一次打开：显示引导
+  newBuild: boolean                  // 服务器上的网页界面换了新版，这个页面开着的还是旧的：提示刷新
+  appUpdate: string | null           // 桌面 App 的新版本已经下载装好、等重启：版本号
 }
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
   active: null, thread: null, threads: {}, visible: document.visibilityState === 'visible', messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
-  view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false,
+  view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false, newBuild: false, appUpdate: null,
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -101,6 +103,8 @@ export async function bootstrap() {
   const active = b.chats.some((c: Chat) => c.id === saved) ? saved : b.bots[0]?.chat_id ?? null
   set({ bots: b.bots, chats: b.chats, unread: unreadOf(b.chats), settings: b.settings, shapes: b.shapes, colors: b.colors, threads: byId(b.threads),
         tasks, approvals, apps: b.apps || [], catalog: b.catalog || [], categories: b.categories || [], oauthCallback: b.oauth_callback || '', teach: b.teach || null, auth: !!b.auth, onboarding: !!b.onboarding, ready: true })
+  sawBuild(b.build)
+  watchAppUpdate()
   if (active) {
     const opened = openChat(active)
     if (active === fromUrl && threadRoot) opened.then(() => openThread(active, threadRoot))
@@ -158,6 +162,42 @@ const byId = (list: ThreadInfo[] = []) => Object.fromEntries(list.map(x => [x.id
 const unreadOf = (chats: Chat[]) => Object.fromEntries(chats.map(c => [c.id, c.unread || 0]))
 
 export const setTeachDraft = (d: TeachDraft | null) => set({ teachDraft: d })
+
+// ---------- 新版本 ----------
+// 这个页面是哪一版界面：构建时写进 index.html 的 <meta name="osa-build">（见 vite.config.ts）。开发服务器里没有，不检查
+const BUILD = document.querySelector<HTMLMetaElement>('meta[name="osa-build"]')?.content || ''
+let buildCheckedAt = 0
+
+// 服务端说现在是哪一版（bootstrap 和 /api/build 里的 build）。和这个页面的不一样：服务器升级过了，提示刷新
+function sawBuild(build?: string) {
+  buildCheckedAt = Date.now()
+  if (BUILD && build && build !== BUILD && !state.newBuild) set({ newBuild: true })
+}
+
+// 后端重启过的部署，连接会断开重连，重连后的 bootstrap 就带着新的 build；只改网页的部署不重启、连接不断，
+// 所以页面回到前台时（离上次看超过 5 分钟）和开着时每半小时再问一次
+async function checkBuild() {
+  if (!BUILD || state.newBuild || Date.now() - buildCheckedAt < 5 * 60_000) return
+  buildCheckedAt = Date.now()
+  try {
+    const r = await fetch('/api/build')
+    if (r.ok) sawBuild((await r.json()).build)
+  } catch { /* 连不上：重连后会再看 */ }
+}
+setInterval(() => { if (document.visibilityState === 'visible') checkBuild() }, 30 * 60_000)
+
+// 刷新页面，换上服务器上的新版界面
+export const reloadForUpdate = () => location.reload()
+
+// 桌面 App 在后台下载装好了新版本：页面打开前就装好的问一下外壳，之后装好的外壳发 osa-app-update 事件（detail 是版本号）
+let watchingApp = false
+function watchAppUpdate() {
+  const u = desktop?.update
+  if (!u || watchingApp) return
+  watchingApp = true
+  u.pending().then(v => { if (v) set({ appUpdate: v }) }).catch(() => {})
+  window.addEventListener('osa-app-update', e => set({ appUpdate: String((e as CustomEvent).detail || '') || null }))
+}
 
 export async function refreshLists() {
   const b = await api('/api/bootstrap')
@@ -332,6 +372,7 @@ document.addEventListener('visibilitychange', () => {
   }
   reportVisibility()
   seeActive()   // 切回来了：藏着的那段时间当前对话里来的消息，现在算看过
+  if (document.visibilityState === 'visible') checkBuild()
 })
 
 export function connect() {
@@ -351,6 +392,7 @@ async function resync() {
   await refreshLists()
   const b = await api('/api/bootstrap')
   if (syncLang(b.settings?.language)) return new Promise<void>(() => {})   // 语言和服务端的不一样：重新加载中
+  sawBuild(b.build)   // 服务器重启过（比如升级）：看看界面换没换
   const tasks: Record<number, Task> = {}
   b.tasks.forEach((t: Task) => (tasks[t.id] = t))
   set({ messages: {}, streams: {}, tasks, teach: b.teach || null, threads: byId(b.threads) })

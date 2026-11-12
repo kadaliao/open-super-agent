@@ -43,6 +43,10 @@ const BRIDGE: &str = r#"(function () {
       connect: function (token, id) { return ask('desktop_link', { token: String(token), id: id | 0 }); },
       disconnect: function () { return ask('desktop_unlink'); }
     },
+    update: {
+      pending: function () { return ask('desktop_update_pending'); },
+      restart: function () { call('desktop_restart', {}); }
+    },
     speech: false
   };
 })();"#;
@@ -55,6 +59,7 @@ pub struct State {
     agent: Arc<server::Server>, // 服务器借用这台 Mac 时在后台跑的小程序（link.rs）
     granted: Mutex<Vec<String>>, // 已经给过桥接授权的服务器
     popups: AtomicU32,
+    updated: Mutex<Option<String>>, // 后台已经下载装好、等重启生效的新版本号
 }
 
 pub fn zh() -> bool {
@@ -205,7 +210,9 @@ fn grant(app: &AppHandle, origin: &Url) {
         .permission("allow-desktop-set-theme")
         .permission("allow-desktop-link-state")
         .permission("allow-desktop-link")
-        .permission("allow-desktop-unlink");
+        .permission("allow-desktop-unlink")
+        .permission("allow-desktop-update-pending")
+        .permission("allow-desktop-restart");
     if app.add_capability(cap).is_ok() {
         granted.push(key);
     }
@@ -350,9 +357,10 @@ fn start_update_loop(app: &AppHandle) {
     });
 }
 
-/// 有新版就在后台下载、装好（换掉 App 本身），下次打开时生效。manual：从菜单栏点的，结果都告诉你
+/// 有新版就在后台下载、装好（换掉 App 本身），重启后生效：窗口顶上和菜单栏里都会出现“重启更新”。
+/// 已经装好一个、还没重启时不再自动去下（不然每 6 小时都把同一个新版再下一遍）。manual：从菜单栏点的，结果都告诉你
 async fn check_update(app: &AppHandle, manual: bool) {
-    if UPDATING.swap(true, SeqCst) {
+    if (!manual && state(app).updated.lock().unwrap().is_some()) || UPDATING.swap(true, SeqCst) {
         return;
     }
     let result = async {
@@ -366,13 +374,47 @@ async fn check_update(app: &AppHandle, manual: bool) {
     .await;
     UPDATING.store(false, SeqCst);
     let current = app.package_info().version.to_string();
+    if let Ok(Some(v)) = &result {
+        update_ready(app, v);
+    }
     let (title, body) = match result {
-        Ok(Some(v)) => (format!("{}{v}", tr("已经更新到 ", "Updated to ")), tr("下次打开 App 时生效", "It takes effect the next time you open the app").to_string()),
+        Ok(Some(v)) => (
+            format!("{}{v}", tr("新版本已经装好：", "New version installed: ")),
+            tr("点窗口顶上或菜单栏里的“重启更新”就能用上，不点的话下次打开 App 时生效",
+               "Click “Restart to update” at the top of the window or in the menu bar, or it takes effect the next time you open the app").to_string(),
+        ),
         Ok(None) if manual => (tr("已经是最新版", "You're up to date").to_string(), current),
         Err(e) if manual => (tr("检查更新失败", "Couldn't check for updates").to_string(), e.to_string()),
         _ => return,
     };
     let _ = app.notification().builder().title(title).body(body).show();
+}
+
+/// 新版本装好了：记下来，菜单栏里的“检查更新”换成“重启更新”，开着的页面顶上出现“重启更新”（web/src/components/UpdateBar.tsx）
+fn update_ready(app: &AppHandle, version: &str) {
+    *state(app).updated.lock().unwrap() = Some(version.to_string());
+    tray::set_update(app, version);
+    if let Some(w) = main_window(app) {
+        let _ = w.eval(format!("window.dispatchEvent(new CustomEvent('osa-app-update', {{ detail: {} }}))", json!(version)));
+    }
+}
+
+/// 页面打开前就装好的新版本（页面加载完问一次）
+#[tauri::command]
+fn desktop_update_pending(app: AppHandle) -> Option<String> {
+    state(&app).updated.lock().unwrap().clone()
+}
+
+/// 重启换上装好的新版本。退出前照常停掉本机的服务和借出的连接（见 run 里的 ExitRequested）。没有装好的新版本时什么都不做
+#[tauri::command]
+fn desktop_restart(app: AppHandle) {
+    restart_for_update(&app);
+}
+
+fn restart_for_update(app: &AppHandle) {
+    if state(app).updated.lock().unwrap().is_some() {
+        app.request_restart();
+    }
 }
 
 // ---------- 菜单栏 ----------
@@ -389,6 +431,7 @@ pub fn on_menu(app: &AppHandle, id: &str) {
             show_setup(app, "?switch=1");
         }
         "logs" => open_logs(app.clone()),
+        "update" if state(app).updated.lock().unwrap().is_some() => restart_for_update(app),
         "update" => {
             let app = app.clone();
             std::thread::spawn(move || tauri::async_runtime::block_on(check_update(&app, true)));
@@ -553,10 +596,12 @@ pub fn run() {
             agent: Arc::new(server::Server::default()),
             granted: Mutex::new(vec![]),
             popups: AtomicU32::new(0),
+            updated: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             setup_state, choose_local, choose_remote, open_logs,
             desktop_notify, desktop_set_badge, desktop_open_external, desktop_log, desktop_set_theme,
+            desktop_update_pending, desktop_restart,
             link::desktop_link_state, link::desktop_link, link::desktop_unlink
         ])
         .on_window_event(|w, e| {

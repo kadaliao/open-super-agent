@@ -12,6 +12,7 @@ import Onboarding from './components/Onboarding'
 import { BotPanel, NewBotDialog } from './components/BotEditor'
 import { GroupPanel, NewGroupDialog } from './components/Groups'
 import { ImageViewer } from './components/Media'
+import UpdateBar from './components/UpdateBar'
 import { useDrawer } from './swipe'
 
 export default function App() {
@@ -153,6 +154,7 @@ export default function App() {
       {settings !== false && <Settings initial={settings || undefined} onClose={() => setSettings(false)} />}
       {onboard && <Onboarding onClose={() => setOnboard(false)} />}
       <ImageViewer />
+      <UpdateBar />
     </div>
   )
 }

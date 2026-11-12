@@ -5,6 +5,7 @@ import logging
 import mimetypes
 import os
 import posixpath
+import re
 import shutil
 import signal
 import tempfile
@@ -126,7 +127,8 @@ async def bootstrap(request: Request):
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
             "threads": bots.thread_list(unread=True),   # 有新回复的讨论串：对话里提醒你去看
-            **_apps_out(request), "teach": teach.public(), "auth": auth.enabled(), "onboarding": settings.onboarding()}
+            **_apps_out(request), "teach": teach.public(), "auth": auth.enabled(), "onboarding": settings.onboarding(),
+            "build": web_build()}   # 服务器上现在是哪一版网页界面：开着旧版的页面据此提示更新
 
 
 @app.post("/api/bots")
@@ -1962,6 +1964,31 @@ channels.handback = handback
 # ---------- 前端 ----------
 if (DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
+
+
+_build: tuple = (None, "")
+
+
+def web_build() -> str:
+    """现在提供的网页界面是哪一版：前端构建时写在 index.html 的 <meta name="osa-build">（见 web/vite.config.ts），
+    开着的页面拿它和自己的比，不一样就提示更新。只改网页的部署是直接换掉 dist 目录、不重启服务，所以按文件状态看有没有换过。"""
+    global _build
+    f = DIST / "index.html"
+    try:
+        st = f.stat()
+    except OSError:
+        return ""
+    key = (st.st_ino, st.st_mtime_ns, st.st_size)
+    if _build[0] != key:
+        m = re.search(r'<meta name="osa-build" content="([^"]+)"', f.read_text("utf-8", "replace"))
+        _build = (key, m.group(1) if m else "")
+    return _build[1]
+
+
+@app.get("/api/build")
+async def current_build():
+    """开着的页面隔一阵问一次服务器上的界面换没换（只改网页的部署不重启服务，连接不断，bootstrap 不会重新拿）"""
+    return {"build": web_build()}
 
 
 # 首页和 Service Worker 每次都向服务器确认有没有新版（没变时只回 304）：不然浏览器和 App 里的 WebKit 会按经验缓存，

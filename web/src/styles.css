@@ -639,6 +639,15 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   animation: toast-in .18s ease-out; max-width: min(560px, 90%); }
 .toast.bad { background: var(--bad); color: #fff; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 6px); } }
+/* 有新版本：屏幕顶上居中的一条（UpdateBar.tsx），刘海屏让出状态栏；对话框、设置打开时在它们下面 */
+.update-bar { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 10px); transform: translateX(-50%); z-index: 45;
+  display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 16px; border-radius: 14px; background: var(--bg3); border: 1px solid var(--line);
+  box-shadow: 0 12px 32px rgba(0,0,0,.3); font-size: 13.5px; max-width: calc(100vw - 24px); animation: update-in .2s ease-out; }
+.update-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.update-bar .btn { padding: 4px 12px; font-size: 13px; white-space: nowrap; flex: none; }
+.update-x { width: 26px; height: 26px; flex: none; border-radius: 8px; color: var(--fg3); font-size: 18px; line-height: 1; }
+.update-x:hover { color: var(--fg); background: var(--line); }
+@keyframes update-in { from { opacity: 0; transform: translate(-50%, -6px); } }
 
 /* 卡片列表 */
 .card-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: visible; }

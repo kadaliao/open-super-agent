@@ -18,6 +18,12 @@ export type Bridge = {
     connect(token: string, id: number): Promise<boolean>
     disconnect(): Promise<void>
   }
+  // 桌面 App 的自动更新：新版本在后台下载装好后，pending 返回它的版本号（还没有是 null），restart 重启换上它。
+  // 装好时外壳还会发 osa-app-update 事件（detail 是版本号）。旧版外壳没有
+  update?: {
+    pending(): Promise<string | null>
+    restart(): void
+  }
   // 下面这些只有手机 App 有
   platform?: 'macos' | 'ios'
   push?: {
