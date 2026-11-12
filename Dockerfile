@@ -12,7 +12,6 @@ COPY web/ ./
 RUN npm run build    # 产物在 /src/osa/static/dist
 
 FROM node:24-bookworm-slim AS node
-FROM docker:29-cli AS docker-cli
 
 FROM python:3.13-slim-bookworm
 ARG NPM_REGISTRY=
@@ -32,16 +31,14 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
  && if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi \
  && node --version && npx --version
-# Docker 命令行：本地电脑由服务通过宿主机的 Docker 创建和操作（compose 里挂了 docker.sock）
-COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
-
 # uv：装 Python 依赖，也给 uvx 应用用
 RUN pip install --no-cache-dir --root-user-action=ignore ${PYPI_INDEX:+--index-url "$PYPI_INDEX"} uv==0.13.6 \
  && if [ -n "$PYPI_INDEX" ]; then mkdir -p /etc/uv && printf '[[index]]\nurl = "%s"\ndefault = true\n' "$PYPI_INDEX" > /etc/uv/uv.toml; fi
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv export --frozen --no-dev --no-emit-project --format requirements.txt -o /tmp/requirements.txt \
+# relay 组（h2）是推送中转（osa.relay）要的：同一个镜像也能跑它
+RUN uv export --frozen --no-dev --group relay --no-emit-project --format requirements.txt -o /tmp/requirements.txt \
  && uv pip install --system --no-cache -r /tmp/requirements.txt \
  && rm /tmp/requirements.txt
 

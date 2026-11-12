@@ -1,0 +1,115 @@
+# osa.cclsp.top 这台服务器（lsp）上的部署：正式服务、演示服务器、推送中转和 Bot 的电脑都是容器。
+# 放在 /opt/osa/docker/compose.yaml，代码解压在 /opt/osa/docker/src（构建用），配置由 make-config.sh 生成。
+# 数据目录都留在原来的位置，按原路径挂进容器，环境变量文件里的路径、应用里写的路径都不用改：
+#   正式服务 /opt/osa/app/data、/opt/osa/env，Gmail 应用自己的数据 /root/.config/mcp-email-server
+#   演示服务器 /opt/osa/demo/{data,home,env,config.yaml}；推送中转 /opt/osa/relay（数据库、APNs 密钥）
+# 端口和以前一样只开在 127.0.0.1（8765 / 8766 / 8790），Caddy 不用改。用法见 deploy/lsp/README.md。
+name: osa
+
+x-image: &image
+  image: open-super-agent:lsp
+  pull_policy: never
+  init: true
+  restart: unless-stopped
+
+services:
+  osa:
+    <<: *image
+    build:
+      context: src
+    env_file: /opt/osa/env
+    environment:
+      TZ: Asia/Shanghai
+      HOME: /root
+      OSA_DATA_DIR: /opt/osa/app/data
+      OSA_CONFIG: /opt/osa/docker/config.server.yaml
+      OSA_COMPUTER_SOCKET: /run/osa-computer/computer.sock
+      FORWARDED_ALLOW_IPS: "*"   # 端口只开在 127.0.0.1，进来的都是本机的 Caddy
+    ports: ["127.0.0.1:8765:8765"]
+    volumes:
+      - /opt/osa/app/data:/opt/osa/app/data
+      - /opt/osa/docker/config.server.yaml:/opt/osa/docker/config.server.yaml:ro
+      - /root/.config/mcp-email-server:/root/.config/mcp-email-server
+      - cache:/cache
+      - computer-socket:/run/osa-computer
+    security_opt: [no-new-privileges:true]
+    mem_limit: 800m
+    networks: [osa]
+
+  # Bot 的电脑（Docker 沙盒）：服务只经 computer-socket 卷里的 unix socket 找它，不挂 docker.sock；单独一个网络，连不到服务
+  computer:
+    build:
+      context: src/osa/computer/image
+    image: osa-computer:1
+    pull_policy: never
+    init: true
+    restart: unless-stopped
+    shm_size: 1gb
+    environment:
+      TZ: Asia/Shanghai
+      SCREEN_W: 1280
+      SCREEN_H: 800
+      OSA_COMPUTER_SOCKET: /run/osa-computer/computer.sock
+    volumes:
+      - computer-data:/data
+      - computer-socket:/run/osa-computer
+    mem_limit: 1g
+    networks: [computer]
+
+  # 演示服务器（demo.cclsp.top）：登录密码公开，所以锁死——普通用户（和以前的 osa-demo 用户同一个 uid）、只读的根目录、
+  # 不要任何特权，只挂它自己的目录，看不到正式服务的数据、密钥和推送中转
+  demo:
+    <<: *image
+    user: "998:998"
+    env_file: /opt/osa/demo/env
+    environment:
+      TZ: Asia/Shanghai
+      HOME: /opt/osa/demo/home
+      OSA_CONFIG: /opt/osa/demo/config.yaml
+      UV_CACHE_DIR: /opt/osa/demo/home/.cache/uv
+      UV_PYTHON_INSTALL_DIR: /opt/osa/demo/home/.cache/python
+      npm_config_cache: /opt/osa/demo/home/.npm
+      PYTHONDONTWRITEBYTECODE: "1"
+      FORWARDED_ALLOW_IPS: "*"
+    ports: ["127.0.0.1:8766:8765"]
+    volumes:
+      - /opt/osa/demo/data:/opt/osa/demo/data
+      - /opt/osa/demo/home:/opt/osa/demo/home
+      - /opt/osa/demo/config.yaml:/opt/osa/demo/config.yaml:ro
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 400m
+    networks: [demo]
+
+  # 手机 App 的推送中转（push.cclsp.top）：只转发加密过的推送
+  relay:
+    <<: *image
+    env_file: /opt/osa/relay/env
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    command: ["python", "-m", "uvicorn", "osa.relay:app", "--host", "0.0.0.0", "--port", "8790", "--workers", "1",
+              "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/healthz', timeout=4)"]
+    ports: ["127.0.0.1:8790:8790"]
+    volumes:
+      - /opt/osa/relay:/opt/osa/relay
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    networks: [relay]
+
+networks:
+  osa: {}
+  computer: {}
+  demo: {}
+  relay: {}
+
+volumes:
+  cache:
+  computer-socket:
+  computer-data:
