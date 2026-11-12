@@ -33,7 +33,7 @@ services:
       - cache:/cache
       - computer-socket:/run/osa-computer
     security_opt: [no-new-privileges:true]
-    mem_limit: 800m
+    mem_limit: 1g          # 服务 + 应用子进程（npx / uvx）平时 600 MB 上下
     networks: [osa]
 
   # Bot 的电脑（Docker 沙盒）：服务只经 computer-socket 卷里的 unix socket 找它，不挂 docker.sock；单独一个网络，连不到服务
