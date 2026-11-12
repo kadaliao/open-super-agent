@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -110,12 +110,32 @@ function Para({ node, children, ...p }: any) {
   return <p {...p}>{children}</p>
 }
 
+// 表格比正文宽时横向滑动。还有没露出来的列，就把那一侧渐隐（styles.css 的 .md-table），不然看不出能滑
+function Table({ node, ...p }: any) {
+  const box = useRef<HTMLDivElement>(null)
+  const [more, setMore] = useState('')
+  const check = () => {
+    const el = box.current
+    if (!el) return
+    const left = el.scrollLeft > 1, right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+    setMore((left ? ' more-l' : '') + (right ? ' more-r' : ''))
+  }
+  useEffect(check)   // 流式输出时表格一行行变长，每次重画都看一眼
+  useEffect(() => {  // 右栏、讨论串开关时正文变宽变窄
+    if (!box.current || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(check)
+    ro.observe(box.current)
+    return () => ro.disconnect()
+  }, [])
+  return <div className={'md-table' + more} ref={box} onScroll={check}><table {...p} /></div>
+}
+
 // embeds：链接展开成卡片、播放器（对话里说完的消息才开；流式输出、资料库、任务过程里不开）
 const Markdown = memo(function Markdown({ text, embeds }: { text: string; embeds?: boolean }) {
   return (
     <div className="md">
       <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }], brTags]} rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }], ...(embeds ? [markEmbeds] : [])]}
-        components={{ pre: CodeBlock, a: Link, img: Img, p: Para }}>
+        components={{ pre: CodeBlock, a: Link, img: Img, p: Para, table: Table }}>
         {text}
       </ReactMarkdown>
     </div>
