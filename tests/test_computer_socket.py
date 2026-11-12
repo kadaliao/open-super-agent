@@ -82,7 +82,15 @@ async def test_vnc_goes_through_the_socket(pc, monkeypatch):
 
 async def test_container_not_running(monkeypatch):
     monkeypatch.setattr(local, "SOCKET", "/tmp/osa-no-such.sock")
+    monkeypatch.setitem(computer.CFG.setdefault("computer", {}), "enabled", True)
     c = local.LocalComputer(0)
     st = await c.status()
     assert st["state"] == "error" and "docker compose up -d computer" in st["detail"]
     assert computer.docker_ok()                          # 服务的容器里没有 docker 命令也算能用 Docker 沙盒
+
+
+async def test_computer_turned_off(monkeypatch):
+    """演示服务器（computer.enabled: false）的容器里没有 Docker 也没有电脑容器：面板上不报错，只是没开。"""
+    monkeypatch.setattr(local, "SOCKET", "")
+    monkeypatch.setitem(computer.CFG.setdefault("computer", {}), "enabled", False)
+    assert await local.LocalComputer(0).status() == {"state": "none", "detail": ""}

@@ -79,6 +79,7 @@ def test_choice_needs_key_and_docker(clean, monkeypatch):
 
 
 async def test_docker_missing_or_stopped(monkeypatch):
+    monkeypatch.setitem(CFG["computer"], "enabled", True)   # 测试环境默认关着电脑
     assert (await local._run("osa-no-such-command-xyz"))[0] == 127
     c = local.LocalComputer(0)
 
@@ -98,6 +99,7 @@ async def test_docker_missing_or_stopped(monkeypatch):
 
 
 async def test_first_build_shows_progress(monkeypatch):
+    monkeypatch.setitem(CFG["computer"], "enabled", True)
     c = local.LocalComputer(0)
     go = asyncio.Event()
     calls = []

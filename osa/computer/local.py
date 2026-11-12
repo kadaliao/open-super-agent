@@ -123,6 +123,8 @@ class LocalComputer(Computer):
         self.idle = False       # compose 部署：闲置时关掉了浏览器（桌面还开着）
 
     async def status(self) -> dict:
+        if not (CFG.get("computer") or {}).get("enabled", True):   # 演示服务器这类：电脑功能关着，不用去找 Docker
+            return {"state": "none", "detail": ""}
         if SOCKET:
             try:
                 ok = (await _ask({"op": "ready"}, 15))["ok"]
