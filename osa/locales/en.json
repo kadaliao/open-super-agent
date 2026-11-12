@@ -1143,5 +1143,7 @@
   "服务器上不能用服务器自己当电脑，用 Docker 沙盒或云电脑": "A server can't use itself as the computer. Use the Docker sandbox or a cloud computer",
   "没有这台 Mac": "No such Mac",
   "演示服务器上不能把任务派到你的电脑": "The demo server can't send tasks to your computer",
-  "这台 Mac 已经移除": "This Mac has been removed"
+  "这台 Mac 已经移除": "This Mac has been removed",
+  "电脑容器没有回应": "The computer container isn't responding",
+  "电脑容器没在运行（docker compose up -d computer）": "The computer container isn't running (docker compose up -d computer)"
 }

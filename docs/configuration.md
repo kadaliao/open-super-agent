@@ -129,7 +129,7 @@ computer:
 | backend | 说明 |
 |---|---|
 | `instabox` | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
-| `local` | 本地 Docker 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
+| `local` | Docker 沙盒。服务直接跑在机器上时，服务自己建容器 `osa-computer`，数据在 `data/computers/shared`（环境变量 `OSA_COMPUTER_DATA` 可以换成命名卷）；用 Docker Compose 部署时是 compose 里常驻的 `computer` 容器，服务经 `OSA_COMPUTER_SOCKET` 指的 unix socket 找它，不碰 Docker，见 [Docker 部署](docker.md)。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
 | `host` | 服务所在那台 Mac 上的浏览器（桌面 App，或者在自己 Mac 上直接 `uv run`、在浏览器里用）。服务器（Linux）上不能用。 |
 
 **本机**（桌面 App 独立运行，或者 `backend: host`）：

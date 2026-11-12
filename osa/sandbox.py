@@ -62,7 +62,7 @@ def _computer_backend() -> str:
     if not (CFG.get("computer") or {}).get("enabled", True):
         return ""
     b = computer.backend_name()
-    return b if b == "instabox" or (b == "local" and shutil.which("docker")) else ""
+    return b if b == "instabox" or (b == "local" and computer.docker_ok()) else ""
 
 
 def place(quick: bool = False) -> str:

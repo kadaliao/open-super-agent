@@ -19,7 +19,8 @@ services:
     environment:
       TZ: ${TZ:-Asia/Shanghai}                         # 定时任务按这个时区算
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}   # 默认只有本机能连进来，信任反向代理带的真实 IP
-      OSA_COMPUTER_DATA: osa-computer-data             # 本地电脑的 /data 用这个命名卷
+      # Docker 沙盒（电脑）是下面的 computer 容器，服务经共用卷里的这个 unix socket 找它。服务不碰 Docker
+      OSA_COMPUTER_SOCKET: /run/osa-computer/computer.sock
     ports:
       # 默认只监听本机。局域网里直接访问可以设 OSA_BIND=0.0.0.0，但要先设 OSA_PASSWORD
       - "${OSA_BIND:-127.0.0.1}:${OSA_PORT:-8765}:8765"
@@ -27,13 +28,13 @@ services:
       - ./data:/app/data                     # 数据库、保险库密钥、本机应用清单
       - ./config.yaml:/app/config.yaml:ro    # 改完 docker compose restart 生效
       - cache:/cache                         # npx / uvx 下载的应用，重启后不用重新下载
-      # 本地电脑要用：服务通过宿主机的 Docker 创建和操作电脑容器 osa-computer。
-      # 能操作 Docker 就等于有宿主机的 root 权限；只用 Instabox 时删掉这一行
-      - /var/run/docker.sock:/var/run/docker.sock
+      - computer-socket:/run/osa-computer    # 和电脑容器共用：里面只有 computerd 的 unix socket
     extra_hosts:
       - host.docker.internal:host-gateway    # 连宿主机上的代理或 Ollama 用这个地址
 
-  # 本地电脑的镜像。这里只负责构建，不启动；容器由服务在第一次用电脑时创建
+  # Bot 的电脑（Docker 沙盒）：虚拟桌面 + Chromium + 终端，所有 Bot 共用。常驻运行，闲置时只关掉里面的浏览器。
+  # 服务不挂 docker.sock（那等于宿主机的 root），只经 computer-socket 卷里的 unix socket 让这里执行命令、转发画面；
+  # 电脑单独一个网络，能上网，但连不到服务。只用云电脑（Instabox）时：docker compose up -d osa（不启动这个）
   computer:
     build:
       context: osa/computer/image
@@ -41,7 +42,18 @@ services:
         APT_MIRROR: ${APT_MIRROR:-}
     image: osa-computer:1
     pull_policy: never
-    scale: 0
+    init: true
+    restart: unless-stopped
+    shm_size: 1gb          # Chromium 要
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SCREEN_W: 1280
+      SCREEN_H: 800
+      OSA_COMPUTER_SOCKET: /run/osa-computer/computer.sock
+    volumes:
+      - computer-data:/data                  # 工作文件夹、浏览器的登录状态
+      - computer-socket:/run/osa-computer
+    networks: [computer]
 
   # 可选：自动申请 HTTPS 证书的反向代理。先把域名解析到这台服务器，设好 OSA_DOMAIN 和 OSA_PASSWORD，
   # 再 docker compose --profile https up -d
@@ -63,6 +75,12 @@ services:
       - caddy:/data
     depends_on: [osa]
 
+networks:
+  computer: {}   # 电脑自己一个网络：能上网，和服务、反向代理不在一起
+
 volumes:
   cache:
   caddy:
+  computer-socket:
+  computer-data:
+    name: osa-computer-data   # 和以前服务自己建的电脑卷同名：升级后电脑里的文件和登录状态还在

@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # DevTools 端口只监听容器内的 127.0.0.1，给 Bot 的浏览器工具（CDP）用
 RUN printf '#!/bin/sh\nexec /usr/bin/chromium --no-sandbox --test-type --no-first-run --hide-crash-restore-bubble --disable-dev-shm-usage --user-data-dir=/data/chrome --window-size=1280,800 --window-position=0,0 --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 "--remote-allow-origins=*" "$@"\n' \
       > /usr/local/bin/chromium && chmod +x /usr/local/bin/chromium
-COPY start-desktop.sh /usr/local/bin/start-desktop.sh
+COPY start-desktop.sh computerd.py /usr/local/bin/
 RUN chmod +x /usr/local/bin/start-desktop.sh && mkdir -p /data/workspace
 WORKDIR /data/workspace
 CMD ["/usr/local/bin/start-desktop.sh"]

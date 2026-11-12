@@ -14,7 +14,12 @@ docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟
 
 打开 http://127.0.0.1:8765 。
 
-`up` 会构建两个镜像：服务（`open-super-agent:local`）和本地电脑（`osa-computer:1`）。电脑不会马上启动，Bot 第一次用电脑时才创建容器 `osa-computer`，闲置 15 分钟后自动暂停。
+`up` 会构建并启动两个容器：服务（`open-super-agent:local`）和 Bot 的电脑（Docker 沙盒，`osa-computer:1`：虚拟桌面 + Chromium + 终端）。
+电脑一直开着，闲置 15 分钟后关掉里面的浏览器省内存，下次用时再打开。服务不碰 Docker（没有挂 `docker.sock`），
+只经两个容器共用的卷里的一个 unix socket 让电脑执行命令、转发画面；电脑单独一个网络，能上网，但连不到服务。
+
+从以前的版本升级（那时电脑容器 `osa-computer` 是服务自己用 `docker run` 建的）：`git pull && docker compose up -d --build` 之后，
+删掉旧容器 `docker rm -f osa-computer`。电脑里的文件和登录状态在命名卷 `osa-computer-data` 里，新容器接着用。
 
 | 做什么 | 命令 |
 |---|---|
@@ -22,7 +27,7 @@ docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟
 | 改了 `config.yaml` | `docker compose restart osa` |
 | 改了 `.env` | `docker compose up -d`（`restart` 不会重新读 `.env`） |
 | 更新到新版本 | `git pull && docker compose up -d --build` |
-| 停止 | `docker compose down`；电脑容器不归 compose 管，要停的话再 `docker stop osa-computer` |
+| 停止 | `docker compose down` |
 
 ## 数据放在哪
 
@@ -71,8 +76,7 @@ docker compose --profile https up -d
 服务器内存小、不想在上面跑桌面和浏览器时，电脑改用 Instabox 云主机：
 
 1. `.env` 里设 `INSTABOX_API_KEY`（`computer.backend` 保持 `auto` 就会用它，也可以在 `config.yaml` 里写成 `instabox`）。
-2. 用 `docker compose up -d osa` 启动，只构建服务的镜像，不构建本地电脑的。
-3. 服务用不到 Docker 了，可以删掉 `compose.yaml` 里挂 `/var/run/docker.sock` 的那一行。
+2. 用 `docker compose up -d osa` 启动，只构建、启动服务，不起电脑容器。
 
 ## 选项
 
@@ -107,8 +111,8 @@ docker compose --profile https up -d
 
 | 现象 | 原因和处理 |
 |---|---|
-| 用电脑时报 `Cannot connect to the Docker daemon` | 没挂 `/var/run/docker.sock`，或者 Docker 的 socket 不在这里（rootless Docker 在 `$XDG_RUNTIME_DIR/docker.sock`），改 `compose.yaml` 里那一行 |
-| 改了电脑镜像没生效 | 旧容器还在：`docker compose build computer && docker rm -f osa-computer`，下次用电脑时按新镜像创建 |
+| 电脑面板显示“电脑容器没在运行” | 电脑容器没起来：`docker compose up -d computer`，看 `docker compose logs computer` |
+| 改了电脑镜像没生效 | `docker compose up -d --build computer` |
 | 镜像构建成了 amd64，或者电脑启动报平台不匹配 | 环境里设了 `DOCKER_DEFAULT_PLATFORM`，`unset` 之后重新构建 |
 | 文件夹应用要访问宿主机上的目录 | 应用跑在服务的容器里，只看得到容器里的路径。在 `compose.yaml` 的 `volumes` 里把目录挂进去（比如 `- ~/Documents:/mnt/docs`），添加应用时填 `/mnt/docs` |
 | 连宿主机上的 Ollama | 设置 → 模型 → 添加 → Ollama，地址改成 `http://host.docker.internal:11434/v1` |
@@ -116,6 +120,8 @@ docker compose --profile https up -d
 
 ## 安全
 
-- 挂进去的 `docker.sock` 让服务能创建和操作宿主机上的容器，等于有宿主机的 root 权限。服务里跑着第三方的应用（MCP），只添加信得过的；用 Instabox 时把这一行删掉。
-- 电脑的 VNC 没有密码，所以只监听电脑容器里的 127.0.0.1，不映射到宿主机端口，由服务经 `docker exec` 转发给网页。
+- 服务的容器不挂 `docker.sock`（那等于宿主机的 root），碰不到别的容器。电脑容器里跑着 Bot 打开的网页和执行的命令，
+  它和服务不在一个网络里，连不到服务的端口；两边只共用一个放 unix socket 的卷，服务找电脑，电脑找不到服务。
+- 电脑的 VNC 没有密码，所以只监听电脑容器里的 127.0.0.1，不映射到宿主机端口，由服务经那个 unix socket 转发给网页。
+- 在服务的容器里跑着的还有第三方的应用（MCP），只添加信得过的。
 - 其余见 [SECURITY.md](../SECURITY.md)。

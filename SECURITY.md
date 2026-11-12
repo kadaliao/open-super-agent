@@ -22,7 +22,8 @@
 - 来源（Origin）和本站不一致的写请求与 WebSocket 一律拒绝，不管开没开登录，webhook 也一样。所以你在浏览器里打开的网页，没法连上本机的服务替你发消息、处理确认卡片。
 - 没开登录时，只接受用 `localhost`、IP 地址、`*.local`、`*.ts.net` 和 `server.allowed_hosts` 里的名字访问，防 DNS rebinding（别人把自己的域名解析到 127.0.0.1，借你的浏览器读写本机的服务）。
 - 本地电脑的 VNC 没有密码，只监听电脑容器里的 127.0.0.1，不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。电脑里 Chromium 的 DevTools 端口（9222）只监听电脑内部，也不做端口映射。
-- 用 Docker Compose 部署时，服务的容器挂了宿主机的 `docker.sock`（本地电脑要用），等于有宿主机的 root 权限；服务里运行的第三方应用（MCP）也在这个容器里，请只添加信得过的应用。电脑用 Instabox 时可以去掉这个挂载。
+- 用 Docker Compose 部署时，服务的容器不挂宿主机的 `docker.sock`：Bot 的电脑是 compose 管的另一个容器，服务只经共用卷里的 unix socket 让它执行命令、转发画面。
+  电脑容器单独一个网络，能上网，连不到服务。服务里运行的第三方应用（MCP）在服务的容器里，请只添加信得过的应用。
 - 模型提供方的密钥只从环境变量读取。应用密钥可以存进保险库：用 Fernet 加密写进数据库，主密钥来自 `OSA_VAULT_KEY` 或 `data/vault.key`（权限 600）。两样都要妥善保管，`data/` 不进 git。
 - 接口和模型只能看到保险库里密钥的名字；明文只在启动应用时注入它的进程环境变量。
 - 设置了 `OSA_WEBHOOK_TOKEN` 后，webhook 必须带上 `X-OSA-Token` 才会被接受；没设置时只接受本机请求。

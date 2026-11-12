@@ -115,7 +115,13 @@ def available() -> list[dict]:
     from .instabox import key_source
     host = {"id": "host", "ok": bool(chrome_path())} if host_allowed() else {"id": "host", "ok": False, "locked": True}
     key = key_source()
-    return [host, {"id": "local", "ok": bool(shutil.which("docker"))}, {"id": "instabox", "ok": bool(key), "key": key}]
+    return [host, {"id": "local", "ok": docker_ok()}, {"id": "instabox", "ok": bool(key), "key": key}]
+
+
+def docker_ok() -> bool:
+    """Docker 沙盒用得了：compose 部署（电脑是常驻容器，经 unix socket 连），或者这台机器装了 docker 命令。"""
+    from .local import SOCKET
+    return bool(SOCKET or shutil.which("docker"))
 
 
 async def _quietly(coro):

@@ -1,8 +1,11 @@
-"""本地 Docker 后端：所有 Bot 共用一个容器 osa-computer，容器里的 /data 默认挂 data/computers/shared。
+"""Docker 沙盒：所有 Bot 共用一个电脑容器。两种用法：
 
-用 Docker Compose 部署时服务自己也在容器里，它看到的路径和宿主机对不上，这时用环境变量 OSA_COMPUTER_DATA
-指定一个命名卷（也可以是宿主机上的绝对路径）。
-VNC 没有密码，只监听电脑容器里的 127.0.0.1，由服务经 docker exec 在电脑里转发：服务在不在容器里都能连上。
+- 服务直接跑在机器上（桌面 App 独立运行、开发时）：服务用 docker 命令自己创建、启停容器 osa-computer，
+  容器里的 /data 默认挂 data/computers/shared（OSA_COMPUTER_DATA 可以换成命名卷或别的路径），执行命令、VNC 都经 docker exec。
+- 用 Docker Compose 部署（设了 OSA_COMPUTER_SOCKET）：电脑是 compose 管的常驻容器，服务不碰 Docker（不挂 docker.sock，
+  那等于宿主机的 root），经两个容器共用的卷里的 unix socket 找电脑里的 computerd（image/computerd.py）执行命令、转发 VNC。
+  两个容器不在一个网络里，电脑里跑的东西连不到服务。这时“暂停”是关掉电脑里的浏览器省内存，桌面一直开着。
+VNC 没有密码，只监听电脑容器里的 127.0.0.1。
 """
 import asyncio
 import json
@@ -14,6 +17,7 @@ from .base import Computer, ComputerError, ExecResult, check_enabled
 
 IMAGE = "osa-computer:1"
 IMAGE_DIR = Path(__file__).parent / "image"
+SOCKET = os.environ.get("OSA_COMPUTER_SOCKET", "")   # Docker Compose 部署：电脑里的 computerd 在这个 unix socket 上
 
 # 在电脑里把 stdin / stdout 接到 x11vnc。网页关掉画面时 stdin 读到结尾，半关连接，x11vnc 随即断开，进程退出。
 # 电脑刚创建时桌面先就绪、x11vnc 稍后才监听，所以连不上时等一会儿再试
@@ -85,6 +89,28 @@ async def platform() -> str:
     return _platform
 
 
+async def _ask(req: dict, timeout: float) -> dict:
+    """经 unix socket 让电脑里的 computerd 做一件事（一次连接一件），返回它回的那行 JSON。"""
+    try:
+        r, w = await asyncio.wait_for(asyncio.open_unix_connection(SOCKET, limit=64 << 20), 10)
+    except (OSError, asyncio.TimeoutError):
+        raise ComputerError(i18n.t("电脑容器没在运行（docker compose up -d computer）")) from None
+    try:
+        w.write((json.dumps(req, ensure_ascii=False) + "\n").encode())
+        await w.drain()
+        line = await asyncio.wait_for(r.readline(), timeout)
+    except asyncio.TimeoutError:
+        raise ComputerError(i18n.t("超时")) from None
+    finally:
+        w.close()
+    if not line:
+        raise ComputerError(i18n.t("电脑容器没有回应"))
+    out = json.loads(line)
+    if "error" in out:
+        raise ComputerError(out["error"])
+    return out
+
+
 class LocalComputer(Computer):
     backend = "local"
 
@@ -94,8 +120,15 @@ class LocalComputer(Computer):
         self.data = os.environ.get("OSA_COMPUTER_DATA") or str(DATA / "computers" / "shared")
         self._starting = asyncio.Lock()
         self.building = False   # 第一次用：正在构建电脑镜像（几分钟）
+        self.idle = False       # compose 部署：闲置时关掉了浏览器（桌面还开着）
 
     async def status(self) -> dict:
+        if SOCKET:
+            try:
+                ok = (await _ask({"op": "ready"}, 15))["ok"]
+            except ComputerError as e:
+                return {"state": "error", "detail": str(e)}
+            return {"state": "starting" if not ok else "paused" if self.idle else "running", "detail": ""}
         if self.building:
             return {"state": "starting", "detail": i18n.t("第一次用要先准备电脑（下载、安装浏览器和桌面），要几分钟")}
         code, out, err = await _run("docker", "inspect", "-f", "{{json .State}}", self.name, timeout=15)
@@ -126,6 +159,13 @@ class LocalComputer(Computer):
 
     async def start(self):
         check_enabled()
+        if SOCKET:   # 容器由 compose 管：等桌面起来就行，浏览器用的时候自己开
+            self.idle = False
+            for _ in range(60):
+                if (await self.status())["state"] == "running":
+                    return
+                await asyncio.sleep(0.5)
+            raise ComputerError(i18n.t("桌面没有在 30 秒内启动"))
         async with self._starting:
             st = (await self.status())["state"]
             if st == "running":
@@ -153,15 +193,30 @@ class LocalComputer(Computer):
             raise ComputerError(i18n.t("桌面没有在 30 秒内启动"))
 
     async def pause(self):
+        if SOCKET:   # 不能暂停容器：关掉浏览器省内存（登录状态在 /data 里，下次用时浏览器控制脚本再打开）
+            if (await self.status())["state"] == "running":
+                await _ask({"op": "exec", "cmd": "pkill -TERM -f /usr/lib/chromium || true", "timeout": 20}, 30)
+                self.idle = True
+                self.changed()
+            return
         if (await self.status())["state"] == "running":
             await _run("docker", "pause", self.name)
 
     async def exec(self, cmd: str, timeout: int = 120, stdin: str | None = None) -> ExecResult:
+        if SOCKET:
+            self.idle = False
+            try:
+                r = await _ask({"op": "exec", "cmd": cmd, "stdin": stdin, "timeout": timeout}, timeout + 15)
+            except ComputerError as e:
+                return ExecResult(1, "", str(e))
+            return ExecResult(int(r["exit_code"]), r["stdout"], r["stderr"], bool(r.get("timed_out")))
         args = ["docker", "exec", "-i", "-w", "/data/workspace", self.name, "bash", "-lc", cmd]
         code, out, err = await _run(*args, stdin=stdin if stdin is not None else "", timeout=timeout + 5)
         return ExecResult(code, out, err, timed_out=code == 124)
 
     async def open_vnc(self):
+        if SOCKET:
+            return await self._socket_vnc()
         p = await asyncio.create_subprocess_exec(
             "docker", "exec", "-i", self.name, "python3", "-c", _VNC_RELAY,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
@@ -184,5 +239,33 @@ class LocalComputer(Computer):
                 except asyncio.TimeoutError:
                     p.kill()
                     await p.wait()
+
+        return recv, send, close
+
+    async def _socket_vnc(self):
+        """compose 部署：经 unix socket 让 computerd 接到桌面的 VNC，这条连接之后就是 VNC 字节流。"""
+        try:
+            r, w = await asyncio.wait_for(asyncio.open_unix_connection(SOCKET), 10)
+        except (OSError, asyncio.TimeoutError):
+            raise ComputerError(i18n.t("电脑容器没在运行（docker compose up -d computer）")) from None
+        w.write(b'{"op": "vnc"}\n')
+        await w.drain()
+        ack = json.loads(await asyncio.wait_for(r.readline(), 15) or b"{}")
+        if not ack.get("ok"):
+            w.close()
+            raise ComputerError(ack.get("error") or i18n.t("电脑容器没有回应"))
+
+        async def recv() -> bytes:
+            data = await r.read(65536)
+            if not data:
+                raise ConnectionError("VNC 连接已关闭")
+            return data
+
+        async def send(data: bytes):
+            w.write(data)
+            await w.drain()
+
+        async def close():
+            w.close()
 
         return recv, send, close

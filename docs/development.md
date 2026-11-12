@@ -75,7 +75,7 @@ sed 's|db: data/osa.db|db: /tmp/osa-test/osa.db|' config.yaml > /tmp/osa-test/co
 OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 ```
 
-本地电脑是共用的（容器 `osa-computer`），测试和正式实例会操作同一台电脑，不要同时跑。用 Docker Compose 跑的实例也用这个容器。
+本地电脑是共用的（容器 `osa-computer`），测试和正式实例会操作同一台电脑，不要同时跑。用 Docker Compose 跑的实例用的是 compose 里自己的 `computer` 容器，和它分开。
 
 `computer.backend` 默认是 `auto`：环境里有 `INSTABOX_API_KEY` 就用 Instabox。本机设了这个变量时，测试实例和直接调 `osa.computer.get()` 的脚本
 都会操作 Instabox 上那台（可能正是服务器上正式在用的）电脑。测试时在复制的配置里写 `backend: local`，或者 `env -u INSTABOX_API_KEY` 启动。
