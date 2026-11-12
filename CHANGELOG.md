@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.18.0] - 2026-11-12
 ### 新增
 - **对话可以换成气泡样式**：设置左下角“对话样式”选“气泡”，Bot 的回复也装进一张靠左的卡片，你的消息在右边，像聊天软件那样；
   默认还是原来的平铺。只记在这台设备上
@@ -540,7 +542,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.17.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/kadaliao/open-super-agent/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/kadaliao/open-super-agent/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/kadaliao/open-super-agent/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/kadaliao/open-super-agent/compare/v0.14.0...v0.15.0
