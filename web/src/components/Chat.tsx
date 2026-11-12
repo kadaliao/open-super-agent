@@ -6,7 +6,7 @@ import BotAvatar from './BotAvatar'
 import Composer from './Composer'
 import Markdown from './Markdown'
 import { locale, t, tn } from '../i18n'
-import { ask } from './Dialog'
+import { ask, notice } from './Dialog'
 import { Icon } from '../icons'
 import { Attachments, mediaUrl, splitMarks, type ViewerItem } from './Media'
 import { imagePrice, setAsAvatar } from './AvatarTools'
@@ -259,6 +259,7 @@ function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: T
         {status === 'running' && <button className="ghost-btn" onClick={() => api(`/api/tasks/${m.id}/cancel`, { method: 'POST' })}>{t('停止')}</button>}
       </div>
       <div className="task-goal">{goal}</div>
+      {(m.meta.mac || task?.mac) && <div className="task-action">{t('在你的 Mac「{name}」上做', { name: m.meta.mac || task?.mac })}</div>}
       {handoffTo && <div className="task-action">{t('做完交给 {name}', { name: handoffTo.name })}</div>}
       {replyTo && <div className="task-action">{t('做完把结果回给 {name}', { name: replyTo.name })}</div>}
       {status === 'running' && task?.last_action && <div className="task-action">→ {task.last_action}</div>}
@@ -324,12 +325,15 @@ function HelpCard({ a }: { a: Approval }) {
     <div className="approval-card help">
       <div className="approval-title">🙋 {t('需要你帮忙')}</div>
       <div className="help-reason">{reason}</div>
-      <div className="muted small">{tn('任务 #{id} 已暂停{origin}。接手电脑处理完后点“交还”，Bot 会接着做。', { id: a.task_id, origin: <Origin a={a} /> })}</div>
+      {a.mac ? <div className="muted small">{tn('任务 #{id} 已暂停{origin}。它在你的 Mac「{name}」上做：在那台 Mac 上处理好后点“处理完了”，Bot 会接着做。', { id: a.task_id, origin: <Origin a={a} />, name: a.mac_name || '' })}</div>
+        : <div className="muted small">{tn('任务 #{id} 已暂停{origin}。接手电脑处理完后点“交还”，Bot 会接着做。', { id: a.task_id, origin: <Origin a={a} /> })}</div>}
       <div className="approval-actions">
         <button className="btn" onClick={() => approve(a.id, false, '用户表示处理不了')}>{t('我处理不了')}</button>{/* i18n-ignore：拒绝理由是给模型看的 */}
         <span className="grow" />
-        <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-computer', { detail: { botId: a.bot_id, takeover: true, taskId: a.task_id } }))}>{t('接手电脑')}</button>
-        <button className="btn primary" onClick={() => api(`/api/bots/${a.bot_id}/computer/handback`, { method: 'POST' })}>{t('处理完了，交还')}</button>
+        {a.mac ? <button className="btn primary" onClick={() => api(`/api/computer/macs/${a.mac}/handback`, { method: 'POST' }).catch((e: any) => notice(e.message))}>{t('处理完了')}</button> : <>
+          <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-computer', { detail: { botId: a.bot_id, takeover: true, taskId: a.task_id } }))}>{t('接手电脑')}</button>
+          <button className="btn primary" onClick={() => api(`/api/bots/${a.bot_id}/computer/handback`, { method: 'POST' })}>{t('处理完了，交还')}</button>
+        </>}
       </div>
     </div>
   )
@@ -449,6 +453,29 @@ function BotAdminCard({ a }: { a: Approval }) {
   )
 }
 
+// 把任务派到你的某台 Mac 上做：开始前问一次，参数是 {电脑, 任务}
+function MacCard({ a }: { a: Approval }) {
+  let d: Record<string, string> = {}
+  try { d = JSON.parse(a.args) } catch { /* 显示原文 */ }
+  const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
+  const name = d['电脑'] || a.mac_name || ''   // i18n-ignore：工具参数的键
+  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('已允许在「{name}」上做', { name }) + (a.always ? t('，以后不再询问') : '')
+    : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没让任务在「{name}」上做', { name })}</div>
+  return (
+    <div className="approval-card desk">
+      <div className="approval-title">💻 {t('{name} 想在你的 Mac「{mac}」上做一个任务', { name: bot?.name || 'Bot', mac: name })}<Origin a={a} /></div>
+      <div className="task-goal">{d['任务'] ?? a.goal}</div>{/* i18n-ignore：工具参数的键 */}
+      <div className="small">{t('它会用那台 Mac 上 Bot 专用的 Chrome 和工作文件夹，有权限的话还会看屏幕、用鼠标键盘。你动一下鼠标或键盘它就停下；上传、发送、付款这类操作前还会再问你。')}</div>
+      <div className="approval-actions">
+        <span className="grow" />
+        <button className="btn" onClick={() => approve(a.id, false)}>{t('不行')}</button>
+        <button className="btn" onClick={() => approve(a.id, true)}>{t('这次允许')}</button>
+        <button className="btn primary" title={t('以后把任务派到你的 Mac 上不再询问，可在设置 → 确认规则里撤销')} onClick={() => approve(a.id, true, '', true)}>{t('总是允许')}</button>
+      </div>
+    </div>
+  )
+}
+
 // 本机电脑：任务第一次要操作整台电脑（真实的屏幕、鼠标键盘）时问一次，参数是 {任务}
 function DesktopCard({ a }: { a: Approval }) {
   const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
@@ -474,6 +501,7 @@ function ApprovalCard({ a }: { a: Approval }) {
   if (a.tool === 'generate_image') return <DrawCard a={a} />
   if (a.tool in BOT_DONE) return <BotAdminCard a={a} />
   if (a.tool === 'desktop') return <DesktopCard a={a} />
+  if (a.tool === 'use_mac') return <MacCard a={a} />
   const [note, setNote] = useState('')
   const [prefix, setPrefix] = useState(a.prefix || '')
   const done = a.status && a.status !== 'pending'
@@ -703,6 +731,7 @@ export function PendingApprovals({ here, from }: { here: (a: Approval) => boolea
         <div key={a.id} className="elsewhere">
           <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.tool === 'generate_image' ? t('{name} 想画一张图，等你确认，卡片在它的私聊里', { name: b?.name || '' })
+            : a.tool === 'use_mac' ? t('{name} 想把任务 #{id} 派到你的 Mac 上做，等你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.tool === 'create_bot' ? t('{name} 想新建一个 Bot，等你确认，卡片在它的私聊里', { name: b?.name || '' })
             : a.tool === 'update_bot' ? t('{name} 想修改一个 Bot，等你确认，卡片在它的私聊里', { name: b?.name || '' })
             : a.tool === 'delete_bot' ? t('{name} 想删除一个 Bot，等你确认，卡片在它的私聊里', { name: b?.name || '' })

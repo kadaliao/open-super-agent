@@ -33,6 +33,7 @@ export type Task = {
   id: number; goal: string; mode: string; status: string; steps: number
   bot_id: number; chat_id: number; started: number; waiting_approval: number | null; elapsed: number; last_action?: string
   quiet?: boolean   // 定时任务这次没有新内容：对话里不显示
+  mac?: string      // 派到你的哪台 Mac 上做（名字）
 }
 // 任务过程的一步。kind：think 思考、text 正在写、say 调工具前说的话、tool 工具调用（detail 参数、body 返回）、
 // answer 写出的结果（Heavy 里研究员的草稿也是）、note 过程提示。worker：Heavy 里的研究员 h0、h1……，汇总是 review
@@ -46,15 +47,22 @@ export type TaskInfo = {
   elapsed?: number | null; steps?: number | null; handoff_to?: number | null
   started?: number; waiting_approval?: number | null; last_action?: string
   result?: string; finished?: number; cost?: number; tokens?: number; currency?: string
+  mac?: string   // 派到你的哪台 Mac 上做（名字）
 }
 // 正在用电脑的任务：每个占一个浏览器窗口（window：已经开了窗口）
 export type ComputerUser = { key: string; label: string; task_id: number | null; bot_id: number | null; window: boolean }
 export type ComputerState = {
   bot_id: number; backend: string; controller: 'bot' | 'human'; state: string; detail: string; width: number; height: number
   parallel?: number; users?: ComputerUser[]; waiting?: string[]; watch?: string | null; exclusive?: string
-  workspace?: string; shell?: boolean   // shell：终端开没开（本机电脑、借来的 Mac）
+  workspace?: string; shell?: boolean   // shell：终端开没开（本机电脑）
   desktop?: DesktopState                // 本机电脑的“操作整台电脑”（只有 Mac）
-  link?: { connected: boolean; name: string; shell?: boolean }   // 借给服务器的 Mac 连没连上（backend 是 linked 时用的就是它）；shell：那台 Mac 上的 App 能不能执行终端命令
+}
+// 你的 Mac：服务器上的 Bot 能把任务派过去做的地方（连着服务器的桌面 App 所在的 Mac）。
+// shell：终端开没开；can_shell：那台 Mac 上的 App 能不能执行命令（旧版不能）；users：派到它上面、正在用它的任务；
+// controller=human：你接手了（或者你动了鼠标键盘，Bot 自己停下了）
+export type MacState = {
+  id: number; name: string; connected: boolean; last_seen: number; shell: boolean; can_shell: boolean
+  users: ComputerUser[]; waiting?: string[]; controller: 'bot' | 'human'; desktop?: DesktopState
 }
 // supported：是 Mac；accessibility / screen：两个 macOS 权限（都给了 Bot 才能操作整个屏幕）
 // problem：现在不能操作的原因（缺权限、屏幕锁着）；owner：谁在用屏幕；paused_by=input：你动了鼠标键盘，Bot 自己停下的
@@ -72,6 +80,7 @@ export type Approval = {
   scope?: string      // 有了结果：用户选的作用域
   editable?: string[]   // 能在卡片上直接改的参数（args 里的键），同意时把改过的一起发回去
   edited?: string[]     // 同意时改过的
+  mac?: number; mac_name?: string   // 派到你的 Mac 上的任务（请你帮忙时去那台 Mac 上处理）
 }
 export type Stream = { sid: string; text: string; thinking: string; started: number; bot_id: number }
 // 模型服务：一个兼容 OpenAI 的接口地址加一个密钥。source：config.yaml 里写的，还是界面上加的
@@ -103,7 +112,6 @@ export type Settings = {
   computer_choices?: string[]                           // 电脑面板里给哪几种（config.yaml 的 computer.choices）；旧版服务没有这一项
   computer_on_desktop: boolean                          // 服务是桌面 App 自带的（本地模式）；否则“本机”指服务器那台机器
   computer_host_shell: boolean
-  computer_linked_shell?: boolean   // 借来的 Mac 的终端。旧服务器没有
   embedding: { provider: string; model: string }
   image_model: { provider: string; model: string }   // 画图用哪个模型（对话里画图、生成头像共用），空的是用排在最前面的
   model_info: Record<string, ModelInfo>   // 键是 服务/模型

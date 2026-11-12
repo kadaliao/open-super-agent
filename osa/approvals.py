@@ -114,8 +114,8 @@ def delete_rule(rid: int):
 # 本机电脑默认先问的电脑工具。desktop：任务第一次用整个屏幕（真实的鼠标键盘）；desktop_submit：在屏幕上点“发送 / 付款”这类按钮、在输入框里按回车
 PC_ASK = {"browser_upload", "computer_write_file", "browser_submit", "desktop", "desktop_submit"}
 PC_TOOLS = PC_ASK | {"computer_shell"}
-ASK = {"generate_image"}   # 默认每次都问的（画图要花钱）；点“总是允许”后不再问
-HOSTS = ("host", "linked")   # 用户自己的电脑（同 computer.base.HOSTS；这里不 import computer）
+ASK = {"generate_image", "use_mac"}   # 默认每次都问的（画图要花钱、把任务派到你的 Mac 上做）；点“总是允许”后不再问
+HOSTS = ("host", "mac")   # 用户自己的电脑（同 computer.base.HOSTS；这里不 import computer）
 SHELL = "computer_shell"
 UNSAFE = re.compile(r"[;&|<>`$()\n\r]")         # 终端命令里有这些（连接、管道、重定向、替换）就不按前缀放行
 _PARTS = re.compile(r"[;&|\n\r]+|\$\(|[`()]")   # “先问我”的规则把命令按这些切开，哪一段命中都问
@@ -264,6 +264,7 @@ async def request(task, tool: str, args: dict, kind: str = "approval", once: boo
     th = memory.thread_of(task.chat_id)
     item = {"id": aid, "kind": kind, "task_id": task.id, "bot_id": task.bot_id, "chat_id": chat_id,
             "origin_chat_id": th[0] if th else task.chat_id, **({"origin_thread": task.chat_id} if th else {}), "tool": tool,
+            **({"mac": task.mac, "mac_name": task.mac_name} if getattr(task, "mac", 0) else {}),   # 派到你的 Mac 上的任务
             "goal": task.goal[:80], "args": json.dumps(args, ensure_ascii=False, indent=1)[:limit], "ts": time.time(),
             "expires": time.time() + timeout if timeout else None, "future": fut, **({"once": True} if once else {}),
             **({"scopes": scopes} if kind == "approval" else {}),

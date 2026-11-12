@@ -1,12 +1,12 @@
-"""借给服务器的 Mac 上跑的小程序：桌面 App 连着服务器、你同意借用这台 Mac 后，App 在后台启动它（python -m osa.computer.agent）。
+"""你的 Mac 上跑的小程序：桌面 App 连着服务器、你同意服务器上的 Bot 把任务派到这台 Mac 后，App 在后台启动它（python -m osa.computer.agent）。
 
-它主动连到服务器的 /api/computer/link（服务器那边见 link.py、linked.py），替服务器上的 Bot 操作这台 Mac。动手的代码就是本机电脑的（host.py）：
+它主动连到服务器的 /api/computer/link（服务器那边见 link.py、mac.py），替派到这台 Mac 上的任务操作它。动手的代码就是本机电脑的（host.py）：
 - Bot 专用的 Chrome：单独的配置目录，和“在这台电脑上运行”时共用，在那边登录过的网站这里也能用；
 - 文件：读写、列目录、删除、往网页上传都只在工作文件夹里（服务器给的路径在 Mac 上再查一遍）；
-- 整个屏幕：借出时你在 Mac 上同意的就包括屏幕；能不能做看 App 有没有“辅助功能”和“屏幕录制”权限；
+- 整个屏幕：你在 Mac 上同意时就包括屏幕；能不能做看 App 有没有“辅助功能”和“屏幕录制”权限；
   屏幕上的动作在 Mac 上照样不碰 Open Super Agent 自己的窗口；
 - 终端：执行服务器发来的命令，在工作文件夹里、以你的身份运行，环境变量里的密钥不传过去。开不开在服务器上管
-  （电脑面板的“允许 Bot 用终端”，默认关，computer.linked_shell），每条命令先在对话里问你（approvals.py）。
+  （电脑面板里每台 Mac 的“允许 Bot 用终端”，默认关），每条命令先在对话里问你（approvals.py）。
   hello 里的 shell 是告诉服务器这一版能执行命令（旧版 App 的小程序没有）。
 断了隔几秒重连；令牌作废了（4401）隔几分钟再试；App 退出时跟着退出（OSA_PARENT_PID），退出前关掉 Bot 的 Chrome。
 
@@ -31,7 +31,7 @@ from .host import HostComputer
 
 log = logging.getLogger("osa.agent")
 MAX_MSG = 64 << 20
-RETRY = {4401: 300, 4409: 60}   # 令牌作废了、已经借了另一台：隔久一点再试
+RETRY = {4401: 300, 4409: 60}   # 令牌作废了、（旧版服务器）已经借了另一台：隔久一点再试
 
 
 def computer_name() -> str:
@@ -43,7 +43,7 @@ def computer_name() -> str:
 
 
 async def handle(pc: HostComputer, op: str, a: dict):
-    """做服务器要的一件事。服务器那边对应的调用见 linked.py。"""
+    """做服务器要的一件事。服务器那边对应的调用见 mac.py。"""
     if op == "helper":
         payload = dict(a["payload"])
         if payload.get("op") == "upload":   # 只能传工作文件夹里的文件
@@ -103,11 +103,12 @@ async def reply(ws, pc: HostComputer, msg: dict):
 
 
 async def connect_loop(pc: HostComputer, url: str, token: str):
-    hello = {"type": "hello", "name": computer_name(), "platform": sys.platform, "desktop": macdesk.supported(),
-             "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace, "shell": True}
     wait, tasks = 1, set()
     while True:
         code = None
+        # 每次连上都重新报权限：连着时给了权限、之后断线重连，服务器那边才不会一直用旧的
+        hello = {"type": "hello", "name": computer_name(), "platform": sys.platform, "desktop": macdesk.supported(),
+                 "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace, "shell": True}
         try:
             async with websockets.connect(url, additional_headers={"Authorization": f"Bearer {token}"}, max_size=MAX_MSG,
                                           open_timeout=20, ping_interval=20, ping_timeout=30) as ws:

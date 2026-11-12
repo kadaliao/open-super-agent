@@ -123,7 +123,7 @@ mcp_servers: {}
 computer:
   enabled: true
   backend: auto              # auto：桌面 App 里用 host，否则有 Instabox 的 API Key（电脑面板里填的或环境变量 INSTABOX_API_KEY）用 Instabox、没有用本地 Docker；也可以写 host / local / instabox；电脑面板里也能换
-                             # host：用这台电脑上装的 Chrome（单独的配置目录），不用 Docker；设置里也能换
+                             # host：用这台 Mac 上装的 Chrome（单独的配置目录），不用 Docker；只在你自己的 Mac 上有，服务器（Linux）上写了也换成 local / instabox
   # choices: [local, instabox]   # 电脑面板里给哪几种（host / local / instabox），不写就是全部；比如服务器上不想用 Docker 就只写 [instabox]
   parallel: 3                # 几个任务可以同时用电脑，每个一个浏览器窗口（登录状态共用），多了排队；电脑内存小就调小
   width: 1280
@@ -133,5 +133,4 @@ computer:
   instabox_machine: ""            # 用已有的 Instabox 机器 id（免费版只能有一台，比如 m_xxx）；留空则自动创建
   chrome_path: ""            # host 用的浏览器；留空按常见位置找 Chrome（Chromium、Edge、Brave 也行）
   host_shell: false          # host 的终端：默认关，打开后 Bot 每条命令都要你确认（电脑面板里也能开关）
-  linked_shell: false        # 借来的 Mac（linked）的终端：同上，电脑面板里哪台设备上都能开关；不看服务器锁
   host_desktop: true         # 本机是 Mac 时，给了“辅助功能”和“屏幕录制”权限后 Bot 还能看整个屏幕、用鼠标键盘操作别的 App；false 只用浏览器

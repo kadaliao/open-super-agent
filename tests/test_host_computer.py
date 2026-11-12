@@ -180,7 +180,7 @@ def fake(pc, monkeypatch):
     async def start():
         pass
     pc._helper_run, pc.start = helper, start
-    monkeypatch.setattr(ctools, "get", lambda: pc)
+    monkeypatch.setattr(ctools, "current", lambda: pc)
     return pc
 
 

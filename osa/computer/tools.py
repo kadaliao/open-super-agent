@@ -2,14 +2,15 @@
 computer_* 截的是自己窗口里的页面、按页面坐标点击，动作之后自动附上新截图，模型马上能看到结果。
 本机电脑（host.py）的工具说明和提示词不一样：文件只在工作文件夹里，终端默认没有；
 上传文件、写文件、提交、终端命令按确认规则先问用户（_confirm，规则见 approvals.decide）。
-本机（或借来的 Mac）给了屏幕权限时还有 desktop_* 工具：看整个屏幕、用真实的鼠标键盘操作别的 App（_desktop，见 host.py）。"""
+本机（或者任务派到的你的 Mac）给了屏幕权限时还有 desktop_* 工具：看整个屏幕、用真实的鼠标键盘操作别的 App（_desktop，见 host.py）。
+派到你的 Mac 上的任务用那台 Mac（computer.current()），别的用共用电脑。"""
 import asyncio
 import contextvars
 import base64
 import re
 import time
 from .. import i18n
-from . import ComputerError, get, macdesk
+from . import ComputerError, current, macdesk
 from .base import HOSTS
 
 AUTO_SHOT = {"computer_click", "computer_type", "computer_key", "computer_scroll"}
@@ -98,14 +99,14 @@ _HOST_FILES = {
 
 def desk_schemas(c=None) -> list[dict]:
     """操作整个屏幕的工具：只有本机（或借来的 Mac）是 Mac、给了两个权限才给。"""
-    c = c or get()
+    c = c or current()
     return DESK_SCHEMAS if c.backend in HOSTS and c.desktop_enabled() else []
 
 
 def schemas(c=None) -> list[dict]:
     """给 Worker 的电脑工具。本机电脑：文件工具说明换成工作文件夹，终端没打开就不给 computer_shell，
     能操作整个屏幕时再加上 desktop_*。"""
-    c = c or get()
+    c = c or current()
     if c.backend not in HOSTS:
         return SCHEMAS
     out = []
@@ -129,7 +130,9 @@ def _intro(c) -> str:
     shell = ("- 终端：computer_shell 在用户这台电脑上执行命令（工作目录是工作文件夹）。每条命令都要用户确认（用户“总是允许”过的命令开头除外，带 ; && | $( 重定向的命令每次都问），只在必要时用。"
              if c.shell_enabled() else "- 没有终端（用户没有打开）。下载文件用浏览器，读写文件用 computer_read_file / computer_write_file。")
     desk = DESK_HINT if c.desktop_enabled() else ""
-    return f"""你有一台电脑：用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己日常用的 Chrome 分开，所有 Bot 共用，
+    where = (f"这个任务派到了用户的 Mac「{c.name}」上做（任务要用的东西只有那台 Mac 上有）。你用的电脑就是那台 Mac："
+             if c.backend == "mac" else "你有一台电脑：")
+    return f"""{where}用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己日常用的 Chrome 分开，所有 Bot 共用，
 用户在里面登录过的网站你都能直接用）。你的任务有自己的浏览器窗口，别的任务同时在别的窗口里做、互不干扰。用 browser_* / computer_* 工具操作：
 - 文件只能放在工作文件夹 {c.workspace} 里：computer_read_file / computer_write_file 只能读写这里面的文件（可以写相对路径），
   浏览器下载的文件在它的 downloads 子文件夹，browser_upload 也只能传这里面的文件。
@@ -151,14 +154,14 @@ DESK_HINT = """
 
 
 def system_hint(c=None) -> str:
-    c = c or get()
+    c = c or current()
     shell = "" if c.backend in HOSTS else "\n- 下载文件、处理数据、跑脚本用 computer_shell。"
     return _intro(c) + _BODY.replace("{shell}", shell)
 
 
 def capability(c=None) -> str:
     """Router 的能力清单里那一句：电脑是什么、能做什么。"""
-    c = c or get()
+    c = c or current()
     if c.backend in HOSTS:
         return ("每个后台任务都能用用户这台电脑上专门给 Bot 开的 Chrome 浏览器（和用户自己的 Chrome 分开，所有 Bot 共用），"
                 "可以打开网页、点击、输入、登录后操作、上传下载文件（文件放在工作文件夹）"
@@ -195,7 +198,7 @@ CLAIM: contextvars.ContextVar[str] = contextvars.ContextVar("osa_claim", default
 async def release():
     key = CLAIM.get()
     if key:
-        await get().release(key)
+        await current().release(key)
 
 
 def _label(task, key: str) -> str:
@@ -289,7 +292,7 @@ async def _confirm(task, c, name: str, args: dict, key: str) -> str | None:
 async def call(task, name: str, args: dict, notify_progress, key: str = "") -> tuple[str, bytes | None]:
     """执行一个电脑工具，返回 (给模型的文字, 可选截图)。key 是谁在用：任务的 CLAIM，对话里直接操作的是 chat-<Bot id>。"""
     from .. import approvals
-    c = get()
+    c = current()
     key = key or CLAIM.get() or str(task.id)
     if name in DESKTOP:
         await notify_progress(_progress_label(name, args))

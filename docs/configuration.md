@@ -109,7 +109,6 @@ computer:
   instabox_machine: ""   # 使用已有的 Instabox 机器（免费版只能有一台）
   chrome_path: ""        # 本机：Bot 的浏览器用哪个 Chrome，留空按常见位置找
   host_shell: false      # 本机的终端，默认关
-  linked_shell: false    # 借来的 Mac 的终端，默认关
   host_desktop: true     # 本机是 Mac 时，给了权限就能操作整个屏幕；false 只用浏览器
   # choices: [instabox]  # 电脑面板里给哪几种（host / local / instabox），不写就是全部
 ```
@@ -117,20 +116,21 @@ computer:
 电脑面板上方能换电脑（存在设置里，覆盖 `backend`）：
 
 - 桌面 App 独立运行时：**本机**（这台 Mac）、**Docker 沙盒**（`local`）、**云电脑**（`instabox`）三选一，默认本机。
-- 服务器上：**Docker 沙盒**、**云电脑** 二选一。不给“服务器本机”：服务器没有屏幕，而且多半用 root 跑，Chrome 要关掉自己的沙箱才能以 root 运行，不安全；
-  `config.yaml` 里写了 `host` 的照常能用。App 连着服务器时还能选 **本机**，就是把这台 Mac 借给服务器上的 Bot（Mac 上会弹窗问你），
-  换回别的就收回。见下面“借给服务器”。
+- 服务器上：**Docker 沙盒**、**云电脑** 二选一。服务器从不用它自己当电脑：Bot 在服务器上直接开浏览器、执行命令太危险
+  （服务器多半用 root 跑，Chrome 还得关掉自己的沙箱）。`config.yaml` 里写了 `host` 也会换成 Docker 沙盒或云电脑；
+  `host` 只在你自己的 Mac 上有（桌面 App 独立运行，或者在 Mac 上直接 `uv run`）。
+  要用你自己 Mac 上才有的东西，让 Bot 把那个任务派到你的 Mac（见下面“派任务到你的 Mac”），而不是换电脑。
 - 云电脑要 Instabox 的 API Key：第一次选时在面板里填，服务先试一下能不能用，能用才加密存进保险库（名字 `INSTABOX_API_KEY`）；
   面板里填的优先，没填用环境变量 `INSTABOX_API_KEY`。换了 Key（可能是另一个账号）会接着用那个账号里以前给这里建的机器。
 - 换电脑时旧的那台会暂停（本机关掉 Bot 的 Chrome，Docker 容器暂停，Instabox 挂起），下次换回来接着用。
 - 不想让人在面板里选某种（比如服务器内存小、不想在上面跑 Docker），在 `computer.choices` 里只列要给的，比如 `[instabox]`。
-  只剩一种时面板上不再出现下拉框；正在用的那种不受影响。“借给服务器”的 Mac 不归它管。
+  只剩一种时面板上不再出现下拉框；正在用的那种不受影响。
 
 | backend | 说明 |
 |---|---|
 | `instabox` | Firecracker 微虚拟机，电脑关机也照常跑；暂停时保留内存。需要权限为 `machines:write` 的 API key。 |
 | `local` | 本地 Docker 容器 `osa-computer`，数据在 `data/computers/shared`（用 Docker Compose 部署时在命名卷 `osa-computer-data`，由环境变量 `OSA_COMPUTER_DATA` 指定）。VNC 只监听容器内部、不映射到宿主机端口，由服务端经 `docker exec` 转发给浏览器。 |
-| `host` | 服务所在那台电脑上的浏览器（比如在自己电脑上直接 `uv run`、在浏览器里用）。规则和本机一样。 |
+| `host` | 服务所在那台 Mac 上的浏览器（桌面 App，或者在自己 Mac 上直接 `uv run`、在浏览器里用）。服务器（Linux）上不能用。 |
 
 **本机**（桌面 App 独立运行，或者 `backend: host`）：
 
@@ -163,10 +163,12 @@ computer:
   POST 表单的提交按钮，或者在发消息的多行输入框、POST 表单里回车；真链接和搜索框不算）都先弹确认卡片。点“总是允许”以后同类操作不再问，
   可以在 设置 → 确认规则 里撤销。用 Bot 电脑时这些默认不问，想问也可以在确认规则里加“先问我”。
 
-**借给服务器**（App 连着服务器时选“本机”，后台的电脑类型叫 `linked`）：和本机一样，只是 Bot 在服务器上、经 Mac 主动连过去的连接操作这台 Mac。
-不同的地方：终端的开关是 `linked_shell`（电脑面板里那个勾，哪台设备上都能开关；`host_shell` 和服务器锁都管不到它），每条命令照样先问；
-借出时 Mac 上弹窗同意的就包括屏幕；服务器锁（`security.local_exec: false`、`security.exec`）不影响它，演示模式下不能用；
-Mac 掉线时电脑面板显示“你的 Mac 没连上”。细节见 [桌面 App](desktop.md)。
+**派任务到你的 Mac**：Bot 平时用上面选的电脑；有的事只有你自己的 Mac 上才做得了，Bot 派任务时可以写 `mac`（那台 Mac 的名字），
+那个任务就在那台 Mac 上做（电脑类型 `mac`），别的任务照常用共用电脑。先要在那台 Mac 的 App 里允许（Mac 上弹窗同意，可以加好几台），
+每次派过去还会弹确认卡片（`use_mac`，可以“总是允许”，在确认规则里撤销）。任务里的规则和本机一样：上传、写文件、提交、第一次用屏幕先问。
+不同的地方：终端每台单独开（电脑面板“你的 Mac”里那个勾，哪台设备上都能开关，默认关；`host_shell` 和服务器锁都管不到它），每条命令照样先问；
+服务器锁（`security.local_exec: false`、`security.exec`）不影响它，演示模式下不能用；`run_code` 照样在服务器这边的沙箱里跑，产出的文件传到那台 Mac 的工作文件夹。
+那台 Mac 掉线时派不过去，Bot 会说那台 Mac 没连上。细节见 [桌面 App](desktop.md)。
 
 **几个任务同时用电脑**：所有 Bot 共用一台电脑，但后台任务不用一个个排队。每个任务在自己的浏览器窗口里做，
 截图、点击、输入都只作用在自己的窗口里，互不干扰；登录状态、电脑里的文件大家共用。同时用的任务最多 `parallel` 个，多了排队，
@@ -191,7 +193,9 @@ Bot 算数、算日期、换单位、处理数据时不心算，而是跑一段�
 | 电脑 | run_code | quick_code |
 |---|---|---|
 | Docker / Instabox | 电脑里（电脑本身就是隔离的，能联网） | 本机的受限子进程 |
-| 本机、借来的 Mac、电脑关着 | 本机的受限子进程 | 本机的受限子进程 |
+| 本机、电脑关着 | 本机的受限子进程 | 本机的受限子进程 |
+
+派到你的 Mac 上的任务：`run_code` 按上表在服务器这边跑，产出的文件再传到那台 Mac 的工作文件夹。
 
 本机的受限子进程：
 

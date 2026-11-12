@@ -182,11 +182,28 @@ DIRECT_PC = {"computer_screenshot", "computer_click", "computer_type",
              "computer_key", "computer_scroll", "browser_open", "browser_snapshot", "browser_click",
              "browser_type", "browser_key", "browser_scroll", "browser_back", "browser_read"}
 
+def _pick_mac(name: str) -> tuple[dict | None, str]:
+    """dispatch 的 mac：按名字找用户登记过的 Mac。找不到、没连上返回 (None, 给模型的话)。"""
+    from . import security
+    from .computer import link
+    if security.demo():
+        return None, "没派发：演示服务器上不能把任务派到用户的 Mac"
+    r = link.find(name)
+    if not r:
+        names = "、".join(f"「{x['name']}」" for x in link.rows()) or "没有"
+        return None, f"没派发：没有叫「{name}」的 Mac。用户登记过的 Mac：{names}"
+    if not r["connected"]:
+        return None, f"没派发：「{r['name']}」现在没连上（那台 Mac 上的 App 没开、没联网，或者电脑睡着了）。请告诉用户。"
+    return r, ""
+
+
 ROUTER_TOOLS = [*[s for s in ctools.SCHEMAS if s["function"]["name"] in DIRECT_PC],
     {"type": "function", "function": {"name": "dispatch", "description": "派发后台任务",
         "parameters": {"type": "object", "properties": {
             "goal": {"type": "string", "description": "完整、自包含的任务描述"},
             "mode": {"type": "string", "enum": ["single", "heavy"]},
+            "mac": {"type": "string", "description": "只在任务必须用用户自己的 Mac 才做得了时写（见能力清单里的“用户的 Mac”）：那台 Mac 的名字。"
+                                                     "不写就在你自己的电脑上做"},
             "handoff_to": {"type": "string", "description": "只在群聊里用：任务完成后把结果交给哪个成员接着做"},
             "handoff_note": {"type": "string", "description": "交接时要对方做什么"}}, "required": ["goal"]}}},
     {"type": "function", "function": {"name": "save_skill", "description": "保存或覆盖一个技能（可复用的做事方法）",
@@ -526,15 +543,23 @@ class Router:
                 if not to or to["id"] == self.bot_id:
                     return f"没派发：群里没有叫 {args['handoff_to']} 的其他成员"
                 handoff = {"to": to["id"], "note": args.get("handoff_note") or ""}
+            mac = None
+            if (args.get("mac") or "").strip():
+                mac, why = _pick_mac(args["mac"])
+                if not mac:
+                    return why
+            if handoff:
                 from . import groups
-                groups.expect(self.chat["id"], to["id"])
+                groups.expect(self.chat["id"], handoff["to"])
             task = await self.dispatch(args["goal"], args.get("mode", "single"), chat_id=self.chat["id"], handoff=handoff,
-                                       reply=self.turn.get("reply"), depth=self.turn.get("depth", 0))
+                                       reply=self.turn.get("reply"), depth=self.turn.get("depth", 0), mac=mac)
             self._turn_tasks.append(task.id)
             if handoff:
                 return f"已派发任务 #{task.id}，做完后结果会自动交给 {to['name']}"
             if task.reply:
                 return f"已派发任务 #{task.id}，做完后结果会自动发给 {dm._name(task.reply['bot'])}"
+            if mac:
+                return f"已派发任务 #{task.id}，在用户的 Mac「{mac['name']}」上做（开始前会先请用户确认）"
             return f"已派发任务 #{task.id}"
         if name == "message_bot":
             to = bots.by_name(args.get("to", ""))
@@ -669,6 +694,12 @@ class Router:
                          "用户要求“先问我再做”时，把这个要求写进 goal 就行。"
                          "你自己也能用 look_at_screen 直接看屏幕：用户问屏幕上是什么、任务做到哪了，先看再答，"
                          "不要说你看不见。")
+        from . import security
+        from .computer import link
+        if macs := ([] if security.demo() else link.rows()):
+            lines.append("- 用户的 Mac：" + "、".join(f"「{r['name']}」（{'在线' if r['connected'] else '没连上'}）" for r in macs) +
+                         "。有的事只有用户自己的 Mac 才做得了（要用那台 Mac 上登录着的 App 或网站、Mac 上的文件、只装在 Mac 上的软件）："
+                         "dispatch 时 mac 写那台的名字，任务就在那台 Mac 上做，开始前会请用户确认。别的事照常在你自己的电脑上做，不要写 mac。")
         # 只列模型能调的（visibility 里有 model 的）；只给应用界面用的不算
         groups = {srv: [t.name.split("__", 1)[1] for t in ts if registry.WORKER in t.where] for srv, ts in registry.by_group().items()}
         def label(n: str) -> str:
@@ -682,18 +713,21 @@ class Router:
 
     async def dispatch(self, goal: str, mode: str = "single", background: bool = False,
                        on_done=None, label: str = "", chat_id: int | None = None, handoff: dict | None = None,
-                       reply: dict | None = None, depth: int = 0, quiet_ok: bool = False, notes: str = "") -> Task:
+                       reply: dict | None = None, depth: int = 0, quiet_ok: bool = False, notes: str = "",
+                       mac: dict | None = None) -> Task:
         """派一个后台任务。定时任务也走这里（background=True，确认卡片会过期）。
         chat_id 是任务卡片和结果出现的对话（默认私聊）；确认卡片总是发到私聊。
         reply：因私信派的任务，做完把结果作为回信送回去（见 dm.py）。
         quiet_ok：定时任务用，结果只有“无新内容”时不发结果消息、对话里也不显示这个任务（见 routines.QUIET）。
-        notes：只给 Worker 看的补充说明，接在 goal 后面，不显示也不存进对话。"""
+        notes：只给 Worker 看的补充说明，接在 goal 后面，不显示也不存进对话。
+        mac：派到你的哪台 Mac 上做（computer/link.py 的一行），开始前先问你（_use_mac）。"""
         cid = chat_id or self.chat_id
         tid = await self.add("task", f"[任务已派发] {label + ' ' if label else ''}{goal}", cid, kind="dispatch",
                              mode=mode, status="running", **({"handoff_to": handoff["to"]} if handoff else {}),
-                             **({"reply_to": reply["bot"]} if reply else {}))
+                             **({"reply_to": reply["bot"]} if reply else {}), **({"mac": mac["name"]} if mac else {}))
         task = Task(id=tid, goal=goal, mode=mode, bot_id=self.bot_id, chat_id=cid, approval_chat_id=self.chat_id,
-                    background=background, on_done=on_done, handoff=handoff, reply=reply, depth=depth, quiet_ok=quiet_ok, notes=notes)
+                    background=background, on_done=on_done, handoff=handoff, reply=reply, depth=depth, quiet_ok=quiet_ok, notes=notes,
+                    **({"mac": mac["id"], "mac_name": mac["name"]} if mac else {}))
         task.handle = asyncio.create_task(self._run(task))
         TASKS[tid] = task
         await self.emit({"type": "task", "task": task.public()}, cid)
@@ -707,12 +741,31 @@ class Router:
         return "\n".join(f"#{t.id} [{'等待确认' if t.waiting_approval else t.status}] {t.mode} 步数={t.steps} {t.goal[:50]}"
                          for t in self.tasks.values()) or "暂无任务"
 
+    async def _use_mac(self, task: Task) -> str:
+        """派到你的 Mac 上的任务：先问你同不同意（卡片上能“总是允许”），同意了这个任务的电脑工具就用那台 Mac。
+        不行返回原因（任务按失败结束）。"""
+        from .computer import TASK_PC, link, mac
+        r = link.row(task.mac)
+        if not r:
+            return i18n.t("「{name}」已经移除了，没有做", name=task.mac_name)
+        args = {"电脑": r["name"], "任务": task.goal[:500]}
+        ok, note = await approvals.request(task, "use_mac", args) if approvals.decide("use_mac", args=args)[0] else (True, "")
+        if not ok:
+            return (i18n.t("你没同意在「{name}」上做这个任务", name=r["name"]) + (f"：{note}" if note else "")).strip()
+        if not link.connected(task.mac):
+            return i18n.t(link.OFFLINE, name=r["name"])
+        TASK_PC.set(mac.get(task.mac))   # 这个任务（Heavy 的几个研究员也是）里的电脑工具、send_file、run_code 的文件都用那台 Mac
+        return ""
+
     async def _run(self, task: Task):
         try:
-            task.result = await (run_heavy(task) if task.mode == "heavy" else run_worker(task, task.goal + task.notes))
-            task.status = "done"
-            if not task.background:   # 定时任务有自己的运行记录，不记进“做过的事”
-                memories.log_work(self.bot_id, task.id, task.goal)
+            if task.mac and (why := await self._use_mac(task)):
+                task.status, task.result = "failed", why
+            else:
+                task.result = await (run_heavy(task) if task.mode == "heavy" else run_worker(task, task.goal + task.notes))
+                task.status = "done"
+                if not task.background:   # 定时任务有自己的运行记录，不记进“做过的事”
+                    memories.log_work(self.bot_id, task.id, task.goal)
         except asyncio.CancelledError:
             asked = task.status == "cancelled"   # cancel() 先标了状态；服务关闭时被取消的不算
             task.status = "cancelled"

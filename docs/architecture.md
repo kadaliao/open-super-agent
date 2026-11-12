@@ -90,7 +90,7 @@ osa/
     local.py       本地 Docker 后端（VNC 经 docker exec 转发）
     instabox.py    Instabox 后端
     host.py        本机电脑：这台电脑上的 Chrome、工作文件夹，打开后还有整个屏幕（macdesk.py：截图、鼠标键盘、辅助功能）
-    linked.py      服务器借用你的 Mac：和 host 一样，动手的那一步经 link.py 的连接交给 Mac 上的 agent.py 去做
+    mac.py         派到你的 Mac 上的任务用的电脑：和 host 一样，动手的那一步经 link.py 的连接（可以连好几台）交给那台 Mac 上的 agent.py 去做
     tools.py       browser_* / computer_* 工具定义、截图消息、给 Worker 的操作说明
     image/         本地电脑镜像
 Dockerfile          服务镜像：后端、构建好的前端、应用要用的 Node 和 uv

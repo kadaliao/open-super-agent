@@ -3,14 +3,15 @@
 在哪跑：
 - 电脑是 Docker / Instabox：电脑本身就是隔离的。代码和带的文件写进电脑工作文件夹的 .run/<编号>/，在那里执行，
   产出的文件留在那个文件夹里，send_file 能直接发。
-- 电脑是本机（host）、借来的 Mac（linked），或者电脑关着：在服务所在的这台机器上开一个受限的子进程。
+- 电脑是本机（host），或者电脑关着：在服务所在的这台机器上开一个受限的子进程。
   - macOS：sandbox-exec。只能写工作文件夹和一个临时目录；/Users、/Volumes、/tmp 和服务自己的代码、数据目录（配置、数据库、保险库）
     读不到，只露出工作文件夹和解释器自己的目录；不能连本机的服务（localhost、unix socket）、不能叫起别的 App；quick_code 完全不能联网。
   - Linux：优先 bwrap，没有就 unshare（用户 + 挂载 + pid + 网络命名空间，挂载自己改成只读、丢掉全部权限，见 _PRELUDE）。
     只露出系统目录（/usr、/bin、/lib……，/etc 只留几个公开的文件）、工作文件夹和解释器；根目录下别的（/root、/home、/opt、/var、/run、/tmp……）都换成空的；
     不能联网：共用网络就能连本机上只对 127.0.0.1 开放的服务。服务用 root 跑时这些尤其要紧。
   - 环境变量照 host._env() 去掉密钥。都没有就返回“这台机器没有沙箱”，Bot 自己会说明。
-  借来的 Mac：代码在服务器上跑（服务器不能让 Mac 执行命令），产出的文件再传到 Mac 的工作文件夹。
+  派到你的 Mac 上的任务：代码照样在服务器这边跑（不在你的 Mac 上执行命令），产出的文件再传到那台 Mac 的工作文件夹，
+  任务的文件工具看的是那里。
 - quick_code 只用本机的受限子进程：Router 要快，不等电脑开机。没有沙箱时 Router 就没有这个工具。
 
 security.exec（exec_mode()）：off 不能执行代码；sandbox 只在沙箱里；host 另外还允许本机终端（computer_shell，每条确认）。
@@ -111,16 +112,16 @@ def _no_sandbox() -> str:
     from . import computer
     if exec_mode() != "host":
         return s + "这台服务器只允许在沙箱里执行代码。"
+    c = computer.current()
+    if c.backend == "mac":
+        if c.shell_enabled():
+            return s + f"可以改用 computer_shell 在用户的 Mac「{c.name}」上跑（每条命令要用户确认）。"
+        return s + f"用户在电脑面板给「{c.name}」打开“允许 Bot 用终端”后，可以用 computer_shell 在那台 Mac 上跑（每条命令要用户确认）。"
     if computer.backend_name() == "host":
         from .computer import host
         if host.shell_on():
             return s + "可以改用 computer_shell 在终端里跑（每条命令要用户确认）。"
         return s + "用户在电脑面板打开“允许 Bot 用终端”后，可以用 computer_shell 跑（每条命令要用户确认）。"
-    if computer.backend_name() == "linked":
-        from .computer import linked
-        if linked.shell_on():
-            return s + "可以改用 computer_shell 在用户的 Mac 上跑（每条命令要用户确认）。"
-        return s + "用户在电脑面板打开“允许 Bot 用终端”后，可以用 computer_shell 在用户的 Mac 上跑（每条命令要用户确认）。"
     return s
 
 
@@ -161,13 +162,17 @@ async def execute(lang: str, code: str, files: dict | None = None, timeout: int 
     where = place(quick=not computer)
     if not where:
         return Result(_no_sandbox())
+    from . import computer as pc
     try:
         if where == "computer":
-            from . import computer as pc
-            return await _in_computer(pc.get(), lang, code, inputs, timeout)
-        return await _on_host(lang, code, inputs, timeout, net)
+            r = await _in_computer(pc.get(), lang, code, inputs, timeout)
+        else:
+            r = await _on_host(lang, code, inputs, timeout, net)
     except Exception as e:   # 给模型一句话，别让工具调用整个失败
         return Result(f"没跑成：{e}")
+    if r.files and (mac := pc.current()).backend == "mac":   # 派到你的 Mac 上的任务：文件工具看的是那台 Mac 的工作文件夹，传过去
+        r = await _to_mac(mac, where, r)
+    return r
 
 
 def _inputs(files, main: str) -> dict[str, str] | str:
@@ -523,7 +528,6 @@ def _outputs(run: Path, skip: set[str]) -> list[str]:
 
 
 async def _on_host(lang: str, code: str, inputs: dict[str, str], timeout: int, net: bool) -> Result:
-    from . import computer
     kind = host_sandbox()
     exe = _interpreter(lang)
     if not exe:
@@ -550,25 +554,28 @@ async def _on_host(lang: str, code: str, inputs: dict[str, str], timeout: int, n
     made = _outputs(run, set(inputs))
     if not made:
         shutil.rmtree(run, ignore_errors=True)
-    files, note = [str(run / x) for x in made], ""
-    if made and computer.backend_name() == "linked":   # 借来的 Mac：Bot 的文件工具看的是 Mac 的工作文件夹，传过去
-        files, note = await _to_linked(run, rid, made)
-    return Result(_text(rc, out, timed_out, timeout, files, note), files, timed_out)
+    files = [str(run / x) for x in made]
+    return Result(_text(rc, out, timed_out, timeout, files), files, timed_out)
 
 
-async def _to_linked(run: Path, rid: str, made: list[str]) -> tuple[list[str], str]:
+async def _to_mac(mac, where: str, r: Result) -> Result:
+    """把服务器这边跑出来的文件传到那台 Mac 的工作文件夹（同样放在 .run/<编号>/ 下），结果里的路径换成 Mac 上的。"""
     from . import computer
-    c = computer.get()
-    out = []
+    text, out = r.text, []
     try:
-        for x in made:
-            p = f"{RUN}/{rid}/{x}"
-            await c.write_bytes(p, (run / x).read_bytes())
-            out.append(posixpath.join(c.workspace, p) if c.workspace else p)
+        for f in r.files:
+            rel = f.split(f"/{RUN}/", 1)[1]
+            data = await computer.get().read_bytes(f) if where == "computer" else Path(f).read_bytes()
+            await mac.write_bytes(f"{RUN}/{rel}", data)
+            out.append(posixpath.join(mac.workspace, RUN, rel) if mac.workspace else f"{RUN}/{rel}")
+            text = text.replace(f"- {f}", f"- {out[-1]}")
     except Exception as e:
-        return [str(run / x) for x in made], f"（代码在服务器上跑的，产出的文件没能传到你的 Mac：{e}；文件还在服务器的工作文件夹里）"
-    shutil.rmtree(run, ignore_errors=True)
-    return out, "（代码在服务器上跑的，读不到 Mac 上的文件；产出的文件已经传到 Mac 的工作文件夹）"
+        return Result(r.text + f"\n（代码在服务器上跑的，产出的文件没能传到「{mac.name}」：{e}）", r.files, r.timed_out)
+    if where != "computer":   # 服务器这边的那份不留
+        head, rel = r.files[0].split(f"/{RUN}/", 1)
+        shutil.rmtree(Path(head) / RUN / rel.split("/", 1)[0], ignore_errors=True)
+    return Result(text + f"\n（代码在服务器上跑的，读不到「{mac.name}」上的文件；产出的文件已经传到那台 Mac 的工作文件夹）",
+                  out, r.timed_out)
 
 
 # ---------- 工具 ----------

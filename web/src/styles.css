@@ -255,7 +255,16 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .pc-shell { display: flex; align-items: center; gap: 6px; }
 .pc-desk-perm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--warn); }
 .pc-desk-perm > span { flex: 1 1 220px; }
+.pc-desk-perm > span.muted { flex: 0 0 auto; }   /* “在那台 Mac 上打开”只占自己那么宽 */
 .pc-name { font-weight: 600; }
+/* 你的 Mac：派任务的去处，一台一行 */
+.pc-macs { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+.pc-macs-head { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.pc-mac { align-self: stretch; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.pc-mac-bar { display: flex; align-items: center; gap: 8px; font-size: 14px; min-width: 0; }
+.pc-mac-bar > * { white-space: nowrap; flex-shrink: 0; }
+.pc-mac-name { overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
+.pc-mac p { margin: 0; }
 .pc-overlay { position: absolute; inset: 0; display: grid; place-items: center; color: #aaa; font-size: 13px; background: rgba(0,0,0,.5); }
 .pc-empty { border: 1px dashed var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .pc-actions { display: flex; align-items: center; gap: 8px; }

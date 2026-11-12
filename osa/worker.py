@@ -51,13 +51,15 @@ class Task:
     notes: str = ""                        # 只给 Worker 看的补充说明，不显示、不存进对话（定时任务：上次的结果、“无新内容”的约定）
     files: list = field(default_factory=list)   # send_file 发的文件（附件，见 media.py），显示在任务结果下面
     apps: list = field(default_factory=list)    # 用到的应用界面（MCP Apps，见 mcpapps.py），显示在任务结果下面
+    mac: int = 0                           # 派到你的哪台 Mac 上做（computer/link.py 的编号）；0 是用共用电脑
+    mac_name: str = ""
 
 
 def _public(self) -> dict:
     return {"id": self.id, "goal": self.goal, "mode": self.mode, "status": self.status, "steps": self.steps,
             "bot_id": self.bot_id, "chat_id": self.chat_id, "started": self.started,
             "waiting_approval": self.waiting_approval, "last_action": self.last_action, "elapsed": round(time.time() - self.started),
-            "quiet": self.quiet}
+            "quiet": self.quiet, **({"mac": self.mac_name} if self.mac else {})}
 
 
 Task.public = _public

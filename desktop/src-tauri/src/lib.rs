@@ -56,7 +56,7 @@ pub struct State {
     origin: Mutex<Option<Url>>, // 当前打开的服务器
     phase: Mutex<(String, String)>, // 启动页显示的状态："starting" / "error" 和说明
     server: Arc<server::Server>,
-    agent: Arc<server::Server>, // 服务器借用这台 Mac 时在后台跑的小程序（link.rs）
+    agent: Arc<server::Server>, // 允许服务器派任务到这台 Mac 时在后台跑的小程序（link.rs）
     granted: Mutex<Vec<String>>, // 已经给过桥接授权的服务器
     popups: AtomicU32,
     updated: Mutex<Option<String>>, // 后台已经下载装好、等重启生效的新版本号
@@ -405,7 +405,7 @@ fn desktop_update_pending(app: AppHandle) -> Option<String> {
     state(&app).updated.lock().unwrap().clone()
 }
 
-/// 重启换上装好的新版本。退出前照常停掉本机的服务和借出的连接（见 run 里的 ExitRequested）。没有装好的新版本时什么都不做
+/// 重启换上装好的新版本。退出前照常停掉本机的服务和派任务用的连接（见 run 里的 ExitRequested）。没有装好的新版本时什么都不做
 #[tauri::command]
 fn desktop_restart(app: AppHandle) {
     restart_for_update(&app);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
-import { api, useStore, setComputer, setSettings, setTeachDraft } from '../store'
-import type { ComputerState, DesktopState, Settings, Teach } from '../types'
+import { api, useStore, setComputer, setMacs, setSettings, setTeachDraft } from '../store'
+import type { ComputerState, DesktopState, MacState, Settings, Teach } from '../types'
 import { lang, t, tn } from '../i18n'
 import BotAvatar from './BotAvatar'
 import { ask, notice } from './Dialog'
@@ -58,53 +58,27 @@ function TypeBar({ botId }: { botId: number }) {
 const STATE: Record<string, string> = {
   none: t('还没启动'), starting: t('启动中'), running: t('运行中'), paused: t('已暂停'), stopped: t('已停止'), error: t('出错了'),
 }
-/** 用哪台电脑。
+/** 用哪台电脑（Bot 平时干活的地方）。
  *  App 自己独立运行时在三台里选：本机（这台 Mac 上 Bot 自己的 Chrome，能操作整个屏幕）、Docker 沙盒、云电脑（Instabox）。
- *  服务器上（Linux，没有屏幕）在 Docker 沙盒和云电脑里选；连着服务器的 Mac App 还能选“本机”，就是把这台 Mac 借给服务器：
- *  向服务器要一个借用令牌交给 App，App 弹窗问你同意了才借；换回别的就收回。手机、浏览器里能选已经连上的那台 Mac。
- *  ls 是这个 App 所在的 Mac 借出去了没有（见 desktop.ts）。云电脑还没填 API Key 时选它，先弹出填 Key 的框（onKey）。 */
-function ComputerPicker({ st, ls, reload, setErr, onKey }: {
-  st: ComputerState; ls: LinkState | null; reload: () => void; setErr: (e: string) => void; onKey: () => void
-}) {
+ *  服务器上只在 Docker 沙盒和云电脑里选：不用服务器自己当电脑（给哪几种由服务器定，computer_choices）。
+ *  你的 Mac 不在这里：它们是派任务的去处，见下面的 Macs。云电脑还没填 API Key 时选它，先弹出填 Key 的框（onKey）。 */
+function ComputerPicker({ st, setErr, onKey }: { st: ComputerState; setErr: (e: string) => void; onKey: () => void }) {
   const s = useStore(x => x.settings)
   const [busy, setBusy] = useState(false)
-  const names: Record<string, string> = { host: s?.computer_on_desktop ? t('本机') : t('服务器本机'), local: t('Docker 沙盒'), instabox: t('云电脑') }
+  const names: Record<string, string> = { host: t('本机'), local: t('Docker 沙盒'), instabox: t('云电脑') }
   if (!s || s.security?.demo) return <span className="pc-name">{names[st.backend] || t('Bot 电脑')}</span>
-  const here = !!ls?.available   // 在 Mac 的 App 里，能借出这台 Mac
-  const linked = st.backend === 'linked'
   const can = (id: string) => s.computer_backends?.find(b => b.id === id)
-  // 服务器上不给“服务器本机”：没有屏幕、多半用 root 跑（Chrome 得关掉沙箱才能用 root 跑）。config.yaml 里写了 host 的照常显示。
   // computer.choices 没列的不给（比如服务器上不想用 Docker），正在用的那种照常显示
-  const allowed = (id: string) => id === st.backend || !s.computer_choices || s.computer_choices.includes(id)
-  const ids = (s.computer_on_desktop ? ['host', 'local', 'instabox'] : [...(st.backend === 'host' ? ['host'] : []), 'local', 'instabox']).filter(allowed)
-  const withMac = !s.computer_on_desktop && (here || st.link?.connected || linked)
-  if (ids.length + (withMac ? 1 : 0) < 2 && !linked) return <span className="pc-name">{names[st.backend] || t('Bot 电脑')}</span>
-  const setBackend = async (b: string) => setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_backend: b } }))
+  const ids = ['host', 'local', 'instabox'].filter(id => id === st.backend || !s.computer_choices || s.computer_choices.includes(id))
+  if (ids.length < 2) return <span className="pc-name">{names[st.backend] || t('Bot 电脑')}</span>
   const change = async (v: string) => {
     if (v === 'instabox' && !can('instabox')?.ok) return onKey()
     setBusy(true); setErr('')
-    try {
-      if (v === 'linked') {
-        if (here && !ls?.linked) {
-          const r = await api<{ id: number; token: string }>('/api/computer/links', { method: 'POST', body: { name: 'Mac' } })
-          if (!(await desktop!.link!.connect(r.token, r.id))) {   // 你在弹窗里点了取消
-            await api(`/api/computer/links/${r.id}`, { method: 'DELETE' })
-            return
-          }
-        }
-        await setBackend('linked')
-      } else {
-        await setBackend(v)
-        if (ls?.linked) {   // 收回这台 Mac
-          await desktop!.link!.disconnect()
-          if (ls.id) await api(`/api/computer/links/${ls.id}`, { method: 'DELETE' })
-        }
-      }
-    } catch (e: any) { setErr(e.message) }
-    finally { setBusy(false); reload() }
+    try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_backend: v } })) }
+    catch (e: any) { setErr(e.message) }
+    finally { setBusy(false) }
   }
   const inUse = !!(st.users?.length || st.exclusive)
-  const mac = here ? t('本机') : st.link?.name || t('我的 Mac')   // 在这台 Mac 的 App 里就叫“本机”
   const noDocker = !can('local')?.ok
   return (
     <select className="pc-backend" value={st.backend} disabled={busy || inUse}
@@ -114,7 +88,6 @@ function ComputerPicker({ st, ls, reload, setErr, onKey }: {
           {names[id]}{id === 'local' && noDocker ? t('（没装 Docker）') : ''}
         </option>
       ))}
-      {withMac && <option value="linked" disabled={!here && !st.link?.connected}>{mac}{linked && !st.link?.connected ? t('（没连上）') : ''}</option>}
     </select>
   )
 }
@@ -163,43 +136,131 @@ function HostShell({ on }: { on: boolean }) {
   )
 }
 
-/** 借来的 Mac 的终端：默认关，哪台设备上都能开关（手机上也行），打开后 Bot 每条命令都要你确认。
- *  ready：那台 Mac 上的 App 能执行命令（旧版不能，要先更新）。 */
-function MacShell({ on, ready }: { on: boolean; ready: boolean }) {
-  const save = async (v: boolean) => {
-    if (v && !(await ask(t('让 Bot 能在你的 Mac 上执行终端命令？每条命令执行前都会问你，命令能访问那台 Mac 上你能访问的所有文件。'), { ok: t('打开终端') }))) return
-    try { setSettings(await api<Settings>('/api/settings', { method: 'PUT', body: { computer_linked_shell: v } })) }
-    catch (e: any) { notice(e.message) }
-  }
-  return (
-    <label className="pc-shell muted small">
-      <input type="checkbox" checked={on} disabled={!ready && !on} onChange={e => save(e.target.checked)} />
-      {t('允许 Bot 用终端（每条命令都要你确认）')}
-      {!ready && <>{' · '}{t('那台 Mac 上的 App 要先更新到新版')}</>}
-    </label>
-  )
-}
-
-/** 本机（或借来的 Mac）还没给 macOS 权限时：Bot 只能用浏览器。给了“辅助功能”和“屏幕录制”，它就能看屏幕、用鼠标键盘操作别的 App。
- *  here：就在那台 Mac 上，可以点按钮弹系统的授权提示。 */
-function DeskPerms({ here }: { here: boolean }) {
+/** 还没给 macOS 权限时：Bot 只能用浏览器。给了“辅助功能”和“屏幕录制”，它就能看屏幕、用鼠标键盘操作别的 App。
+ *  写明缺的是哪一个；显示着的时候每隔几秒、切回这个窗口时都重新问一次，在系统设置里打开以后这里自己消失。
+ *  here：就在那台 Mac 上，可以点按钮弹系统的授权提示、打开系统设置。 */
+function DeskPerms({ desk, here, grant, refresh }: {
+  desk: DesktopState; here: boolean; grant: () => Promise<unknown>; refresh: () => void
+}) {
   const [busy, setBusy] = useState(false)
-  const grant = async () => {
+  useEffect(() => {
+    const tick = () => { if (!document.hidden) refresh() }
+    const i = setInterval(tick, 3000)
+    window.addEventListener('focus', tick)
+    return () => { clearInterval(i); window.removeEventListener('focus', tick) }
+  }, [])
+  if (desk.accessibility === undefined && desk.screen === undefined)   // 没问到（那台 Mac 没回应之类）：直接说原因
+    return desk.problem ? <div className="pc-desk-perm small"><span>{desk.problem}</span></div> : null
+  const q = (s: string) => lang === 'en' ? `"${s}"` : `“${s}”`
+  const what = [!desk.accessibility && q(t('辅助功能')), !desk.screen && q(t('屏幕录制'))].filter(Boolean).join(t('和'))
+  const go = async () => {
     setBusy(true)
-    try { setComputer(await api<ComputerState>('/api/computer/desktop/grant', { method: 'POST' })) } catch (e: any) { notice(e.message) }
-    setBusy(false)
+    try { await grant() } catch (e: any) { notice(e.message) }
+    setBusy(false); refresh()
   }
   return (
     <div className="pc-desk-perm small">
-      <span>{t('要让 Bot 能看屏幕、用鼠标键盘操作其他 App，给 Open Super Agent 打开“辅助功能”和“屏幕录制”权限（打开后还显示这句，就退出 App 再打开）。')}</span>
-      {here ? <button className="btn" disabled={busy} onClick={grant}>{t('去打开')}</button> : <span className="muted">{t('在那台 Mac 上打开')}</span>}
+      <span>{t('要让 Bot 能看屏幕、用鼠标键盘操作其他 App，还要给 Open Super Agent 打开{what}权限。', { what })}
+        {' '}{t('系统设置的列表里没有 Open Super Agent 的话，点列表下面的“+”，在“应用程序”里选它。打开后这里会自己更新。')}</span>
+      {here ? <button className="btn" disabled={busy} onClick={go}>{t('去打开')}</button> : <span className="muted">{t('在那台 Mac 上打开')}</span>}
     </div>
   )
 }
 
-/** 本机电脑的画面：没有 VNC，每隔一会儿取一张截图（手机上也能看）：跟着 Bot 最近一次操作的走，
- *  它在操作屏幕时是整个屏幕，在浏览器里做事时是它的浏览器窗口。 */
-export function HostView({ botId }: { botId: number }) {
+/** 一台 Mac 的终端：默认关，哪台设备上都能开关（手机上也行），打开后 Bot 每条命令都要你确认。 */
+function MacShell({ m }: { m: MacState }) {
+  const save = async (v: boolean) => {
+    if (v && !(await ask(t('让 Bot 能在「{name}」上执行终端命令？每条命令执行前都会问你，命令能访问那台 Mac 上你能访问的所有文件。', { name: m.name }), { ok: t('打开终端') }))) return
+    try { await api(`/api/computer/macs/${m.id}`, { method: 'PUT', body: { shell: v } }) }
+    catch (e: any) { notice(e.message) }
+  }
+  return (
+    <label className="pc-shell muted small">
+      <input type="checkbox" checked={m.shell} disabled={!m.can_shell && !m.shell} onChange={e => save(e.target.checked)} />
+      {t('允许 Bot 用终端（每条命令都要你确认）')}
+      {!m.can_shell && <>{' · '}{t('那台 Mac 上的 App 要先更新到新版')}</>}
+    </label>
+  )
+}
+
+const reloadMacs = () => api<MacState[]>('/api/computer/macs').then(setMacs).catch(() => {})
+
+/** 一台 Mac：连没连着、有几个任务在用（可以看画面）、你接手了就交还、缺的权限、终端开关、移除。here：就是这个 App 所在的这台。 */
+function MacRow({ m, here, onRemove }: { m: MacState; here: boolean; onRemove: () => void }) {
+  const [view, setView] = useState(false)
+  const act = (a: string) => api(`/api/computer/macs/${m.id}/${a}`, { method: 'POST' })
+  const desk = m.desktop
+  const n = m.users?.length || 0
+  return (
+    <div className="pc-mac">
+      <div className="pc-mac-bar">
+        <span className={'pc-dot ' + (m.connected ? 'running' : 'error')} />
+        <span className="pc-mac-name">{m.name}{here && <span className="muted small"> · {t('这台')}</span>}</span>
+        <span className="muted small">{!m.connected ? t('没连上') : n ? t('{n} 个任务在用', { n }) : t('在线')}</span>
+        <span className="grow" />
+        {m.connected && n > 0 && <button className="ghost-btn" onClick={() => setView(v => !v)}>{view ? t('收起画面') : t('看画面')}</button>}
+        <button className="ghost-btn" disabled={n > 0} title={n ? t('有任务在用，做完再移除') : ''} onClick={onRemove}>{t('移除')}</button>
+      </div>
+      {!m.connected && <p className="muted small">{here ? t('正在连接…（一直连不上就退出 App 再打开）') : t('那台 Mac 上的 App 没开、没联网，或者电脑睡着了。')}</p>}
+      {view && m.connected && <HostView url={`/api/computer/macs/${m.id}/shot`} />}
+      {m.connected && m.controller === 'human' && (
+        <div className="pc-actions">
+          <span className="pc-you">{desk?.paused_by === 'input' ? t('你动了鼠标或键盘，Bot 先停下了。用完点交还，它接着做') : t('Bot 已暂停，你直接用这台 Mac')}</span>
+          <button className="btn primary" onClick={() => act('handback').catch((e: any) => notice(e.message))}>{t('交还给 Bot')}</button>
+        </div>
+      )}
+      {m.connected && desk?.supported && !(desk.accessibility && desk.screen) &&
+        <DeskPerms desk={desk} here={here} grant={() => act('grant')} refresh={reloadMacs} />}
+      {m.connected && <MacShell m={m} />}
+    </div>
+  )
+}
+
+/** 你的 Mac：服务器上的 Bot 能把某个任务派到这些 Mac 上做（任务要用那台 Mac 上才有的东西时），每次派过去先问你。
+ *  连着服务器的 Mac App 里能把这台加进来（App 先在 Mac 上弹窗问你）；哪台设备上都能看状态、开关终端、移除。 */
+function Macs() {
+  const macs = useStore(s => s.macs)
+  const [ls, setLs] = useState<LinkState | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const reloadLink = () => { if (desktop?.link && !phone) desktop.link.state().then(setLs).catch(() => setLs(null)) }
+  useEffect(() => { reloadMacs(); reloadLink() }, [])
+  const mine = ls?.available && ls.linked ? macs?.find(m => m.id === ls.id) : undefined   // 这个 App 所在的这台
+  const add = async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await api<{ id: number; token: string }>('/api/computer/links', { method: 'POST', body: { name: 'Mac' } })
+      if (!(await desktop!.link!.connect(r.token, r.id)))   // 你在 Mac 的弹窗里点了取消
+        await api(`/api/computer/links/${r.id}`, { method: 'DELETE' })
+    } catch (e: any) { setErr(e.message) }
+    finally { setBusy(false); reloadLink(); reloadMacs() }
+  }
+  const remove = async (m: MacState) => {
+    if (!(await ask(t('移除「{name}」？之后 Bot 不能再把任务派到这台 Mac；要再加，得在那台 Mac 的 App 里重新允许。', { name: m.name }), { ok: t('移除'), danger: true }))) return
+    setErr('')
+    try {
+      await api(`/api/computer/links/${m.id}`, { method: 'DELETE' })
+      if (mine?.id === m.id) await desktop!.link!.disconnect()
+    } catch (e: any) { setErr(e.message) }
+    reloadLink(); reloadMacs()
+  }
+  if (!macs || (!macs.length && !ls?.available)) return null   // 没有登记过的 Mac，也不在 Mac 的 App 里：不占地方
+  return (
+    <div className="pc-macs">
+      <div className="pc-macs-head">
+        <b>{t('你的 Mac')}</b>
+        <span className="muted small">{t('有的事只有你的 Mac 上才做得了（那台 Mac 上登录着的 App、本地文件）：Bot 可以把那个任务派过去做，每次先问你。')}</span>
+      </div>
+      {macs.map(m => <MacRow key={m.id} m={m} here={mine?.id === m.id} onRemove={() => remove(m)} />)}
+      {ls?.available && !mine && <button className="btn" disabled={busy} onClick={add}>{busy ? t('等你在弹窗里确认…') : t('允许 Bot 把任务派到这台 Mac')}</button>}
+      {err && <div className="error-line">{err}</div>}
+    </div>
+  )
+}
+
+/** 本机电脑（或者你的某台 Mac）的画面：没有 VNC，每隔一会儿取一张截图（手机上也能看）：跟着 Bot 最近一次操作的走，
+ *  它在操作屏幕时是整个屏幕，在浏览器里做事时是它的浏览器窗口。url 是取截图的地址。 */
+export function HostView({ url: shot }: { url: string }) {
   const [src, setSrc] = useState('')
   const [err, setErr] = useState('')
   useEffect(() => {
@@ -208,7 +269,7 @@ export function HostView({ botId }: { botId: number }) {
       if (busy || document.hidden) return
       busy = true
       try {
-        const r = await fetch(`/api/bots/${botId}/computer/shot`, { cache: 'no-store' })
+        const r = await fetch(shot, { cache: 'no-store' })
         if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || r.statusText)
         const next = URL.createObjectURL(await r.blob())
         if (stop) { URL.revokeObjectURL(next); return }
@@ -221,7 +282,7 @@ export function HostView({ botId }: { botId: number }) {
     tick()
     const i = setInterval(tick, 1500)
     return () => { stop = true; clearInterval(i); if (url) URL.revokeObjectURL(url) }
-  }, [botId])
+  }, [shot])
   return (
     <div className="pc-view">
       {src && <img className="pc-shot" src={src} alt="" />}
@@ -338,13 +399,10 @@ export function ComputerPanel({ botId }: { botId: number }) {
   const [big, setBig] = useState(false)
   const bigRef = useRef<HTMLDivElement>(null)
   useBack(() => setBig(false), bigRef, big)
-  const [ls, setLs] = useState<LinkState | null>(null)   // 这个 App 所在的 Mac 借给服务器了没有（只有连着服务器的桌面 App 有）
   const [keyOpen, setKeyOpen] = useState(false)   // 正在填云电脑的 API Key
   const [keyVer, setKeyVer] = useState(0)          // 换过 Key：重新列账号里的机器
   const settings = useStore(s => s.settings)
   const ibox = settings?.computer_backends?.find(b => b.id === 'instabox')
-  const reloadLink = () => { if (desktop?.link && !phone) desktop.link.state().then(setLs).catch(() => setLs(null)) }
-  useEffect(reloadLink, [st?.link?.connected, st?.backend])
   useEffect(() => { if (teach) setBig(true) }, [teach?.started])   // 开始录制就放大画面
 
   useEffect(() => { api<ComputerState>(`/api/bots/${botId}/computer`).then(setComputer).catch(() => {}) }, [botId])
@@ -366,17 +424,15 @@ export function ComputerPanel({ botId }: { botId: number }) {
   }, [botId])
 
   if (!st) return <div className="muted small">{t('读取电脑状态…')}</div>
-  const host = st.backend === 'host' || st.backend === 'linked'   // 用户自己的电脑：本机，或者借来的 Mac
-  const offline = st.backend === 'linked' && !st.link?.connected
-  const live = !offline && (st.state === 'running' || (host && !!st.desktop?.screen))   // 有画面：浏览器开着，或者能看整个屏幕
+  const host = st.backend === 'host'   // 用户自己的电脑：桌面 App 所在的这台 Mac
+  const live = st.state === 'running' || (host && !!st.desktop?.screen)   // 有画面：浏览器开着，或者能看整个屏幕
   const human = st.controller === 'human'
-  const here = st.backend === 'host' || !!ls?.linked   // 就在那台电脑上（能点按钮弹系统的授权提示）
-  const view = host ? <HostView botId={botId} /> : <ComputerView botId={botId} interactive={human} />
+  const view = host ? <HostView url={`/api/bots/${botId}/computer/shot`} /> : <ComputerView botId={botId} interactive={human} />
   return (
     <div className="pc-panel">
       <div className="pc-bar">
-        <span className={'pc-dot ' + (host ? (offline ? 'error' : 'running') : st.state)} />
-        <ComputerPicker st={st} ls={ls} reload={reloadLink} setErr={setErr} onKey={() => setKeyOpen(true)} />
+        <span className={'pc-dot ' + (host ? 'running' : st.state)} />
+        <ComputerPicker st={st} setErr={setErr} onKey={() => setKeyOpen(true)} />
         {!host && <span className="muted small">{STATE[st.state] || st.state}</span>}
         <span className="grow" />
         {live && <button className="ghost-btn" onClick={() => setBig(true)} title={t('放大')}>⤢ {t('放大')}</button>}
@@ -391,10 +447,10 @@ export function ComputerPanel({ botId }: { botId: number }) {
       {live && <Users st={st} />}
       {live ? view : (
         <div className="pc-empty">
-          {host ? <p className="muted small">{offline ? st.detail : t('Bot 用这台电脑做事时，画面会显示在这里。')}</p>
+          {host ? <p className="muted small">{t('Bot 用这台电脑做事时，画面会显示在这里。')}</p>
             : <p className="muted small">{t('所有 Bot 共用一台电脑（浏览器 + 终端）。几个任务可以同时用，每个任务一个浏览器窗口，登录状态和文件共用；')}
             {' '}{t('最多同时 {n} 个，多了排队。派出的任务需要时会自动启动，闲置 15 分钟自动暂停。', { n: st.parallel || 3 })}</p>}
-          {st.state === 'error' && st.detail && !offline && <div className="error-line">{st.detail}</div>}
+          {st.state === 'error' && st.detail && <div className="error-line">{st.detail}</div>}
           {st.backend === 'instabox' && <MachinePicker key={st.detail + keyVer} botId={botId} onErr={setErr} />}
           {st.backend === 'instabox' && !keyOpen && !settings?.security?.demo && <button className="ghost-btn" onClick={() => setKeyOpen(true)}>{t('换 API Key')}</button>}
           {!host && <button className="btn primary" disabled={!!busy} onClick={() => act('start')}>{busy === 'start' ? t('启动中…（首次需要一会儿）') : st.state === 'paused' ? t('恢复') : st.state === 'none' ? t('新建并启动电脑') : t('启动电脑')}</button>}
@@ -415,9 +471,11 @@ export function ComputerPanel({ botId }: { botId: number }) {
           </>}
         </div>
       )}
-      {host && !offline && st.desktop?.supported && !(st.desktop.accessibility && st.desktop.screen) && <DeskPerms here={here} />}
+      {host && st.desktop?.supported && !(st.desktop.accessibility && st.desktop.screen) &&
+        <DeskPerms desk={st.desktop} here grant={() => api<ComputerState>('/api/computer/desktop/grant', { method: 'POST' }).then(setComputer)}
+          refresh={() => api<ComputerState>(`/api/bots/${botId}/computer`).then(setComputer).catch(() => {})} />}
       {st.backend === 'host' && <HostShell on={!!st.shell} />}
-      {st.backend === 'linked' && !offline && <MacShell on={!!settings?.computer_linked_shell} ready={!!st.link?.shell} />}
+      {!settings?.computer_on_desktop && <Macs />}
       {err && <div className="error-line">{err}</div>}
       {big && live && (
         <div className="modal-bg" ref={bigRef} onMouseDown={() => setBig(false)}>

@@ -32,11 +32,10 @@ def apply():
         CFG.setdefault("computer", {})["parallel"] = o["computer_parallel"]
     pc = CFG.setdefault("computer", {})
     b = o.get("computer_backend")
-    if b == "host" and not security.local_exec():   # 比如从别处恢复的备份：服务器锁下不认
-        b = None
+    if b not in computer.BACKENDS or (b == "host" and not computer.host_allowed()):
+        b = None   # 以前的 linked（借用你的 Mac）；从别处恢复的备份里服务器上用不了的 host
     pc["backend"] = b or _PC.get("backend", "auto")
     pc["host_shell"] = o.get("computer_host_shell", bool(_PC.get("host_shell", False)))
-    pc["linked_shell"] = o.get("computer_linked_shell", bool(_PC.get("linked_shell", False)))
     if "embedding" in o:
         CFG["embedding"] = o["embedding"]
 
@@ -90,7 +89,6 @@ def public() -> dict:
         "computer_choices": computer.choices(),   # 电脑面板里给哪几种（config.yaml 的 computer.choices）
         "computer_on_desktop": bool(os.environ.get("OSA_DESKTOP")),   # 服务是桌面 App 自带的：“本机”就是用户面前这台电脑
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
-        "computer_linked_shell": bool((CFG.get("computer") or {}).get("linked_shell")),   # 借来的 Mac 的终端（不看服务器锁）
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
         "image_model": avatars.choice(),   # 画图用哪个模型（对话里画图、生成头像共用），没选过是空的
         "model_info": {f"{p}/{m}": _info(p, m) for p, m in used},
@@ -106,11 +104,14 @@ def save(data: dict) -> dict:
         raise ValueError(i18n.t("演示服务器上不能改用量上限"))
     if not security.local_exec() and (data.get("computer_backend") == "host" or data.get("computer_host_shell")):
         raise ValueError(security.no_local_exec())
-    if security.demo() and (data.get("computer_backend") == "linked" or data.get("computer_linked_shell")):
-        raise ValueError(i18n.t("演示服务器上不能借用你的电脑"))
+    if data.get("computer_backend") == "host" and not computer.host_allowed():
+        raise ValueError(i18n.t("服务器上不能用服务器自己当电脑，用 Docker 沙盒或云电脑"))
     if "language" in data:
         i18n.set_lang(data["language"])
     o = _load()
+    o.pop("computer_linked_shell", None)   # 以前“借用你的 Mac”的设置：现在每台 Mac 单独开终端（computer_links.shell）
+    if o.get("computer_backend") == "linked":
+        o.pop("computer_backend")
     if "roles" in data:
         o.setdefault("roles", {})
         for role, v in data["roles"].items():
@@ -150,8 +151,6 @@ def save(data: dict) -> dict:
             o["computer_backend"] = b
     if "computer_host_shell" in data:
         o["computer_host_shell"] = bool(data["computer_host_shell"])
-    if "computer_linked_shell" in data:
-        o["computer_linked_shell"] = bool(data["computer_linked_shell"])
     if "embedding" in data:
         e = data["embedding"] or {}
         provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:200]

@@ -1,8 +1,8 @@
-//! 服务器借用这台 Mac：App 连着服务器时，你在电脑面板里点“借给服务器”，网页向服务器要一个借用令牌，经桥接交给 App；
-//! App 在这里弹窗问你，同意了才存进钥匙串（按服务器地址分开），并在后台起 Mac 上的小程序（osa/computer/agent.py），
-//! 它主动连到服务器，替服务器上的 Bot 操作这台 Mac：浏览器、屏幕和鼠标键盘（要 App 有“辅助功能”和“屏幕录制”权限）、工作文件夹里的文件，
-//! 以及电脑面板里打开了终端时的命令（每条都先问你）。
-//! 网页里电脑选“本机”就是借出，选“Bot 电脑”就是收回；菜单栏里也能断开。
+//! 让服务器上的 Bot 把任务派到这台 Mac：App 连着服务器时，你在电脑面板的“你的 Mac”里点“允许 Bot 把任务派到这台 Mac”，
+//! 网页向服务器要一个令牌，经桥接交给 App；App 在这里弹窗问你，同意了才存进钥匙串（按服务器地址分开），
+//! 并在后台起 Mac 上的小程序（osa/computer/agent.py）。它主动连到服务器，替派到这台 Mac 上的任务操作它：
+//! 浏览器、屏幕和鼠标键盘（要 App 有“辅助功能”和“屏幕录制”权限）、工作文件夹里的文件，以及电脑面板里打开了终端时的命令（每条都先问你）。
+//! 每次派任务过来，服务器都先在对话里问你。可以同时有好几台 Mac；在电脑面板里移除，或者在菜单栏里停掉。
 
 use std::sync::Arc;
 
@@ -83,17 +83,17 @@ pub fn desktop_link_state(app: AppHandle) -> serde_json::Value {
     })
 }
 
-/// 借给服务器：问过你再存令牌、起小程序。返回你同不同意
+/// 允许服务器派任务到这台 Mac：问过你再存令牌、起小程序。返回你同不同意
 #[tauri::command(async)]
 pub fn desktop_link(app: AppHandle, token: String, id: i64) -> Result<bool, String> {
-    let origin = remote(&app).ok_or_else(|| tr("只有连着服务器时才能借出这台 Mac", "Only available when connected to a server").to_string())?;
+    let origin = remote(&app).ok_or_else(|| tr("只有连着服务器时才能这样做", "Only available when connected to a server").to_string())?;
     let host = origin.host_str().unwrap_or_default().to_string();
     let text = if crate::zh() {
-        format!("让 {host} 上的 Bot 使用这台 Mac？\n\n它们能看你的屏幕、用你的鼠标键盘操作这台 Mac 上的 App，和这台 Mac 独立运行时一样。每个任务第一次用屏幕会先在对话里问你；Bot 操作时你动一下鼠标或键盘它就停下。终端默认关，可以在电脑面板里打开（手机上也行），打开后每条命令执行前都会问你。\n\n随时可以在电脑面板选回“Bot 电脑”，或者在菜单栏图标里断开。")
+        format!("允许 {host} 上的 Bot 把任务派到这台 Mac 上做？\n\n有的事只有这台 Mac 上才做得了（这里登录着的 App、本地文件），Bot 会把那个任务派过来。每次派过来都会先在对话里问你。任务能用这台 Mac 上 Bot 专用的 Chrome 和工作文件夹；给了权限的话还能看屏幕、用鼠标键盘，你动一下鼠标或键盘它就停下。终端默认关，可以在电脑面板里打开（手机上也行），打开后每条命令执行前都会问你。\n\n随时可以在电脑面板里移除这台 Mac，或者在菜单栏图标里停掉。")
     } else {
-        format!("Let the bots on {host} use this Mac?\n\nThey can see your screen and use your mouse and keyboard in the apps on this Mac, just like when the app runs on its own. Each task asks in the chat before it first uses the screen; move the mouse or press a key and the bot stops. The terminal is off by default; turn it on in the computer panel (from your phone too) and each command asks first.\n\nSwitch back to “Bot computer” in the computer panel, or stop from the menu bar icon, any time.")
+        format!("Let the bots on {host} send tasks to this Mac?\n\nSome things can only be done on this Mac (apps you're signed in to here, local files), so a bot can send that task here. It asks in the chat every time. A task can use the bot's own Chrome and the work folder on this Mac; with permission it can also see the screen and use the mouse and keyboard, and it stops as soon as you move the mouse or press a key. The terminal is off by default; turn it on in the computer panel (from your phone too) and each command asks first.\n\nRemove this Mac in the computer panel, or stop from the menu bar icon, any time.")
     };
-    if token.trim().is_empty() || !confirm(&app, tr("借出这台 Mac", "Lend this Mac"), &text, tr("借给它", "Lend")) {
+    if token.trim().is_empty() || !confirm(&app, tr("允许派任务到这台 Mac", "Take tasks on this Mac"), &text, tr("允许", "Allow")) {
         return Ok(false);
     }
     if !store::link_set(&key(&origin), token.trim(), id) {
@@ -119,7 +119,7 @@ fn unlink(app: &AppHandle) {
 
 // ---------- 菜单栏 ----------
 
-/// 菜单栏里断开：网页那边也让服务器作废这个令牌（osa-unlinked 事件，见 web/src/components/Computer.tsx）
+/// 菜单栏里停掉：网页那边也让服务器作废这个令牌（osa-unlinked 事件，见 web/src/App.tsx）
 pub fn menu_unlink(app: &AppHandle) {
     let id = remote(app).and_then(|o| store::link_get(&key(&o))).map(|(_, id)| id);
     unlink(app);

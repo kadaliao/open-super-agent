@@ -1067,10 +1067,17 @@ async def list_files(path: str = "", start: bool = False):
 
 
 @app.get("/api/files/download")
-async def download_file(path: str):
+async def download_file(path: str, mac: int = 0):
+    """mac：文件在你的哪台 Mac 上（派到 Mac 上的任务发的文件），不给就在共用电脑里。"""
     try:
-        p = library.norm(path)
-        c = await _files_pc(True)
+        if mac:
+            if not link.row(mac):
+                raise HTTPException(404, i18n.t("这台 Mac 已经移除"))
+            c = computer.mac.get(mac)
+            p = library.norm(path, c.link.workspace)
+        else:
+            p = library.norm(path)
+            c = await _files_pc(True)
         data = await c.read_bytes(p, library.MAX_UPLOAD * 2)
     except (ValueError, computer.ComputerError) as e:
         _err(e)
@@ -1084,9 +1091,9 @@ async def download_file(path: str):
 
 
 @app.get("/files/download")
-async def download_file_page(path: str):
+async def download_file_page(path: str, mac: int = 0):
     """聊天软件里的文件链接：和 /api/files/download 一样，没登录时先跳去登录页。"""
-    return await download_file(path)
+    return await download_file(path, mac)
 
 
 @app.put("/api/files/content")
@@ -1384,26 +1391,89 @@ async def pc_instabox_key(data: dict = Body(...)):
     return settings.public()
 
 
-# ---------- 服务器借用你的 Mac（computer/link.py） ----------
-@app.get("/api/computer/links")
-async def pc_links():
-    return link.links()
-
-
+# ---------- 你的 Mac：派任务的去处（computer/link.py、mac.py） ----------
 @app.post("/api/computer/links")
 async def pc_link_create(data: dict | None = Body(None)):
-    """发一个借用令牌，网页交给桌面 App，App 在 Mac 上问过你再存起来。"""
+    """在 Mac 的 App 里点“允许派任务到这台 Mac”：发一个令牌，网页交给 App，App 在 Mac 上问过你再存起来。"""
     if security.demo():
-        raise HTTPException(403, i18n.t("演示服务器上不能借用你的电脑"))
+        raise HTTPException(403, i18n.t("演示服务器上不能把任务派到你的电脑"))
     lid, token = link.create(str((data or {}).get("name") or "Mac"))
     return {"id": lid, "token": token}
 
 
 @app.delete("/api/computer/links/{lid}")
 async def pc_link_delete(lid: int):
+    """移除一台 Mac：令牌作废，那台 Mac 上的小程序断开。"""
+    c = computer.mac.get(lid)
+    if c.users or c.desk_owner:
+        raise HTTPException(400, i18n.t("有任务在「{name}」上做，等它做完或者先停掉", name=c.name))
     await link.revoke(lid)
-    await broadcast({"type": "computer", "computer": await computer.public_state()})
+    computer.mac.drop(lid)
     return {"ok": True}
+
+
+def _mac(lid: int):
+    if security.demo():
+        raise HTTPException(403, i18n.t("演示服务器上不能把任务派到你的电脑"))
+    if not link.row(lid):
+        raise HTTPException(404, i18n.t("没有这台 Mac"))
+    return computer.mac.get(lid)
+
+
+async def _mac_state(lid: int) -> dict:
+    st = await computer.mac_state(link.row(lid))
+    await broadcast({"type": "macs", "macs": await computer.macs_state()})
+    return st
+
+
+@app.get("/api/computer/macs")
+async def pc_macs():
+    return await computer.macs_state()
+
+
+@app.put("/api/computer/macs/{lid}")
+async def pc_mac_update(lid: int, data: dict = Body(...)):
+    """改一台 Mac 的设置：shell（允许 Bot 用终端，每条命令照样先问你）。"""
+    _mac(lid)
+    if "shell" in data:
+        link.set_shell(lid, bool(data["shell"]))
+    return await _mac_state(lid)
+
+
+@app.get("/api/computer/macs/{lid}/shot")
+async def pc_mac_shot(lid: int, view: str = ""):
+    """那台 Mac 的画面（Bot 正在用的窗口，或者整个屏幕），网页上每隔一两秒取一次。"""
+    c = _mac(lid)
+    try:
+        data = await c.peek("jpeg", view)
+    except computer.ComputerError as e:
+        raise HTTPException(409, str(e))
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/computer/macs/{lid}/{action}")
+async def pc_mac_action(lid: int, action: str):
+    """grant：在那台 Mac 上弹系统的授权提示、打开系统设置；takeover / handback：接手、交还（你一动鼠标 Bot 也会自己停下）。"""
+    c = _mac(lid)
+    try:
+        if action == "grant":
+            if not c.desk_supported():
+                raise HTTPException(400, i18n.t("「{name}」不能操作整个屏幕", name=c.name))
+            await c.grant()
+        elif action == "takeover":
+            c.takeover()
+            c.changed()
+        elif action == "handback":
+            c.handback()
+            c.changed()
+            for a in list(approvals.pending.values()):   # 在等你帮忙的那个任务：交还就表示处理完了
+                if a.get("mac") == lid and a.get("kind") == "help":
+                    approvals.resolve(a["id"], True, "")
+        else:
+            raise HTTPException(404, i18n.t("未知操作"))
+    except computer.ComputerError as e:
+        _err(e)
+    return await _mac_state(lid)
 
 
 @app.websocket("/api/computer/link")
@@ -1729,7 +1799,7 @@ async def put_settings(data: dict = Body(...)):
         _err(e)
     if "computer_parallel" in data:   # 并行数改大了，排队的任务马上能开始
         await computer.get().recheck()
-    if {"computer_parallel", "computer_backend", "computer_host_shell", "computer_linked_shell"} & data.keys():
+    if {"computer_parallel", "computer_backend", "computer_host_shell"} & data.keys():
         await broadcast({"type": "computer", "computer": await computer.public_state()})
     return out
 

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { syncLang, t } from './i18n'
-import type { App, Approval, Attachment, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadInfo, ThreadSummary } from './types'
+import type { App, Approval, Attachment, Bot, CatalogItem, Chat, ComputerState, Message, OpenThread, Settings, Skill, Stream, Task, TaskInfo, TaskStep, Teach, TeachDraft, ThreadInfo, ThreadSummary, MacState } from './types'
 import { ask, notice } from './components/Dialog'
 import { desktop, phone } from './desktop'
 
@@ -26,6 +26,7 @@ type State = {
   unread: Record<number, number>
   errors: Record<number, string | undefined>
   computers: Record<number, ComputerState>
+  macs: MacState[] | null   // 你的 Mac（派任务的去处）；null 是还没取
   apps: App[]
   catalog: CatalogItem[]             // 应用市场
   categories: [string, string][]     // 应用市场的分类：[键, 名字]，按显示顺序
@@ -43,7 +44,7 @@ type State = {
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, thread: null, threads: {}, visible: document.visibilityState === 'visible', messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
+  active: null, thread: null, threads: {}, visible: document.visibilityState === 'visible', messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, macs: null, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
   view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false, newBuild: false, appUpdate: null,
 }
 const subs = new Set<() => void>()
@@ -65,6 +66,8 @@ export const setSettings = (settings: Settings) => set({ settings })
 export const setComputer = (c: ComputerState) => set(s => ({
   computers: Object.fromEntries([...new Set([...Object.keys(s.computers).map(Number), c.bot_id])].map(k => [k, { ...c, bot_id: k }])),
 }))
+
+export const setMacs = (macs: MacState[]) => set({ macs })
 
 export function useStore<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(cb => (subs.add(cb), () => subs.delete(cb)), () => sel(state))
@@ -481,6 +484,9 @@ function handle(d: any) {
       break
     case 'computer':
       setComputer(d.computer)
+      break
+    case 'macs':
+      setMacs(d.macs)
       break
     case 'apps_changed':
       refreshApps()

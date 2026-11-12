@@ -68,7 +68,7 @@ def desk(tmp_path, monkeypatch):
     async def running():
         return {"state": "running", "detail": ""}
     c.status = running
-    monkeypatch.setattr(ctools, "get", lambda: c)
+    monkeypatch.setattr(ctools, "current", lambda: c)
     c.fake = d
     return c
 

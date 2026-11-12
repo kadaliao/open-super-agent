@@ -46,12 +46,10 @@ export default function App() {
     window.addEventListener('osa-open-computer', h)
     return () => window.removeEventListener('osa-open-computer', h)
   }, [])
-  // 在菜单栏里断开了“服务器借用这台 Mac”：让服务器也作废它；电脑还选着这台 Mac 的话换回 Bot 电脑
+  // 在 Mac 的菜单栏里停掉了“允许派任务到这台 Mac”：让服务器也作废它
   useEffect(() => {
     const h = async (e: Event) => {
       await api(`/api/computer/links/${(e as CustomEvent).detail}`, { method: 'DELETE' }).catch(() => {})
-      if (getState().settings?.computer_backend === 'linked')
-        api('/api/settings', { method: 'PUT', body: { computer_backend: 'auto' } }).then(setSettings).catch(() => {})
     }
     window.addEventListener('osa-unlinked', h)
     return () => window.removeEventListener('osa-unlinked', h)

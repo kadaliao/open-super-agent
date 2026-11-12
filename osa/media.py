@@ -184,7 +184,7 @@ def link(a: dict) -> str:
     from urllib.parse import quote
     if a.get("media"):
         return f"/media/{a['media']}"
-    return f"/files/download?path={quote(a.get('path') or '')}"
+    return f"/files/download?path={quote(a.get('path') or '')}" + (f"&mac={int(a['mac'])}" if a.get("mac") else "")
 
 
 # ---------- 给模型看图 ----------
@@ -247,9 +247,10 @@ MAX_SEND = 5   # 一轮（一个任务）最多发几个
 
 
 async def from_computer(path: str) -> dict:
-    """电脑里的一个文件 → 附件。图片另存一份进 media（电脑关了也能看）。出错时报 ValueError，文字给模型看。"""
+    """电脑里的一个文件 → 附件。图片另存一份进 media（电脑关了也能看）。出错时报 ValueError，文字给模型看。
+    派到你的 Mac 上的任务发的是那台 Mac 上的文件。"""
     from . import computer
-    c = computer.get()
+    c = computer.current()
     p = library.norm(path, c.workspace)
     if (await c.status())["state"] != "running":
         await c.start()
@@ -258,7 +259,7 @@ async def from_computer(path: str) -> dict:
         raise ValueError(f"电脑里没有这个文件：{p}")
     if st["dir"]:
         raise ValueError(f"{p} 是文件夹，只能发文件")
-    att = {"name": posixpath.basename(p), "path": p, "size": st["size"]}
+    att = {"name": posixpath.basename(p), "path": p, "size": st["size"], **({"mac": c.lid} if c.backend == "mac" else {})}
     if st["size"] <= MAX_BYTES and re.search(r"\.(png|jpe?g|webp|gif)$", p, re.I):
         try:
             data = await c.read_bytes(p, MAX_BYTES)

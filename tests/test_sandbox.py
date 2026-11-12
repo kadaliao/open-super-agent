@@ -112,22 +112,21 @@ async def test_host_run_code_tool_and_timeout(kind, data, monkeypatch):
 
 
 @host_kinds
-async def test_linked_mac_gets_the_outputs(kind, data, monkeypatch):
-    """借来的 Mac：代码在服务器上跑，产出的文件传到 Mac 的工作文件夹，服务器上不留。"""
+async def test_mac_task_gets_the_outputs(kind, data, monkeypatch):
+    """派到你的 Mac 上的任务：代码在服务器这边跑，产出的文件传到那台 Mac 的工作文件夹（结果里写 Mac 上的路径），服务器上不留。"""
     use(monkeypatch, kind)
 
     class Mac:
-        workspace = "/Users/me/OSA"
+        backend, name, workspace = "mac", "我的 Mac", "/Users/me/OSA"
         got: dict = {}
 
         async def write_bytes(self, path, data):
             self.got[path] = data
     mac = Mac()
-    monkeypatch.setattr(computer, "backend_name", lambda: "linked")
-    monkeypatch.setattr(computer, "get", lambda bot_id=0: mac)
+    monkeypatch.setattr(computer, "current", lambda: mac)
     r = await sandbox.execute("python", "open('chart.txt', 'w').write('图')", timeout=30)
     assert len(r.files) == 1 and r.files[0].startswith("/Users/me/OSA/.run/") and r.files[0].endswith("/chart.txt")
-    assert list(mac.got.values()) == ["图".encode()] and "传到 Mac" in r.text
+    assert list(mac.got.values()) == ["图".encode()] and "传到那台 Mac" in r.text and f"- {r.files[0]}" in r.text
     assert not list((data / "workspace" / ".run").iterdir())
 
 

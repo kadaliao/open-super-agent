@@ -1,5 +1,5 @@
 //! 菜单栏图标：旁边显示有几个操作等你确认；菜单里打开窗口、在浏览器里打开、切换服务器、开机启动、退出，
-//! 以及服务器借用这台 Mac 时的“断开”（见 link.rs），没借出时是灰的；新版本装好后“检查更新”变成“重启更新”。
+//! 以及“不再让服务器派任务到这台 Mac”（见 link.rs），没允许时是灰的；新版本装好后“检查更新”变成“重启更新”。
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -16,7 +16,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let enabled = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", tr("开机时启动", "Open at login"), true, enabled, None::<&str>)?;
-    let unlink = MenuItem::with_id(app, "unlink", tr("断开服务器借用这台 Mac", "Stop lending this Mac to the server"), false, None::<&str>)?;
+    let unlink = MenuItem::with_id(app, "unlink", tr("不再让服务器派任务到这台 Mac", "Stop taking tasks from the server on this Mac"), false, None::<&str>)?;
     let update = item("update", tr("检查更新…", "Check for updates…"))?;
     let menu = Menu::with_items(
         app,
@@ -71,7 +71,7 @@ pub fn toggle_autostart(app: &AppHandle) {
     }
 }
 
-/// 借出这台 Mac 时“断开”可点
+/// 允许了服务器派任务到这台 Mac 时“不再让……”可点
 pub fn set_link(app: &AppHandle, linked: bool) {
     if let Some(l) = app.try_state::<Link>() {
         let _ = l.0.set_enabled(linked);

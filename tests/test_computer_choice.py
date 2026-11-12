@@ -135,6 +135,7 @@ async def test_switching_pauses_the_old_computer(clean, monkeypatch):
 
 
 def test_choices_limit_the_picker(clean, monkeypatch):
+    monkeypatch.setattr(computer, "host_allowed", lambda: True)   # 你自己的 Mac 上；服务器上见 test_computer_mac
     assert computer.choices() == ["host", "local", "instabox"]
     monkeypatch.setitem(CFG["computer"], "choices", ["instabox"])   # 服务器上不想跑 Docker
     assert computer.choices() == ["instabox"]

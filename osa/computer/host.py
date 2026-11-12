@@ -252,7 +252,7 @@ class HostComputer(Computer):
         raise ComputerError(i18n.t("本机电脑没有远程画面，浏览器窗口就在这台电脑的屏幕上"))
 
     # ---------- 整台电脑（真实的屏幕、鼠标、键盘） ----------
-    # 下面这几个是“在那台电脑上做”的部分：本机直接调 macdesk；服务器借用你的 Mac 时（linked.py）换成经连接让 Mac 去做
+    # 下面这几个是“在那台电脑上做”的部分：本机直接调 macdesk；派到你的 Mac 上的任务（mac.py）换成经连接让 Mac 去做
     def desktop_enabled(self) -> bool:
         """给不给 Bot desktop_* 工具。"""
         return desktop_on()
@@ -284,7 +284,7 @@ class HostComputer(Computer):
         missing = [i18n.t(n) for k, n in (("accessibility", i18n.N_("辅助功能")), ("screen", i18n.N_("屏幕录制")))
                    if not info.get(k) and not (look and k == "accessibility")]
         if missing:
-            return i18n.t("还没给 Open Super Agent 这些权限：{what}。电脑面板里点“去打开权限”，或者到 系统设置 → 隐私与安全性 里打开",
+            return i18n.t("还没给 Open Super Agent 这些权限：{what}。电脑面板里点“去打开”，或者到 系统设置 → 隐私与安全性 里打开",
                           what=i18n.t("、").join(missing))
         if not look and info.get("locked"):
             return i18n.t("屏幕锁着（或者显示器睡着了），现在不能操作")
