@@ -46,4 +46,6 @@ jobs:
           docker run -d --name osa -p 8765:8765 open-super-agent:ci
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8765/manifest.json >/dev/null && break; sleep 1; done
           curl -sf http://127.0.0.1:8765/api/bootstrap | grep -q '"bots"'
-          docker exec osa sh -c 'node --version && npx --version && uvx --version && docker --version'
+          docker exec osa sh -c 'node --version && npx --version && uvx --version'
+          # 服务的镜像里不该有 docker 命令：电脑经 unix socket 找 compose 里的 computer 容器，服务不碰 Docker
+          docker exec osa sh -c '! command -v docker'

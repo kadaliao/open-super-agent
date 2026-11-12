@@ -136,6 +136,7 @@ async def test_no_sandbox_explains(data, monkeypatch):
     assert registry.available("run_code", registry.WORKER, {"scope": registry.WORKER}) is None
     assert registry.available("quick_code", registry.ROUTER, {"scope": registry.ROUTER}) is None
     monkeypatch.setitem(CFG, "computer", {**CFG["computer"], "backend": "host"})
+    monkeypatch.setattr(computer, "host_allowed", lambda: True)   # 在你自己的 Mac 上（CI 是 Linux）
     text, files = await sandbox.run("python", "print(1)")
     assert "没有沙箱" in text and "computer_shell" in text and files == []   # 本机电脑：可以改用终端（每条确认）
     monkeypatch.setitem(CFG, "security", {"local_exec": False})

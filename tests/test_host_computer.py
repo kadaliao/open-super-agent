@@ -125,6 +125,7 @@ async def test_chrome_without_permission(tmp_path, monkeypatch):
             raise PermissionError(1, "Operation not permitted")
         return real(p, *a, **k)
     monkeypatch.setattr(host.os, "stat", stat)
+    monkeypatch.setattr(computer, "host_allowed", lambda: True)   # 在你自己的 Mac 上（CI 是 Linux：服务器上不给本机）
     assert host.chrome_path() == chrome
     assert computer.available()[0] == {"id": "host", "ok": True}
     c = host.HostComputer(0)
