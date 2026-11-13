@@ -7,16 +7,19 @@
   屏幕上的动作在 Mac 上照样不碰 Open Super Agent 自己的窗口；
 - 终端：执行服务器发来的命令，在工作文件夹里、以你的身份运行，环境变量里的密钥不传过去。开不开在服务器上管
   （电脑面板里每台 Mac 的“允许 Bot 用终端”，默认关），每条命令先在对话里问你（approvals.py）。
-  hello 里的 shell 是告诉服务器这一版能执行命令（旧版 App 的小程序没有），ranges 是能按段读文件（下载、播放视频用）。
+  hello 里的 shell 是告诉服务器这一版能执行命令（旧版 App 的小程序没有），ranges 是能按段读文件（下载、播放视频用），
+  device 是这台 Mac 的编号（硬件 UUID 的哈希，见 device_id），服务器靠它认出同一台 Mac。
 断了隔几秒重连；令牌作废了（4401）隔几分钟再试；App 退出时跟着退出（OSA_PARENT_PID），退出前关掉 Bot 的 Chrome。
 
 环境变量：OSA_LINK_URL（wss://服务器/api/computer/link）、OSA_LINK_TOKEN、OSA_DATA_DIR。
 """
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -41,6 +44,17 @@ def computer_name() -> str:
     except (OSError, subprocess.SubprocessError):
         name = ""
     return name or socket.gethostname()
+
+
+def device_id() -> str:
+    """这台 Mac 的编号：硬件 UUID 的 SHA-256（不把 UUID 本身发出去）。同一台 Mac 重新允许、换了 App 副本时，
+    服务器按它认出是同一台，把旧的那行换掉，不会出现两个同名的 Mac。拿不到时为空（服务器就不去重）。"""
+    try:
+        out = subprocess.run(["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    m = re.search(r'"IOPlatformUUID"\s*=\s*"([0-9A-Fa-f-]{20,})"', out)
+    return hashlib.sha256(("osa-mac:" + m.group(1).upper()).encode()).hexdigest()[:32] if m else ""
 
 
 async def handle(pc: HostComputer, op: str, a: dict):
@@ -107,12 +121,13 @@ async def reply(ws, pc: HostComputer, msg: dict):
 
 async def connect_loop(pc: HostComputer, url: str, token: str):
     wait, tasks = 1, set()
+    device = await asyncio.to_thread(device_id)
     while True:
         code = None
         # 每次连上都重新报权限：连着时给了权限、之后断线重连，服务器那边才不会一直用旧的
         hello = {"type": "hello", "name": computer_name(), "platform": sys.platform, "desktop": macdesk.supported(),
                  "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace, "shell": True,
-                 "ranges": True}
+                 "ranges": True, "device": device}
         try:
             async with websockets.connect(url, additional_headers={"Authorization": f"Bearer {token}"}, max_size=MAX_MSG,
                                           open_timeout=20, ping_interval=20, ping_timeout=30) as ws:

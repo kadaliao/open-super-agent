@@ -5,7 +5,9 @@ App 在 Mac 上起一个小程序（agent.py），它主动连到这里的 /api/
 - 凭据：在 Mac 的 App 里点“允许派任务到这台 Mac”，服务器发一个随机令牌，网页交给 App，App 在 Mac 上弹窗问你同意后存进钥匙串。
   这里只存令牌的 SHA-256。在电脑面板里移除、或者在 Mac 的菜单栏里停止，令牌就作废。
 - 可以同时连好几台（你在几台电脑上都开着 App）；同一台断线重连时换成新连接。
-- 每台一行 computer_links：名字（那台 Mac 的电脑名，连上时更新）、终端开没开（shell，默认关，电脑面板里每台单独开）。
+- 每台一行 computer_links：名字（那台 Mac 的电脑名，连上时更新）、终端开没开（shell，默认关，电脑面板里每台单独开）、
+  device（那台 Mac 的编号，硬件 UUID 的哈希，连上时报的）。同一台 Mac 换了令牌再连上来（重新允许、装了另一份 App），
+  旧的那几行删掉、旧令牌作废：一台 Mac 只占一行（旧版 App 不报编号，这时不去重）。
 - 消息是 JSON：服务器发 {"id", "op", "args"}，Mac 回 {"id", "result"} 或 {"id", "error", "kind"}；Mac 连上先发 {"type": "hello", ...}。
   截图、文件用 base64。
 """
@@ -22,8 +24,11 @@ from .base import ComputerError
 
 conn.execute("""create table if not exists computer_links(
   id integer primary key, name text, token_hash text, created real, last_seen real)""")
-if "shell" not in {r[1] for r in conn.execute("pragma table_info(computer_links)")}:
+_cols = {r[1] for r in conn.execute("pragma table_info(computer_links)")}
+if "shell" not in _cols:
     conn.execute("alter table computer_links add column shell integer not null default 0")
+if "device" not in _cols:
+    conn.execute("alter table computer_links add column device text")
 conn.commit()
 
 TIMEOUT = 90         # 一个操作最多等这么久（浏览器控制脚本自己最多 90 秒）
@@ -170,8 +175,12 @@ async def serve(ws):
     old, online[lk.id] = online.get(lk.id), lk
     if old:   # 同一台断线重连：旧的连接多半已经死了
         await old.close(i18n.t("重新连上了"))
-    conn.execute("update computer_links set last_seen=?, name=? where id=?", (time.time(), lk.name, lk.id))
+    device = str(hello.get("device") or "")[:64]
+    conn.execute("update computer_links set last_seen=?, name=?, device=coalesce(nullif(?, ''), device) where id=?",
+                 (time.time(), lk.name, device, lk.id))
     conn.commit()
+    if device:
+        await _replace_older(lk.id, device)
     _changed()
     try:
         while True:
@@ -187,6 +196,17 @@ async def serve(ws):
             conn.execute("update computer_links set last_seen=? where id=?", (time.time(), lk.id))
             conn.commit()
         _changed()
+
+
+async def _replace_older(lid: int, device: str):
+    """同一台 Mac（device 一样）以前登记的行：删掉，令牌随之作废，还连着的断开。"""
+    old = [i for (i,) in conn.execute("select id from computer_links where device=? and id<>?", (device, lid))]
+    for i in old:
+        conn.execute("delete from computer_links where id=?", (i,))
+    conn.commit()
+    for i in old:
+        if lk := online.pop(i, None):
+            await lk.close(i18n.t("这台 Mac 已经用新的令牌连上了"))
 
 
 def _changed():

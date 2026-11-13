@@ -1146,5 +1146,6 @@
   "演示服务器上不能把任务派到你的电脑": "The demo server can't send tasks to your computer",
   "这台 Mac 已经移除": "This Mac has been removed",
   "电脑容器没有回应": "The computer container isn't responding",
-  "电脑容器没在运行（docker compose up -d computer）": "The computer container isn't running (docker compose up -d computer)"
+  "电脑容器没在运行（docker compose up -d computer）": "The computer container isn't running (docker compose up -d computer)",
+  "这台 Mac 已经用新的令牌连上了": "This Mac has connected again with a new token"
 }

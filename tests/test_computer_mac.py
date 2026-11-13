@@ -215,6 +215,43 @@ def test_several_macs_at_once(password):
         asyncio.run(link.revoke(lid2))
 
 
+def test_same_mac_relinked_replaces_old_row(password):
+    """同一台 Mac 换了令牌再连上来（重新允许、装了另一份 App）：旧的那行删掉、旧令牌作废，还连着的断开；
+    别的 Mac、不报编号的旧版 App 不受影响。"""
+    old, old_token = link.create("Mac")
+    other, _ = link.create("Mac")
+    legacy, _ = link.create("Mac")
+    new, new_token = link.create("Mac")
+    link.conn.execute("update computer_links set device='aaa' where id=?", (old,))
+    link.conn.execute("update computer_links set device='bbb' where id=?", (other,))
+    link.conn.commit()
+    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+
+    def wait(pred):
+        import time
+        for _ in range(100):
+            if pred():
+                return
+            time.sleep(0.02)
+        raise AssertionError("没等到")
+    try:
+        with client.websocket_connect("/api/computer/link", headers={"Authorization": f"Bearer {old_token}"}) as ws_old:
+            ws_old.send_json({"type": "hello", "name": "Xingyi的Mac mini", "device": "aaa"})
+            wait(lambda: link.connected(old))
+            with client.websocket_connect("/api/computer/link", headers={"Authorization": f"Bearer {new_token}"}) as ws:
+                ws.send_json({"type": "hello", "name": "Xingyi的Mac mini", "device": "aaa"})
+                wait(lambda: link.row(old) is None)
+                assert link.check(old_token) is None and not link.connected(old)   # 旧令牌作废，旧连接断开
+                assert link.connected(new) and link.row(other) and link.row(legacy)
+                names = [r["name"] for r in link.rows() if r["id"] in (new, other, legacy)]
+                assert "Xingyi的Mac mini" in names   # 只剩一行叫这个名字，不用加编号
+            with pytest.raises(WebSocketDisconnect):
+                ws_old.receive_text()
+    finally:
+        for i in (old, other, legacy, new):
+            asyncio.run(link.revoke(i))
+
+
 def test_mac_api(no_password, monkeypatch):
     """电脑面板：列出 Mac（连着的带权限）、给某一台开终端（服务器锁不拦，动手的是你的 Mac）、移除；演示服务器上没有。"""
     lid, _ = link.create("Mac")
