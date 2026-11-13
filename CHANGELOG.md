@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+## [0.21.1] - 2026-11-13
+### 修复
+- **桌面 App 在这台电脑上运行时“退出登录”按了没反应**：本机服务的登录是 App 自己完成的，退出后 App 马上又自动登进来。
+  现在这时设置里不显示“退出登录”，换成“切换服务器”（和菜单栏里的“切换服务器…”一样，回到启动页选用法）；连着服务器时“退出登录”照旧，也多了这个按钮
+- **设置侧栏的“外观”“对话样式”被挤成一字一行**：名字现在单独一行，选项放在下面占满
+
 ## [0.21.0] - 2026-11-13
 ### 新增
 - **设置 → 电脑**：用哪台电脑（本机 / Docker 沙盒 / 云电脑）挪到设置里选，选好一直用；云电脑的 API Key、用账号里哪台机器、同时用电脑的任务数也在这里。
@@ -592,7 +598,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.21.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.21.1...HEAD
+[0.21.1]: https://github.com/kadaliao/open-super-agent/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/kadaliao/open-super-agent/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/kadaliao/open-super-agent/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/kadaliao/open-super-agent/compare/v0.18.0...v0.19.0
