@@ -23,7 +23,8 @@ from .base import Computer, ComputerError, ExecResult, check_enabled
 from .host import HostComputer
 
 _macs: dict[int, "MacComputer"] = {}
-OLD_MAX = 40 << 20   # 旧版 App 的小程序不会按段读，下载、播放只能整个读，最大这么多
+# 旧版 App 的小程序不会按段读，下载、播放只能整个读，最大这么多。整个文件是一条消息：服务器要放宽 WebSocket 消息上限（Dockerfile 的 --ws-max-size）
+OLD_MAX = 40 << 20
 on_change = None   # 某台 Mac 的状态变了（谁在用、接手）：() -> None，computer/__init__.py 设置
 background = None  # 在后台跑一个协程，computer/__init__.py 设置
 

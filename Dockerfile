@@ -49,5 +49,7 @@ COPY --from=web /src/osa/static/dist osa/static/dist
 EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/manifest.json', timeout=4)"
-# 反向代理转发来的真实 IP 和 https：信任哪些来源由环境变量 FORWARDED_ALLOW_IPS 决定（compose 里设好了）
-CMD ["python", "-m", "uvicorn", "osa.server:app", "--host", "0.0.0.0", "--port", "8765", "--proxy-headers"]
+# 反向代理转发来的真实 IP 和 https：信任哪些来源由环境变量 FORWARDED_ALLOW_IPS 决定（compose 里设好了）。
+# --ws-max-size：WebSocket 一条消息最大 64 MB（默认 16 MB）。旧版 App 的 Mac 小程序发文件是整个一条消息，
+# 十几 MB 的视频 base64 后超过 16 MB，服务器就把那台 Mac 的连接断掉了（和 osa/computer/agent.py 的 MAX_MSG 一致）
+CMD ["python", "-m", "uvicorn", "osa.server:app", "--host", "0.0.0.0", "--port", "8765", "--proxy-headers", "--ws-max-size", "67108864"]

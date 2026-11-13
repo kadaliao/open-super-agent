@@ -11,7 +11,7 @@ WorkingDirectory=/opt/osa/app
 EnvironmentFile=/opt/osa/env
 Environment=TZ=Asia/Shanghai PYTHONUNBUFFERED=1 HOME=/root
 Environment=PATH=/opt/node/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/opt/osa/app/.venv/bin/uvicorn osa.server:app --host 127.0.0.1 --port 8765 --proxy-headers --forwarded-allow-ips 127.0.0.1
+ExecStart=/opt/osa/app/.venv/bin/uvicorn osa.server:app --host 127.0.0.1 --port 8765 --proxy-headers --forwarded-allow-ips 127.0.0.1 --ws-max-size 67108864
 Restart=on-failure
 RestartSec=3
 MemoryMax=600M
