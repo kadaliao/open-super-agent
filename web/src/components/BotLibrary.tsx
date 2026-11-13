@@ -3,7 +3,7 @@ import { api, openLibrary, showTask, useStore } from '../store'
 import type { Bot } from '../types'
 import { lang, locale, t, tc } from '../i18n'
 import { Icon } from '../icons'
-import { extLabel, fileUrl, fmtSize, mediaUrl, openImage } from './Media'
+import { DownloadBtn, FileLink, extLabel, fileUrl, fmtSize, mediaUrl, openImage } from './Media'
 
 // 右栏“资料库”：这个 Bot 交给你的页面、文件、图片和链接，按时间倒序、按天分组（接口见 osa/outputs.py）
 
@@ -12,6 +12,7 @@ type Output = {
   key: string; kind: Kind; ts: number; title: string; count: number
   chat_id: number | null; msg_id: number | null; task_id: number | null
   url?: string; host?: string; path?: string | null; media?: string; mime?: string; size?: number | null; w?: number; h?: number
+  mac?: number | null   // 文件在你的哪台 Mac 上（派到 Mac 上的任务发的）
   page_id?: number; format?: string; shared?: boolean; updated?: number
 }
 
@@ -125,11 +126,13 @@ function Row({ o }: { o: Output }) {
   </>
   const open = o.kind === 'page' ? <button className="blib-main" onClick={() => openLibrary(o.page_id!)}>{body}</button>
     : o.kind === 'image' ? <button className="blib-main" onClick={() => openImage({ src: mediaUrl(o.media!), name: name, download: mediaUrl(o.media!) + '?download=1' })}>{body}</button>
-    : o.kind === 'file' ? <a className="blib-main" href={fileUrl(o.path!)} target="_blank" rel="noreferrer" title={t('打开（电脑没开会先开机）')}>{body}</a>
+    : o.kind === 'file' ? <FileLink className="blib-main" path={o.path!} mac={o.mac} name={name}>{body}</FileLink>
     : <a className="blib-main" href={o.url} target="_blank" rel="noreferrer">{body}</a>
   return (
     <div className="blib-row">
       {open}
+      {o.kind === 'image' ? <DownloadBtn className="att-dl blib-dl" href={mediaUrl(o.media!) + '?download=1'} name={name} />
+        : o.kind === 'file' ? <DownloadBtn className="att-dl blib-dl" href={fileUrl(o.path!, o.mac, true)} name={name} /> : null}
       {o.task_id ? <button className="link-btn blib-task" title={t('任务 #{id}', { id: o.task_id }) + ' · ' + t('看这个任务每一步做了什么')}
         onClick={() => showTask(o.task_id!)}>#{o.task_id}</button> : null}
     </div>

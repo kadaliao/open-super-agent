@@ -13,7 +13,8 @@ export type Chat = {
   unread?: number        // 你还没看过的 Bot 消息数（服务端算的，不含讨论串里的）；页面里用 store 的 unread
 }
 // 消息的附件（meta.attachments，见 osa/media.py）：path 是电脑里的文件，media 是存在服务端的图片（缩略图、给模型看）
-export type Attachment = { name: string; size?: number; path?: string; media?: string; mime?: string; w?: number; h?: number }
+// mac：path 在你的哪台 Mac 上（派到 Mac 上的任务发的文件），没有就在共用电脑里
+export type Attachment = { name: string; size?: number; path?: string; media?: string; mime?: string; w?: number; h?: number; mac?: number }
 export type Message = {
   id: number; ts: number; role: 'user' | 'assistant' | 'task'; content: string
   meta: Record<string, any>; bot_id: number | null

@@ -468,6 +468,17 @@ class HostComputer(Computer):
             raise ComputerError(i18n.t("文件太大"))
         return await asyncio.to_thread(p.read_bytes)
 
+    async def read_range(self, path: str, offset: int, length: int) -> bytes:
+        p = self._path(path)
+        if not p.is_file():
+            raise ComputerError(i18n.t("文件不存在：{path}", path=path))
+
+        def read() -> bytes:
+            with open(p, "rb") as f:
+                f.seek(max(0, int(offset)))
+                return f.read(max(0, int(length)))
+        return await asyncio.to_thread(read)
+
     async def write_bytes(self, path: str, data: bytes):
         p = self._path(path)
         p.parent.mkdir(parents=True, exist_ok=True)

@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from . import backup
@@ -1066,34 +1066,96 @@ async def list_files(path: str = "", start: bool = False):
             "pins": [stats.get(x) or {"name": posixpath.basename(x), "path": x, "missing": True} for x in pinned]}
 
 
+CHUNK = 4 << 20   # 下载、播放时一次从电脑里取这么多
+# 音视频的类型不靠系统的 mime 表（各系统不一样，有的认不出 m4v、flac），浏览器认得这些才肯播
+MEDIA_TYPES = {".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm", ".ogv": "video/ogg",
+               ".mkv": "video/x-matroska", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav",
+               ".flac": "audio/flac", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg"}
+
+
+def _byte_range(header: str | None, size: int) -> tuple[int, int] | None | bool:
+    """Range 请求头 → (起, 止)，止也算在内。没有、看不懂、要好几段的返回 None（整个发）；超出文件的返回 False（回 416）。"""
+    m = re.fullmatch(r"\s*bytes=(\d*)-(\d*)\s*", header or "")
+    if not m or not (m[1] or m[2]) or (m[1] and m[2] and int(m[2]) < int(m[1])):
+        return None
+    if not m[1]:   # bytes=-n：最后 n 个字节
+        n = int(m[2])
+        return (max(0, size - n), size - 1) if n and size else False
+    start = int(m[1])
+    if start >= size:
+        return False
+    return start, min(int(m[2]), size - 1) if m[2] else size - 1
+
+
+async def _file_source(path: str, mac: int):
+    """文件在哪台电脑上：(电脑, 规范后的路径)。mac 是派到你的 Mac 上的任务发的文件在哪台 Mac 上，不给就在共用电脑里。"""
+    if mac:
+        if not link.row(mac):
+            raise HTTPException(404, i18n.t("这台 Mac 已经移除"))
+        c = computer.mac.get(mac)
+        return c, library.norm(path, c.link.workspace)
+    p = library.norm(path)
+    return await _files_pc(True), p
+
+
 @app.get("/api/files/download")
-async def download_file(path: str, mac: int = 0):
-    """mac：文件在你的哪台 Mac 上（派到 Mac 上的任务发的文件），不给就在共用电脑里。"""
+async def download_file(request: Request, path: str, mac: int = 0, download: bool = False):
+    """电脑里的文件。mac：在你的哪台 Mac 上（见 _file_source）；download：一律当附件下载（网页上的“下载”按钮）。
+    按 Range 分段发：视频能边下边播、拖进度，大文件也不用整个读进内存。"""
     try:
-        if mac:
-            if not link.row(mac):
-                raise HTTPException(404, i18n.t("这台 Mac 已经移除"))
-            c = computer.mac.get(mac)
-            p = library.norm(path, c.link.workspace)
-        else:
-            p = library.norm(path)
-            c = await _files_pc(True)
-        data = await c.read_bytes(p, library.MAX_UPLOAD * 2)
+        c, p = await _file_source(path, mac)
+        st = (await c.stat_paths([p])).get(p)
     except (ValueError, computer.ComputerError) as e:
         _err(e)
-    name = posixpath.basename(p)
-    kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
-    # 图片、PDF、纯文本在浏览器里直接看，其余下载；html 一律当附件，免得在这个站点下运行
-    inline = kind.startswith("image/") and kind != "image/svg+xml" or kind in ("application/pdf", "text/plain")
-    return Response(data, media_type=kind if inline else "application/octet-stream", headers={
-        "Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(name)}",
-        "X-Content-Type-Options": "nosniff"})
+    if not st or st["dir"]:
+        raise HTTPException(404, i18n.t("文件不存在：{path}", path=p))
+    size, name = int(st["size"]), posixpath.basename(p)
+    kind = MEDIA_TYPES.get(posixpath.splitext(name)[1].lower()) or mimetypes.guess_type(name)[0] or "application/octet-stream"
+    # 图片、PDF、纯文本、音视频在浏览器里直接看，其余下载；html、svg 一律当附件，免得在这个站点下运行
+    inline = not download and (kind.startswith(("image/", "video/", "audio/")) and kind != "image/svg+xml"
+                               or kind in ("application/pdf", "text/plain"))
+    etag = f'"{size:x}-{int(float(st.get("mtime") or 0)):x}"'
+    headers = {"Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(name)}",
+               "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes", "ETag": etag, "Cache-Control": "private, no-cache"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": headers["Cache-Control"]})
+    if_range = request.headers.get("if-range")
+    rng = _byte_range(request.headers.get("range"), size) if not if_range or if_range == etag else None
+    if rng is False:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"})
+    media_type = kind if inline else "application/octet-stream"
+    if size == 0:
+        return Response(b"", media_type=media_type, headers=headers)
+    start, end = rng or (0, size - 1)
+    try:   # 第一段先取出来：读不了（Mac 断了、文件没了）还能回一个正常的错误
+        first = await c.read_range(p, start, min(CHUNK, end - start + 1))
+    except (ValueError, computer.ComputerError) as e:
+        _err(e)
+
+    async def body():
+        yield first
+        pos = start + len(first)
+        while first and pos <= end:
+            try:
+                data = await c.read_range(p, pos, min(CHUNK, end - pos + 1))
+            except (ValueError, computer.ComputerError) as e:
+                logging.getLogger(__name__).warning("读 %s 到 %d 字节时出错：%s", p, pos, e)
+                return
+            if not data:
+                return
+            yield data
+            pos += len(data)
+
+    headers["Content-Length"] = str(end - start + 1)
+    if rng:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    return StreamingResponse(body(), status_code=206 if rng else 200, media_type=media_type, headers=headers)
 
 
 @app.get("/files/download")
-async def download_file_page(path: str, mac: int = 0):
+async def download_file_page(request: Request, path: str, mac: int = 0, download: bool = False):
     """聊天软件里的文件链接：和 /api/files/download 一样，没登录时先跳去登录页。"""
-    return await download_file(path, mac)
+    return await download_file(request, path, mac, download)
 
 
 @app.put("/api/files/content")

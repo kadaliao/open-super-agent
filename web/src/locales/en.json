@@ -1401,5 +1401,9 @@
   "让 Bot 能在「{name}」上执行终端命令？每条命令执行前都会问你，命令能访问那台 Mac 上你能访问的所有文件。": "Let the bot run terminal commands on “{name}”? It asks you before each command, and commands can reach every file you can on that Mac.",
   "辅助功能": "Accessibility",
   "这台": "this Mac",
-  "那台 Mac 上的 App 没开、没联网，或者电脑睡着了。": "The app on that Mac isn't open, it's offline, or the Mac is asleep."
+  "那台 Mac 上的 App 没开、没联网，或者电脑睡着了。": "The app on that Mac isn't open, it's offline, or the Mac is asleep.",
+  "打不开（{status}）": "Can't open it ({status})",
+  "连不上服务器": "Can't reach the server",
+  "浏览器放不了这个格式，可以下载下来看": "The browser can't play this format. Download it to watch.",
+  "下载（电脑没开会先开机）": "Download (starts the computer if it is off)"
 }

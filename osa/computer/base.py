@@ -195,6 +195,16 @@ class Computer:
             raise ComputerError(i18n.t("文件太大"))
         return data
 
+    async def read_range(self, path: str, offset: int, length: int) -> bytes:
+        """文件里从 offset 开始的 length 个字节（到结尾就短一些）。下载和视频按段取，大文件不用整个读进内存。"""
+        q = shlex.quote(path)
+        r = await self.exec(f"[ -f {q} ] || exit 3; tail -c +{int(offset) + 1} {q} | head -c {int(length)} | base64 -w0", 120)
+        if r.exit_code == 3:
+            raise ComputerError(i18n.t("文件不存在：{path}", path=path))
+        if r.exit_code:
+            raise ComputerError(r.stderr or i18n.t("读取失败"))
+        return base64.b64decode(r.stdout)
+
     async def write_bytes(self, path: str, data: bytes):
         q = shlex.quote(path)
         r = await self.exec(f"mkdir -p \"$(dirname {q})\" && base64 -d > {q}", 120, stdin=base64.b64encode(data).decode())

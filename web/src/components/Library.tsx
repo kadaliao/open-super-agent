@@ -8,6 +8,7 @@ import { ask } from './Dialog'
 import { isEnter } from '../keys'
 import { useBack } from '../swipe'
 import { AppletFrame } from './Applet'
+import { FileLink, fileUrl } from './Media'
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 export const size = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`
@@ -243,19 +244,18 @@ function FileRow({ e, pinned, onOpen, onPin, onDelete, showPath }: {
   e: FileEntry; pinned: boolean; showPath?: boolean
   onOpen: (p: string) => void; onPin: (e: FileEntry, on: boolean) => void; onDelete: (e: FileEntry) => void
 }) {
-  const href = `/api/files/download?path=${encodeURIComponent(e.path)}`
   return (
     <div className={'file-row' + (e.missing ? ' missing' : '')}>
       <span className="lib-icon">{e.dir ? '📁' : '📄'}</span>
       <span className="lib-main">
         {e.missing ? <span>{e.name}</span>
           : e.dir ? <button className="file-name" onClick={() => onOpen(e.path)}>{e.name}</button>
-          : <a className="file-name" href={href} target="_blank" rel="noreferrer">{e.name}</a>}
+          : <FileLink className="file-name" path={e.path} name={e.name}>{e.name}</FileLink>}
         <span className="lib-meta">{e.missing ? t('已经不在了') : <>{!e.dir && size(e.size) + ' · '}{when(e.mtime)}</>}{showPath && ` · ${e.path}`}</span>
       </span>
       <div className="file-actions">
         <button className="ghost-btn" title={pinned ? t('取消置顶') : t('置顶')} onClick={() => onPin(e, !pinned)}>{pinned ? t('取消置顶') : t('置顶')}</button>
-        {!e.missing && !e.dir && <a className="ghost-btn" href={href} download={e.name}>{t('下载')}</a>}
+        {!e.missing && !e.dir && <a className="ghost-btn" href={fileUrl(e.path, null, true)} download={e.name}>{t('下载')}</a>}
         {!e.missing && <button className="ghost-btn" onClick={() => onDelete(e)}>{t('删除')}</button>}
       </div>
     </div>

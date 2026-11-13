@@ -109,6 +109,7 @@ class Link:
         self.perms = dict(hello.get("perms") or {})   # 连上时那台 Mac 的两个权限
         self.workspace = str(hello.get("workspace") or "")
         self.can_shell = bool(hello.get("shell"))     # 那台 Mac 上的小程序能执行终端命令（旧版 App 的不能）
+        self.can_range = bool(hello.get("ranges"))    # 能按段读文件（下载、播放视频用）；旧版只能整个读
         self.version = str(hello.get("version") or "")
         self._ids = itertools.count(1)
         self._pending: dict[int, asyncio.Future] = {}

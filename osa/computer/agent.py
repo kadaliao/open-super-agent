@@ -7,7 +7,7 @@
   屏幕上的动作在 Mac 上照样不碰 Open Super Agent 自己的窗口；
 - 终端：执行服务器发来的命令，在工作文件夹里、以你的身份运行，环境变量里的密钥不传过去。开不开在服务器上管
   （电脑面板里每台 Mac 的“允许 Bot 用终端”，默认关），每条命令先在对话里问你（approvals.py）。
-  hello 里的 shell 是告诉服务器这一版能执行命令（旧版 App 的小程序没有）。
+  hello 里的 shell 是告诉服务器这一版能执行命令（旧版 App 的小程序没有），ranges 是能按段读文件（下载、播放视频用）。
 断了隔几秒重连；令牌作废了（4401）隔几分钟再试；App 退出时跟着退出（OSA_PARENT_PID），退出前关掉 Bot 的 Chrome。
 
 环境变量：OSA_LINK_URL（wss://服务器/api/computer/link）、OSA_LINK_TOKEN、OSA_DATA_DIR。
@@ -31,6 +31,7 @@ from .host import HostComputer
 
 log = logging.getLogger("osa.agent")
 MAX_MSG = 64 << 20
+MAX_READ = 16 << 20   # 按段读一次最多给多少（base64 后要装得进一条消息）
 RETRY = {4401: 300, 4409: 60}   # 令牌作废了、（旧版服务器）已经借了另一台：隔久一点再试
 
 
@@ -56,6 +57,8 @@ async def handle(pc: HostComputer, op: str, a: dict):
     if op == "pause":
         return await pc.pause()
     if op == "read":
+        if "offset" in a:   # 按段读（服务器看 hello 里的 ranges 才这样要）
+            return base64.b64encode(await pc.read_range(str(a["path"]), int(a["offset"]), min(int(a["length"]), MAX_READ))).decode()
         return base64.b64encode(await pc.read_bytes(str(a["path"]), int(a.get("limit") or 32 << 20))).decode()
     if op == "write":
         return await pc.write_bytes(str(a["path"]), base64.b64decode(a["data"]))
@@ -108,7 +111,8 @@ async def connect_loop(pc: HostComputer, url: str, token: str):
         code = None
         # 每次连上都重新报权限：连着时给了权限、之后断线重连，服务器那边才不会一直用旧的
         hello = {"type": "hello", "name": computer_name(), "platform": sys.platform, "desktop": macdesk.supported(),
-                 "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace, "shell": True}
+                 "perms": macdesk.permissions() if macdesk.supported() else {}, "workspace": pc.workspace, "shell": True,
+                 "ranges": True}
         try:
             async with websockets.connect(url, additional_headers={"Authorization": f"Bearer {token}"}, max_size=MAX_MSG,
                                           open_timeout=20, ping_interval=20, ping_timeout=30) as ws:

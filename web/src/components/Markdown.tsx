@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { t } from '../i18n'
-import { openImage } from './Media'
+import { AUDIO, VIDEO, canPreview, openImage } from './Media'
 import { LinkEmbed, MAX_EMBEDS, isMedia, parseEmbed } from './Embeds'
 import { PageEmbed } from './Applet'
 
@@ -28,24 +28,34 @@ function brTags() {
   return (tree: any) => walk(tree)
 }
 
-// 站内的资料库链接（/library/pages/12）在应用里打开；其余链接开新标签页
+// 站内的资料库链接（/library/pages/12）在应用里打开；电脑里文件的链接，浏览器看不了的直接下载
+// （App 里开新窗口去下载只会弹出空白窗口，见 Media.tsx）；其余链接开新标签页
+const FILE_LINK = /^\/(api\/)?files\/download$/
 function Link({ node, href, ...p }: any) {
   const page = href?.match(/^\/library\/pages\/(\d+)$/)
   if (page) return <a {...p} href={href} onClick={e => {
     if (e.metaKey || e.ctrlKey) return
     e.preventDefault(); window.dispatchEvent(new CustomEvent('osa-open-page', { detail: Number(page[1]) }))
   }} />
+  const u = typeof href === 'string' ? (() => { try { return new URL(href, location.href) } catch { return null } })() : null
+  if (u && u.origin === location.origin && FILE_LINK.test(u.pathname)) {
+    const name = (u.searchParams.get('path') || '').split('/').pop() || ''
+    if (!canPreview(name)) return <a {...p} href={href} download={name || true} />
+  }
   return <a {...p} href={href} target="_blank" rel="noreferrer" />
 }
 
 const isPage = (href: string) => /^\/library\/pages\/\d+$/.test(href)   // 站内的页面：小应用原地显示，普通页面显示成卡片（Applet.tsx）
-const AUDIO = /\.(mp3|m4a|wav|ogg|oga|opus|aac|flac)$/i
-const VIDEO = /\.(mp4|webm|mov|m4v|ogv)$/i
-const pathOf = (href: string) => { try { return new URL(href, location.href).pathname } catch { return href || '' } }
+// 链接指向的文件路径：电脑里文件的链接看 ?path=（/api/files/download?path=a.mp4 也是视频）
+const pathOf = (href: string) => {
+  try { const u = new URL(href, location.href); return FILE_LINK.test(u.pathname) ? u.searchParams.get('path') || '' : u.pathname } catch { return href || '' }
+}
+// 电脑里文件的音视频点了播放才去取（翻到这条消息不会去开电脑）；别的网址先取个开头，显示时长和第一帧
+const preload = (href: string) => { try { return FILE_LINK.test(new URL(href, location.href).pathname) ? 'none' : 'metadata' } catch { return 'metadata' } }
 
 // 图片限宽限高，点开看大图；![](x.mp4) 这样写的视频直接播放
 function Img({ node, src, alt, ...p }: any) {
-  if (typeof src === 'string' && VIDEO.test(pathOf(src))) return <video className="md-video" controls preload="metadata" src={src} />
+  if (typeof src === 'string' && VIDEO.test(pathOf(src))) return <video className="md-video" controls playsInline preload={preload(src)} src={src} />
   return <img {...p} src={src} alt={alt || ''} loading="lazy" onClick={() => src && openImage({ src, name: alt || undefined })} />
 }
 
@@ -105,8 +115,8 @@ function Para({ node, children, ...p }: any) {
   }
   const one = soleLink(node)
   const path = one ? pathOf(one.href) : ''
-  if (one && AUDIO.test(path)) return <div className="md-media"><audio controls preload="metadata" src={one.href} /><div className="md-media-cap">{children}</div></div>
-  if (one && VIDEO.test(path)) return <div className="md-media"><video className="md-video" controls preload="metadata" src={one.href} /><div className="md-media-cap">{children}</div></div>
+  if (one && AUDIO.test(path)) return <div className="md-media"><audio controls preload={preload(one.href)} src={one.href} /><div className="md-media-cap">{children}</div></div>
+  if (one && VIDEO.test(path)) return <div className="md-media"><video className="md-video" controls playsInline preload={preload(one.href)} src={one.href} /><div className="md-media-cap">{children}</div></div>
   return <p {...p}>{children}</p>
 }
 

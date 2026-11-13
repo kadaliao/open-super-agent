@@ -125,9 +125,10 @@ def for_bot(bot_id: int, limit: int = 500, own_hosts: set[str] | None = None) ->
                 put("image:" + a["media"], src | {"kind": "image", "title": a.get("name") or "", "media": a["media"],
                                                  "mime": a.get("mime"), "size": a.get("size"), "w": a.get("w"),
                                                  "h": a.get("h"), "path": a.get("path")})
-            elif a.get("path"):
-                put("file:" + a["path"], src | {"kind": "file", "title": a.get("name") or a["path"].rsplit("/", 1)[-1],
-                                                "path": a["path"], "size": a.get("size")})
+            elif a.get("path"):   # mac：派到你的 Mac 上的任务发的，文件在那台 Mac 上
+                mac = a.get("mac") if isinstance(a.get("mac"), int) else None
+                put(f"file:{mac or ''}:{a['path']}", src | {"kind": "file", "title": a.get("name") or a["path"].rsplit("/", 1)[-1],
+                                                           "path": a["path"], "size": a.get("size"), "mac": mac})
         for u, title in links(content):
             if internal(u, own):
                 continue

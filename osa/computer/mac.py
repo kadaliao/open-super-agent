@@ -12,6 +12,7 @@
 - 操作整个屏幕看那台 Mac 的两个权限。
 - 不看服务器的服务器锁（security）：动手的是你的 Mac，不是服务器。
 """
+import asyncio
 import base64
 import time
 
@@ -22,6 +23,7 @@ from .base import Computer, ComputerError, ExecResult, check_enabled
 from .host import HostComputer
 
 _macs: dict[int, "MacComputer"] = {}
+OLD_MAX = 40 << 20   # 旧版 App 的小程序不会按段读，下载、播放只能整个读，最大这么多
 on_change = None   # 某台 Mac 的状态变了（谁在用、接手）：() -> None，computer/__init__.py 设置
 background = None  # 在后台跑一个协程，computer/__init__.py 设置
 
@@ -57,6 +59,8 @@ class MacComputer(HostComputer):
         self.workspace = ""
         self._init_desk()
         self._info: tuple[float, dict] = (0.0, {})
+        self._whole: tuple[str, float, bytes] = ("", 0.0, b"")   # 旧版小程序整个读来的文件，见 read_range
+        self._whole_lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -103,6 +107,18 @@ class MacComputer(HostComputer):
     # ---------- 文件：在 Mac 的工作文件夹里 ----------
     async def read_bytes(self, path: str, limit: int = 32 << 20) -> bytes:
         return base64.b64decode(await self._call("read", path=path, limit=limit))
+
+    async def read_range(self, path: str, offset: int, length: int) -> bytes:
+        if self.link.can_range:
+            return base64.b64decode(await self._call("read", path=path, offset=offset, length=length))
+        # 旧版 App 的小程序只会整个读：读一次留两分钟，按段切给下载和播放器（这样最多 OLD_MAX）
+        async with self._whole_lock:
+            p, ts, data = self._whole
+            if p != path or time.time() - ts > 120:
+                self._whole = ("", 0.0, b"")
+                data = await self.read_bytes(path, OLD_MAX)
+                self._whole = (path, time.time(), data)
+        return data[offset:offset + length]
 
     async def write_bytes(self, path: str, data: bytes):
         await self._call("write", path=path, data=base64.b64encode(data).decode())

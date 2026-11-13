@@ -968,9 +968,36 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .att-img { display: block; border-radius: 12px; overflow: hidden; background: var(--bg2); border: 1px solid var(--line); cursor: zoom-in; max-width: 100%; }
 .att-img img { display: block; max-width: min(340px, 68vw); max-height: 300px; width: auto; height: auto; }
 .att-imgs.grid .att-img img { width: 132px; height: 132px; max-width: none; object-fit: cover; }
-.file-card { display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; border: 1px solid var(--line); border-radius: 12px;
-  background: var(--bg2); max-width: min(340px, 100%); color: var(--fg); text-decoration: none; }
-a.file-card:hover { border-color: var(--fg3); }
+.file-card { display: inline-flex; align-items: center; gap: 4px; padding: 8px 6px 8px 8px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg2); max-width: min(360px, 100%); color: var(--fg); text-decoration: none; }
+.file-card:has(.file-open:hover) { border-color: var(--fg3); }
+.file-open { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; color: inherit; text-decoration: none; text-align: left; padding-right: 4px; }
+.file-open:hover { text-decoration: none; }
+/* 下载按钮（附件、资料库） */
+.att-dl { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--fg3); text-decoration: none; }
+.att-dl:hover { background: var(--bg3); color: var(--fg); text-decoration: none; }
+.att-img-box { position: relative; max-width: 100%; }
+.att-img-dl { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); color: #fff; opacity: 0; transition: opacity .12s; }
+.att-img-dl:hover { background: rgba(0,0,0,.75); color: #fff; }
+.att-img-box:hover .att-img-dl, .att-img-dl:focus-visible { opacity: 1; }
+@media (hover: none) { .att-img-dl { display: none; } }   /* 手机上点开大图再下载 */
+/* 视频、音频附件：点了播放才开始取 */
+.att-media { display: flex; flex-direction: column; gap: 4px; width: min(420px, 100%); }
+.att-media.audio { padding: 8px 6px 6px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); }
+.att-media audio { width: 100%; }
+.att-video { position: relative; border-radius: 10px; overflow: hidden; background: #000; }
+.att-video video { display: block; width: 100%; max-height: 420px; background: #000; }
+.att-media:not(.on) .att-video video { aspect-ratio: 16 / 9; }
+.att-play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: transparent; cursor: pointer; }
+.att-play .icon { width: 56px; height: 56px; padding: 15px 13px 15px 17px; border-radius: 50%; background: rgba(0,0,0,.55); transition: background .12s; }
+.att-play .icon polygon { fill: currentColor; }
+.att-play:hover .icon { background: rgba(0,0,0,.75); }
+.att-media-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 2px; }
+.att-media-bar .file-name { flex: 0 1 auto; min-width: 0; font-size: 13px; }
+.att-media-bar .file-sub { flex: none; }
+.att-media-bar .att-dl { margin-left: auto; }
+.att-err { font-size: 12.5px; color: var(--bad); }
+.msg.user .att-media { align-self: flex-end; }
 .file-ext { flex: none; width: 38px; height: 38px; border-radius: 9px; background: var(--bg3); color: var(--fg2); font-size: 11px; font-weight: 700;
   display: grid; place-items: center; letter-spacing: .3px; }
 .file-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
@@ -989,6 +1016,8 @@ a.file-card:hover { border-color: var(--fg3); }
   display: grid; place-items: center; }
 .viewer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; background: rgba(0,0,0,.82); }
 .viewer img { max-width: 100%; max-height: calc(100dvh - 100px); object-fit: contain; border-radius: 6px; cursor: default; }
+.viewer video { max-width: 100%; max-height: calc(100dvh - 100px); border-radius: 6px; background: #000; }
+.viewer-err { color: #eee; background: rgba(30,30,32,.9); padding: 14px 18px; border-radius: 10px; max-width: 420px; font-size: 14px; }
 .viewer-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
 .viewer-bar .btn { background: rgba(30,30,32,.9); color: #eee; border-color: rgba(255,255,255,.15); display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
 .viewer-bar .btn:hover { background: rgba(60,60,64,.95); }
@@ -1072,6 +1101,7 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 .blib-icon { display: grid; place-items: center; background: var(--bg2); color: var(--fg2); font-size: 15px; }
 .blib-main:hover .blib-icon { background: var(--bg3); }
 .file-ext.blib-ext { font-size: 10px; }
+.blib-dl { width: 28px; height: 28px; }
 .blib-task { flex: none; font-size: 12px; padding: 2px 2px 2px 6px; white-space: nowrap; }
 
 /* ---------- 观测 ---------- */
