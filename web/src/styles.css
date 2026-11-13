@@ -655,8 +655,11 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .set-item .icon { color: var(--fg3); } .set-item.on .icon { color: var(--fg); }
 .set-nav form { margin-top: 10px; }
 .set-theme, .set-theme:hover { background: none; color: var(--fg2); cursor: default; }
-.set-theme .seg { flex: none; flex-wrap: nowrap; padding: 1px; align-self: center; }
-.set-theme .seg button { display: grid; place-items: center; padding: 3px 7px; }
+/* 外观、对话样式：侧栏窄，名字和选项挤在一行时名字会被压成一字一行。名字单独一行，选项在下面和名字对齐、占满 */
+.set-theme { flex-wrap: wrap; row-gap: 6px; padding-bottom: 8px; white-space: nowrap; }
+.set-theme > .grow { display: none; }
+.set-theme .seg { flex: 1 0 calc(100% - 26px); margin-left: 26px; flex-wrap: nowrap; padding: 1px; align-self: center; }
+.set-theme .seg button { flex: 1; display: grid; place-items: center; padding: 3px 7px; }
 .set-theme .seg button .icon { color: inherit; }
 .set-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .set-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 22px 6px 32px; }
@@ -791,6 +794,9 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .set-nav-title, .set-group-name, .set-nav > .grow { display: none; }
   .set-group { flex-direction: row; margin: 0; gap: 2px; }
   .set-item { white-space: nowrap; width: auto; padding: 6px 10px; }
+  .set-theme { flex-wrap: nowrap; }   /* 横着排的导航里还是一行 */
+  .set-theme .seg { flex: none; margin-left: 0; }
+  .set-theme .seg button { flex: none; }
   .set-nav form { margin: 0; }
   .set-head { padding: 14px 12px 4px 16px; }
   .set-body { padding: 6px 16px 32px; }
