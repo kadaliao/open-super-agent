@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.21.0] - 2026-11-13
 ### 新增
 - **设置 → 电脑**：用哪台电脑（本机 / Docker 沙盒 / 云电脑）挪到设置里选，选好一直用；云电脑的 API Key、用账号里哪台机器、同时用电脑的任务数也在这里。
   电脑面板只显示是哪台，点“换电脑”去设置。Docker 沙盒用不了时写明原因（没装 Docker，或服务器上电脑容器没开）
@@ -590,7 +592,9 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.19.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/kadaliao/open-super-agent/compare/v0.20.0...v0.21.0
+[0.20.0]: https://github.com/kadaliao/open-super-agent/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/kadaliao/open-super-agent/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/kadaliao/open-super-agent/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/kadaliao/open-super-agent/compare/v0.16.0...v0.17.0
