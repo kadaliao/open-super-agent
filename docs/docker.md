@@ -14,7 +14,7 @@ docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟
 
 打开 http://127.0.0.1:8765 。
 
-`up` 会构建并启动两个容器：服务（`open-super-agent:local`）和 Bot 的电脑（Docker 沙盒，`osa-computer:1`：虚拟桌面 + Chromium + 终端）。
+`up` 会构建并启动两个容器：服务（`open-super-agent:local`）和 Bot 的电脑（Docker 沙盒，`osa-computer:2`：虚拟桌面 + Chromium + 终端）。
 电脑一直开着，闲置 15 分钟后关掉里面的浏览器省内存，下次用时再打开。服务不碰 Docker（没有挂 `docker.sock`），
 只经两个容器共用的卷里的一个 unix socket 让电脑执行命令、转发画面；电脑单独一个网络，能上网，但连不到服务。
 
@@ -47,7 +47,7 @@ docker compose exec osa python -m osa.backup export -o /app/data    # 备份文�
 备份文件不含电脑里的文件；电脑里的文件可以这样打包出来：
 
 ```bash
-docker run --rm -v osa-computer-data:/data -v "$PWD":/backup osa-computer:1 tar czf /backup/computer-data.tgz -C /data .
+docker run --rm -v osa-computer-data:/data -v "$PWD":/backup osa-computer:2 tar czf /backup/computer-data.tgz -C /data .
 ```
 
 直接复制 `data/` 也行（先 `docker compose down`）。`data/` 里的 `vault.key` 和 `session.key` 是密钥，要放在安全的地方。

@@ -86,6 +86,7 @@ def public() -> dict:
         "computer_parallel": (CFG.get("computer") or {}).get("parallel", 3),
         "computer_backend": (CFG.get("computer") or {}).get("backend", "auto"),
         "computer_backends": computer.available(),
+        "computer_current": computer.backend_name(),   # 现在实际用的是哪种（computer_backend 是 auto 时也知道是哪台）
         "computer_choices": computer.choices(),   # 电脑面板里给哪几种（config.yaml 的 computer.choices）
         "computer_on_desktop": bool(os.environ.get("OSA_DESKTOP")),   # 服务是桌面 App 自带的：“本机”就是用户面前这台电脑
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
@@ -140,8 +141,8 @@ def save(data: dict) -> dict:
         ok = {x["id"]: x["ok"] for x in computer.available()}
         if b == "instabox" and not ok["instabox"]:
             raise ValueError(i18n.t("还没填 Instabox 的 API Key"))
-        if b == "local" and not ok["local"]:
-            raise ValueError(i18n.t("这台电脑没装 Docker"))
+        if b == "local" and (why := computer.docker_problem()):
+            raise ValueError(why)
         c = computer.get()
         if (c.users or c.exclusive) and b != CFG["computer"].get("backend"):
             raise ValueError(i18n.t("电脑正在被用着（{who}），等用完再换", who=c.busy()))

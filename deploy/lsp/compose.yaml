@@ -36,11 +36,14 @@ services:
     mem_limit: 1g          # 服务 + 应用子进程（npx / uvx）平时 600 MB 上下
     networks: [osa]
 
-  # Bot 的电脑（Docker 沙盒）：服务只经 computer-socket 卷里的 unix socket 找它，不挂 docker.sock；单独一个网络，连不到服务
+  # Bot 的电脑（Docker 沙盒）：服务只经 computer-socket 卷里的 unix socket 找它，不挂 docker.sock；单独一个网络，连不到服务。
+  # 这台服务器内存小，平时用云电脑（Instabox），这个容器默认不启动（profiles）；要用时 docker-compose up -d computer，
+  # 再到 设置 → 电脑 里换成 Docker 沙盒。不用了 docker-compose stop computer（computer-data 卷里的文件和登录状态还在）
   computer:
+    profiles: [computer]
     build:
       context: src/osa/computer/image
-    image: osa-computer:1
+    image: osa-computer:2
     pull_policy: never
     init: true
     restart: unless-stopped

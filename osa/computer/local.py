@@ -15,7 +15,7 @@ from .. import i18n
 from ..config import CFG, DATA
 from .base import Computer, ComputerError, ExecResult, check_enabled
 
-IMAGE = "osa-computer:1"
+IMAGE = "osa-computer:2"
 IMAGE_DIR = Path(__file__).parent / "image"
 SOCKET = os.environ.get("OSA_COMPUTER_SOCKET", "")   # Docker Compose 部署：电脑里的 computerd 在这个 unix socket 上
 
@@ -172,6 +172,11 @@ class LocalComputer(Computer):
             st = (await self.status())["state"]
             if st == "running":
                 return
+            if st in ("paused", "stopped") and await self._outdated():   # 镜像换了新版（比如桌面加了按钮）：按新镜像重建，/data 里的东西都在
+                code, out, err = await _run("docker", "rm", "-f", self.name, timeout=60)
+                if code:
+                    raise ComputerError(_problem(err or out))
+                st = "none"
             if st == "paused":
                 await _run("docker", "unpause", self.name)
             elif st == "stopped":
@@ -193,6 +198,11 @@ class LocalComputer(Computer):
                     return
                 await asyncio.sleep(0.5)
             raise ComputerError(i18n.t("桌面没有在 30 秒内启动"))
+
+    async def _outdated(self) -> bool:
+        """容器是用旧版镜像建的。"""
+        code, out, _ = await _run("docker", "inspect", "-f", "{{.Config.Image}}", self.name, timeout=15)
+        return code == 0 and out.strip() not in ("", IMAGE)
 
     async def pause(self):
         if SOCKET:   # 不能暂停容器：关掉浏览器省内存（登录状态在 /data 里，下次用时浏览器控制脚本再打开）

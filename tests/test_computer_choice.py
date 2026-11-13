@@ -107,7 +107,7 @@ async def test_first_build_shows_progress(monkeypatch):
     async def run(*args, **kw):
         calls.append(args[1])
         if args[1:3] == ("image", "inspect"):
-            return 1, "", "Error response from daemon: No such image: osa-computer:1"
+            return 1, "", "Error response from daemon: No such image: osa-computer:2"
         if args[1] == "build":
             await go.wait()
         return 0, "", ""
@@ -120,6 +120,38 @@ async def test_first_build_shows_progress(monkeypatch):
     go.set()
     await job
     assert not c.building and "build" in calls
+
+
+async def test_old_image_container_is_rebuilt(monkeypatch):
+    """电脑镜像出了新版：停着（或暂停着）的旧容器删掉，按新镜像重建（/data 是挂进去的，文件和登录状态都在）；开着的不动。"""
+    monkeypatch.setitem(CFG["computer"], "enabled", True)
+    c = local.LocalComputer(0)
+    calls, state = [], {"s": "exited"}
+
+    async def run(*args, **kw):
+        calls.append(args[1:3])
+        if args[1:3] == ("inspect", "-f") and args[3] == "{{json .State}}":
+            if state["s"] == "gone":
+                return 1, "", "Error: No such object: osa-computer"
+            return 0, '{"Status": "%s"}' % state["s"], ""
+        if args[1:3] == ("inspect", "-f"):
+            return 0, "osa-computer:1\n", ""
+        if args[1] == "rm":
+            state["s"] = "gone"
+        if args[1] == "run":
+            state["s"] = "running"
+        return 0, "", ""
+    monkeypatch.setattr(local, "_run", run)
+    monkeypatch.setattr(local, "_platform", "linux/arm64")
+
+    async def ready(cmd, timeout=120, stdin=None):
+        return local.ExecResult(0, "1280 800", "")
+    monkeypatch.setattr(c, "exec", ready)
+    await c.start()
+    assert ("rm", "-f") in calls and ("run", "-d") in calls and ("start", "osa-computer") not in calls
+    calls.clear()
+    await c.start()                                           # 已经开着：不查镜像、不重建
+    assert calls == [("inspect", "-f")]
 
 
 async def test_switching_pauses_the_old_computer(clean, monkeypatch):

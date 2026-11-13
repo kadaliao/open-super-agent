@@ -3,6 +3,9 @@
 正式服务、演示服务器（demo.cclsp.top）、推送中转（push.cclsp.top）和 Bot 的电脑（Docker 沙盒）都是容器，
 由 `/opt/osa/docker/compose.yaml`（就是这里的 `compose.yaml`）管。服务器上只有独立的 `docker-compose`（v2），没有 `docker compose` 插件。
 
+服务器只有 2 GB 内存，Bot 平时用云电脑（Instabox，`/opt/osa/env` 里的 `INSTABOX_API_KEY`），Docker 电脑（`computer` 容器）默认不启动。
+要用 Docker 沙盒：`docker-compose up -d computer`，再到网页的 设置 → 电脑 里换过去；不用了 `docker-compose stop computer`。
+
 | 目录 | 内容 |
 |---|---|
 | `/opt/osa/docker/` | `compose.yaml`、`make-config.sh`、生成的 `config.server.yaml`、`src/`（要部署的代码，构建用） |
@@ -17,7 +20,7 @@
 git archive HEAD | ssh lsp 'rm -rf /opt/osa/docker/src.new && mkdir /opt/osa/docker/src.new && tar xf - -C /opt/osa/docker/src.new'
 # 在 lsp 上：
 cd /opt/osa/docker && rm -rf src.prev && mv src src.prev && mv src.new src
-docker-compose build                      # 旧容器照常跑着
+docker-compose build                      # 旧容器照常跑着（computer 默认不启动，也不构建；要用它时 docker-compose build computer）
 sh make-config.sh
 # 先看有没有正在跑的任务（/api/bootstrap 的 tasks），再换：
 docker-compose up -d

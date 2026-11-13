@@ -68,8 +68,11 @@ class Handler(socketserver.StreamRequestHandler):
         self.wfile.flush()
 
     def handle(self):
+        line = self.rfile.readline(MAX_LINE)
+        if not line:   # 服务只是来看看这里有没有在听（computer.docker_problem），连上就断开了
+            return
         try:
-            req = json.loads(self.rfile.readline(MAX_LINE) or b"{}")
+            req = json.loads(line)
         except ValueError:
             return self.reply({"error": "bad request"})
         op = req.get("op")

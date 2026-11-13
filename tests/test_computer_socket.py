@@ -86,7 +86,17 @@ async def test_container_not_running(monkeypatch):
     c = local.LocalComputer(0)
     st = await c.status()
     assert st["state"] == "error" and "docker compose up -d computer" in st["detail"]
-    assert computer.docker_ok()                          # 服务的容器里没有 docker 命令也算能用 Docker 沙盒
+    # 电脑容器没开（比如服务器为了省内存只用云电脑）：设置里 Docker 沙盒选不了，说清楚为什么
+    assert not computer.docker_ok() and "docker compose up -d computer" in computer.docker_problem()
+    assert next(x for x in computer.available() if x["id"] == "local") == {"id": "local", "ok": False,
+                                                                           "why": computer.docker_problem()}
+
+
+async def test_container_running_counts_without_docker_command(pc, monkeypatch):
+    """服务的容器里没有 docker 命令，电脑容器开着（socket 那头在听）就能用 Docker 沙盒；只是来看一眼的连接，computerd 不回话也不报错。"""
+    monkeypatch.setattr(computer.shutil, "which", lambda name: None)
+    assert computer.docker_ok() and computer.docker_problem() == ""
+    assert (await pc.exec("echo ok")).stdout.strip() == "ok"   # 看过一眼之后照常干活
 
 
 async def test_computer_turned_off(monkeypatch):

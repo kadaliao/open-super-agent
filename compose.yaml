@@ -40,7 +40,7 @@ services:
       context: osa/computer/image
       args:
         APT_MIRROR: ${APT_MIRROR:-}
-    image: osa-computer:1
+    image: osa-computer:2
     pull_policy: never
     init: true
     restart: unless-stopped

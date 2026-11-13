@@ -1,0 +1,5 @@
+#!/bin/sh
+# 电脑桌面上的“终端”：在工作文件夹里开一个 bash（和 Bot 执行命令是同一个地方），中文字体、深色、能往回翻 5000 行
+cd /data/workspace 2>/dev/null || cd /
+exec xterm -title 终端 -fa "DejaVu Sans Mono" -fd "Noto Sans Mono CJK SC" -fs 11 -bg "#1e1e22" -fg "#e6e6e6" -cr "#e6e6e6" \
+  -geometry 110x30 -sl 5000 -bc -e bash -l

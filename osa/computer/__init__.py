@@ -1,6 +1,7 @@
 """所有 Bot 共用一台电脑（和 Grok Bot 一样），几个任务可以同时用，各自一个浏览器窗口（见 base.py）。
 后端由 config.yaml 的 computer.backend 决定（设置里也能换）：host（这台 Mac 的 Chrome，见 host.py）/ local（Docker 沙盒）/ instabox（云电脑），
 auto 是桌面 App 里用 host，否则有 Instabox 的 API key（界面里填的或环境变量 INSTABOX_API_KEY）用 Instabox、没有用 Docker。
+在设置 → 电脑里选，选好以后一直用那一台（电脑面板里只显示是哪台）。
 host 只在你自己的 Mac 上有（桌面 App 单独运行，或者在 Mac 上直接跑服务）：服务器上从不直接用它自己这台机器。
 
 另外，服务器上的 Bot 可以把某个任务派到你的 Mac 上做（mac.py、link.py）：那个任务里的电脑工具用的是那台 Mac，
@@ -110,18 +111,41 @@ def choices() -> list[str]:
 
 
 def available() -> list[dict]:
-    """设置里能选的电脑，以及这台机器上能不能用。instabox 的 key：API key 从哪来（saved 界面里填的 / env 环境变量 / 空 还没有）。"""
+    """设置里能选的电脑，以及这台机器上能不能用（why：用不了的原因）。
+    instabox 的 key：API key 从哪来（saved 界面里填的 / env 环境变量 / 空 还没有）。"""
     from .host import chrome_path
     from .instabox import key_source
     host = {"id": "host", "ok": bool(chrome_path())} if host_allowed() else {"id": "host", "ok": False, "locked": True}
     key = key_source()
-    return [host, {"id": "local", "ok": docker_ok()}, {"id": "instabox", "ok": bool(key), "key": key}]
+    why = docker_problem()
+    return [host, {"id": "local", "ok": not why, "why": why}, {"id": "instabox", "ok": bool(key), "key": key}]
+
+
+def docker_problem() -> str:
+    """Docker 沙盒为什么用不了；用得了返回空。compose 部署时电脑是单独的容器（服务经 unix socket 找它），
+    那个容器没开（比如服务器为了省内存只用云电脑）就用不了；否则看这台机器装没装 docker 命令。"""
+    from .local import SOCKET
+    if SOCKET:
+        return "" if _listening(SOCKET) else i18n.t("电脑容器没开（docker compose up -d computer）")
+    return "" if shutil.which("docker") else i18n.t("这台电脑没装 Docker")
 
 
 def docker_ok() -> bool:
-    """Docker 沙盒用得了：compose 部署（电脑是常驻容器，经 unix socket 连），或者这台机器装了 docker 命令。"""
-    from .local import SOCKET
-    return bool(SOCKET or shutil.which("docker"))
+    return not docker_problem()
+
+
+def _listening(path: str) -> bool:
+    """unix socket 那头有没有在听（容器停了，socket 文件还留在卷里，所以要真连一下）。"""
+    import socket
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(0.5)
+    try:
+        s.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
 
 
 async def _quietly(coro):

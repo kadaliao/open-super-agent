@@ -109,7 +109,8 @@ export type Settings = {
   heavy_workers: number
   computer_parallel: number
   computer_backend: string                              // auto / host / local / instabox
-  computer_backends: { id: string; ok: boolean; locked?: boolean; key?: string }[]   // 这台机器上能用哪些；locked：服务器锁不让用；key：Instabox 的 API key 从哪来（saved / env / 空）
+  computer_backends: { id: string; ok: boolean; locked?: boolean; key?: string; why?: string }[]   // 这台机器上能用哪些；locked：服务器锁不让用；key：Instabox 的 API key 从哪来（saved / env / 空）；why：Docker 沙盒用不了的原因
+  computer_current?: string                             // 现在实际用的是哪种（computer_backend 是 auto 时也知道）；旧版服务没有这一项
   computer_choices?: string[]                           // 电脑面板里给哪几种（config.yaml 的 computer.choices）；旧版服务没有这一项
   computer_on_desktop: boolean                          // 服务是桌面 App 自带的（本地模式）；否则“本机”指服务器那台机器
   computer_host_shell: boolean

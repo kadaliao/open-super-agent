@@ -10,6 +10,7 @@ import BotAvatar from './BotAvatar'
 import { describe, STATUS, when } from './Routines'
 import Channels from './Channels'
 import ModelSettings from './ModelSettings'
+import { ComputerSettings } from './Computer'
 import { ToastHost, useToast } from './settingsKit'
 import { bubblePref, canSetTheme, setBubblePref, setThemePref, themePref, type BubblePref, type ThemePref } from '../theme'
 import { ask } from './Dialog'
@@ -18,6 +19,7 @@ import { useBack } from '../swipe'
 // 设置：左边按类分组的导航，右边是这一页
 const GROUPS: { name: string; items: [string, string, string][] }[] = [
   { name: t('模型与费用'), items: [['models', t('模型'), 'sparkles'], ['limits', t('限制与预算'), 'gauge']] },
+  { name: t('电脑'), items: [['computer', t('Bot 用的电脑'), 'monitor']] },
   { name: t('安全'), items: [['rules', t('确认规则'), 'shield'], ['vault', t('保险库'), 'key']] },
   { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell'], ['mobile', t('手机 App'), 'smartphone']] },
   { name: t('自动化'), items: [['triggers', t('定时任务'), 'clock'], ['events', t('事件'), 'zap']] },
@@ -27,6 +29,7 @@ const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k
 const DESC: Record<string, string> = {
   models: t('Bot 用哪些大模型。先添加模型服务，再给每项工作选一个模型。'),
   limits: t('防止任务跑太久、花太多。改完离开输入框就保存。'),
+  computer: t('Bot 上网、跑命令、处理文件用的那台电脑。你的 Mac 不在这里：它们是派任务的去处，在 Bot 右栏的“电脑”里管。'),
   triggers: t('所有 Bot 的定时任务，在这里就能开关。'),
   events: t('所有 Bot 的事件：某件事发生时（收到 webhook、订阅源有新文章、网页变了……）Bot 处理一次。在这里就能开关。'),
 }
@@ -76,6 +79,7 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
             <div className="set-body">
               {title === 'models' && <ModelSettings />}
               {title === 'limits' && <Limits />}
+              {title === 'computer' && <ComputerSettings />}
               {title === 'rules' && <Rules />}
               {title === 'vault' && <Vault />}
               {title === 'triggers' && <Triggers key="schedule" category="schedule" onClose={onClose} />}
@@ -141,7 +145,6 @@ function Limits() {
   const toast = useToast()
   const [lim, setLim] = useState(s.limits)
   const [heavy, setHeavy] = useState(s.heavy_workers)
-  const [pcs, setPcs] = useState(s.computer_parallel)
   const demo = !!s.security?.demo   // 演示服务器：用量上限不让改
   const save = async (body: object) => {
     try { setSettings(await api('/api/settings', { method: 'PUT', body })); toast(t('已保存，马上生效')) }
@@ -160,11 +163,6 @@ function Limits() {
         <span><b>{t('Heavy 模式同时跑几个任务')}</b><span>{t('同一个问题交给几个后台任务分头做，再汇总。越多越全面，也越贵（1–8）')}</span></span>
         <input type="number" min={1} max={8} disabled={demo} value={heavy} onChange={e => setHeavy(Number(e.target.value))}
           onBlur={() => { if (heavy && heavy !== s.heavy_workers) save({ heavy_workers: heavy }) }} />
-      </label>
-      <label className="set-row">
-        <span><b>{t('同时用电脑的任务')}</b><span>{t('几个后台任务可以同时用电脑，每个开一个浏览器窗口，登录状态共用；多了排队。电脑内存小就调小（1–8）')}</span></span>
-        <input type="number" min={1} max={8} disabled={demo} value={pcs} onChange={e => setPcs(Number(e.target.value))}
-          onBlur={() => { if (pcs && pcs !== s.computer_parallel) save({ computer_parallel: pcs }) }} />
       </label>
     </div>
   )

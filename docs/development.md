@@ -147,7 +147,7 @@ OSA_CONFIG=/tmp/osa-test/config.yaml uv run uvicorn osa.server:app --port 8766
 ## 修改电脑镜像
 
 ```bash
-docker build --platform linux/arm64 --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/computer/image
+docker build --platform linux/arm64 --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:2 osa/computer/image
 docker rm -f osa-computer       # 删掉旧容器，下次使用时会用新镜像创建
 ```
 

@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<!-- 电脑桌面（JWM）：底部任务栏左边是“浏览器”“终端”两个按钮，你接手电脑时用。浏览器就是 Bot 用的那个（登录状态共用），
+     终端开在工作文件夹里（和 Bot 执行命令是同一个地方）。中间是开着的窗口，右边是时钟；桌面空白处点右键也有这两项。
+     只有一个桌面，免得窗口切丢。start-desktop.sh 启动它，Dockerfile 把这个文件放到 /root/.jwmrc。 -->
+<JWM>
+  <IconPath>/usr/share/icons/hicolor/48x48/apps</IconPath>
+  <IconPath>/usr/share/pixmaps</IconPath>
+  <RootMenu onroot="3" height="0">
+    <Program icon="chromium.png" label="浏览器">chromium</Program>
+    <Program icon="xterm-color_48x48.xpm" label="终端">osa-terminal</Program>
+  </RootMenu>
+  <Tray x="0" y="-1" height="30" autohide="off" layer="above">
+    <TrayButton icon="chromium.png" label="浏览器" popup="打开浏览器（就是 Bot 用的那个，登录状态共用）">exec:chromium</TrayButton>
+    <Spacer width="4"/>
+    <TrayButton icon="xterm-color_48x48.xpm" label="终端" popup="在工作文件夹（/data/workspace）里打开终端">exec:osa-terminal</TrayButton>
+    <Spacer width="12"/>
+    <TaskList maxwidth="260"/>
+    <Clock format="%H:%M"/>
+  </Tray>
+  <Desktops width="1" height="1">
+    <Background type="solid">#2b2b30</Background>
+  </Desktops>
+  <WindowStyle decorations="flat">
+    <Font>Noto Sans CJK SC-10</Font>
+    <Width>3</Width>
+    <Height>26</Height>
+    <Foreground>#a8a8ad</Foreground>
+    <Background>#1c1c1f</Background>
+    <Outline>#26262a</Outline>
+    <Opacity>1.0</Opacity>
+    <Active>
+      <Foreground>#ececec</Foreground>
+      <Background>#2e2e33</Background>
+      <Outline>#3a3a40</Outline>
+      <Opacity>1.0</Opacity>
+    </Active>
+  </WindowStyle>
+  <TrayStyle decorations="flat">
+    <Font>Noto Sans CJK SC-10</Font>
+    <Background>#151517</Background>
+    <Foreground>#ececec</Foreground>
+    <Opacity>1.0</Opacity>
+  </TrayStyle>
+  <TrayButtonStyle decorations="flat">
+    <Font>Noto Sans CJK SC-10</Font>
+    <Background>#2e2e33</Background>
+    <Foreground>#ececec</Foreground>
+    <Active>
+      <Background>#45454c</Background>
+      <Foreground>#ffffff</Foreground>
+    </Active>
+  </TrayButtonStyle>
+  <TaskListStyle decorations="flat">
+    <Font>Noto Sans CJK SC-10</Font>
+    <Background>#151517</Background>
+    <Foreground>#a8a8ad</Foreground>
+    <Active>
+      <Background>#2e2e33</Background>
+      <Foreground>#ececec</Foreground>
+    </Active>
+  </TaskListStyle>
+  <ClockStyle>
+    <Font>Noto Sans CJK SC-10</Font>
+    <Foreground>#a8a8ad</Foreground>
+  </ClockStyle>
+  <MenuStyle decorations="flat">
+    <Font>Noto Sans CJK SC-10</Font>
+    <Background>#1c1c1f</Background>
+    <Foreground>#ececec</Foreground>
+    <Active>
+      <Background>#3a3a40</Background>
+      <Foreground>#ffffff</Foreground>
+    </Active>
+  </MenuStyle>
+  <PopupStyle>
+    <Font>Noto Sans CJK SC-10</Font>
+    <Background>#26262a</Background>
+    <Foreground>#ececec</Foreground>
+  </PopupStyle>
+  <FocusModel>click</FocusModel>
+  <SnapMode distance="10">border</SnapMode>
+  <MoveMode>opaque</MoveMode>
+  <ResizeMode>opaque</ResizeMode>
+</JWM>

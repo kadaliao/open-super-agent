@@ -102,7 +102,7 @@ uv run uvicorn osa.server:app --port 8765   # 打开 http://127.0.0.1:8765
 第一次用电脑时会自动构建本地镜像，需要几分钟。国内网络可以先手动构建，用镜像源加速：
 
 ```bash
-docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:1 osa/computer/image
+docker build --build-arg APT_MIRROR=mirrors.ustc.edu.cn -t osa-computer:2 osa/computer/image
 ```
 
 </details>

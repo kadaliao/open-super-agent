@@ -253,10 +253,33 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .pc-backend { font: inherit; font-size: 12.5px; color: var(--fg2); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 1px 2px; max-width: 14em; }
 .pc-backend:hover:not(:disabled) { border-color: var(--line); }
 .pc-shell { display: flex; align-items: center; gap: 6px; }
-.pc-desk-perm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--warn); }
-.pc-desk-perm > span { flex: 1 1 220px; }
-.pc-desk-perm > span.muted { flex: 0 0 auto; }   /* “在那台 Mac 上打开”只占自己那么宽 */
+/* 缺 macOS 权限：标题一行（缺几项 + 去打开），下面逐项列出有没有、做什么用 */
+.pc-perm { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; font-size: 13px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 7%, var(--bg)); }
+.pc-perm-head { display: flex; align-items: center; gap: 8px; }
+.pc-perm-head > .icon { color: var(--warn); flex-shrink: 0; }
+.pc-perm-head > span:first-of-type { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pc-perm-head > .btn, .pc-perm-head > span.small { flex-shrink: 0; white-space: nowrap; }
+.pc-perm-list { list-style: none; margin: 0; padding: 0 0 0 23px; display: flex; flex-direction: column; gap: 3px; }
+.pc-perm-list li { display: flex; align-items: center; gap: 6px; }
+.pc-perm-list li .icon { color: var(--bad); flex-shrink: 0; }
+.pc-perm-list li.ok .icon { color: var(--good); }
+.pc-perm-list li.ok b { font-weight: 500; color: var(--fg2); }
+.pc-perm p { margin: 0 0 0 23px; line-height: 1.5; }
 .pc-name { font-weight: 600; }
+/* 设置 → 电脑：几种电脑一行一个，单选 */
+.pc-choices { display: flex; flex-direction: column; gap: 8px; }
+.pc-choice { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.pc-choice.on { border-color: var(--fg3); background: var(--bg2); }
+.pc-choice.off { cursor: default; }
+.pc-choice.off .pc-choice-main > b { color: var(--fg2); }
+.pc-choice input { margin-top: 3px; flex-shrink: 0; }
+.pc-choice-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pc-choice-main > b { display: flex; align-items: center; gap: 6px; font-size: 14.5px; }
+.pc-choice-main .tag { font-weight: 500; }
+.pc-choice-why { color: var(--warn); }
+.pc-choice-key { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pc-parallel { width: 90px; }
 /* 你的 Mac：派任务的去处，一台一行 */
 .pc-macs { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
 .pc-macs-head { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
