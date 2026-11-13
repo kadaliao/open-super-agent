@@ -5,7 +5,7 @@ import httpx
 import pytest
 from conftest import find, settle, until
 from fakellm import Call
-from osa import approvals, avatars, bots, imagegen, images, library, media, memory, prices, providers, server
+from osa import approvals, avatars, bots, generation, images, library, media, memory, prices, providers, server
 from osa.config import CFG
 
 PNG = providers._png(8, 8, (10, 200, 30))
@@ -32,7 +32,7 @@ def sf(monkeypatch):
         if req.url.host == "files.example.com":
             return httpx.Response(200, content=PNG)
         return httpx.Response(404)
-    monkeypatch.setattr(imagegen, "_TRANSPORT", httpx.MockTransport(handle))
+    monkeypatch.setattr(generation, "_TRANSPORT", httpx.MockTransport(handle))
     memory.conn.execute("delete from settings where key in ('avatar_model', 'image_model', 'image_edit_model')")
     memory.conn.execute("delete from rules where pattern='generate_image'")
     memory.conn.commit()

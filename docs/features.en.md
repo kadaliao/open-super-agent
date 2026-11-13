@@ -75,6 +75,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
   - Bots can also send screenshots, spreadsheets and documents from the computer into the chat.
 - **Drawing**: say "draw a ...", and the Bot first shows a card with the prompt, model and price; once you allow it, the image arrives in seconds. Download it or use it as an avatar.
   It can also draw from images: send a picture and say "make it a watercolor" or "swap the background", or ask it to keep editing the one it just drew.
+- **Video**: say "make a video of ...". After you confirm, it renders in the background and a player shows up in the chat a few minutes later. It can animate an image (as the opening frame) or follow the people, products or motion in reference images and videos. Which providers it talks to is configuration, so a new model is one config entry away.
 - **Link cards**: links in chat expand. YouTube and Bilibili play inline when clicked, posts on X show as embeds, and other pages show a title, summary and image.
 
 ## Routines and events

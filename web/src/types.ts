@@ -117,6 +117,7 @@ export type Settings = {
   embedding: { provider: string; model: string }
   image_model: { provider: string; model: string }   // 画图用哪个模型（对话里画图、生成头像共用），空的是用排在最前面的
   image_edit_model?: { provider: string; model: string }   // 照着图片画（带参考图）用哪个，空的是用排在最前面的；旧版服务没有
+  video_model?: { provider: string; model: string }        // 生成视频用哪个，空的是用排在最前面的；旧版服务没有
   model_info: Record<string, ModelInfo>   // 键是 服务/模型
   prices: { source: string; updated: number; error: string; rate: number; currency: string; models: number }
   problem: string                         // 对话或后台任务的模型没法用的原因；能用是空

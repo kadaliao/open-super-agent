@@ -239,6 +239,57 @@ function ImageMessage({ bot, m, chat, showName, reply }: { bot?: Bot; m: Message
   )
 }
 
+// 生成好的视频：播放器、描述、模型和价格
+function VideoMessage({ bot, m, showName, reply }: { bot?: Bot; m: Message; showName?: boolean; reply?: Reply }) {
+  const cur = useStore(s => s.settings?.prices.currency) || '¥'
+  const refs: { name: string }[] = m.meta.refs || []
+  return (
+    <div className="msg bot">
+      {bot && <BotAvatar avatar={bot.avatar} size={28} />}
+      <div className="msg-body">
+        <Speaker bot={bot} show={showName} />
+        <Attachments items={m.meta.attachments} />
+        <div className="img-caption" title={m.meta.prompt}>🎬 {m.meta.prompt}</div>
+        <div className="img-meta">{m.meta.model}{m.meta.seconds ? ' · ' + t('{n} 秒', { n: m.meta.seconds }) : ''}
+          {m.meta.price !== undefined ? ' · ' + videoPrice(m.meta.price, cur) : ''}
+          {!!refs.length && <span title={refs.map(r => r.name).join('\n')}> · {t('参考了 {n} 个素材', { n: refs.length })}</span>}</div>
+        <ThreadLink m={m} reply={reply} />
+        <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={m.meta.prompt || ''} /><ReplyBtn m={m} reply={reply} /></div>
+      </div>
+    </div>
+  )
+}
+
+const videoPrice = (p: number | null | undefined, cur = '¥') =>
+  p === null || p === undefined ? t('价格未知') : p === 0 ? t('免费') : t('{price} / 段', { price: cur + p })
+
+// 正在生成的视频：转圈和等了多久；失败写原因；好了就不显示（视频是另一条消息）
+function VideoJob({ bot, m, showName }: { bot?: Bot; m: Message; showName?: boolean }) {
+  const [now, setNow] = useState(Date.now())
+  const running = m.meta.status === 'running'
+  useEffect(() => {
+    if (!running) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [running])
+  if (m.meta.status === 'done') return null
+  const secs = Math.max(0, Math.round(now / 1000 - (m.meta.started || m.ts)))
+  return (
+    <div className="msg bot">
+      {bot && <BotAvatar avatar={bot.avatar} size={28} />}
+      <div className="msg-body">
+        <Speaker bot={bot} show={showName} />
+        <div className={'video-job' + (running ? '' : ' failed')}>
+          <div className="video-job-head">{running ? <><span className="spin" />{t('正在生成视频 · 已等 {time}', { time: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` })}</>
+            : t('视频没生成成：{error}', { error: m.meta.error || '' })}</div>
+          <div className="img-caption" title={m.meta.prompt}>🎬 {m.meta.prompt}</div>
+          <div className="img-meta">{m.meta.model}{m.meta.seconds ? ' · ' + t('{n} 秒', { n: m.meta.seconds }) : ''}{running ? ' · ' + t('要几分钟，好了会自动显示') : ''}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: Task; owner?: Bot; handoffTo?: Bot; replyTo?: Bot }) {
   const status = task?.status || m.meta.status || 'done'
   const [now, setNow] = useState(Date.now())
@@ -622,7 +673,7 @@ export function MessageList({ chat, list, reply, since }: { chat: ChatT; list: M
     if (m.role === 'user') return null
     if (m.role === 'assistant') return speaker(m)?.id ?? null
     const kind = taskKind(m).kind
-    if (kind === 'result' || kind === 'image') return speaker(m)?.id ?? null
+    if (kind === 'result' || kind === 'image' || kind === 'video' || kind === 'video_job') return speaker(m)?.id ?? null
     return kind === 'dm_reply' && !m.meta.sent ? botOf(m.bot_id)?.id ?? null : null
   }
   // 回复里记录了本轮派发的任务：任务卡片挂到回复下面，不再单独显示
@@ -682,6 +733,8 @@ registerCard('dispatch', ({ m, attached, tasks, task }) => attached.has(m.id) ||
 registerCard('result', ({ m, bot, group, reply, taskId, byId }) => <ResultMessage bot={bot} m={m} showName={group} reply={reply}
   goal={(taskId && byId.get(taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />)   // i18n-ignore：存在消息里的标记
 registerCard('image', ({ m, bot, chat, group, reply }) => <ImageMessage bot={bot} m={m} chat={chat} showName={group} reply={reply} />)
+registerCard('video', ({ m, bot, group, reply }) => <VideoMessage bot={bot} m={m} showName={group} reply={reply} />)
+registerCard('video_job', ({ m, bot, group }) => <VideoJob bot={bot} m={m} showName={group} />)
 registerCard('handoff', ({ m, botOf }) => <HandoffLine from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />)
 registerCard('dm', ({ m, botOf, chat }) => <DmLine m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />)
 registerCard('dm_reply', ({ m, botOf, chat, reply }) => m.meta.sent

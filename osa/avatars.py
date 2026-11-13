@@ -4,7 +4,7 @@
 - 用 /avatars/<id> 访问。id 是内容的哈希，同一张图只存一份。不用登录也能看（分享出去的页面也显示 Bot 的头像），
   所以只收 PNG / JPEG / WebP，不收 SVG 这种能带脚本的格式。
 - 没人用的图片放一天后清掉：刚传上来、还没点保存的不能删。
-- 生图的接口（各家参数不一样）在 imagegen.py，这里只管用哪个模型。
+- 生图的接口（各家参数不一样）按配方调，见 generation.py / generation.yaml，这里只管用哪个模型。
 - 用哪个模型画（settings 表的 image_model）和对话里画图共用：设置 → 模型 → 画图 里选，生成头像时换了也记下来。
   以前叫 avatar_model，读不到新的就读旧的。照着图片画（对话里带了参考图）另选一个（image_edit_model），
   没选过就用能收参考图的模型里排最前的。每画一张在 llm_calls 记一行（role=image，0 token，费用按 pricing.images）。
@@ -14,8 +14,7 @@ import hashlib
 import json
 import re
 import time
-from . import i18n, imagegen, prices, providers
-from .config import CFG
+from . import generation, i18n
 from .memory import conn
 
 conn.execute("create table if not exists avatars(id text primary key, mime text, data blob, created real)")
@@ -25,11 +24,12 @@ MAX_BYTES = 512 * 1024          # 256×256 的 PNG 一般一两百 KB
 KEEP_S = 86400
 URL = re.compile(r"^/avatars/([0-9a-f]{24})$")
 
-IMAGE_MODEL = imagegen.IMAGE_MODEL
-# 按这个顺序推荐：Kolors 在硅基流动免费，Z-Image-Turbo 便宜
-PREFER = ["kolors", "z-image-turbo", "gpt-image", "cogview", "qwen-image", "z-image", "flux", "seedream"]
-# 照着图片画：会按说的改（换背景、换风格、加东西）的排前面；Kolors 只是图生图，改不了细节，放最后
-REF_PREFER = ["qwen-image-edit-2", "gpt-image", "seedream", "qwen-image-edit", "kontext", "kolors"]
+
+
+def _mime(b: bytes) -> str | None:
+    from .media import sniff
+    m = sniff(b)
+    return m if m in ("image/png", "image/jpeg", "image/webp") else None
 
 
 def save(data_url: str) -> str:
@@ -43,7 +43,7 @@ def save(data_url: str) -> str:
         raise ValueError(i18n.t("没收到图片"))
     if len(b) > MAX_BYTES:
         raise ValueError(i18n.t("图片太大了（最多 {n} KB）", n=MAX_BYTES // 1024))
-    mime = imagegen.sniff(b)
+    mime = _mime(b)
     if not mime:
         raise ValueError(i18n.t("只支持 PNG、JPG、WebP 图片"))
     aid = hashlib.sha256(b).hexdigest()[:24]
@@ -80,11 +80,6 @@ def gc():
 
 
 # ---------- 用哪个模型画 ----------
-def _rank(model: str, order: list[str] = PREFER) -> int:
-    x = model.lower()
-    return next((i for i, k in enumerate(order) if k in x), len(order))
-
-
 def _setting(key: str) -> dict:
     r = conn.execute("select value from settings where key=?", (key,)).fetchone()
     return json.loads(r[0]) if r else {}
@@ -120,23 +115,12 @@ async def current(refs: int = 0) -> dict | None:
 
 async def models() -> dict:
     """已经配好的模型服务里能画图的模型（带每张的价格，不知道是 None；refs 是最多收几张参考图）。
-    models、default：直接画的（只能改图的不算）和现在用的那个；edit_models、edit_default：能照着图片画的。"""
-    out = []
-    for name in CFG["providers"]:
-        if not providers.usable(name):
-            continue
-        try:
-            r = await providers.models(name)
-        except ValueError:
-            continue
-        title = providers.describe(name)["title"]
-        for m in r.get("models") or []:
-            if IMAGE_MODEL.search(m):
-                s = imagegen.spec(name, m)
-                out.append({"provider": name, "title": title, "model": m, "price": prices.image_price(name, m),
-                            "refs": s.refs, "needs_ref": s.needs_ref})
-    draw = sorted((x for x in out if not x["needs_ref"]), key=lambda x: (_rank(x["model"]), x["provider"], x["model"]))
-    edit = sorted((x for x in out if x["refs"]), key=lambda x: (_rank(x["model"], REF_PREFER), x["provider"], x["model"]))
+    models、default：直接画的（只能改图的不算）和现在用的那个；edit_models、edit_default：能照着图片画的。
+    排序按配方里的 prefer（image、edit）。"""
+    out = await generation.catalog("image")
+    key = lambda kind: lambda x: (generation.rank(kind, x["model"]), x["provider"], x["model"])   # noqa: E731
+    draw = sorted((x for x in out if not x["needs_ref"]), key=key("image"))
+    edit = sorted((x for x in out if x["refs"]), key=key("edit"))
 
     def pick(items, c):
         return next((x for x in items if x["provider"] == c.get("provider") and x["model"] == c.get("model")), None) \
@@ -152,9 +136,9 @@ async def generate(prompt: str, provider: str, model: str) -> str:
     return f"data:{mime};base64," + base64.b64encode(b).decode()
 
 
-async def draw(prompt: str, provider: str, model: str, refs: list[imagegen.Ref] | None = None) -> tuple[bytes, str]:
+async def draw(prompt: str, provider: str, model: str, refs: list[generation.Ref] | None = None) -> tuple[bytes, str]:
     """让生图模型画一张，返回 (原图, mime)。直接画的（没带参考图）用了哪个模型记下来，下次默认用它。"""
-    b, mime = await imagegen.draw(prompt, provider, model, refs)
+    b, mime = await generation.draw(prompt, provider, model, refs)
     if not refs:
         choose(provider, model)
     return b, mime

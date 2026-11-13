@@ -62,7 +62,9 @@ osa/
   media.py         对话里的图片和附件：media 表、消息的 meta.attachments、给能看图的模型带上图片、send_file、清理没人用的
   images.py        对话里画图：generate_image 工具、画之前的确认卡片（在后台等，不卡住 Router）、画好的图发进对话
   avatars.py       头像图片：上传的和 AI 画的、公开访问、清理没人用的；画图用哪个模型（直接画的、照着图片画的）
-  imagegen.py      生图服务的接口：各家参数不一样（硅基流动、火山方舟、兼容 OpenAI 的），参考图怎么传、每个模型最多收几张
+  generation.py    画图、生成视频按配方调各家接口（模板、异步任务、结果下载、参考素材的临时公网地址）；配方在 generation.yaml
+  generation.yaml  默认配方：硅基流动、火山方舟、OpenAI、阿里云百炼、智谱各类模型怎么调（config.yaml 的 generation 可以加、改）
+  videos.py        对话里生成视频：generate_video 工具、确认卡片、后台提交和查进度、重启后接着查、生成好的视频发进对话
   settings.py      界面里改的设置（覆盖 config.yaml）
   i18n.py          界面语言：t() 按中文原文查 locales/en.json；python -m osa.i18n 检查前后端的翻译
   backup.py        备份与迁移：加密的备份文件、恢复前检查、启动时换上、命令行
@@ -73,7 +75,7 @@ osa/
     checks.py      添加应用前的检查（邮箱先试登录一次）
     skills/        技能市场：每个技能一个文件夹（<名字>/SKILL.md，英文界面装 SKILL.en.md），格式见 docs/skills.md
   registry.py      工具注册表：Tool（schema、run、在哪些场合能用、要不要确认）、Source（事件来源）、Context（注册返回 disposer，dispose 反向撤销）、事件 on / emit / fire
-  builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、search_memory、use_skill
+  builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、generate_video、search_memory、use_skill
   tools.py         内置的网页工具：web_search、fetch_url 的实现
   unfurl.py        链接卡片：服务器取网页的标题、摘要、配图（og:*），不抓内网，缓存在 unfurls 表；YouTube 走 oEmbed
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明、use_skill；带文件的技能包；导出成 .md / zip、分享链接、从文件、zip 或链接（含 GitHub 文件夹）导入；技能市场（catalog/skills）
@@ -124,7 +126,7 @@ web/src/
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |
 | `channels` | 聊天软件连接：平台、绑定的对话（`chat_id`）、配对的私聊（`peer`）、配对码；token / App Secret 在保险库的 `channel_<id>` |
-| `settings` | 界面里改过的设置；`language` 是界面语言（zh / en）；`image_model` 是画图用的模型（以前叫 `avatar_model`）；`image_edit_model` 是照着图片画用的模型；`vision_tests` 是设置里“测试”测出来的哪些模型能看图 |
+| `settings` | 界面里改过的设置；`language` 是界面语言（zh / en）；`image_model` 是画图用的模型（以前叫 `avatar_model`）；`image_edit_model` 是照着图片画用的模型；`video_model` 是生成视频用的模型；`media_link_secret` 是签参考素材临时地址的密钥；`vision_tests` 是设置里“测试”测出来的哪些模型能看图 |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
 | `unfurls` | 链接卡片的缓存：网址、取到的标题 / 摘要 / 配图 / 站点名 / 图标（JSON）、成功没有、取的时间；成功的留 7 天，失败的 1 小时 |
 
@@ -422,9 +424,24 @@ web/src/
   （`memory._image_ids`），有路径的本来就有“[附件] 路径”。`images.find_refs` 先按编号找 `media`，路径先在消息附件里找存好的那份，
   找不到再从电脑里读（`media.from_computer`）；只收 PNG、JPG、WebP。带了参考图就用“照着图片画”的模型（`avatars.current(refs)`：
   选的那个收得下就用它，否则用能收这么多张的里排最前的），这个模型不会被记成直接画的默认。参考了哪几张记在消息的 `meta.refs`。
-- 各家怎么传在 `imagegen.py`：`spec(provider, model)` 写每个模型最多收几张、是不是只能改图，`draw()` 按服务拼请求
-  （硅基流动 JSON 里的 `image` / `image2` / `image3` / `input_image`，OpenAI 的 `/images/edits` multipart `image[]`，火山方舟 `image` 数组）。
-  以后接视频生成照这个办法加；视频参考大多只收公网网址，要先有临时公开的地址。
+- 各家怎么传不写在代码里，按配方（`generation.yaml`，`config.yaml` 的 `generation.recipes` 排在前面）：`recipe(kind, provider, model)`
+  按 kind、host、model 找第一条对上的，`caps()` 是能收几张参考图、是不是只能改图，`draw()` 按配方的 `request`（带参考图时 `edit`）拼请求。
+  模型列表 `catalog(kind)` = 服务列出来的 + 配方 `offer` 的、有配方的那些；“自动”的顺序按配方的 `prefer`。
+
+### 对话里生成视频
+- `generate_video(prompt, images?, image_use?, videos?, seconds?, ratio?)` 只给 Router。`images` 当开头（结尾）画面（`frames`）
+  或参考图（`reference`），`videos` 是参考视频（视频编号“[视频] …”或电脑里的路径，从电脑读的存一份进 `media`）。
+  `videos.pick` 在设置里选的（`video_model`）收不下这些素材时换一个收得下的；没说 `image_use` 时先试开头画面。
+- 和画图一样默认先问（`approvals.ASK`）、在后台等确认。同意后发一条 `kind=video_job` 的消息（`meta` 带 prompt、模型、refs、`status`、`started`），
+  后台 `generation.submit` 提交、`meta.job` 记下任务，`generation.poll` 隔 5 / 10 / 20 秒查一次，最多等 40 分钟。
+  好了把视频存进 `media`（`save(video=True)`，最大 200 MB），发一条 `kind=video` 的消息（附件是视频，推送、聊天软件也收到），
+  `video_job` 标成 `done`；失败标成 `failed` 并发一条 `kind=note`。`video_job` 的变化用 `message_meta` 事件推给网页（只改 meta，不加消息）。
+- 服务重启：`videos.resume()` 接着查有 `job` 的；还没提交上的标成失败，不重新提交（免得花两份钱）。
+- 参考视频和配方写了 `image_url: url` 的参考图，提交时用 `generation.public_link` 生成 6 小时内有效的 `/pub/media/<id>?exp=&sig=`
+  （HMAC，密钥在 settings 的 `media_link_secret`；`/pub/` 在 `auth` 的公开前缀里，端点自己验签名）。网页地址（`channels.public_url`）
+  没填或是本机、内网地址时用不了，工具照实告诉模型。
+- `/api/media/<id>` 的视频按 Range 分段发（`media.read_range` 用 SQLite 的 substr），能拖进度，iPhone 上的 Safari 也能放。
+- 上下文：`video` 是“你生成好了一段视频……”加“[视频] 编号”；还在等的 `video_job` 是一句“还在生成”；做完的、失败的不重复说（另有消息）。
 - 默认每次先问（`approvals.ASK`），点“总是允许”生成一条 `generate_image` 的允许规则。要问的时候不让 Router 干等：
   工具马上返回“等用户确认”，卡片和画图放在后台（`images.generate` 里的 `wait_and_draw`），Router 这一轮照常说完、不占着锁，
   用户也能在对话里说“画吧”（`resolve_approval`）。冒充任务的写法照 `Router._direct`；卡片照旧只进私聊，群里、讨论串里有提示。

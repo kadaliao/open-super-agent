@@ -1,10 +1,10 @@
-"""内置工具的注册：网页、资料库、小应用数据、按意思检索、技能、发文件、画图、定时任务和事件、在沙箱里跑代码；
+"""内置工具的注册：网页、资料库、小应用数据、按意思检索、技能、发文件、画图、生成视频、定时任务和事件、在沙箱里跑代码；
 内置的事件来源（osa/sources/）。
 
 每个工具只在这里写一次，Router 和 Worker 都从注册表（registry.py）找；在哪些场合给模型用、要不要走确认规则，都在 Tool 上写明。
 电脑工具、Router 自己的几个、botadmin 还没迁过来（见 registry.py 开头）。
 """
-from . import i18n, images, library, media, registry, routines, sandbox, search, skills, tools
+from . import i18n, images, library, media, registry, routines, sandbox, search, skills, tools, videos
 from .registry import APPLET, ROUTER, WORKER, Call, Tool
 
 ctx = registry.Context("builtin")
@@ -26,6 +26,10 @@ async def _send_file(call: Call) -> str:
     call.files.append(att)
     text = media.sent_text(att)
     return text if call.scope == ROUTER else text.replace("对话里", "任务结果下面")
+
+
+async def _generate_video(call: Call) -> str:
+    return await videos.generate(call.bot, call.chat_id, call.private_chat_id, call.args, call.post)
 
 
 async def _save_page(call: Call) -> str:
@@ -62,6 +66,7 @@ def load():
     ctx.tool(Tool("send_file", media.SEND_FILE, _send_file, when=_not_draft,
                   progress=lambda a: i18n.t("发文件：{path}", path=str(a.get("path", ""))[:60])))
     ctx.tool(Tool("generate_image", images.GENERATE_IMAGE, _generate_image, where=frozenset({ROUTER})))
+    ctx.tool(Tool("generate_video", videos.GENERATE_VIDEO, _generate_video, where=frozenset({ROUTER})))
     ctx.tool(Tool("search_memory", search.SEARCH_TOOL, lambda c: search.tool(c.bot_id, c.args), parallel=3,
                   progress=lambda a: i18n.t("查记忆和资料库：{query}", query=str(a.get("query", ""))[:40])))
     # 技能：Bot 自己取做法和带的文件（用户 /名字 调用时做法已经附在消息里了）。只读，不用确认

@@ -19,7 +19,7 @@ export const ROLES: RoleDef[] = [
   { key: 'reviewer', name: t('Heavy 汇总'), desc: t('Heavy 模式里，把几个并行任务的结果汇总成一份。') },
   { key: 'filter', name: t('整理和过滤'), desc: t('判断定时任务收到的事件要不要处理、把导入的记忆拆成条目。便宜的就行。') },
 ]
-export const ROLE_NAMES: Record<string, string> = { ...Object.fromEntries(ROLES.map(r => [r.key, r.name])), embedding: t('按意思检索'), test: t('测试模型'), image: t('画图') }
+export const ROLE_NAMES: Record<string, string> = { ...Object.fromEntries(ROLES.map(r => [r.key, r.name])), embedding: t('按意思检索'), test: t('测试模型'), image: t('画图'), video: t('生成视频') }
 
 // ---------- 各个服务的模型列表：打开页面时拉一次，服务端缓存 10 分钟 ----------
 type Lists = Record<string, ModelList | undefined>
@@ -47,6 +47,7 @@ const usedBy = (s: S, name: string) => [
   ...Object.entries(s.roles).filter(([, v]) => v.provider === name).map(([k]) => ROLE_NAMES[k] || k),
   ...(s.embedding.provider === name ? [t('按意思检索')] : []),
   ...(s.image_model?.provider === name || s.image_edit_model?.provider === name ? [t('画图')] : []),
+  ...(s.video_model?.provider === name ? [t('生成视频')] : []),
 ]
 const host = (url: string) => url.replace(/^https?:\/\//, '')
 
@@ -89,6 +90,9 @@ export default function ModelSettings() {
         </Section>
         <Section title={t('画图')} desc={t('你让 Bot 画图、生成头像时用。每次画之前都会先问你（卡片上写着价格），可以点“总是允许”。')}>
           <ImageModelCard />
+        </Section>
+        <Section title={t('生成视频')} desc={t('你让 Bot 生成视频时用。要等几分钟，每次之前都会先问你（卡片上写着价格）。带了图片或视频当参考时，选的模型收不了就自动换一个收得了的。')}>
+          <VideoModelCard />
         </Section>
         <PriceNote />
       </>}
@@ -322,9 +326,25 @@ function ImageModelCard() {
   )
 }
 
-// 画图模型的一行：下拉选模型（第一项“自动”用排在最前面的），下面是价格（照着图片画的还写最多几张）
-function ImagePick({ label, field, cur, list, note }: {
-  label: string; field: 'image_model' | 'image_edit_model'; cur?: { provider: string; model: string }; list: ImageModel[] | null; note: string
+type VideoModel = ImageModel & { frames: number; videos: number; seconds: number[]; needs_ref?: boolean }
+
+function VideoModelCard() {
+  const s = useStore(x => x.settings) as S
+  const [list, setList] = useState<VideoModel[] | null>(null)
+  useEffect(() => { api('/api/videos/models').then(r => setList(r.models)).catch(() => setList([])) }, [s.providers.map(p => p.name).join()])
+  return (
+    <div className="role-card">
+      <ImagePick label={t('视频模型')} field="video_model" cur={s.video_model} list={list} video
+        note={list === null ? t('正在找能生成视频的模型…') : list.length ? t('{n} 个能生成视频的模型', { n: list.length }) : ''} />
+      {list && !list.length && <p className="muted small hint">{t('还没有能生成视频的模型。添加硅基流动（Wan）、阿里云百炼（万相）、智谱（CogVideoX）、火山方舟（Seedance）这类有视频模型的服务就能用。')}</p>}
+    </div>
+  )
+}
+
+// 画图、视频模型的一行：下拉选模型（第一项“自动”用排在最前面的），下面是价格和能收什么
+function ImagePick({ label, field, cur, list, note, video }: {
+  label: string; field: 'image_model' | 'image_edit_model' | 'video_model'; cur?: { provider: string; model: string }
+  list: (ImageModel | VideoModel)[] | null; note: string; video?: boolean
 }) {
   const toast = useToast()
   const cy = useStore(x => (x.settings as S).prices.currency)
@@ -340,6 +360,8 @@ function ImagePick({ label, field, cur, list, note }: {
   }
   const chosen = list?.find(m => key(m) === k) || (!k ? auto : null)
   const edit = field === 'image_edit_model'
+  const v = video ? chosen as VideoModel | null : null
+  const secs = v?.seconds || []
   return <>
     <div className="role-top">
       <div className="role-text"><b>{label}</b><span>{note}</span></div>
@@ -351,8 +373,13 @@ function ImagePick({ label, field, cur, list, note }: {
         </select>)}
     </div>
     {chosen && <div className="role-meta">
-      <span className="chip" title={t('按张的价格写在 config.yaml 的 pricing.images 里')}>{imagePrice(chosen.price, cy)}</span>
+      {video ? <span className="chip" title={t('按段的价格写在 config.yaml 的 pricing.videos 里')}>{chosen.price === null ? t('价格未知') : chosen.price === 0 ? t('免费') : t('{price} / 段', { price: cy + chosen.price })}</span>
+        : <span className="chip" title={t('按张的价格写在 config.yaml 的 pricing.images 里')}>{imagePrice(chosen.price, cy)}</span>}
       {edit && !!chosen.refs && <span className="chip">{t('最多参考 {n} 张图', { n: chosen.refs })}</span>}
+      {v && secs.length > 0 && <span className="chip">{secs.length > 2 && secs[secs.length - 1] - secs[0] === secs.length - 1
+        ? t('{a}–{b} 秒', { a: secs[0], b: secs[secs.length - 1] }) : t('{n} 秒', { n: secs.join(' / ') })}</span>}
+      {v && <span className="chip">{v.frames ? (v.needs_ref ? t('要首帧') : t('能用首帧')) : t('只按文字')}</span>}
+      {v && (!!v.refs || !!v.videos) && <span className="chip">{t('参考图 {a} · 参考视频 {b}', { a: v.refs || 0, b: v.videos })}</span>}
     </div>}
   </>
 }

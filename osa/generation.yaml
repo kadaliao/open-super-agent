@@ -1,0 +1,428 @@
+# 画图、生成视频：各家接口怎么调（默认配方）。代码里不写模型名和参数，全在这里。
+# 要加新的服务、新出的模型，或者改这里的，写在 config.yaml 的 generation.recipes 里（排在这些前面，同名的会替掉这里的），不用改代码。
+# 字段说明见 osa/generation.py 开头和 docs/configuration.md「画图和生成视频的配方」。
+# 按顺序找，第一条 kind、host、model 都对上的算数；skip: true 的表示“这类不算”。
+
+prefer:   # 设置里选“自动”时按这个顺序挑：模型名里有这个词就算（不分大小写），都没有的排最后
+  image: [kolors, z-image-turbo, gpt-image, cogview, qwen-image, z-image, flux, seedream]
+  edit: [qwen-image-edit-2, gpt-image, seedream, qwen-image-edit, kontext, kolors]   # 照着图片画：会按说的改的排前面
+  video: [wan2.2-t2v, wan2.2-i2v, seedance, wan2.7, cogvideox-3, wan, vidu, cogvideox]
+
+recipes:
+  # ================= 画图 =================
+  # ---- 硅基流动（2026-11 的接口文档：docs.siliconflow.com/cn/api-reference/images/images-generations）----
+  - name: siliconflow-qwen-image-edit-plus      # Qwen-Image-Edit-2509 这类：最多三张，不收 image_size
+    kind: image
+    host: siliconflow
+    model: qwen-image-edit-\d
+    images: 3
+    need: {images: 1}
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, batch_size: 1, image: $image1, image2: $image2, image3: $image3}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  - name: siliconflow-qwen-image-edit
+    kind: image
+    host: siliconflow
+    model: qwen-image-edit
+    images: 1
+    need: {images: 1}
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, batch_size: 1, image: $image1}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  - name: siliconflow-flux-kontext              # FLUX.1-Kontext-pro / max：字段叫 input_image
+    kind: image
+    host: siliconflow
+    model: kontext-(pro|max)
+    images: 1
+    need: {images: 1}
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, input_image: $image1}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  - name: siliconflow-flux-kontext-dev
+    kind: image
+    host: siliconflow
+    model: kontext
+    images: 1
+    need: {images: 1}
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, image: $image1}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  - name: siliconflow-kolors                    # 可以带一张图（图生图）
+    kind: image
+    host: siliconflow
+    model: kolors
+    images: 1
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, batch_size: 1, image_size: 1024x1024, image: $image1}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  - name: siliconflow-qwen-image
+    kind: image
+    host: siliconflow
+    model: qwen-image
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, batch_size: 1, image_size: 1328x1328}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  - name: siliconflow-z-image
+    kind: image
+    host: siliconflow
+    model: z-image
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, batch_size: 1, image_size: 512x512}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  - name: siliconflow-image
+    kind: image
+    host: siliconflow
+    model: flux|stable-diffusion|sdxl|hidream|hunyuan-image
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, batch_size: 1, image_size: 1024x1024}
+    result: [images.0.url, data.0.url, data.0.b64_json]
+
+  # ---- 火山方舟 Seedream 4 以后：image 是数组，收 data URL，最多 10 张 ----
+  - name: ark-seedream
+    kind: image
+    host: volces\.com|bytepluses\.com
+    model: seedream-[4-9]
+    images: 10
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, n: 1, size: 1024x1024, image: $images}
+    result: [data.0.b64_json, data.0.url]
+
+  # ---- OpenAI 的 gpt-image（别家转发的同名模型也算）：带参考图时走 /images/edits，multipart 的 image[]，最多 16 张 ----
+  - name: openai-gpt-image
+    kind: image
+    model: gpt-image
+    images: 16
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, n: 1, size: 1024x1024}
+    edit:
+      path: /images/edits
+      form: {model: $model, prompt: $prompt, n: 1}
+      files: {"image[]": images}
+    result: [data.0.b64_json, data.0.url]
+
+  # 只能改图、却不知道这家怎么传图的，还有名字像画图其实是视频的：都不算画图模型
+  - name: not-image
+    kind: image
+    model: edit|kontext|t2v|i2v|kf2v|r2v|vace|video
+    skip: true
+
+  # ---- 其他兼容 OpenAI /images/generations 的 ----
+  - name: openai-compatible-image
+    kind: image
+    model: kolors|qwen-image|z-image|flux|stable-diffusion|sdxl|dall-e|cogview|seedream|imagen-|wanx|hidream|hunyuan-image
+    request:
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, n: 1, size: 1024x1024}
+    result: [data.0.b64_json, data.0.url, images.0.url]
+
+  # ================= 生成视频 =================
+  # 都是异步的：request 提交，task 是回包里任务 id 的位置，poll 定时去查，result 是做好后视频地址的位置。
+  # 参考素材的说法：frames 首帧（和尾帧），images 参考图，videos 参考视频（只能给网址）。roles 把它们换成接口的叫法。
+
+  # ---- 硅基流动 Wan（2026-11 的接口文档：/video/submit、/video/status）----
+  - name: siliconflow-wan-i2v
+    kind: video
+    host: siliconflow
+    model: i2v
+    frames: 1
+    need: {frames: 1}
+    seconds: [5]
+    sizes: {"16:9": 1280x720, "9:16": 720x1280, "1:1": 960x960}
+    request:
+      path: /video/submit
+      json: {model: $model, prompt: $prompt, image_size: $size, image: $image1}
+    task: requestId
+    poll: &sf-poll
+      request: {path: /video/status, json: {requestId: $id}}
+      status: status
+      done: [Succeed]
+      failed: [Failed]
+      error: reason
+    result: results.videos.0.url
+
+  - name: siliconflow-wan-t2v
+    kind: video
+    host: siliconflow
+    model: t2v
+    seconds: [5]
+    sizes: {"16:9": 1280x720, "9:16": 720x1280, "1:1": 960x960}
+    request:
+      path: /video/submit
+      json: {model: $model, prompt: $prompt, image_size: $size}
+    task: requestId
+    poll: *sf-poll
+    result: results.videos.0.url
+
+  # ---- 火山方舟 Seedance：content 数组里放文字、首尾帧、参考图、参考视频（视频只收网址）----
+  - name: ark-seedance-2
+    kind: video
+    host: volces\.com|bytepluses\.com
+    model: seedance-([2-9])
+    frames: 2
+    images: 9
+    videos: 3
+    seconds: 4-15
+    ratio: adaptive
+    ratios: [adaptive, "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]
+    roles: {first: first_frame, last: last_frame, image: reference_image, video: reference_video}
+    request: &ark-video
+      path: /contents/generations/tasks
+      json:
+        model: $model
+        content:
+          - {type: text, text: $prompt}
+          - $each: media
+            as: {type: "${type}_url", "${type}_url": {url: $url}, role: $role}
+        ratio: $ratio
+        duration: $seconds
+        watermark: false
+    task: id
+    poll: &ark-poll
+      request: {method: GET, path: "/contents/generations/tasks/${id}"}
+      status: status
+      done: [succeeded]
+      failed: [failed, cancelled, expired]
+      error: [error.message, error.code]
+    result: content.video_url
+
+  - name: ark-seedance-1
+    kind: video
+    host: volces\.com|bytepluses\.com
+    model: seedance
+    frames: 2
+    seconds: 2-12
+    ratio: adaptive
+    ratios: [adaptive, "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]
+    roles: {first: first_frame, last: last_frame}
+    request: *ark-video
+    task: id
+    poll: *ark-poll
+    result: content.video_url
+
+  # ---- 阿里云百炼 万相：走原生接口（不是 compatible-mode），要带 X-DashScope-Async ----
+  - name: dashscope-wan-r2v                     # 参考生视频：参考图和参考视频加起来最多 5 个
+    kind: video
+    host: dashscope
+    model: r2v
+    images: 5
+    videos: 5
+    total: 5
+    need: {refs: 1}
+    seconds: 2-10
+    ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"]
+    roles: {image: reference_image, video: reference_video}
+    request:
+      path: ${origin}/api/v1/services/aigc/video-generation/video-synthesis
+      headers: {X-DashScope-Async: enable}
+      json:
+        model: $model
+        input: {prompt: $prompt, media: [{$each: media, as: {type: $role, url: $url}}]}
+        parameters: {resolution: 720P, ratio: $ratio, duration: $seconds}
+    task: output.task_id
+    poll: &dashscope-poll
+      request: {method: GET, path: "${origin}/api/v1/tasks/${id}"}
+      status: output.task_status
+      done: [SUCCEEDED]
+      failed: [FAILED, CANCELED, UNKNOWN]
+      error: [output.message, output.code]
+    result: output.video_url
+    offer: [wan2.7-r2v]
+
+  - name: dashscope-wan-i2v-new                 # 万相 2.7 以后的图生视频：media 里放首帧、尾帧
+    kind: video
+    host: dashscope
+    model: wan(2\.[7-9]|[3-9]).*-i2v
+    frames: 2
+    need: {frames: 1}
+    seconds: 2-15
+    roles: {first: first_frame, last: last_frame}
+    request:
+      path: ${origin}/api/v1/services/aigc/video-generation/video-synthesis
+      headers: {X-DashScope-Async: enable}
+      json:
+        model: $model
+        input: {prompt: $prompt, media: [{$each: media, as: {type: $role, url: $url}}]}
+        parameters: {resolution: 720P, duration: $seconds}
+    task: output.task_id
+    poll: *dashscope-poll
+    result: output.video_url
+    offer: [wan2.7-i2v]
+
+  - name: dashscope-wan-t2v-new
+    kind: video
+    host: dashscope
+    model: wan(2\.[7-9]|[3-9]).*-t2v
+    seconds: 2-15
+    ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"]
+    request:
+      path: ${origin}/api/v1/services/aigc/video-generation/video-synthesis
+      headers: {X-DashScope-Async: enable}
+      json:
+        model: $model
+        input: {prompt: $prompt}
+        parameters: {resolution: 720P, ratio: $ratio, duration: $seconds}
+    task: output.task_id
+    poll: *dashscope-poll
+    result: output.video_url
+    offer: [wan2.7-t2v]
+
+  - name: dashscope-wan-kf2v                    # 旧版首尾帧（wan2.2-kf2v-flash、wanx2.1-kf2v-plus），路径不一样
+    kind: video
+    host: dashscope
+    model: kf2v
+    frames: 2
+    need: {frames: 1}
+    seconds: [5]
+    request:
+      path: ${origin}/api/v1/services/aigc/image2video/video-synthesis
+      headers: {X-DashScope-Async: enable}
+      json:
+        model: $model
+        input: {prompt: $prompt, first_frame_url: $image1, last_frame_url: $image2}
+        parameters: {resolution: 720P}
+    task: output.task_id
+    poll: *dashscope-poll
+    result: output.video_url
+
+  - name: dashscope-wan-i2v                     # 旧版图生视频（wan2.2 到 2.6、wanx2.1）：img_url 收 base64
+    kind: video
+    host: dashscope
+    model: i2v
+    frames: 1
+    need: {frames: 1}
+    seconds: [5]
+    request:
+      path: ${origin}/api/v1/services/aigc/video-generation/video-synthesis
+      headers: {X-DashScope-Async: enable}
+      json:
+        model: $model
+        input: {prompt: $prompt, img_url: $image1}
+        parameters: {resolution: 720P, duration: $seconds}
+    task: output.task_id
+    poll: *dashscope-poll
+    result: output.video_url
+
+  - name: dashscope-wan-t2v                     # 旧版文生视频：尺寸按模型的默认值，不传
+    kind: video
+    host: dashscope
+    model: t2v
+    seconds: [5]
+    request:
+      path: ${origin}/api/v1/services/aigc/video-generation/video-synthesis
+      headers: {X-DashScope-Async: enable}
+      json:
+        model: $model
+        input: {prompt: $prompt}
+        parameters: {duration: $seconds}
+    task: output.task_id
+    poll: *dashscope-poll
+    result: output.video_url
+
+  # ---- 智谱：CogVideoX、Vidu。image_url 收网址或 base64；数组（几张图）只收网址 ----
+  - name: zhipu-cogvideox-3
+    kind: video
+    host: bigmodel\.cn
+    model: cogvideox-3
+    frames: 1
+    seconds: [5, 10]
+    sizes: {"16:9": 1920x1080, "9:16": 1080x1920, "1:1": 1024x1024}
+    request:
+      path: /videos/generations
+      json: {model: $model, prompt: $prompt, image_url: $image1, size: $size, duration: $seconds}
+    task: id
+    poll: &zhipu-poll
+      request: {method: GET, path: "/async-result/${id}"}
+      status: task_status
+      done: [SUCCESS]
+      failed: [FAIL]
+      error: [error.message]
+    result: video_result.0.url
+    offer: [cogvideox-3, cogvideox-flash]
+
+  - name: zhipu-vidu-reference
+    kind: video
+    host: bigmodel\.cn
+    model: vidu.*reference
+    images: 3
+    need: {images: 1}
+    image_url: url
+    seconds: [4]
+    request:
+      path: /videos/generations
+      json: {model: $model, prompt: $prompt, image_url: $images, duration: 4, size: 1280x720}
+    task: id
+    poll: *zhipu-poll
+    result: video_result.0.url
+    offer: [vidu2-reference]
+
+  - name: zhipu-vidu-start-end
+    kind: video
+    host: bigmodel\.cn
+    model: vidu.*start-end
+    frames: 2
+    need: {frames: 2}
+    image_url: url
+    request:
+      path: /videos/generations
+      json: {model: $model, prompt: $prompt, image_url: $images}
+    task: id
+    poll: *zhipu-poll
+    result: video_result.0.url
+    offer: [vidu2-start-end]
+
+  - name: zhipu-vidu-image
+    kind: video
+    host: bigmodel\.cn
+    model: vidu.*image
+    frames: 1
+    need: {frames: 1}
+    request:
+      path: /videos/generations
+      json: {model: $model, prompt: $prompt, image_url: $image1}
+    task: id
+    poll: *zhipu-poll
+    result: video_result.0.url
+    offer: [vidu2-image]
+
+  - name: zhipu-vidu-text
+    kind: video
+    host: bigmodel\.cn
+    model: vidu.*text
+    ratios: ["16:9", "9:16", "1:1"]
+    request:
+      path: /videos/generations
+      json: {model: $model, prompt: $prompt, aspect_ratio: $ratio}
+    task: id
+    poll: *zhipu-poll
+    result: video_result.0.url
+    offer: [viduq1-text]
+
+  - name: zhipu-cogvideox
+    kind: video
+    host: bigmodel\.cn
+    model: cogvideox
+    frames: 1
+    sizes: {"16:9": 1920x1080, "9:16": 1080x1920, "1:1": 1024x1024}
+    request:
+      path: /videos/generations
+      json: {model: $model, prompt: $prompt, image_url: $image1, size: $size}
+    task: id
+    poll: *zhipu-poll
+    result: video_result.0.url

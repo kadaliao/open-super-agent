@@ -44,7 +44,7 @@ export default function Channels() {
       {list.map(c => <ChannelCard key={c.id} c={c} onChange={load} />)}
       <AddChannel first={!list.length} onAdded={load} />
       <h4>{t('网页地址')}</h4>
-      <p className="muted small">{t('消息里的页面链接、“去网页接手”按钮会用这个地址。手机上要能打开，最好是 https。')}</p>
+      <p className="muted small">{t('消息里的页面链接、“去网页接手”按钮会用这个地址，生成视频时给视频服务的参考视频地址也用它。手机上要能打开，最好是 https。')}</p>
       <div className="env-row">
         <input value={url} onChange={e => setUrl(e.target.value)} placeholder={location.origin} />
         <button className="btn" disabled={url === saved} onClick={saveUrl}>{t('保存')}</button>

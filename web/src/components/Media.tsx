@@ -154,12 +154,14 @@ export function FileCard({ a }: { a: Attachment }) {
   )
 }
 
-// 视频、音频：直接在对话里放。点了播放才开始取（preload=none）：翻到这条消息不会去开电脑、连 Mac，手机上也不白耗流量
+// 视频、音频：直接在对话里放。点了播放才开始取（preload=none）：翻到这条消息不会去开电脑、连 Mac，手机上也不白耗流量。
+// 生成的视频存在服务器上（a.media），其余的在电脑里（a.path）
 function MediaCard({ a, kind }: { a: Attachment; kind: 'video' | 'audio' }) {
   const el = useRef<HTMLVideoElement & HTMLAudioElement>(null)
   const [on, setOn] = useState(kind === 'audio')
   const [err, setErr] = useState('')
-  const url = fileUrl(a.path!, a.mac)
+  const url = a.media ? mediaUrl(a.media) : fileUrl(a.path!, a.mac)
+  const dlUrl = a.media ? mediaUrl(a.media) + '?download=1' : fileUrl(a.path!, a.mac, true)
   const play = () => {
     setOn(true)
     if (err) { setErr(''); el.current?.load() }
@@ -175,14 +177,15 @@ function MediaCard({ a, kind }: { a: Attachment; kind: 'video' | 'audio' }) {
       <div className="att-media-bar">
         <span className="file-name" title={a.path}>{a.name}</span>
         {a.size != null && <span className="file-sub">{fmtSize(a.size)}</span>}
-        <DownloadBtn href={fileUrl(a.path!, a.mac, true)} name={a.name} />
+        <DownloadBtn href={dlUrl} name={a.name} />
       </div>
       {err && <div className="att-err">{err}</div>}
     </div>
   )
 }
 
-const kindOf = (a: Attachment) => a.media ? 'image' : a.path && VIDEO.test(a.name) ? 'video' : a.path && AUDIO.test(a.name) ? 'audio' : 'file'
+const kindOf = (a: Attachment) => a.media && !a.mime?.startsWith('video/') ? 'image'
+  : a.mime?.startsWith('video/') || (a.path && VIDEO.test(a.name)) ? 'video' : a.path && AUDIO.test(a.name) ? 'audio' : 'file'
 
 // 消息里的附件：图片显示缩略图（一张按原比例，几张排成方格），视频、音频直接放，其余是文件卡片。actions：看大图时多出的按钮
 export function Attachments({ items, actions }: { items?: Attachment[]; actions?: (a: Attachment) => ViewerItem['actions'] }) {

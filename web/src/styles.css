@@ -1054,6 +1054,9 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .viewer-name { color: #ccc; font-size: 13px; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .img-caption { margin-top: 6px; font-size: 13.5px; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 560px; }
 .img-meta { font-size: 12px; color: var(--fg3); margin-top: 2px; }
+.video-job { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; max-width: 560px; }
+.video-job-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.video-job.failed .video-job-head { color: var(--bad); }
 .img-meta b { color: var(--good); font-weight: 600; }
 .draw-prompt { margin: 8px 0 6px; padding: 8px 12px; border-left: 3px solid var(--warn); background: var(--bg); border-radius: 0 8px 8px 0; white-space: pre-wrap; word-break: break-word; }
 .approval-card.botadmin.danger { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad) 5%, var(--bg)); }

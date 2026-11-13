@@ -5,7 +5,8 @@ Tailscale 这类地址，免得别人把自己的域名解析到 127.0.0.1，借
 
 登录后发一个 HttpOnly cookie：<过期时间>.<签名>。签名密钥由 data/session.key 和密码一起派生，
 改密码或删掉 session.key 后，所有设备都要重新登录。
-不用登录就能访问的：登录页、分享页（/s/、/skill/、/template/ 和 /api/shared/）、webhook（有自己的 token）、前端静态文件。
+不用登录就能访问的：登录页、分享页（/s/、/skill/、/template/ 和 /api/shared/）、webhook（有自己的 token）、前端静态文件、
+给视频服务取参考素材的限时地址（/pub/media/，自己验签名，见 generation.public_link）。
 """
 import asyncio
 import fnmatch
@@ -35,7 +36,7 @@ PAIR_TTL = 300               # 手机 App 扫码配对用的票，5 分钟内有
 
 # 前端构建产物里不含数据的文件：登录页和分享页要用
 PUBLIC_FILES = {"/manifest.json", "/sw.js", "/favicon.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"}
-PUBLIC_PREFIXES = ("/assets/", "/hooks/", "/api/shared/", "/s/", "/skill/", "/template/", "/avatars/")
+PUBLIC_PREFIXES = ("/assets/", "/hooks/", "/api/shared/", "/s/", "/skill/", "/template/", "/avatars/", "/pub/")
 # 没开登录时，Host 是这些名字才接受：别人没法让这些名字解析到你的 127.0.0.1
 LOCAL_SUFFIXES = (".localhost", ".local", ".ts.net")
 

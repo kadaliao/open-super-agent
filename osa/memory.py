@@ -206,6 +206,14 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
             refs = "、".join(x.get("name") or "" for x in meta.get("refs") or [])
             msgs.append({"role": "user", "content": f"（系统通知：{whose}{'照着 ' + refs + ' ' if refs else ''}画好了一张图，已经显示给用户。"
                                                     f"描述：{defang(meta.get('prompt') or c)}）{_image_ids(meta, all_=True)}"})
+        elif r == "task" and meta.get("kind") == "video":   # generate_video 生成好的视频
+            whose = name(b) if others and b else "你"
+            ids = "".join(f"\n[视频] {a['media']}" for a in meta.get("attachments") or [] if a.get("media"))   # i18n-ignore：给模型的标记
+            msgs.append({"role": "user", "content": f"（系统通知：{whose}生成好了一段视频，已经显示给用户。描述：{defang(meta.get('prompt') or c)}）{ids}"})
+        elif r == "task" and meta.get("kind") == "video_job":   # 正在生成的；好了、失败另有消息，这里只说还在等的
+            if meta.get("status") == "running":
+                whose = name(b) if others and b else "你"
+                msgs.append({"role": "user", "content": f"（系统通知：{whose}提交的视频还在生成，好了会自动显示。描述：{defang(meta.get('prompt') or c)}）"})
         elif r == "task" and meta.get("kind") in ("dm", "dm_reply"):
             msgs.append({"role": "user", "content": _dm_line(meta, defang(c), b, me, name)})
         elif r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式

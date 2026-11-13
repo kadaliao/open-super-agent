@@ -1,6 +1,7 @@
-"""对话里的图片和附件：用户发的、Bot 发的（send_file）、Bot 画的。
+"""对话里的图片和附件：用户发的、Bot 发的（send_file）、Bot 画的；还有 Bot 生成的视频（videos.py）。
 
 - 图片存在数据库的 media 表里，备份时跟着走。id 是内容的哈希，同一张图只存一份。只收 PNG / JPEG / WebP / GIF。
+  生成的视频（MP4 / WebM / MOV）和当参考视频用的也存在这里（save 的 video=True），看的时候按 Range 分段发。
   浏览器先把大图缩到最长边 1600 像素左右再传；聊天软件发来的图片原样存（它们自己已经压过）。
 - 用 /api/media/<id> 看，要登录（和头像不一样：对话里的图片是私人的）。内容不会变，可以长缓存。
 - 附件记在消息的 meta.attachments 里：[{name, size, path?, media?, mime?, w?, h?}]。path 是电脑里的文件
@@ -41,6 +42,10 @@ def sniff(b: bytes) -> str | None:
         return "image/webp"
     if b[:6] in (b"GIF87a", b"GIF89a"):
         return "image/gif"
+    if b[4:8] == b"ftyp":
+        return "video/quicktime" if b[8:12] == b"qt  " else "video/mp4"
+    if b.startswith(b"\x1aE\xdf\xa3"):
+        return "video/webm"
     return None
 
 
@@ -83,14 +88,14 @@ def _clean_name(name: str, mime: str) -> str:
     return name or "image." + mime.split("/")[1].replace("jpeg", "jpg")
 
 
-def save(data: bytes, name: str = "", limit: int = MAX_BYTES) -> dict:
-    """存一张图片，返回它的信息（id、mime、name、size、w、h）。不是支持的图片格式就报错。"""
+def save(data: bytes, name: str = "", limit: int = MAX_BYTES, video: bool = False) -> dict:
+    """存一张图片（video=True 时也收视频），返回它的信息（id、mime、name、size、w、h）。不是支持的格式就报错。"""
     if not data:
         raise ValueError(i18n.t("没收到图片"))
     if len(data) > limit:
         raise ValueError(i18n.t("图片太大了（最多 {n} MB）", n=limit >> 20))
     mime = sniff(data)
-    if not mime:
+    if not mime or (mime.startswith("video/") and not video):
         raise ValueError(i18n.t("只支持 PNG、JPG、WebP、GIF 图片"))
     mid = hashlib.sha256(data).hexdigest()[:24]
     w, h = dimensions(data, mime)
@@ -115,6 +120,12 @@ def info(mid) -> dict | None:
         return None
     r = conn.execute("select mime, name, size, w, h from media where id=?", (mid,)).fetchone()
     return {"id": mid, "mime": r[0], "name": r[1], "size": r[2], "w": r[3], "h": r[4]} if r else None
+
+
+def read_range(mid: str, start: int, length: int) -> bytes:
+    """视频的一段（从 0 数），不用整个读出来。"""
+    r = conn.execute("select substr(data, ?, ?) from media where id=?", (start + 1, length, mid)).fetchone()
+    return bytes(r[0]) if r and r[0] is not None else b""
 
 
 def url(mid: str) -> str:
@@ -246,8 +257,13 @@ SEND_FILE = {"type": "function", "function": {
 MAX_SEND = 5   # 一轮（一个任务）最多发几个
 
 
-async def from_computer(path: str) -> dict:
+VIDEO_EXT = re.compile(r"\.(mp4|m4v|mov|webm)$", re.I)
+MAX_VIDEO_REF = 100 << 20   # 当参考视频用的，各家一般收 50 到 200 MB
+
+
+async def from_computer(path: str, video: bool = False) -> dict:
     """电脑里的一个文件 → 附件。图片另存一份进 media（电脑关了也能看）。出错时报 ValueError，文字给模型看。
+    video：视频也存一份进 media（当参考视频用；send_file 发的视频不存，照旧从电脑里放）。
     派到你的 Mac 上的任务发的是那台 Mac 上的文件。"""
     from . import computer
     c = computer.current()
@@ -268,6 +284,14 @@ async def from_computer(path: str) -> dict:
         if sniff(data):
             m = save(data, att["name"])
             att |= {"media": m["id"], "mime": m["mime"], "w": m["w"], "h": m["h"]}
+    elif video and st["size"] <= MAX_VIDEO_REF and VIDEO_EXT.search(p):
+        try:
+            data = await c.read_bytes(p, MAX_VIDEO_REF)
+        except computer.ComputerError:
+            data = b""
+        if (sniff(data) or "").startswith("video/"):
+            m = save(data, att["name"], limit=MAX_VIDEO_REF, video=True)
+            att |= {"media": m["id"], "mime": m["mime"]}
     return att
 
 

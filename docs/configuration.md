@@ -36,13 +36,56 @@
 那一轮去掉图片重试，之后按不能看图处理。
 
 **画图**（设置 → 模型 最下面）：你让 Bot 画图、生成头像时用哪个模型。列表是已经配好的服务里能画图的模型
-（硅基流动的 Kolors、Qwen-Image、Z-Image，OpenAI 的 gpt-image，智谱的 CogView……，按名字认；名字带 `Edit`、`Kontext` 的只能改图，不在这里），
+（硅基流动的 Kolors、Qwen-Image、Z-Image，OpenAI 的 gpt-image，智谱的 CogView……，按[配方](#画图和生成视频的配方)认；只能改图的不在这里），
 选“自动”就用排在最前面的（Kolors 免费，优先）。生成头像时换了模型也会记下来。没有能画图的模型时，Bot 会照实告诉你去添加。
 
-下面一行**照着图片画**：你发图让 Bot 照着改、照着画时用哪个模型。能收参考图的有硅基流动的 Qwen-Image-Edit-2509（最多 3 张）、
-Qwen-Image-Edit、FLUX.1-Kontext、Kolors（各 1 张），OpenAI 的 gpt-image（最多 16 张），火山方舟的 Seedream 4 以后的版本（最多 10 张）；
-别家转发的同名模型不一定认这些参数，所以只认 gpt-image。选“自动”时按会不会按说的改排，Kolors 只会图生图，排最后。
-给的图比选的模型能收的多时，自动换一个能收的；都收不了，Bot 会让你少给几张。
+下面一行**照着图片画**：你发图让 Bot 照着改、照着画时用哪个模型。默认配方里能收参考图的有硅基流动的 Qwen-Image-Edit-2509（最多 3 张）、
+Qwen-Image-Edit、FLUX.1-Kontext、Kolors（各 1 张），OpenAI 的 gpt-image（最多 16 张），火山方舟的 Seedream 4 以后的版本（最多 10 张）。
+选“自动”时按会不会按说的改排，Kolors 只会图生图，排最后。给的图比选的模型能收的多时，自动换一个能收的；都收不了，Bot 会让你少给几张。
+
+**生成视频**（画图下面）：你让 Bot 生成视频时用哪个模型。默认配方认得硅基流动的 Wan（文生视频、图生视频）、阿里云百炼的万相
+（文生、图生、首尾帧、参考生视频）、智谱的 CogVideoX 和 Vidu、火山方舟的 Seedance。要等几分钟：先弹卡片确认，同意后对话里显示“正在生成”，
+好了换成播放器（服务重启了也会接着等）。给了图片或视频当参考、选的模型收不了时，自动换一个收得了的。
+参考视频（还有要网址的配方的参考图）给视频服务的是 6 小时内有效的临时地址（`/pub/media/…`，带签名，不用登录），
+所以要在 设置 → 聊天软件 里填好网页地址，而且外面打得开；本机、内网地址（比如自己电脑上的桌面 App）用不了参考视频。
+
+### 画图和生成视频的配方
+
+各家生图、生视频的接口参数都不一样（字段名、参考图怎么传、异步任务怎么查），所以**代码里不写死**，写成一条条配方：
+默认的在 `osa/generation.yaml`，`config.yaml` 的 `generation.recipes` 里写的排在默认的前面，`name` 和默认的一样就替掉默认的那条。
+新出的模型、别家的服务，照着加一条就行，不用改代码、不用等新版本。
+
+```yaml
+generation:
+  recipes:
+    - name: my-video                  # 名字，替掉默认的就写一样的
+      kind: video                     # image 或 video
+      host: example\.com              # 接口地址里的词（正则，不分大小写），也可以直接写服务的名字
+      model: my-video                 # 模型名（正则，不分大小写）
+      frames: 1                       # 能收几张开头（和结尾）画面；images 是参考图，videos 是参考视频，total 是加起来最多几个
+      need: {frames: 1}               # 至少要几个（只能图生视频的写这个；refs 是参考图加参考视频）
+      seconds: [4, 8]                 # 能选的时长，也可以写 "2-15"；sizes / ratios 是能选的比例（sizes 换成接口要的尺寸）
+      ratios: ["16:9", "9:16"]
+      request:                        # 提交：method（默认 POST）、path（相对接口地址，或 ${origin}/… 用接口的域名）、headers、json
+        path: /v/submit
+        json: {model: $model, prompt: $prompt, first: $image1, secs: $seconds, ar: $ratio}
+      task: job.id                    # 回包里任务 id 在哪（视频）
+      poll:                           # 怎么查进度
+        request: {method: GET, path: "/v/jobs/${id}"}
+        status: job.state
+        done: [ok]
+        failed: [bad]
+        error: job.why
+      result: job.file                # 结果在回包哪里（网址就下载，否则当 base64；可以写好几个，第一个有值的算）
+  prefer:                             # 设置里选“自动”时按这个顺序挑（模型名里有这个词就算）
+    video: [my-video, seedance]
+```
+
+模板里值正好是 `$名字` 的换成变量，没有这个变量的整项去掉；字符串里的 `${名字}` 换成文字。变量有 `model`、`prompt`、`seconds`、`ratio`、
+`size`、`id`、`origin`、`image1`…`imageN`、`images`（参考图列表）、`media`（全部参考素材）。列表里写 `{$each: media, as: {...}}`
+按每个素材展开一项，素材里有 `url`、`type`（image / video）、`role`（按 `roles` 换成接口的叫法，比如 `{first: first_frame, video: reference_video}`）。
+参考图默认传 base64，写 `image_url: url` 改成传临时网址；画图带参考图时换成 `edit` 里写的请求（`form` + `files` 是 multipart 上传）。
+`skip: true` 的配方表示“这类不算”。完整的例子见 `osa/generation.yaml`。
 
 服务和模型旁边显示品牌图标：模型按名字认（`deepseek-…`、`qwen…`、`claude-…`、OpenRouter 的 `openai/gpt-…` 这类都认得），
 认不出的用服务的图标；“其他”里添加的服务按接口地址认（火山引擎、Anthropic、Groq……），也认不出的显示一个服务器图标。
@@ -89,11 +132,14 @@ pricing:
     siliconflow:                                 # 服务商：接口地址里有这个词，或者就是服务的名字
       Kolors: 0                                  # 模型：写完整 id，或者只写最后一段（不分大小写）
       Z-Image-Turbo: 0.1
+  videos:                                        # 生成视频：每段多少钱，或者 {per_second: x} 每秒多少钱
+    dashscope: {wan2.7-t2v: {per_second: 0.7}}
 ```
 
 **画图按张计价**：models.dev 没有按张的价格，所以写在 `pricing.images` 里，按实际用的服务和模型查。默认配置写了硅基流动的几个
 （2026-11 抄自官网：Kolors 免费，Z-Image-Turbo 每张 0.1 元，Qwen-Image、Z-Image 每张 0.3 元）。用别家的画图模型，照这个格式加上。
 没写的在设置页和确认卡片上显示“价格未知”，费用按 0 记；本机的按 0 计。每画一张（对话里画的、生成头像的）在观测页“按用途”的“画图”下面记一次。
+视频写在 `pricing.videos`，查法一样；各家价格变得快，默认一个都没写，用哪家照官网填上。生成好的每一段记在“生成视频”下面。
 
 **限额**在 设置 → 限制与预算 里改：每天最多用多少 token、每个任务最多几步、任务最长跑多久、后台任务等确认多久、Heavy 模式同时跑几个。
 对应 `config.yaml` 的 `limits`（`daily_token_budget`、`worker_max_steps`、`task_timeout_s`、`approval_timeout_s`，另外还有 `watchdog_interval_s`）和 `heavy.workers`。
@@ -282,7 +328,7 @@ mcp_servers:
   总是允许（加一条规则；终端是“总是允许这个前缀”，前缀能在卡片上改）。新建、修改、删除 Bot 和 Worker 自己发起的 `ask_approval` 只能一次一次地允许；
   对话里画图这类不属于某个任务的卡片没有“本次任务内允许”。聊天软件里的卡片也有“本次任务内允许”按钮（打字回复“本次任务内允许 #编号”也行），
   终端的“总是允许”按命令的第一个词。在对话里用文字回复确认时，Bot 也能按“本次任务内”或“接下来 N 分钟”处理（`resolve_approval` 的 `scope`：`task`、`minutes:N`）。
-  对话里画图（`generate_image`）默认每次都问，卡片上写着描述、模型和价格；点“总是允许”以后就不问了。
+  对话里画图（`generate_image`）、生成视频（`generate_video`）默认每次都问，卡片上写着描述、模型和价格；点“总是允许”以后就不问了。
 - **过期**：只有定时任务和事件触发的后台任务，卡片在 `approval_timeout_s` 后按拒绝处理；对话里的任务一直等。
 - **保险库**（设置 → 保险库）：Fernet 加密存在 SQLite。主密钥取 `OSA_VAULT_KEY`，没设置时自动生成 `data/vault.key`（权限 600）。换主密钥后旧密钥解不开，需要重新录入。
 

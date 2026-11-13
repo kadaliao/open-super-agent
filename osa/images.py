@@ -7,12 +7,12 @@
 - 画好的原图存进 media，对话里记一条 role=task、kind=image 的消息（带描述、模型、价格和附件），显示成 Bot 发的图片。
 - 参考图（images 参数）：照着改、照着画。写对话里图片的编号（上下文里“[图片] 编号”，见 memory.context）或电脑里的路径
   （“[附件] 路径”）。路径先在消息的附件里找存好的那份，找不到再去电脑里读。带了参考图就用“照着图片画”的模型
-  （avatars.current(refs)），各家怎么传在 imagegen.py。参考了哪几张记在消息的 meta.refs 里。
+  （avatars.current(refs)），各家怎么传按配方（generation.yaml）。参考了哪几张记在消息的 meta.refs 里。
 """
 import asyncio
 import re
 from types import SimpleNamespace
-from . import approvals, avatars, i18n, imagegen, library, media, prices
+from . import approvals, avatars, generation, i18n, library, media, prices
 from .config import CFG
 from .memory import conn
 
@@ -91,20 +91,20 @@ async def find_refs(items) -> list[dict]:
     return out
 
 
-def _load(refs: list[dict]) -> list[imagegen.Ref]:
+def _load(refs: list[dict]) -> list[generation.Ref]:
     out = []
     for r in refs:
         got = media.get(r["id"])
         if not got:
             raise ValueError(i18n.t("参考图已经被清理掉了：{name}", name=r["name"]))
-        out.append(imagegen.Ref(got[1], got[0], r["name"]))
+        out.append(generation.Ref(got[1], got[0], r["name"], role="image", w=r.get("w") or 0, h=r.get("h") or 0))
     return out
 
 
 async def _make(chat_id: int, prompt: str, m: dict, post, refs: list[dict]) -> str:
     """真的画，画好发进对话。返回给模型的话；失败时报 ValueError。"""
     data, _ = await avatars.draw(prompt, m["provider"], m["model"], _load(refs))
-    item = media.save(data, _name(prompt), limit=imagegen.MAX_GENERATED)
+    item = media.save(data, _name(prompt), limit=generation.MAX_IMAGE)
     price = prices.image_price(m["provider"], m["model"])
     att = {"name": item["name"], "size": item["size"], "media": item["id"], "mime": item["mime"], "w": item["w"], "h": item["h"]}
     await post("task", f"[画图] {prompt}", chat_id, kind="image", prompt=prompt, model=m["model"], provider=m["provider"],

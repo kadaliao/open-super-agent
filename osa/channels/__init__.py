@@ -285,6 +285,8 @@ def render(m: dict, group: bool) -> str | None:
         return f"**{head}**" + (f" · {name}" if group else "") + f"\n\n{body}" + files
     if kind == "image":
         return i18n.t("🎨 {name} 画好了一张图：{prompt}", name=name, prompt=meta.get("prompt") or "") + files
+    if kind == "video":
+        return i18n.t("🎬 {name} 生成好了一段视频：{prompt}", name=name, prompt=meta.get("prompt") or "") + files
     if kind == "cancel":
         return "⏹ " + content.strip("[]")
     if kind == "handoff":

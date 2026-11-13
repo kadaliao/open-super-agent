@@ -84,6 +84,18 @@ pricing:
       Z-Image-Turbo: 0.1
       Qwen-Image: 0.3
       Z-Image: 0.3
+  # 生成视频：元 / 段，查法和 images 一样。写数字是每段的价格，写 {per_second: 0.5} 是每秒的价格（乘上时长）。
+  # 各家价格变得快，默认不写（卡片上显示“价格未知”），用哪家照官网填上，例如：
+  #   siliconflow: {Wan2.2-T2V-A14B: 2}
+  #   dashscope: {wan2.7-t2v: {per_second: 0.7}}
+  videos: {}
+
+# 画图、生成视频的配方：各家接口怎么调。默认的在 osa/generation.yaml（硅基流动、火山方舟、OpenAI、阿里云百炼、智谱），
+# 这里写的排在默认的前面、同名的替掉默认的，新服务、新模型照着加一条就行，不用改代码。说明见 docs/configuration.md
+generation:
+  recipes: []
+  # prefer:            # 设置里选“自动”时按这个顺序挑（模型名里有这个词就算）
+  #   video: [seedance, wan2.7]
 
 # 旧版触发器：只在首次启动时导入成主 Bot 的定时任务，之后请在界面右栏“定时”里管理
 triggers:

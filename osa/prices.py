@@ -127,21 +127,36 @@ def _manual(model: str):
     return CFG["pricing"]["models"].get(model)
 
 
-def image_price(provider: str, model: str) -> float | None:
-    """画一张图多少钱（pricing.images，单位和 currency 一样）；本机的算 0，没写的返回 None。"""
+def _unit_price(table_name: str, provider: str, model: str):
+    """pricing.images / pricing.videos 里这个模型的那一项；本机的算 0，没写的返回 None。"""
     from .providers import _local
     base = ((CFG["providers"].get(provider) or {}).get("base_url") or "").lower()
     if _local(base):
         return 0.0
     tail = model.rsplit("/", 1)[-1].lower()
-    for host, table in (CFG["pricing"].get("images") or {}).items():
+    for host, table in (CFG["pricing"].get(table_name) or {}).items():
         if host.lower() not in base and host != provider:
             continue
         for name, price in (table or {}).items():
             n = str(name).lower()
             if n == model.lower() or ("/" not in n and n == tail):   # 写完整 id，或者只写最后一段
-                return float(price)
+                return price
     return None
+
+
+def image_price(provider: str, model: str) -> float | None:
+    """画一张图多少钱（pricing.images，单位和 currency 一样）；本机的算 0，没写的返回 None。"""
+    p = _unit_price("images", provider, model)
+    return None if p is None else float(p)
+
+
+def video_price(provider: str, model: str, seconds: int | None = None) -> float | None:
+    """生成一段视频多少钱（pricing.videos）：写数字是每段的价格，写 {per_second: x} 是每秒的价格（乘上时长；不知道时长按 5 秒）。
+    本机的算 0，没写的返回 None。"""
+    p = _unit_price("videos", provider, model)
+    if isinstance(p, dict):
+        return float(p.get("per_second") or 0) * (seconds or 5)
+    return None if p is None else float(p)
 
 
 def lookup(provider: str | None, model: str) -> dict:

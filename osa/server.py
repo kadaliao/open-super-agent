@@ -20,7 +20,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, events, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
-from . import mcpapps, observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault
+from . import generation, mcpapps, observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault, videos
 from .computer import link
 from .computer.base import HOSTS
 from . import builtin, registry  # noqa: F401  builtin：导入即注册内置工具
@@ -51,6 +51,7 @@ async def broadcast(event: dict):
 
 rt.notify = broadcast
 approvals.notify = broadcast
+videos.notify = broadcast
 mcp_hub.notify = broadcast
 routines.notify = broadcast
 groups.notify = broadcast
@@ -96,6 +97,7 @@ async def lifespan(app):
     bg = [asyncio.create_task(watchdog()), asyncio.create_task(routines.scheduler()),
           asyncio.create_task(computer.idle_pauser()), asyncio.create_task(search.embed_loop()),
           asyncio.create_task(prices.loop()), asyncio.create_task(tasklog.prune_loop()), asyncio.create_task(media.gc_loop())]
+    videos.resume()   # 重启前在生成的视频接着查
     if os.environ.get("OSA_PARENT_PID", "").isdigit():
         bg.append(asyncio.create_task(parent_watch(int(os.environ["OSA_PARENT_PID"]))))
     search.sync()   # 补上旧数据的索引；配了 embedding 的话后台开始算向量
@@ -295,27 +297,53 @@ async def upload_media(request: Request, name: str = ""):
         _err(e)
 
 
-def _media_response(mid: str, download: bool = False) -> Response:
-    got = media.get(mid)
+def _media_response(mid: str, download: bool = False, rng: str | None = None) -> Response:
+    """对话里的图片、视频。视频按 Range 分段发（能拖进度，iPhone 上的 Safari 不分段就不放）。"""
+    got = media.info(mid)
     if not got:
         raise HTTPException(404)
-    mime, data, name = got
-    return Response(data, media_type=mime, headers={
-        "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "default-src 'none'",
-        "Content-Disposition": f"{'attachment' if download else 'inline'}; filename*=UTF-8''{quote(name)}"})
+    mime, size, name = got["mime"], got["size"], got["name"]
+    headers = {"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+               "Content-Security-Policy": "default-src 'none'",
+               "Content-Disposition": f"{'attachment' if download else 'inline'}; filename*=UTF-8''{quote(name)}"}
+    if not mime.startswith("video/"):
+        return Response(media.get(mid)[1], media_type=mime, headers=headers)
+    headers["Accept-Ranges"] = "bytes"
+    part = _byte_range(rng, size)
+    if part is False:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"})
+    if part is None:
+        return Response(media.read_range(mid, 0, size), media_type=mime, headers=headers)
+    start, end = part
+    return Response(media.read_range(mid, start, end - start + 1), status_code=206, media_type=mime,
+                    headers=headers | {"Content-Range": f"bytes {start}-{end}/{size}"})
 
 
 @app.get("/api/media/{mid}")
-async def media_file(mid: str, download: bool = False):
-    """对话里的图片。要登录；地址是内容的哈希，内容不会变。"""
-    return _media_response(mid, download)
+async def media_file(request: Request, mid: str, download: bool = False):
+    """对话里的图片和视频。要登录；地址是内容的哈希，内容不会变。"""
+    return _media_response(mid, download, request.headers.get("range"))
 
 
 @app.get("/media/{mid}")
-async def media_page(mid: str):
+async def media_page(request: Request, mid: str):
     """同一张图片，给聊天软件里的链接用：不是 /api/ 开头，没登录时会先跳去登录页，登录后回到这里。"""
-    return _media_response(mid)
+    return _media_response(mid, rng=request.headers.get("range"))
+
+
+@app.get("/pub/media/{mid}")
+async def media_public(request: Request, mid: str, exp: int = 0, sig: str = ""):
+    """给视频服务取参考素材的限时地址（generation.public_link）：不用登录，签名对、没过期才给。"""
+    if not generation.verify(mid, exp, sig):
+        raise HTTPException(403)
+    r = _media_response(mid, rng=request.headers.get("range"))
+    r.headers["Cache-Control"] = "no-store"
+    return r
+
+
+@app.get("/api/videos/models")
+async def video_models():
+    return await videos.models()
 
 
 @app.get("/api/unfurl")

@@ -5,7 +5,7 @@ import time
 import httpx
 import pytest
 from fastapi import HTTPException
-from osa import avatars, bots, imagegen, memory, providers, server
+from osa import avatars, bots, generation, memory, providers, server
 from osa.config import CFG
 
 PNG = providers._png(4, 4, (255, 0, 0))
@@ -78,7 +78,7 @@ def image_providers(monkeypatch):
             return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(PNG).decode()}]})
         return httpx.Response(404)
 
-    monkeypatch.setattr(imagegen, "_TRANSPORT", httpx.MockTransport(handle))
+    monkeypatch.setattr(generation, "_TRANSPORT", httpx.MockTransport(handle))
     return seen
 
 
@@ -129,20 +129,55 @@ async def test_models_list(image_providers, monkeypatch):
     memory.conn.execute("delete from settings where key='image_edit_model'")
 
 
-def test_specs(monkeypatch):
+def test_recipes(monkeypatch):
+    """配方认模型：能收几张参考图、是不是只能改图；视频的首尾帧、参考视频、时长。"""
     monkeypatch.setitem(CFG["providers"], "sf", {"base_url": "https://api.siliconflow.cn/v1"})
     monkeypatch.setitem(CFG["providers"], "ark", {"base_url": "https://ark.cn-beijing.volces.com/api/v3"})
     monkeypatch.setitem(CFG["providers"], "oai", {"base_url": "https://api.openai.com/v1"})
-    S = imagegen.Spec
-    assert imagegen.spec("sf", "Kwai-Kolors/Kolors") == S(1)
-    assert imagegen.spec("sf", "Qwen/Qwen-Image") == S(0)
-    assert imagegen.spec("sf", "Qwen/Qwen-Image-Edit") == S(1, True)
-    assert imagegen.spec("sf", "Qwen/Qwen-Image-Edit-2509") == S(3, True)
-    assert imagegen.spec("sf", "black-forest-labs/FLUX.1-Kontext-pro") == S(1, True)
-    assert imagegen.spec("ark", "doubao-seedream-4-0-250828") == S(10)
-    assert imagegen.spec("ark", "doubao-seedream-3-0-t2i-250415") == S(0)
-    assert imagegen.spec("oai", "gpt-image-1.5") == S(16)
-    assert imagegen.spec("oai", "flux-kontext-pro") == S(0, True)   # 别家的改图模型不知道怎么传，不用
+    monkeypatch.setitem(CFG["providers"], "ds", {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"})
+    img = lambda p, m: (generation.caps("image", p, m).images, generation.caps("image", p, m).needs_ref)   # noqa: E731
+    assert img("sf", "Kwai-Kolors/Kolors") == (1, False)
+    assert img("sf", "Qwen/Qwen-Image") == (0, False)
+    assert img("sf", "Qwen/Qwen-Image-Edit") == (1, True)
+    assert img("sf", "Qwen/Qwen-Image-Edit-2509") == (3, True)
+    assert img("sf", "black-forest-labs/FLUX.1-Kontext-pro") == (1, True)
+    assert img("ark", "doubao-seedream-4-0-250828") == (10, False)
+    assert img("ark", "doubao-seedream-3-0-t2i-250415") == (0, False)
+    assert img("oai", "gpt-image-1.5") == (16, False)
+    assert generation.recipe("image", "oai", "flux-kontext-pro") is None   # 别家的改图模型不知道怎么传，不算
+    assert generation.recipe("image", "sf", "Wan-AI/Wan2.2-T2V-A14B") is None   # 视频模型不算画图的
+    assert generation.recipe("image", "oai", "gpt-5") is None
+
+    v = generation.caps("video", "ark", "doubao-seedance-2-0-260128")
+    assert (v.frames, v.images, v.videos, v.seconds[0], v.seconds[-1]) == (2, 9, 3, 4, 15)
+    v = generation.caps("video", "sf", "Wan-AI/Wan2.2-I2V-A14B")
+    assert v.need == {"frames": 1} and v.seconds == (5,) and v.ratios == ("16:9", "9:16", "1:1")
+    assert generation.recipe("video", "sf", "Wan-AI/Wan2.2-T2V-A14B")["name"] == "siliconflow-wan-t2v"
+    assert generation.recipe("video", "ds", "wan2.7-r2v")["name"] == "dashscope-wan-r2v"
+    assert generation.recipe("video", "ds", "wan2.2-i2v-plus")["name"] == "dashscope-wan-i2v"
+    assert "wan2.7-t2v" in generation.offers("video", "ds") and not generation.offers("video", "oai")
+
+
+def test_config_recipes_come_first(monkeypatch):
+    """config.yaml 里写的配方排在默认的前面，同名的替掉默认的；prefer 也能改。"""
+    monkeypatch.setitem(CFG["providers"], "sf", {"base_url": "https://api.siliconflow.cn/v1"})
+    mine = {"name": "siliconflow-kolors", "kind": "image", "host": "siliconflow", "model": "kolors", "images": 2,
+            "request": {"path": "/x", "json": {"model": "$model"}}, "result": "data.0.url"}
+    monkeypatch.setitem(CFG, "generation", {"recipes": [mine], "prefer": {"image": ["z-image"]}})
+    assert generation.caps("image", "sf", "Kwai-Kolors/Kolors").images == 2
+    assert [r["name"] for r in generation.recipes()].count("siliconflow-kolors") == 1
+    assert generation.rank("image", "Tongyi-MAI/Z-Image-Turbo") == 0 and generation.rank("image", "Kwai-Kolors/Kolors") == 1
+
+
+def test_render_template():
+    v = {"model": "m", "prompt": "p", "media": [{"url": "u1", "type": "image", "role": "first_frame"},
+                                                 {"url": "u2", "type": "video", "role": "reference_video"}], "seconds": None}
+    t = {"model": "$model", "duration": "$seconds", "content": [{"type": "text", "text": "$prompt"},
+         {"$each": "media", "as": {"type": "${type}_url", "${type}_url": {"url": "$url"}, "role": "$role"}}], "path": "/t/${model}"}
+    assert generation.render(t, v) == {"model": "m", "content": [
+        {"type": "text", "text": "p"}, {"type": "image_url", "image_url": {"url": "u1"}, "role": "first_frame"},
+        {"type": "video_url", "video_url": {"url": "u2"}, "role": "reference_video"}], "path": "/t/m"}
+    assert generation.pick({"a": [{"b": 1}]}, "a.0.b") == 1 and generation.pick({"a": []}, "a.0.b") is None
 
 
 async def test_draw_with_refs(monkeypatch):
@@ -157,34 +192,34 @@ async def test_draw_with_refs(monkeypatch):
     def handle(req: httpx.Request) -> httpx.Response:
         seen.append(req)
         return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(PNG).decode()}]})
-    monkeypatch.setattr(imagegen, "_TRANSPORT", httpx.MockTransport(handle))
-    a, b = imagegen.Ref(PNG, "image/png", "a.png"), imagegen.Ref(b"\xff\xd8\xff\xe0jpeg", "image/jpeg", "b.jpg")
+    monkeypatch.setattr(generation, "_TRANSPORT", httpx.MockTransport(handle))
+    a, b = generation.Ref(PNG, "image/png", "a.png"), generation.Ref(b"\xff\xd8\xff\xe0jpeg", "image/jpeg", "b.jpg")
 
-    assert (await imagegen.draw("换成夜景", "sf", "Qwen/Qwen-Image-Edit-2509", [a, b]))[0] == PNG
+    assert (await generation.draw("换成夜景", "sf", "Qwen/Qwen-Image-Edit-2509", [a, b]))[0] == PNG
     body = json.loads(seen[-1].content)
     assert body["image"] == a.data_url() and body["image2"] == b.data_url() and "image3" not in body and "image_size" not in body
-    await imagegen.draw("换成夜景", "sf", "black-forest-labs/FLUX.1-Kontext-pro", [a])
+    await generation.draw("换成夜景", "sf", "black-forest-labs/FLUX.1-Kontext-pro", [a])
     body = json.loads(seen[-1].content)
     assert body["input_image"] == a.data_url() and "image" not in body
-    await imagegen.draw("水彩风格", "sf", "Kwai-Kolors/Kolors", [a])
+    await generation.draw("水彩风格", "sf", "Kwai-Kolors/Kolors", [a])
     body = json.loads(seen[-1].content)
     assert body["image"] == a.data_url() and body["image_size"] == "1024x1024"
 
-    await imagegen.draw("放在一起", "oai", "gpt-image-1.5", [a, b])
+    await generation.draw("放在一起", "oai", "gpt-image-1.5", [a, b])
     req = seen[-1]
     assert req.url.path == "/v1/images/edits" and req.headers["content-type"].startswith("multipart/form-data")
     assert req.content.count(b'name="image[]"') == 2 and b'filename="image2.jpg"' in req.content and PNG in req.content
 
-    await imagegen.draw("放在一起", "ark", "doubao-seedream-4-0-250828", [a, b])
+    await generation.draw("放在一起", "ark", "doubao-seedream-4-0-250828", [a, b])
     assert json.loads(seen[-1].content)["image"] == [a.data_url(), b.data_url()]
-    await imagegen.draw("改一下", "ark", "doubao-seedream-4-0-250828", [a])
-    assert json.loads(seen[-1].content)["image"] == a.data_url()
+    await generation.draw("改一下", "ark", "doubao-seedream-4-0-250828", [a])
+    assert json.loads(seen[-1].content)["image"] == [a.data_url()]
 
     n = len(seen)
-    with pytest.raises(ValueError, match="最多参考 1 张"):
-        await imagegen.draw("x", "sf", "Kwai-Kolors/Kolors", [a, b])
-    with pytest.raises(ValueError, match="不能照着图片画"):
-        await imagegen.draw("x", "sf", "Qwen/Qwen-Image", [a])
-    with pytest.raises(ValueError, match="只能改图"):
-        await imagegen.draw("x", "sf", "Qwen/Qwen-Image-Edit", [])
+    with pytest.raises(ValueError, match="最多收 1 个参考图"):
+        await generation.draw("x", "sf", "Kwai-Kolors/Kolors", [a, b])
+    with pytest.raises(ValueError, match="不收参考图"):
+        await generation.draw("x", "sf", "Qwen/Qwen-Image", [a])
+    with pytest.raises(ValueError, match="只能照着原图生成"):
+        await generation.draw("x", "sf", "Qwen/Qwen-Image-Edit", [])
     assert len(seen) == n   # 参数不对的不去调接口

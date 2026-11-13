@@ -450,6 +450,12 @@ function handle(d: any) {
       if (m.role !== 'user' && (home !== state.active || (th && state.thread?.id !== cid) || desktop)) notifyOS(home, m, undefined, th && { id: cid, root: th.root })
       break
     }
+    case 'message_meta':   // 一条消息的状态变了（正在生成的视频：好了、失败了）
+      set(s => {
+        const list = s.messages[cid]
+        return list ? { messages: { ...s.messages, [cid]: list.map(x => x.id === d.id ? { ...x, meta: d.meta } : x) } } : {}
+      })
+      break
     case 'thread_seen':   // 别的页面或手机上看过了这个讨论串
       set(s => ({ threads: { ...s.threads, [d.thread.id]: { ...s.threads[d.thread.id], ...d.thread, parent: d.thread.parent, root: d.thread.root } } }))
       break
