@@ -395,6 +395,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 @media (pointer: coarse) { .composer-hint.keys { display: none; } }   /* 手机上没有 Enter、Shift 这些键 */
 
 /* ---------- 资料库 ---------- */
+.lib-intro { margin: 0 0 12px; line-height: 1.55; }
 .side-nav { display: flex; align-items: center; gap: 10px; margin: 0 8px 4px; padding: 8px 12px; border-radius: 12px; color: var(--fg2); font-size: 14.5px; text-align: left; }
 .side-nav:hover { background: var(--bg3); color: var(--fg); } .side-nav.active { background: var(--line); color: var(--fg); }
 .side-nav-icon { width: 34px; text-align: center; font-size: 16px; }

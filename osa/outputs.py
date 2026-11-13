@@ -8,9 +8,11 @@
 
 只看 Bot 自己说的话：用户的消息、派任务那条（目标多半是用户给的）、Bot 之间的私信和交接都不算。
 同一个文件、图片、链接出现多次只留最新的一次（链接带上出现了几次）。
+裸链接没有标题：用链接卡片抓到过的网页标题（unfurl.py 的 unfurls 表）；还没抓过的，前端显示时再去抓。
 """
 import json
 import re
+import sqlite3
 from urllib.parse import urlsplit
 from .memory import conn
 
@@ -145,5 +147,21 @@ def for_bot(bot_id: int, limit: int = 500, own_hosts: set[str] | None = None) ->
         put(f"page:{pid}", {"kind": "page", "ts": created, "updated": updated, "title": title, "page_id": pid,
                             "format": fmt, "shared": bool(token), "task_id": task_id, "chat_id": None, "msg_id": None})
 
-    out = sorted(items.values(), key=lambda x: x["ts"] or 0, reverse=True)
-    return out[:limit]
+    out = sorted(items.values(), key=lambda x: x["ts"] or 0, reverse=True)[:limit]
+    _name_links([x for x in out if x["kind"] == "link" and not x["title"]])
+    return out
+
+
+def _name_links(bare: list[dict]):
+    """裸链接用网页标题当名字：链接卡片抓成功过的（unfurls 表）直接拿来用。"""
+    for i in range(0, len(bare), 500):
+        chunk = bare[i:i + 500]
+        try:
+            rows = conn.execute(f"select url, data from unfurls where ok=1 and url in ({','.join('?' * len(chunk))})",
+                                [x["url"] for x in chunk]).fetchall()
+        except sqlite3.OperationalError:   # 还没有 unfurls 表（没加载链接卡片的环境）
+            return
+        got = {u: (json.loads(d or "{}").get("title") or "") for u, d in rows}
+        for x in chunk:
+            if got.get(x["url"]):
+                x["title"] = got[x["url"]]

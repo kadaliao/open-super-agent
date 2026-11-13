@@ -1427,7 +1427,8 @@
   "账号里还没有机器：第一次用电脑时会自动新建一台。": "No machines in the account yet. One is created the first time the computer is used.",
   "在设置里换用哪台电脑": "Change the computer in Settings",
   "换电脑": "Change",
+  "页面是 Bot 做好存下来的成品：报告、清单、网页、小应用，所有 Bot 的都在这里，存在服务的数据库里。可以置顶、改名、生成分享链接。": "Pages are finished work the bots saved: reports, lists, web pages and applets from every bot, stored in the service's database. You can pin, rename and share them.",
+  "文件是 Bot 用的那台电脑（{pc}）工作文件夹里的东西：它下载、生成的文件，你上传给它的文件。换了电脑，这里看到的也跟着换。": "Files are what's in the work folder of the bots' computer ({pc}): what they downloaded or made, and what you uploaded. Switch computers and this shows the other one's folder.",
   "Bot 用的电脑": "Bot computer",
-  "Bot 上网、跑命令、处理文件用的那台电脑。你的 Mac 不在这里：它们是派任务的去处，在 Bot 右栏的“电脑”里管。": "The computer bots use to browse, run commands and handle files. Your Macs aren't here: they're where tasks can be sent, managed under Computer in a bot's side panel.",
-  "文件在所有 Bot 共用的电脑里（{root}），Bot 下载、生成的文件都在这里。": "Files live on the computer all bots share ({root}). Anything bots download or create ends up here."
+  "Bot 上网、跑命令、处理文件用的那台电脑。你的 Mac 不在这里：它们是派任务的去处，在 Bot 右栏的“电脑”里管。": "The computer bots use to browse, run commands and handle files. Your Macs aren't here: they're where tasks can be sent, managed under Computer in a bot's side panel."
 }

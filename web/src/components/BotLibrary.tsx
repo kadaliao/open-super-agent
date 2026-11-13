@@ -4,6 +4,7 @@ import type { Bot } from '../types'
 import { lang, locale, t, tc } from '../i18n'
 import { Icon } from '../icons'
 import { DownloadBtn, FileLink, extLabel, fileUrl, fmtSize, mediaUrl, openImage } from './Media'
+import { fetchCard } from './Embeds'
 
 // 右栏“资料库”：这个 Bot 交给你的页面、文件、图片和链接，按时间倒序、按天分组（接口见 osa/outputs.py）
 
@@ -28,9 +29,33 @@ function day(ts: number) {
   if (n === 1) return t('昨天')
   return d.toLocaleDateString(locale, { month: 'long', day: 'numeric', weekday: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
-// 裸链接没有标题：显示 主机名 + 路径（去掉 www. 和结尾的 /）
-const linkText = (o: Output) => {
-  if (o.title) return o.title
+// 裸链接没有标题：服务器给了链接卡片抓过的网页标题就用它；还没抓过的，显示出来时再去抓（同时最多 4 个，
+// 抓到的记在 named 里，搜索也能用）。抓不到的显示 主机名 + 路径（去掉 www. 和结尾的 /）
+const named = new Map<string, string>()
+let fetching = 0
+const waiting: (() => void)[] = []
+function nameLater(url: string): Promise<string> {
+  return new Promise(done => {
+    const go = () => {
+      fetching++
+      fetchCard(url).then(c => { if (c?.title) named.set(url, c.title); done(c?.title || '') })
+        .finally(() => { fetching--; waiting.shift()?.() })
+    }
+    if (fetching < 4) go(); else waiting.push(go)
+  })
+}
+function useLinkName(o: Output) {
+  const [name, setName] = useState(() => o.title || named.get(o.url!) || '')
+  useEffect(() => {
+    if (o.kind !== 'link' || name) return
+    let live = true
+    nameLater(o.url!).then(n => { if (live && n) setName(n) })
+    return () => { live = false }
+  }, [o.url])
+  return name
+}
+const linkText = (o: Output, name = o.title || named.get(o.url!) || '') => {
+  if (name) return name
   try {
     const u = new URL(o.url!)
     return (u.host.replace(/^www\./, '') + decodeURI(u.pathname).replace(/\/$/, '') + u.search).slice(0, 140)
@@ -106,7 +131,8 @@ export function BotLibraryPanel({ bot }: { bot: Bot }) {
 }
 
 function Row({ o }: { o: Output }) {
-  const name = title(o)
+  const linkName = useLinkName(o)
+  const name = o.kind === 'link' ? linkText(o, linkName) : title(o)
   const icon = o.kind === 'image' ? <img className="blib-thumb" src={mediaUrl(o.media!)} alt="" loading="lazy" />
     : o.kind === 'file' ? <span className="file-ext blib-ext">{extLabel(name)}</span>
     : o.kind === 'page' ? <span className="blib-icon">{o.format === 'html' ? '◧' : '▤'}</span>

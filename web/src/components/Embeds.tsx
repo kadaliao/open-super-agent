@@ -79,7 +79,7 @@ export function Linkify({ text }: { text: string }) {
 // embed：短链接跳转到了视频或推文，按那个地址显示
 export type Card = { url: string; title: string; description: string; image: string; site: string; icon: string; embed?: string }
 const cards = new Map<string, Promise<Card | null>>()
-const fetchCard = (url: string) => {
+export const fetchCard = (url: string) => {
   if (!cards.has(url)) cards.set(url, api(`/api/unfurl?url=${encodeURIComponent(url)}`).then(d => (d.ok ? d as Card : null)).catch(() => null))
   return cards.get(url)!
 }

@@ -9,6 +9,7 @@ import { isEnter } from '../keys'
 import { useBack } from '../swipe'
 import { AppletFrame } from './Applet'
 import { FileLink, fileUrl } from './Media'
+import { PC_NAMES } from './Computer'
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 export const size = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`
@@ -81,6 +82,7 @@ function Pages() {
   )
   return (
     <div className="lib-list">
+      <p className="lib-intro muted small">{t('页面是 Bot 做好存下来的成品：报告、清单、网页、小应用，所有 Bot 的都在这里，存在服务的数据库里。可以置顶、改名、生成分享链接。')}</p>
       <input className="lib-search" value={q} placeholder={t('按意思找页面，比如“上次做的竞品对比”')} onChange={e => setQ(e.target.value)} />
       {hits && (hits.length ? hits.map(h => (
         <button key={h.ref} className="lib-row" onClick={() => openLibrary(h.ref)}>
@@ -175,6 +177,7 @@ export function SharedPage({ token }: { token: string }) {
 
 // ---------- 文件 ----------
 function Files() {
+  const pc = useStore(s => s.settings?.computer_current || '')
   const [path, setPath] = useState('')
   const [data, setData] = useState<FileListing | null>(null)
   const [busy, setBusy] = useState('')
@@ -186,13 +189,14 @@ function Files() {
     catch (e: any) { setErr(e.message) }
   }
   useEffect(() => { load() }, [])
+  const intro = t('文件是 Bot 用的那台电脑（{pc}）工作文件夹里的东西：它下载、生成的文件，你上传给它的文件。换了电脑，这里看到的也跟着换。', { pc: PC_NAMES[pc] || t('电脑') })
 
   if (err && !data) return <div className="error-line">{err}</div>
   if (!data) return <div className="muted">{t('加载中…')}</div>
   if (!data.running) return (
     <div className="lib-empty">
       <p>{data.state === 'paused' ? t('电脑没开（已暂停）。') : data.state === 'none' ? t('电脑没开（还没创建）。') : t('电脑没开。')}</p>
-      <p className="muted small">{t('文件在所有 Bot 共用的电脑里（{root}），Bot 下载、生成的文件都在这里。', { root: data.root })}</p>
+      <p className="muted small">{intro} {data.root}</p>
       <button className="btn primary" disabled={!!busy} onClick={async () => { setBusy(t('开机中…')); await load(path, true); setBusy('') }}>{busy || t('开机查看')}</button>
       {err && <div className="error-line">{err}</div>}
     </div>
@@ -217,6 +221,7 @@ function Files() {
 
   return (
     <div>
+      <p className="lib-intro muted small">{intro}</p>
       <div className="file-bar">
         <div className="crumbs">
           <button onClick={() => load(data.root)}>{t('工作目录')}</button>

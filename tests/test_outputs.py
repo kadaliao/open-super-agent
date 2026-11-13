@@ -81,6 +81,22 @@ def test_for_bot_collects_and_dedupes(bot):
     assert outputs.for_bot(other["id"])[0]["url"] == "https://other-bot.com"
 
 
+def test_bare_links_named_from_link_cards(bot):
+    """裸链接没有标题：链接卡片抓成功过的用网页标题；抓失败的、没抓过的留空（前端再去抓或显示网址）；markdown 写了文字的不改。"""
+    import json
+    from osa import unfurl  # noqa: F401  建 unfurls 表
+    b = bot()
+    memory.add("assistant", "看 https://named.example/a 和 https://failed.example/ 还有 https://never.example/x "
+                            "以及 [我起的名](https://titled.example/)", b["chat_id"], b["id"])
+    for url, data, ok in [("https://named.example/a", {"title": "网页的标题"}, 1), ("https://failed.example/", {}, 0),
+                          ("https://titled.example/", {"title": "网页自己的标题"}, 1)]:
+        memory.conn.execute("insert or replace into unfurls values(?,?,?,?)", (url, json.dumps(data, ensure_ascii=False), ok, 0))
+    memory.conn.commit()
+    titles = {x["url"]: x["title"] for x in outputs.for_bot(b["id"]) if x["kind"] == "link"}
+    assert titles == {"https://named.example/a": "网页的标题", "https://failed.example/": "",
+                      "https://never.example/x": "", "https://titled.example/": "我起的名"}
+
+
 async def test_route(bot, no_password):
     b = bot()
     memory.add("assistant", "https://route.example.com/x", b["chat_id"], b["id"])
