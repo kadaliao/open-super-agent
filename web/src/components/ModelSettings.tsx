@@ -46,7 +46,7 @@ export function useLists(providers: Provider[]) {
 const usedBy = (s: S, name: string) => [
   ...Object.entries(s.roles).filter(([, v]) => v.provider === name).map(([k]) => ROLE_NAMES[k] || k),
   ...(s.embedding.provider === name ? [t('按意思检索')] : []),
-  ...(s.image_model?.provider === name ? [t('画图')] : []),
+  ...(s.image_model?.provider === name || s.image_edit_model?.provider === name ? [t('画图')] : []),
 ]
 const host = (url: string) => url.replace(/^https?:\/\//, '')
 
@@ -304,36 +304,57 @@ export function TestButton({ t: test }: { t: ReturnType<typeof useTest> }) {
 
 function ImageModelCard() {
   const s = useStore(x => x.settings) as S
-  const toast = useToast()
   const [list, setList] = useState<ImageModel[] | null>(null)
-  const [auto, setAuto] = useState<ImageModel | null>(null)
-  const load = () => api('/api/avatars/models').then(r => { setList(r.models); setAuto(r.models[0] || null) }).catch(() => setList([]))
+  const [edit, setEdit] = useState<ImageModel[]>([])
+  const load = () => api('/api/avatars/models').then(r => { setList(r.models); setEdit(r.edit_models || []) }).catch(() => setList([]))
   useEffect(() => { load() }, [s.providers.map(p => p.name).join()])
+  return (
+    <div className="role-card">
+      <ImagePick label={t('画图模型')} field="image_model" cur={s.image_model} list={list}
+        note={list === null ? t('正在找能画图的模型…') : list.length ? t('{n} 个能画图的模型', { n: list.length }) : ''} />
+      {list && !list.length && <p className="muted small hint">{t('还没有能画图的模型。添加硅基流动（Kolors 免费）、OpenAI、智谱这类有画图模型的服务就能用。')}</p>}
+      {list && list.length > 0 && <>
+        <ImagePick label={t('照着图片画')} field="image_edit_model" cur={s.image_edit_model} list={edit}
+          note={t('你发图让 Bot 照着改、照着画时用')} />
+        {!edit.length && <p className="muted small hint">{t('现有的模型都不能照着图片画。硅基流动的 Qwen-Image-Edit、OpenAI 的 gpt-image、火山方舟的 Seedream 4 以后的版本可以。')}</p>}
+      </>}
+    </div>
+  )
+}
+
+// 画图模型的一行：下拉选模型（第一项“自动”用排在最前面的），下面是价格（照着图片画的还写最多几张）
+function ImagePick({ label, field, cur, list, note }: {
+  label: string; field: 'image_model' | 'image_edit_model'; cur?: { provider: string; model: string }; list: ImageModel[] | null; note: string
+}) {
+  const toast = useToast()
+  const cy = useStore(x => (x.settings as S).prices.currency)
   const key = (m: { provider: string; model: string }) => m.provider + '\n' + m.model
-  const cur = s.image_model?.provider ? key(s.image_model) : ''
+  const k = cur?.provider ? key(cur) : ''
+  const auto = list?.[0] || null
   const save = async (v: string) => {
     const [provider, model] = v ? v.split('\n') : ['', '']
     try {
-      setSettings(await api('/api/settings', { method: 'PUT', body: { image_model: { provider, model } } }))
+      setSettings(await api('/api/settings', { method: 'PUT', body: { [field]: { provider, model } } }))
       toast(t('已保存'))
     } catch (err: any) { toast(err.message, true) }
   }
-  const chosen = list?.find(m => key(m) === cur) || (!cur ? auto : null)
-  return (
-    <div className="role-card">
-      <div className="role-top">
-        <div className="role-text"><b>{t('画图模型')}</b><span>{list === null ? t('正在找能画图的模型…') : list.length ? t('{n} 个能画图的模型', { n: list.length }) : ''}</span></div>
-        {list && list.length > 0 && (
-          <select value={cur} onChange={e => save(e.target.value)} title={t('用哪个模型画')}>
-            <option value="">{auto ? t('自动（{model}）', { model: auto.model }) : t('自动')}</option>
-            {list.map(m => <option key={key(m)} value={key(m)}>{m.model} · {m.title}</option>)}
-            {cur && !list.some(m => key(m) === cur) && <option value={cur}>{s.image_model.model}</option>}
-          </select>)}
-      </div>
-      {chosen && <div className="role-meta"><span className="chip" title={t('按张的价格写在 config.yaml 的 pricing.images 里')}>{imagePrice(chosen.price, s.prices.currency)}</span></div>}
-      {list && !list.length && <p className="muted small hint">{t('还没有能画图的模型。添加硅基流动（Kolors 免费）、OpenAI、智谱这类有画图模型的服务就能用。')}</p>}
+  const chosen = list?.find(m => key(m) === k) || (!k ? auto : null)
+  const edit = field === 'image_edit_model'
+  return <>
+    <div className="role-top">
+      <div className="role-text"><b>{label}</b><span>{note}</span></div>
+      {list && list.length > 0 && (
+        <select value={k} onChange={e => save(e.target.value)} title={t('用哪个模型画')}>
+          <option value="">{auto ? t('自动（{model}）', { model: auto.model }) : t('自动')}</option>
+          {list.map(m => <option key={key(m)} value={key(m)}>{m.model} · {m.title}</option>)}
+          {k && cur && !list.some(m => key(m) === k) && <option value={k}>{cur.model}</option>}
+        </select>)}
     </div>
-  )
+    {chosen && <div className="role-meta">
+      <span className="chip" title={t('按张的价格写在 config.yaml 的 pricing.images 里')}>{imagePrice(chosen.price, cy)}</span>
+      {edit && !!chosen.refs && <span className="chip">{t('最多参考 {n} 张图', { n: chosen.refs })}</span>}
+    </div>}
+  </>
 }
 
 function EmbeddingCard() {

@@ -61,7 +61,8 @@ osa/
   bots.py          Bot 和对话的增删改查、旧数据迁移
   media.py         对话里的图片和附件：media 表、消息的 meta.attachments、给能看图的模型带上图片、send_file、清理没人用的
   images.py        对话里画图：generate_image 工具、画之前的确认卡片（在后台等，不卡住 Router）、画好的图发进对话
-  avatars.py       头像图片：上传的和 AI 画的（兼容 OpenAI 的 /images/generations，硅基流动单独处理）、公开访问、清理没人用的
+  avatars.py       头像图片：上传的和 AI 画的、公开访问、清理没人用的；画图用哪个模型（直接画的、照着图片画的）
+  imagegen.py      生图服务的接口：各家参数不一样（硅基流动、火山方舟、兼容 OpenAI 的），参考图怎么传、每个模型最多收几张
   settings.py      界面里改的设置（覆盖 config.yaml）
   i18n.py          界面语言：t() 按中文原文查 locales/en.json；python -m osa.i18n 检查前后端的翻译
   backup.py        备份与迁移：加密的备份文件、恢复前检查、启动时换上、命令行
@@ -123,7 +124,7 @@ web/src/
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |
 | `channels` | 聊天软件连接：平台、绑定的对话（`chat_id`）、配对的私聊（`peer`）、配对码；token / App Secret 在保险库的 `channel_<id>` |
-| `settings` | 界面里改过的设置；`language` 是界面语言（zh / en）；`image_model` 是画图用的模型（以前叫 `avatar_model`）；`vision_tests` 是设置里“测试”测出来的哪些模型能看图 |
+| `settings` | 界面里改过的设置；`language` 是界面语言（zh / en）；`image_model` 是画图用的模型（以前叫 `avatar_model`）；`image_edit_model` 是照着图片画用的模型；`vision_tests` 是设置里“测试”测出来的哪些模型能看图 |
 | `computers` | 电脑后端的引用，例如 Instabox 的机器 id |
 | `unfurls` | 链接卡片的缓存：网址、取到的标题 / 摘要 / 配图 / 站点名 / 图标（JSON）、成功没有、取的时间；成功的留 7 天，失败的 1 小时 |
 
@@ -416,12 +417,19 @@ web/src/
 - 以为能看图、服务却回 400 时，`Router._stream` 把这一轮的图片换成文字重试，并记下这个模型不能看图（`media.strip_images`）。
 
 ### 对话里画图
-- `generate_image(prompt)` 只给 Router。用设置 → 模型 → 画图 选的模型（`avatars.current()`，和生成头像共用），一个都没有就让 Bot 照实说。
+- `generate_image(prompt, images?)` 只给 Router。用设置 → 模型 → 画图 选的模型（`avatars.current()`，和生成头像共用），一个都没有就让 Bot 照实说。
+- 参考图（`images`）：写对话里图片的编号或电脑里的路径。上下文给没有路径的图片（画出来的、没传到电脑里的）补一行“[图片] 编号”
+  （`memory._image_ids`），有路径的本来就有“[附件] 路径”。`images.find_refs` 先按编号找 `media`，路径先在消息附件里找存好的那份，
+  找不到再从电脑里读（`media.from_computer`）；只收 PNG、JPG、WebP。带了参考图就用“照着图片画”的模型（`avatars.current(refs)`：
+  选的那个收得下就用它，否则用能收这么多张的里排最前的），这个模型不会被记成直接画的默认。参考了哪几张记在消息的 `meta.refs`。
+- 各家怎么传在 `imagegen.py`：`spec(provider, model)` 写每个模型最多收几张、是不是只能改图，`draw()` 按服务拼请求
+  （硅基流动 JSON 里的 `image` / `image2` / `image3` / `input_image`，OpenAI 的 `/images/edits` multipart `image[]`，火山方舟 `image` 数组）。
+  以后接视频生成照这个办法加；视频参考大多只收公网网址，要先有临时公开的地址。
 - 默认每次先问（`approvals.ASK`），点“总是允许”生成一条 `generate_image` 的允许规则。要问的时候不让 Router 干等：
   工具马上返回“等用户确认”，卡片和画图放在后台（`images.generate` 里的 `wait_and_draw`），Router 这一轮照常说完、不占着锁，
   用户也能在对话里说“画吧”（`resolve_approval`）。冒充任务的写法照 `Router._direct`；卡片照旧只进私聊，群里、讨论串里有提示。
 - 画好的原图存进 `media`，对话里记一条 `role=task`、`kind=image` 的消息（`meta` 带 `prompt`、`model`、`provider`、`price`、`attachments`），
-  显示成 Bot 发的图片，能下载、设为头像。上下文里是一句“你画好了一张图……”；推送、聊天软件、讨论串的“N 条回复”都算它。
+  显示成 Bot 发的图片，能下载、设为头像。上下文里是一句“你画好了一张图……”，后面带它的编号；推送、聊天软件、讨论串的“N 条回复”都算它。
 
 ### 链接卡片和嵌入
 - 哪些链接展开（一条消息最多 3 个，同一个只展开一次，代码块、表格里的不管）：

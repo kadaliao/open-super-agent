@@ -1,10 +1,11 @@
 """对话里画图：没模型时照实说、先弹确认卡片、允许后出图、“总是允许”后不再问、拒绝就不画、费用记一行。"""
 import base64
+import json
 import httpx
 import pytest
 from conftest import find, settle, until
 from fakellm import Call
-from osa import approvals, avatars, bots, images, media, memory, prices, providers, server
+from osa import approvals, avatars, bots, imagegen, images, library, media, memory, prices, providers, server
 from osa.config import CFG
 
 PNG = providers._png(8, 8, (10, 200, 30))
@@ -19,7 +20,7 @@ def sf(monkeypatch):
 
     async def fake_models(name, refresh=False):
         if name == "sf":
-            return {"ok": True, "models": ["Kwai-Kolors/Kolors", "Qwen/Qwen-Image"]}
+            return {"ok": True, "models": ["Kwai-Kolors/Kolors", "Qwen/Qwen-Image", "Qwen/Qwen-Image-Edit-2509"]}
         return await real_models(name, refresh)
     monkeypatch.setattr(providers, "models", fake_models)
     calls = []
@@ -31,8 +32,8 @@ def sf(monkeypatch):
         if req.url.host == "files.example.com":
             return httpx.Response(200, content=PNG)
         return httpx.Response(404)
-    monkeypatch.setattr(avatars, "_TRANSPORT", httpx.MockTransport(handle))
-    memory.conn.execute("delete from settings where key in ('avatar_model', 'image_model')")
+    monkeypatch.setattr(imagegen, "_TRANSPORT", httpx.MockTransport(handle))
+    memory.conn.execute("delete from settings where key in ('avatar_model', 'image_model', 'image_edit_model')")
     memory.conn.execute("delete from rules where pattern='generate_image'")
     memory.conn.commit()
     yield calls
@@ -120,6 +121,70 @@ async def test_group_card_goes_to_private_chat(llm, events, make_bot, sf):
     approvals.resolve(card["id"], True)
     await until(lambda: find(g["id"], kind="image"), what="图发到群里")
     await settle()
+
+
+async def test_draw_from_reference(llm, events, make_bot, sf):
+    """用户发图让它照着改：Router 把路径放进 images，卡片上写参考图和“照着图片画”的模型，画的时候原图一起传过去；
+    画好的图下一轮有编号，可以接着改。"""
+    a = make_bot("Painter3")
+    cid = a["chat_id"]
+    red = providers._png(8, 8, (200, 0, 0))
+    pic = media.save(red, "cat.png")
+    path = library.norm("uploads/cat.png")
+    llm.script("router:Painter3", Call("generate_image", {"prompt": "把猫改成水彩风格", "images": [path]}), "确认一下")
+    await server.safe_handle(bots.chat(cid), "把这只猫改成水彩风格",
+                             attachments=media.clean_attachments([{"media": pic["id"], "path": path}]))
+    card = await until(lambda: next((x for x in approvals.pending.values() if x["tool"] == "generate_image"), None), what="确认卡片")
+    assert "cat.png" in card["args"] and "Qwen/Qwen-Image-Edit-2509" in card["args"]
+    approvals.resolve(card["id"], True)
+    img = (await until(lambda: find(cid, kind="image"), what="画好的图"))[0]
+    assert img["meta"]["refs"] == [{"media": pic["id"], "name": "cat.png"}] and img["meta"]["model"] == "Qwen/Qwen-Image-Edit-2509"
+    body = json.loads(sf[-1].content)
+    assert body["model"] == "Qwen/Qwen-Image-Edit-2509" and body["image"] == "data:image/png;base64," + base64.b64encode(red).decode()
+    assert avatars.choice()["model"] != "Qwen/Qwen-Image-Edit-2509"   # 改图用的不会变成直接画的默认模型
+    await settle()
+
+    # 下一轮：上下文里有画好那张的编号，拿编号接着改
+    new = img["meta"]["attachments"][0]["media"]
+    llm.script("router:Painter3", Call("generate_image", {"prompt": "再戴一顶帽子", "images": [f"[图片] {new}"]}), "再确认一下")
+    await server.safe_handle(bots.chat(cid), "再给它戴顶帽子")
+    card = await until(lambda: next((x for x in approvals.pending.values() if x["tool"] == "generate_image"), None), what="第二张卡片")
+    ctx = [m["content"] for m in llm.bodies("router", "Painter3")[-1]["messages"] if isinstance(m["content"], str)]
+    assert any("照着 cat.png" in c and f"[图片] {new}" in c for c in ctx)
+    approvals.resolve(card["id"], False)
+    await settle()
+    bots.delete(a["id"])   # 整套测试的 Bot 离上限（50 个）不远，用完删掉
+
+
+async def test_reference_problems(llm, events, make_bot, sf, monkeypatch):
+    a = make_bot("Painter4")
+    pics = [media.save(providers._png(4, 4, (i, i, i)), f"p{i}.png")["id"] for i in range(5)]
+
+    async def tool_reply(args):
+        llm.script("router:Painter4", Call("generate_image", args), "好")
+        await server.safe_handle(bots.chat(a["chat_id"]), "画")
+        await settle()
+        return [m for m in llm.bodies("router", "Painter4")[-1]["messages"] if m["role"] == "tool"][0]["content"]
+
+    assert "没有编号是 " + "0" * 24 in await tool_reply({"prompt": "x", "images": ["0" * 24]})
+    assert "最多参考 3 张" in await tool_reply({"prompt": "x", "images": pics})
+    real = avatars.models
+
+    async def no_edit():
+        return await real() | {"edit_models": [], "edit_default": None}
+    monkeypatch.setattr(avatars, "models", no_edit)
+    assert await tool_reply({"prompt": "x", "images": pics[:1]}) == images.NO_REF_MODEL
+    assert not [x for x in approvals.pending.values() if x["tool"] == "generate_image"] and not sf
+    bots.delete(a["id"])
+
+
+def test_context_marks_images_without_path(make_bot):
+    a = make_bot()
+    up = media.save(providers._png(3, 3, (1, 2, 3)), "only.png")["id"]
+    memory.add("user", "看这张", a["chat_id"], a["id"], attachments=media.clean_attachments([{"media": up}]))
+    ctx = memory.context(a["chat_id"])
+    assert ctx[-1]["content"].endswith(f"[图片] {up}")
+    bots.delete(a["id"])
 
 
 def test_usage_counts_images():

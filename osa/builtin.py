@@ -35,7 +35,8 @@ async def _save_page(call: Call) -> str:
 
 
 async def _generate_image(call: Call) -> str:
-    return await images.generate(call.bot, call.chat_id, call.private_chat_id, str(call.args.get("prompt") or ""), call.post)
+    return await images.generate(call.bot, call.chat_id, call.private_chat_id, str(call.args.get("prompt") or ""), call.post,
+                                 call.args.get("images"))
 
 
 def load():

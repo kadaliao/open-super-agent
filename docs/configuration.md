@@ -36,8 +36,13 @@
 那一轮去掉图片重试，之后按不能看图处理。
 
 **画图**（设置 → 模型 最下面）：你让 Bot 画图、生成头像时用哪个模型。列表是已经配好的服务里能画图的模型
-（硅基流动的 Kolors、Qwen-Image、Z-Image，OpenAI 的 gpt-image，智谱的 CogView……，按名字认；`-Edit` 这类改图的不算），
+（硅基流动的 Kolors、Qwen-Image、Z-Image，OpenAI 的 gpt-image，智谱的 CogView……，按名字认；名字带 `Edit`、`Kontext` 的只能改图，不在这里），
 选“自动”就用排在最前面的（Kolors 免费，优先）。生成头像时换了模型也会记下来。没有能画图的模型时，Bot 会照实告诉你去添加。
+
+下面一行**照着图片画**：你发图让 Bot 照着改、照着画时用哪个模型。能收参考图的有硅基流动的 Qwen-Image-Edit-2509（最多 3 张）、
+Qwen-Image-Edit、FLUX.1-Kontext、Kolors（各 1 张），OpenAI 的 gpt-image（最多 16 张），火山方舟的 Seedream 4 以后的版本（最多 10 张）；
+别家转发的同名模型不一定认这些参数，所以只认 gpt-image。选“自动”时按会不会按说的改排，Kolors 只会图生图，排最后。
+给的图比选的模型能收的多时，自动换一个能收的；都收不了，Bot 会让你少给几张。
 
 服务和模型旁边显示品牌图标：模型按名字认（`deepseek-…`、`qwen…`、`claude-…`、OpenRouter 的 `openai/gpt-…` 这类都认得），
 认不出的用服务的图标；“其他”里添加的服务按接口地址认（火山引擎、Anthropic、Groq……），也认不出的显示一个服务器图标。

@@ -226,7 +226,9 @@ function ImageMessage({ bot, m, chat, showName, reply }: { bot?: Bot; m: Message
         <Speaker bot={bot} show={showName} />
         <Attachments items={m.meta.attachments} actions={() => actions} />
         <div className="img-caption" title={m.meta.prompt}>🎨 {m.meta.prompt}</div>
-        <div className="img-meta">{m.meta.model}{m.meta.price !== undefined ? ' · ' + imagePrice(m.meta.price, cur) : ''}{done && <> · <b>{done}</b></>}</div>
+        <div className="img-meta">{m.meta.model}{m.meta.price !== undefined ? ' · ' + imagePrice(m.meta.price, cur) : ''}
+          {!!m.meta.refs?.length && <span title={m.meta.refs.map((r: { name: string }) => r.name).join('\n')}> · {t('参考了 {n} 张图', { n: m.meta.refs.length })}</span>}
+          {done && <> · <b>{done}</b></>}</div>
         <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{stamp(m.ts)}</span>
           {att?.media && <a className="ghost-btn" href={mediaUrl(att.media) + '?download=1'} download={att.name}>{t('下载')}</a>}

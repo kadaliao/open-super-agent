@@ -3,8 +3,9 @@ import { api } from '../store'
 import { t } from '../i18n'
 import type { Avatar } from '../types'
 
-// 能画图的模型（GET /api/avatars/models）。price：每张多少钱（config.yaml 的 pricing.images），不知道是 null
-export type ImageModel = { provider: string; title: string; model: string; price: number | null }
+// 能画图的模型（GET /api/avatars/models）。price：每张多少钱（config.yaml 的 pricing.images），不知道是 null；
+// refs：最多收几张参考图（0 是不能照着图片画）
+export type ImageModel = { provider: string; title: string; model: string; price: number | null; refs?: number }
 export const imagePrice = (p: number | null | undefined, cur = '¥') =>
   p === null || p === undefined ? t('价格未知') : p === 0 ? t('免费') : t('{price} / 张', { price: cur + p })
 

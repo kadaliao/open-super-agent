@@ -201,9 +201,11 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
             else:
                 text = f"（系统通知：{name(b)} 把工作交给了 {name(to)}）{defang(meta.get('note') or c)}"
             msgs.append({"role": "user", "content": text})
-        elif r == "task" and meta.get("kind") == "image":   # generate_image 画好的图
+        elif r == "task" and meta.get("kind") == "image":   # generate_image 画好的图；编号用来照着它再改（images 参数）
             whose = name(b) if others and b else "你"
-            msgs.append({"role": "user", "content": f"（系统通知：{whose}画好了一张图，已经显示给用户。描述：{defang(meta.get('prompt') or c)}）"})
+            refs = "、".join(x.get("name") or "" for x in meta.get("refs") or [])
+            msgs.append({"role": "user", "content": f"（系统通知：{whose}{'照着 ' + refs + ' ' if refs else ''}画好了一张图，已经显示给用户。"
+                                                    f"描述：{defang(meta.get('prompt') or c)}）{_image_ids(meta, all_=True)}"})
         elif r == "task" and meta.get("kind") in ("dm", "dm_reply"):
             msgs.append({"role": "user", "content": _dm_line(meta, defang(c), b, me, name)})
         elif r == "task":  # 任务记录作为系统通知给 Router，避免它模仿这种格式
@@ -231,6 +233,7 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
                 c = f"（来自小应用「{ap.get('title', '')}」）{c}"
             if meta.get("skill_prompt"):   # /技能：把技能做法附在用户原话后面
                 c = f"{c}\n\n{meta['skill_prompt']}"
+            c += _image_ids(meta)
             parts = []
             if shown:
                 from . import media
@@ -238,6 +241,13 @@ def context(chat_id: int, viewer: int | None = None, me: int | None = None, imag
                          and (p := media.image_part(a["media"]))]
             msgs.append({"role": "user", "content": [{"type": "text", "text": c}, *parts] if parts else c})
     return msgs
+
+
+def _image_ids(meta: dict, all_: bool = False) -> str:
+    """消息里图片的编号（“[图片] 编号”），画图时当参考图用（images.find_refs）。存进电脑的已经有“[附件] 路径”，
+    默认只给没有路径的（画出来的、没传到电脑里的）补一行。"""
+    ids = [a["media"] for a in meta.get("attachments") or [] if a.get("media") and (all_ or not a.get("path"))]
+    return "".join(f"\n[图片] {x}" for x in ids)   # i18n-ignore：给模型的标记，images.find_refs 认它
 
 
 def _no_leak(c: str) -> str:

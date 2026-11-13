@@ -1148,5 +1148,9 @@
   "电脑容器没有回应": "The computer container isn't responding",
   "电脑容器没在运行（docker compose up -d computer）": "The computer container isn't running (docker compose up -d computer)",
   "电脑容器没开（docker compose up -d computer）": "The computer container isn't running (docker compose up -d computer)",
-  "这台 Mac 已经用新的令牌连上了": "This Mac has connected again with a new token"
+  "这台 Mac 已经用新的令牌连上了": "This Mac has connected again with a new token",
+  "{model} 不能照着图片画": "{model} can't draw from reference images",
+  "{model} 最多参考 {n} 张图": "{model} takes at most {n} reference images",
+  "{model} 只能改图，要给它一张原图": "{model} only edits images; give it a source image",
+  "参考图已经被清理掉了：{name}": "The reference image has been cleaned up: {name}"
 }

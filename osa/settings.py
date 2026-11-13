@@ -2,7 +2,7 @@
 import json
 import os
 import time
-from . import avatars, computer, i18n, prices, providers, security
+from . import avatars, computer, i18n, imagegen, prices, providers, security
 from .config import CFG
 from .memory import conn
 
@@ -92,6 +92,7 @@ def public() -> dict:
         "computer_host_shell": bool((CFG.get("computer") or {}).get("host_shell")),
         "embedding": {"provider": emb.get("provider") or "", "model": emb.get("model") or ""},
         "image_model": avatars.choice(),   # 画图用哪个模型（对话里画图、生成头像共用），没选过是空的
+        "image_edit_model": avatars.choice(edit=True),   # 照着图片画（带参考图）用哪个，没选过是空的
         "model_info": {f"{p}/{m}": _info(p, m) for p, m in used},
         "prices": prices.info(),
         "problem": problem(),
@@ -160,14 +161,18 @@ def save(data: dict) -> dict:
         if provider and not model:
             raise ValueError(i18n.t("选了服务就要填 embedding 模型的名字"))
         o["embedding"] = {"provider": provider, "model": model}
-    if "image_model" in data:
-        e = data["image_model"] or {}
+    for k in ("image_model", "image_edit_model"):
+        if k not in data:
+            continue
+        e = data[k] or {}
         provider, model = (e.get("provider") or "").strip(), (e.get("model") or "").strip()[:200]
         if provider and provider not in CFG["providers"]:
             raise ValueError(i18n.t("没有这个模型服务：{name}", name=provider))
         if provider and not avatars.IMAGE_MODEL.search(model):
             raise ValueError(i18n.t("{model} 不是画图的模型", model=model))
-        avatars.choose(provider, model)
+        if provider and k == "image_edit_model" and not imagegen.spec(provider, model).refs:
+            raise ValueError(i18n.t("{model} 不能照着图片画", model=model))
+        avatars.choose(provider, model, edit=k == "image_edit_model")
     conn.execute("insert or replace into settings values('overrides', ?)", (json.dumps(o),))
     conn.commit()
     apply()

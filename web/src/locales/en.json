@@ -1430,5 +1430,10 @@
   "页面是 Bot 做好存下来的成品：报告、清单、网页、小应用，所有 Bot 的都在这里，存在服务的数据库里。可以置顶、改名、生成分享链接。": "Pages are finished work the bots saved: reports, lists, web pages and applets from every bot, stored in the service's database. You can pin, rename and share them.",
   "文件是 Bot 用的那台电脑（{pc}）工作文件夹里的东西：它下载、生成的文件，你上传给它的文件。换了电脑，这里看到的也跟着换。": "Files are what's in the work folder of the bots' computer ({pc}): what they downloaded or made, and what you uploaded. Switch computers and this shows the other one's folder.",
   "Bot 用的电脑": "Bot computer",
-  "Bot 上网、跑命令、处理文件用的那台电脑。你的 Mac 不在这里：它们是派任务的去处，在 Bot 右栏的“电脑”里管。": "The computer bots use to browse, run commands and handle files. Your Macs aren't here: they're where tasks can be sent, managed under Computer in a bot's side panel."
+  "Bot 上网、跑命令、处理文件用的那台电脑。你的 Mac 不在这里：它们是派任务的去处，在 Bot 右栏的“电脑”里管。": "The computer bots use to browse, run commands and handle files. Your Macs aren't here: they're where tasks can be sent, managed under Computer in a bot's side panel.",
+  "照着图片画": "Draw from images",
+  "你发图让 Bot 照着改、照着画时用": "Used when you send a picture for the Bot to edit or draw from",
+  "现有的模型都不能照着图片画。硅基流动的 Qwen-Image-Edit、OpenAI 的 gpt-image、火山方舟的 Seedream 4 以后的版本可以。": "None of your models can draw from images. SiliconFlow's Qwen-Image-Edit, OpenAI's gpt-image and Volcengine Ark's Seedream 4 or later can.",
+  "最多参考 {n} 张图": "Up to {n} reference images",
+  "参考了 {n} 张图": "{n} reference images"
 }

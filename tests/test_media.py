@@ -109,8 +109,8 @@ def test_only_recent_images_go_to_model(make_bot):
         memory.add("user", f"第 {i} 张", cid, a["id"], attachments=media.clean_attachments([{"media": m["id"]}]))
     msgs = memory.context(cid, images=media.MODEL_IMAGES)
     with_img = [m for m in msgs if isinstance(m["content"], list)]
-    assert len(with_img) == media.MODEL_IMAGES and with_img[-1]["content"][0]["text"] == "第 5 张"
-    assert msgs[0]["content"] == "第 0 张"   # 更早的只剩文字
+    assert len(with_img) == media.MODEL_IMAGES and with_img[-1]["content"][0]["text"] == f"第 5 张\n[图片] {ids[5]}"
+    assert msgs[0]["content"] == f"第 0 张\n[图片] {ids[0]}"   # 更早的只剩文字（和编号，画图时能当参考图）
     assert all(isinstance(m["content"], str) for m in memory.context(cid))
 
 

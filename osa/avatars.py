@@ -4,17 +4,17 @@
 - 用 /avatars/<id> 访问。id 是内容的哈希，同一张图只存一份。不用登录也能看（分享出去的页面也显示 Bot 的头像），
   所以只收 PNG / JPEG / WebP，不收 SVG 这种能带脚本的格式。
 - 没人用的图片放一天后清掉：刚传上来、还没点保存的不能删。
-- 生图走兼容 OpenAI 的 /images/generations。硅基流动的参数名和返回格式不一样（image_size、images[].url），单独处理。
+- 生图的接口（各家参数不一样）在 imagegen.py，这里只管用哪个模型。
 - 用哪个模型画（settings 表的 image_model）和对话里画图共用：设置 → 模型 → 画图 里选，生成头像时换了也记下来。
-  以前叫 avatar_model，读不到新的就读旧的。每画一张在 llm_calls 记一行（role=image，0 token，费用按 pricing.images）。
+  以前叫 avatar_model，读不到新的就读旧的。照着图片画（对话里带了参考图）另选一个（image_edit_model），
+  没选过就用能收参考图的模型里排最前的。每画一张在 llm_calls 记一行（role=image，0 token，费用按 pricing.images）。
 """
 import base64
 import hashlib
 import json
 import re
 import time
-import httpx
-from . import i18n, prices, providers
+from . import i18n, imagegen, prices, providers
 from .config import CFG
 from .memory import conn
 
@@ -22,26 +22,14 @@ conn.execute("create table if not exists avatars(id text primary key, mime text,
 conn.commit()
 
 MAX_BYTES = 512 * 1024          # 256×256 的 PNG 一般一两百 KB
-MAX_GENERATED = 20 << 20        # 生图服务给回来的原图
-_TRANSPORT = None               # 测试时换成假的
 KEEP_S = 86400
 URL = re.compile(r"^/avatars/([0-9a-f]{24})$")
 
-# 能画图的模型，按名字认；-Edit 这类改图的模型要传原图，不算。按这个顺序推荐：Kolors 在硅基流动免费，Z-Image-Turbo 便宜
-IMAGE_MODEL = re.compile(r"kolors|qwen-image|z-image|flux|stable-diffusion|sdxl|dall-e|gpt-image|cogview|seedream|imagen-|wanx|hidream|hunyuan-image", re.I)
+IMAGE_MODEL = imagegen.IMAGE_MODEL
+# 按这个顺序推荐：Kolors 在硅基流动免费，Z-Image-Turbo 便宜
 PREFER = ["kolors", "z-image-turbo", "gpt-image", "cogview", "qwen-image", "z-image", "flux", "seedream"]
-# 硅基流动每个模型要的尺寸（文档里推荐的正方形尺寸）
-SF_SIZE = {"qwen-image": "1328x1328", "z-image": "512x512"}
-
-
-def _mime(b: bytes) -> str | None:
-    if b.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if b.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
-        return "image/webp"
-    return None
+# 照着图片画：会按说的改（换背景、换风格、加东西）的排前面；Kolors 只是图生图，改不了细节，放最后
+REF_PREFER = ["qwen-image-edit-2", "gpt-image", "seedream", "qwen-image-edit", "kontext", "kolors"]
 
 
 def save(data_url: str) -> str:
@@ -55,7 +43,7 @@ def save(data_url: str) -> str:
         raise ValueError(i18n.t("没收到图片"))
     if len(b) > MAX_BYTES:
         raise ValueError(i18n.t("图片太大了（最多 {n} KB）", n=MAX_BYTES // 1024))
-    mime = _mime(b)
+    mime = imagegen.sniff(b)
     if not mime:
         raise ValueError(i18n.t("只支持 PNG、JPG、WebP 图片"))
     aid = hashlib.sha256(b).hexdigest()[:24]
@@ -91,37 +79,48 @@ def gc():
         conn.commit()
 
 
-# ---------- AI 生成 ----------
-def _rank(model: str) -> int:
+# ---------- 用哪个模型画 ----------
+def _rank(model: str, order: list[str] = PREFER) -> int:
     x = model.lower()
-    return next((i for i, k in enumerate(PREFER) if k in x), len(PREFER))
+    return next((i for i, k in enumerate(order) if k in x), len(order))
 
 
-def _choice() -> dict:
-    r = conn.execute("select value from settings where key='image_model'").fetchone() or \
-        conn.execute("select value from settings where key='avatar_model'").fetchone()
+def _setting(key: str) -> dict:
+    r = conn.execute("select value from settings where key=?", (key,)).fetchone()
     return json.loads(r[0]) if r else {}
 
 
-def choose(provider: str, model: str):
-    """记下画图用哪个模型（provider 为空就是不指定，用排在最前面的）。"""
-    conn.execute("insert or replace into settings values('image_model', ?)", (json.dumps({"provider": provider, "model": model}),))
+def _choice() -> dict:
+    return _setting("image_model") or _setting("avatar_model")
+
+
+def choose(provider: str, model: str, edit: bool = False):
+    """记下画图用哪个模型（provider 为空就是不指定，用排在最前面的）。edit：照着图片画用的那个。"""
+    conn.execute("insert or replace into settings values(?, ?)",
+                 ("image_edit_model" if edit else "image_model", json.dumps({"provider": provider, "model": model})))
     conn.commit()
 
 
-def choice() -> dict:
-    """设置里选的画图模型：{provider, model}，没选过是空的。"""
-    c = _choice()
+def choice(edit: bool = False) -> dict:
+    """设置里选的画图模型：{provider, model}，没选过是空的。edit：照着图片画用的那个。"""
+    c = _setting("image_edit_model") if edit else _choice()
     return {"provider": c.get("provider") or "", "model": c.get("model") or ""}
 
 
-async def current() -> dict | None:
-    """现在画图用的模型（选过的还能用就用它，否则排在最前面的），一个都没有返回 None。"""
-    return (await models())["default"]
+async def current(refs: int = 0) -> dict | None:
+    """现在画图用的模型（选过的还能用就用它，否则排在最前面的），一个都没有返回 None。
+    refs：带了几张参考图。带了就从能收这么多张的模型里挑（照着图片画选的那个，或者排最前的）。"""
+    d = await models()
+    if not refs:
+        return d["default"]
+    ok = [x for x in d["edit_models"] if x["refs"] >= refs]
+    c = choice(edit=True)
+    return next((x for x in ok if x["provider"] == c["provider"] and x["model"] == c["model"]), None) or (ok[0] if ok else None)
 
 
 async def models() -> dict:
-    """已经配好的模型服务里能画图的模型（带每张的价格，不知道是 None），和上次用的那个。"""
+    """已经配好的模型服务里能画图的模型（带每张的价格，不知道是 None；refs 是最多收几张参考图）。
+    models、default：直接画的（只能改图的不算）和现在用的那个；edit_models、edit_default：能照着图片画的。"""
     out = []
     for name in CFG["providers"]:
         if not providers.usable(name):
@@ -131,28 +130,18 @@ async def models() -> dict:
         except ValueError:
             continue
         title = providers.describe(name)["title"]
-        out += [{"provider": name, "title": title, "model": m, "price": prices.image_price(name, m)} for m in r.get("models") or []
-                if IMAGE_MODEL.search(m) and "edit" not in m.lower()]
-    out.sort(key=lambda x: (_rank(x["model"]), x["provider"], x["model"]))
-    c = _choice()
-    last = next((x for x in out if x["provider"] == c.get("provider") and x["model"] == c.get("model")), None)
-    return {"models": out, "default": last or (out[0] if out else None)}
+        for m in r.get("models") or []:
+            if IMAGE_MODEL.search(m):
+                s = imagegen.spec(name, m)
+                out.append({"provider": name, "title": title, "model": m, "price": prices.image_price(name, m),
+                            "refs": s.refs, "needs_ref": s.needs_ref})
+    draw = sorted((x for x in out if not x["needs_ref"]), key=lambda x: (_rank(x["model"]), x["provider"], x["model"]))
+    edit = sorted((x for x in out if x["refs"]), key=lambda x: (_rank(x["model"], REF_PREFER), x["provider"], x["model"]))
 
-
-def _error(r: httpx.Response) -> str:
-    try:
-        d = r.json()
-        msg = (d.get("error") or {}).get("message") if isinstance(d.get("error"), dict) else d.get("error")
-        msg = msg or d.get("message") or d.get("detail")
-    except ValueError:
-        msg = r.text[:200]
-    return f"HTTP {r.status_code}" + (f"：{msg}" if msg else "")
-
-
-def record(provider: str, model: str):
-    """画了一张：费用统计里记一行（0 token，费用按每张的价格，不知道的按 0）。"""
-    from . import memory
-    memory.add_usage("image", model, provider=provider, cost=prices.image_price(provider, model) or 0.0)
+    def pick(items, c):
+        return next((x for x in items if x["provider"] == c.get("provider") and x["model"] == c.get("model")), None) \
+            or (items[0] if items else None)
+    return {"models": draw, "default": pick(draw, _choice()), "edit_models": edit, "edit_default": pick(edit, choice(edit=True))}
 
 
 async def generate(prompt: str, provider: str, model: str) -> str:
@@ -163,45 +152,9 @@ async def generate(prompt: str, provider: str, model: str) -> str:
     return f"data:{mime};base64," + base64.b64encode(b).decode()
 
 
-async def draw(prompt: str, provider: str, model: str) -> tuple[bytes, str]:
-    """让生图模型画一张，返回 (原图, mime)。用了哪个模型记下来，下次默认用它。"""
-    prompt = (prompt or "").strip()[:1000]
-    if not prompt:
-        raise ValueError(i18n.t("写一句想要画什么"))
-    if provider not in CFG["providers"] or not providers.usable(provider):
-        raise ValueError(i18n.t("没有这个模型服务：{name}", name=provider))
-    if not model or not IMAGE_MODEL.search(model):
-        raise ValueError(i18n.t("{model} 不是画图的模型", model=model))
-    base = CFG["providers"][provider]["base_url"].rstrip("/")
-    key = providers.api_key(provider)
-    if "siliconflow" in base:
-        size = next((v for k, v in SF_SIZE.items() if k in model.lower()), "1024x1024")
-        body = {"model": model, "prompt": prompt, "image_size": size, "batch_size": 1}
-    else:
-        body = {"model": model, "prompt": prompt, "n": 1, "size": "1024x1024"}
-    async with httpx.AsyncClient(timeout=180, follow_redirects=True, transport=_TRANSPORT) as c:
-        try:
-            r = await c.post(f"{base}/images/generations", json=body, headers={"Authorization": f"Bearer {key}"} if key else {})
-        except httpx.TimeoutException:
-            raise ValueError(i18n.t("画图失败：{e}", e=i18n.t("连接超时：{url}", url=base)))
-        except httpx.HTTPError:
-            raise ValueError(i18n.t("画图失败：{e}", e=i18n.t("连不上 {url}", url=base)))
-        if r.status_code >= 400:
-            raise ValueError(i18n.t("画图失败：{e}", e=_error(r)))
-        d = r.json()
-        item = ((d.get("data") or d.get("images") or [None])[0]) or {}
-        if item.get("b64_json"):
-            b = base64.b64decode(item["b64_json"])
-        elif item.get("url"):
-            got = await c.get(item["url"])   # 硅基流动的图片地址一小时后失效，当场取回来
-            if got.status_code >= 400:
-                raise ValueError(i18n.t("画图失败：{e}", e=f"HTTP {got.status_code}"))
-            b = got.content
-        else:
-            raise ValueError(i18n.t("画图服务没有返回图片"))
-    mime = _mime(b)
-    if not mime or len(b) > MAX_GENERATED:
-        raise ValueError(i18n.t("画图服务没有返回图片"))
-    record(provider, model)
-    choose(provider, model)
+async def draw(prompt: str, provider: str, model: str, refs: list[imagegen.Ref] | None = None) -> tuple[bytes, str]:
+    """让生图模型画一张，返回 (原图, mime)。直接画的（没带参考图）用了哪个模型记下来，下次默认用它。"""
+    b, mime = await imagegen.draw(prompt, provider, model, refs)
+    if not refs:
+        choose(provider, model)
     return b, mime

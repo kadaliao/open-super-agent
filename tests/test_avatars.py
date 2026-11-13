@@ -5,7 +5,7 @@ import time
 import httpx
 import pytest
 from fastapi import HTTPException
-from osa import avatars, bots, memory, providers, server
+from osa import avatars, bots, imagegen, memory, providers, server
 from osa.config import CFG
 
 PNG = providers._png(4, 4, (255, 0, 0))
@@ -78,7 +78,7 @@ def image_providers(monkeypatch):
             return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(PNG).decode()}]})
         return httpx.Response(404)
 
-    monkeypatch.setattr(avatars, "_TRANSPORT", httpx.MockTransport(handle))
+    monkeypatch.setattr(imagegen, "_TRANSPORT", httpx.MockTransport(handle))
     return seen
 
 
@@ -116,3 +116,75 @@ async def test_models_list(image_providers, monkeypatch):
 
     await server.generate_avatar({"prompt": "一只猫", "provider": "oai", "model": "gpt-image-1"})   # 记住上次用的
     assert (await server.avatar_models())["default"]["model"] == "gpt-image-1"
+    edit = await server.avatar_models()
+    assert [(m["provider"], m["model"], m["refs"]) for m in edit["edit_models"]] == \
+        [("oai", "gpt-image-1", 16), ("sf", "Qwen/Qwen-Image-Edit", 1), ("sf", "Kwai-Kolors/Kolors", 1)]
+    assert edit["edit_default"]["model"] == "gpt-image-1"
+    assert "Qwen/Qwen-Image-Edit" not in [m["model"] for m in edit["models"]]   # 只能改图的不拿来直接画
+    avatars.choose("sf", "Qwen/Qwen-Image-Edit", edit=True)
+    assert (await avatars.current(refs=1))["model"] == "Qwen/Qwen-Image-Edit"
+    assert (await avatars.current(refs=2))["model"] == "gpt-image-1"   # 选的那个收不了两张，换能收的
+    assert (await avatars.current(refs=17)) is None
+    assert (await avatars.current())["model"] == "gpt-image-1"   # 直接画的不受影响
+    memory.conn.execute("delete from settings where key='image_edit_model'")
+
+
+def test_specs(monkeypatch):
+    monkeypatch.setitem(CFG["providers"], "sf", {"base_url": "https://api.siliconflow.cn/v1"})
+    monkeypatch.setitem(CFG["providers"], "ark", {"base_url": "https://ark.cn-beijing.volces.com/api/v3"})
+    monkeypatch.setitem(CFG["providers"], "oai", {"base_url": "https://api.openai.com/v1"})
+    S = imagegen.Spec
+    assert imagegen.spec("sf", "Kwai-Kolors/Kolors") == S(1)
+    assert imagegen.spec("sf", "Qwen/Qwen-Image") == S(0)
+    assert imagegen.spec("sf", "Qwen/Qwen-Image-Edit") == S(1, True)
+    assert imagegen.spec("sf", "Qwen/Qwen-Image-Edit-2509") == S(3, True)
+    assert imagegen.spec("sf", "black-forest-labs/FLUX.1-Kontext-pro") == S(1, True)
+    assert imagegen.spec("ark", "doubao-seedream-4-0-250828") == S(10)
+    assert imagegen.spec("ark", "doubao-seedream-3-0-t2i-250415") == S(0)
+    assert imagegen.spec("oai", "gpt-image-1.5") == S(16)
+    assert imagegen.spec("oai", "flux-kontext-pro") == S(0, True)   # 别家的改图模型不知道怎么传，不用
+
+
+async def test_draw_with_refs(monkeypatch):
+    """各家的参考图怎么传：硅基流动 image / image2 / input_image，OpenAI 走 /images/edits 的 image[]，火山方舟 image 数组。"""
+    monkeypatch.setitem(CFG["providers"], "sf", {"base_url": "https://api.siliconflow.cn/v1"})
+    monkeypatch.setitem(CFG["providers"], "ark", {"base_url": "https://ark.cn-beijing.volces.com/api/v3"})
+    monkeypatch.setitem(CFG["providers"], "oai", {"base_url": "https://api.openai.com/v1"})
+    monkeypatch.setattr(providers, "usable", lambda name: True)
+    monkeypatch.setattr(providers, "api_key", lambda name: "k")
+    seen = []
+
+    def handle(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(PNG).decode()}]})
+    monkeypatch.setattr(imagegen, "_TRANSPORT", httpx.MockTransport(handle))
+    a, b = imagegen.Ref(PNG, "image/png", "a.png"), imagegen.Ref(b"\xff\xd8\xff\xe0jpeg", "image/jpeg", "b.jpg")
+
+    assert (await imagegen.draw("换成夜景", "sf", "Qwen/Qwen-Image-Edit-2509", [a, b]))[0] == PNG
+    body = json.loads(seen[-1].content)
+    assert body["image"] == a.data_url() and body["image2"] == b.data_url() and "image3" not in body and "image_size" not in body
+    await imagegen.draw("换成夜景", "sf", "black-forest-labs/FLUX.1-Kontext-pro", [a])
+    body = json.loads(seen[-1].content)
+    assert body["input_image"] == a.data_url() and "image" not in body
+    await imagegen.draw("水彩风格", "sf", "Kwai-Kolors/Kolors", [a])
+    body = json.loads(seen[-1].content)
+    assert body["image"] == a.data_url() and body["image_size"] == "1024x1024"
+
+    await imagegen.draw("放在一起", "oai", "gpt-image-1.5", [a, b])
+    req = seen[-1]
+    assert req.url.path == "/v1/images/edits" and req.headers["content-type"].startswith("multipart/form-data")
+    assert req.content.count(b'name="image[]"') == 2 and b'filename="image2.jpg"' in req.content and PNG in req.content
+
+    await imagegen.draw("放在一起", "ark", "doubao-seedream-4-0-250828", [a, b])
+    assert json.loads(seen[-1].content)["image"] == [a.data_url(), b.data_url()]
+    await imagegen.draw("改一下", "ark", "doubao-seedream-4-0-250828", [a])
+    assert json.loads(seen[-1].content)["image"] == a.data_url()
+
+    n = len(seen)
+    with pytest.raises(ValueError, match="最多参考 1 张"):
+        await imagegen.draw("x", "sf", "Kwai-Kolors/Kolors", [a, b])
+    with pytest.raises(ValueError, match="不能照着图片画"):
+        await imagegen.draw("x", "sf", "Qwen/Qwen-Image", [a])
+    with pytest.raises(ValueError, match="只能改图"):
+        await imagegen.draw("x", "sf", "Qwen/Qwen-Image-Edit", [])
+    assert len(seen) == n   # 参数不对的不去调接口
