@@ -1,6 +1,6 @@
 [package]
 name = "osa-mobile"
-version = "0.18.0"
+version = "0.20.0"
 description = "Open Super Agent iPhone app"
 edition = "2021"
 publish = false
