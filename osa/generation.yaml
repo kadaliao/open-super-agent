@@ -6,7 +6,7 @@
 prefer:   # 设置里选“自动”时按这个顺序挑：模型名里有这个词就算（不分大小写），都没有的排最后
   image: [kolors, z-image-turbo, gpt-image, cogview, qwen-image, z-image, flux, seedream]
   edit: [qwen-image-edit-2, gpt-image, seedream, qwen-image-edit, kontext, kolors]   # 照着图片画：会按说的改的排前面
-  video: [wan2.2-t2v, wan2.2-i2v, seedance, wan2.7, cogvideox-3, wan, vidu, cogvideox]
+  video: [wan2.2-t2v, wan2.2-i2v, minimax-h, seedance, wan2.7, cogvideox-3, wan, vidu, cogvideox]
 
 recipes:
   # ================= 画图 =================
@@ -136,11 +136,13 @@ recipes:
   # 都是异步的：request 提交，task 是回包里任务 id 的位置，poll 定时去查，result 是做好后视频地址的位置。
   # 参考素材的说法：frames 首帧（和尾帧），images 参考图，videos 参考视频（只能给网址）。roles 把它们换成接口的叫法。
 
-  # ---- 硅基流动 Wan（2026-11 的接口文档：/video/submit、/video/status）----
+  # ---- 硅基流动（2026-11 的接口文档：/video/submit、/video/status）。视频模型不在默认的 /models 里，要 ?type=video ----
+  # 2026-11-13 起 Wan 在硅基流动上停用了（Model disabled），列表里只剩 MiniMax-H3；Wan 的配方留着，哪天恢复了还能用
   - name: siliconflow-wan-i2v
     kind: video
     host: siliconflow
     model: i2v
+    list: /models?type=video
     frames: 1
     need: {frames: 1}
     seconds: [5]
@@ -161,11 +163,24 @@ recipes:
     kind: video
     host: siliconflow
     model: t2v
+    list: /models?type=video
     seconds: [5]
     sizes: {"16:9": 1280x720, "9:16": 720x1280, "1:1": 960x960}
     request:
       path: /video/submit
       json: {model: $model, prompt: $prompt, image_size: $size}
+    task: requestId
+    poll: *sf-poll
+    result: results.videos.0.url
+
+  - name: siliconflow-minimax-video             # MiniMax-H3：接口文档里还没写它的参数，先只传模型和描述（只按文字生成）
+    kind: video
+    host: siliconflow
+    model: minimax-h\d|hailuo
+    list: /models?type=video
+    request:
+      path: /video/submit
+      json: {model: $model, prompt: $prompt}
     task: requestId
     poll: *sf-poll
     result: results.videos.0.url

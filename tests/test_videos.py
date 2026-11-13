@@ -233,3 +233,29 @@ async def test_public_link_and_range():
         await server.media_public(req, v["id"], int(q["exp"]), "0" * 32)
     with pytest.raises(server.HTTPException):
         await server.media_public(req, v["id"], int(time.time()) - 1, generation.sign(v["id"], int(time.time()) - 1))
+
+
+async def test_video_models_from_typed_list(monkeypatch):
+    """硅基流动的视频模型不在默认的 /models 里：配方的 list 写了 /models?type=video，从那里列出来。"""
+    monkeypatch.setitem(CFG["providers"], "sfl", {"base_url": "https://api.siliconflow.cn/v1", "api_key_env": "OSA_TEST_SFL"})
+    monkeypatch.setenv("OSA_TEST_SFL", "k1")
+    monkeypatch.setattr(generation, "_lists", {})
+    real = providers.models
+
+    async def fake_models(name, refresh=False):
+        if name == "sfl":
+            return {"ok": True, "models": ["MiniMaxAI/MiniMax-M2", "Qwen/Qwen3-8B"]}   # 默认列表：只有对话模型
+        return await real(name, refresh)
+    monkeypatch.setattr(providers, "models", fake_models)
+    asked = []
+
+    def handle(req: httpx.Request) -> httpx.Response:
+        asked.append(str(req.url))
+        if req.url.path == "/v1/models" and req.url.params.get("type") == "video":
+            return httpx.Response(200, json={"data": [{"id": "MiniMaxAI/MiniMax-H3"}]})
+        return httpx.Response(404)
+    monkeypatch.setattr(generation, "_TRANSPORT", httpx.MockTransport(handle))
+    got = [(m["provider"], m["model"]) for m in await generation.catalog("video") if m["provider"] == "sfl"]
+    assert got == [("sfl", "MiniMaxAI/MiniMax-H3")]   # MiniMax-M2 是对话模型，不算
+    await generation.catalog("video")
+    assert len(asked) == 1   # 缓存住了

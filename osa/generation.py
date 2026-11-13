@@ -2,6 +2,7 @@
 
 配方（一条管一家的一类模型）：
 - 认模型：kind（image / video）、host（接口地址里的词，正则；也可以写服务的名字）、model（模型名正则，不分大小写）。按顺序找，第一条对上的算数。
+  服务的 /models 里没有的：offer 直接写模型名，list 写另一个列模型的地址（硅基流动的视频模型要 /models?type=video 才列出来）。
 - 能收什么：images（参考图最多几张）、frames（首帧、尾帧最多几张，视频用）、videos（参考视频最多几段）、total（加起来最多几个）、
   need（至少要几个，比如 {images: 1} 是只能改图、{frames: 1} 是只能图生视频，refs 是参考图和参考视频加起来）、seconds（能选的时长：列表或 "2-15"）、
   ratios / sizes（能选的画面比例；sizes 把比例换成接口要的尺寸）、image_url（参考图怎么给：data 是 base64，url 是临时公网地址）。
@@ -87,7 +88,8 @@ async def catalog(kind: str) -> list[dict]:
         except ValueError:
             continue
         title = providers.describe(name)["title"]
-        for m in dict.fromkeys([*listed, *offers(kind, name)]):
+        extra = [m for path in _list_paths(kind, name) for m in await _listed(name, path)]
+        for m in dict.fromkeys([*listed, *extra, *offers(kind, name)]):
             if not recipe(kind, name, m):
                 continue
             c = caps(kind, name, m)
@@ -95,6 +97,36 @@ async def catalog(kind: str) -> list[dict]:
                         "refs": c.images, "needs_ref": c.needs_ref, "frames": c.frames, "videos": c.videos,
                         "seconds": list(c.seconds), "ratios": list(c.ratios)})
     return out
+
+
+_lists: dict[tuple[str, str], tuple[float, list[str]]] = {}
+LIST_S = 600
+
+
+def _list_paths(kind: str, provider: str) -> list[str]:
+    base = _base(provider).lower()
+    out = []
+    for r in recipes():
+        if r.get("kind") == kind and r.get("list") and r.get("host") and (r["host"] == provider or re.search(r["host"], base, re.I)):
+            out += [r["list"]] if r["list"] not in out else []
+    return out
+
+
+async def _listed(provider: str, path: str) -> list[str]:
+    """配方 list 写的另一个列模型的地址（返回格式和 /models 一样）。缓存 10 分钟，出错当没有。"""
+    k = (provider, path)
+    if (hit := _lists.get(k)) and time.time() - hit[0] < LIST_S:
+        return hit[1]
+    key = providers.api_key(provider)
+    try:
+        async with _client(20) as c:
+            r = await c.get(_base(provider) + path, headers={"Authorization": f"Bearer {key}"} if key else {})
+        ids = [m.get("id") for m in (r.json().get("data") or [])] if r.status_code < 400 else []
+    except (httpx.HTTPError, ValueError, AttributeError):
+        ids = []
+    ids = [x for x in ids if isinstance(x, str)]
+    _lists[k] = (time.time(), ids)
+    return ids
 
 
 def offers(kind: str, provider: str) -> list[str]:
