@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from .config import CFG, call_kwargs, client_for
-from . import applets, approvals, dsml, i18n, library, memories, memory, providers, registry, tasklog
+from . import applets, approvals, dsml, i18n, library, memories, memory, providers, registry, tasklog, watchdog
 from . import builtin  # noqa: F401  导入即注册内置工具
 from .computer import tools as ctools
 
@@ -33,6 +33,7 @@ class Task:
     status: str = "running"                # running | done | failed | cancelled
     started: float = field(default_factory=time.time)
     last_progress: float = field(default_factory=time.time)
+    long_calls: dict = field(default_factory=dict)   # 正在跑的、自带时限的工具调用 → 最多可以多久不出声（见 watchdog.long_call）
     steps: int = 0
     recent_calls: list = field(default_factory=list)
     waiting_approval: int | None = None    # 正在等用户确认的请求 id
@@ -213,11 +214,15 @@ async def _run_calls(task: Task, log: tasklog.Log, calls: list, env: dict) -> li
 
     async def one(call: dict, step: dict, sem: asyncio.Semaphore | None) -> tuple[str, list]:
         name, raw, shots = call["function"]["name"], call["function"]["arguments"], []
-        if sem:
-            async with sem:
+        watched = watchdog.TASK.set(task)   # 工具里跑得久的（watchdog.long_call）记到这个任务上
+        try:
+            if sem:
+                async with sem:
+                    out, status = await _call_tool(task, log, step, name, raw, progress_for(step), env, shots)
+            else:
                 out, status = await _call_tool(task, log, step, name, raw, progress_for(step), env, shots)
-        else:
-            out, status = await _call_tool(task, log, step, name, raw, progress_for(step), env, shots)
+        finally:
+            watchdog.TASK.reset(watched)
         await log.finish(step, status, out)
         task.last_progress = time.time()
         return out, shots

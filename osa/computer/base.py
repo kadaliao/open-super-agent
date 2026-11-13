@@ -64,6 +64,7 @@ def keysym(key: str) -> str:
 
 
 HOSTS = ("host", "mac")   # 用户自己的电脑：服务所在的这台 Mac（host.py），或者派了任务过去的你的 Mac（mac.py）
+SHELL_MAX_S = 600   # 一条终端命令（computer_shell）最多跑多久
 CHAT_KEEP = 600   # 对话里直接操作过的窗口，这么多秒内不分给任务
 # 依赖“刚才看到的页面”的动作：用户接手过就不照原样做（见 browser）
 STALE_OPS = {"click", "type", "key", "upload", "scroll", "back", "click_xy", "press", "wheel"}
@@ -422,4 +423,4 @@ class Computer:
         """Bot 在电脑里执行终端命令（不需要桌面）。"""
         await self.start()
         self.last_used = time.time()
-        return await self.exec(cmd, max(1, min(600, timeout)))
+        return await self.exec(cmd, max(1, min(SHELL_MAX_S, timeout)))

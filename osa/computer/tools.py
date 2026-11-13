@@ -9,9 +9,9 @@ import contextvars
 import base64
 import re
 import time
-from .. import i18n
+from .. import i18n, watchdog
 from . import ComputerError, current, macdesk
-from .base import HOSTS
+from .base import HOSTS, SHELL_MAX_S
 
 AUTO_SHOT = {"computer_click", "computer_type", "computer_key", "computer_scroll"}
 
@@ -351,7 +351,9 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
             await c.browser("wheel", key=key, direction=args.get("direction") or "down", amount=args.get("amount") or 3)
             text = "已滚动。"
         elif name == "computer_shell":
-            return (await c.shell(args["cmd"], int(args.get("timeout") or 120))).text(), None
+            secs = max(1, min(SHELL_MAX_S, int(args.get("timeout") or 120)))
+            with watchdog.long_call(secs):   # 命令在跑、没有输出，按它自己的时限算卡没卡住
+                return (await c.shell(args["cmd"], secs)).text(), None
         elif name == "computer_read_file":
             data = await c.read_bytes(args["path"], 1 << 20)
             return data.decode(errors="replace")[:20000], None

@@ -32,7 +32,7 @@ import httpx
 from .. import i18n, security
 from ..config import CFG, DATA
 from . import macdesk
-from .base import Computer, ComputerError, ExecResult, check_enabled
+from .base import SHELL_MAX_S, Computer, ComputerError, ExecResult, check_enabled
 
 HELPER = Path(__file__).parent / "cdp_helper.py"
 LEGACY = "/data/workspace"   # Docker / Instabox 电脑里的工作文件夹，技能、记忆里可能还写着
@@ -552,4 +552,4 @@ class HostComputer(Computer):
 
     async def shell(self, cmd: str, timeout: int = 120) -> ExecResult:
         self.last_used = time.time()   # 终端不用浏览器，不用先开 Chrome
-        return await self.exec(cmd, max(1, min(600, timeout)))
+        return await self.exec(cmd, max(1, min(SHELL_MAX_S, timeout)))

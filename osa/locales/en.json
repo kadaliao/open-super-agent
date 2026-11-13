@@ -2,6 +2,7 @@
   " 等 {n} 个": " ({n} bots)",
   "**↩️ {name} 回信**": "**↩️ {name} replied**",
   "3 分钟没有进展": "No progress for 3 minutes",
+  "工具调用超过 {n} 秒还没结束": "A tool call has been running for over {n} seconds",
   "App ID 应该以 cli_ 开头，在开发者后台应用的“凭证与基础信息”里": "The App ID should start with cli_. You'll find it under \"Credentials & Basic Info\" for the app in the developer console",
   "App ID 或 App Secret 不对（{error}）": "Wrong App ID or App Secret ({error})",
   "Bot ID 或 Secret 不对，或者机器人的 API 模式没选“长连接”（{error}）": "Wrong Bot ID or Secret, or the bot's API mode isn't set to \"long connection\" ({error})",

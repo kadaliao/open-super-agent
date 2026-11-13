@@ -162,12 +162,13 @@ async def execute(lang: str, code: str, files: dict | None = None, timeout: int 
     where = place(quick=not computer)
     if not where:
         return Result(_no_sandbox())
-    from . import computer as pc
+    from . import computer as pc, watchdog
     try:
-        if where == "computer":
-            r = await _in_computer(pc.get(), lang, code, inputs, timeout)
-        else:
-            r = await _on_host(lang, code, inputs, timeout, net)
+        with watchdog.long_call(timeout):   # 代码在跑、没有输出，按它自己的时限算卡没卡住
+            if where == "computer":
+                r = await _in_computer(pc.get(), lang, code, inputs, timeout)
+            else:
+                r = await _on_host(lang, code, inputs, timeout, net)
     except Exception as e:   # 给模型一句话，别让工具调用整个失败
         return Result(f"没跑成：{e}")
     if r.files and (mac := pc.current()).backend == "mac":   # 派到你的 Mac 上的任务：文件工具看的是那台 Mac 的工作文件夹，传过去
