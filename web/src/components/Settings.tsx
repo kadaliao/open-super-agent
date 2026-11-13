@@ -69,6 +69,7 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
             <ThemeSwitch />
             <BubbleSwitch />
             <LangSwitch />
+            {!phone && desktop?.switchServer && <button className="set-item" onClick={() => desktop!.switchServer!()}><Icon name="server" />{t('切换服务器')}</button>}
             {auth && <form method="post" action="/logout"><button className="set-item" type="submit"><Icon name="logout" />{t('退出登录')}</button></form>}
           </nav>
           <div className="set-main">

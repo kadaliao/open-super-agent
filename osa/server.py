@@ -118,6 +118,12 @@ def _err(e: Exception):
 
 
 # ---------- Bot 与对话 ----------
+def can_sign_out() -> bool:
+    """设置里显示“退出登录”吗。桌面 App 自带的服务（OSA_DESKTOP）也开着登录，但密码是 App 自己的随机密钥：
+    退出后 App 拦下登录页马上又登进来，按了等于没按。那里换成“切换服务器”（App 的桥接 switchServer）。"""
+    return auth.enabled() and not os.environ.get("OSA_DESKTOP")
+
+
 @app.get("/api/bootstrap")
 async def bootstrap(request: Request):
     if not i18n.chosen():   # 第一次打开：新装的按浏览器的语言，升级上来的老用户保持中文
@@ -127,7 +133,7 @@ async def bootstrap(request: Request):
             "tasks": [t.public() for t in rt.TASKS.values() if t.status == "running"],
             "approvals": [approvals.public(a) for a in approvals.pending.values()],
             "threads": bots.thread_list(unread=True),   # 有新回复的讨论串：对话里提醒你去看
-            **_apps_out(request), "teach": teach.public(), "auth": auth.enabled(), "onboarding": settings.onboarding(),
+            **_apps_out(request), "teach": teach.public(), "auth": can_sign_out(), "onboarding": settings.onboarding(),
             "build": web_build()}   # 服务器上现在是哪一版网页界面：开着旧版的页面据此提示更新
 
 

@@ -117,3 +117,14 @@ async def test_server_app_uses_the_checks(no_password):
     assert closed[0] == {"type": "websocket.close", "code": 1008}
     assert (await _call(server.app, _scope(path="/api/me", host="evil.example")))[0]["status"] == 403
     assert (await _call(server.app, _scope(path="/api/me")))[0]["status"] == 200
+
+
+def test_desktop_app_service_has_no_sign_out(monkeypatch):
+    """桌面 App 自带的服务也开着登录（密码是 App 的随机密钥），但退出后 App 马上又自动登进来：不给“退出登录”。"""
+    monkeypatch.delenv("OSA_DESKTOP", raising=False)
+    monkeypatch.delenv("OSA_PASSWORD", raising=False)
+    assert not server.can_sign_out()
+    monkeypatch.setenv("OSA_PASSWORD", "pw")
+    assert server.can_sign_out()
+    monkeypatch.setenv("OSA_DESKTOP", "1")
+    assert not server.can_sign_out()

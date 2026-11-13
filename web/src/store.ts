@@ -36,7 +36,7 @@ type State = {
   libraryPage: number | null         // 资料库里打开的页面
   teach: Teach | null                // 正在“演示一遍”的录制
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
-  auth: boolean                      // 服务端开了登录（设置了 OSA_PASSWORD）
+  auth: boolean                      // 能退出登录：服务端开了登录（设置了 OSA_PASSWORD），且不是桌面 App 自带的服务
   onboarding: boolean                // 第一次打开：显示引导
   newBuild: boolean                  // 服务器上的网页界面换了新版，这个页面开着的还是旧的：提示刷新
   appUpdate: string | null           // 桌面 App 的新版本已经下载装好、等重启：版本号

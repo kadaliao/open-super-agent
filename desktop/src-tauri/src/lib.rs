@@ -47,6 +47,7 @@ const BRIDGE: &str = r#"(function () {
       pending: function () { return ask('desktop_update_pending'); },
       restart: function () { call('desktop_restart', {}); }
     },
+    switchServer: function () { call('desktop_switch', {}); },
     speech: false
   };
 })();"#;
@@ -212,7 +213,8 @@ fn grant(app: &AppHandle, origin: &Url) {
         .permission("allow-desktop-link")
         .permission("allow-desktop-unlink")
         .permission("allow-desktop-update-pending")
-        .permission("allow-desktop-restart");
+        .permission("allow-desktop-restart")
+        .permission("allow-desktop-switch");
     if app.add_capability(cap).is_ok() {
         granted.push(key);
     }
@@ -317,6 +319,12 @@ fn desktop_set_theme(app: AppHandle, theme: Option<String>) {
         cfg.theme = theme;
         store::save(&cfg);
     }
+}
+
+/// 网页设置里的“切换服务器”：和菜单栏里的一样，回到启动页重新选用法。在这台电脑上运行时没有“退出登录”（见 osa/server.py 的 can_sign_out）
+#[tauri::command]
+fn desktop_switch(app: AppHandle) {
+    show_setup(&app, "?switch=1");
 }
 
 #[tauri::command]
@@ -601,7 +609,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             setup_state, choose_local, choose_remote, open_logs,
             desktop_notify, desktop_set_badge, desktop_open_external, desktop_log, desktop_set_theme,
-            desktop_update_pending, desktop_restart,
+            desktop_update_pending, desktop_restart, desktop_switch,
             link::desktop_link_state, link::desktop_link, link::desktop_unlink
         ])
         .on_window_event(|w, e| {

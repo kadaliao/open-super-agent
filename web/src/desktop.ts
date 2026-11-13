@@ -35,7 +35,7 @@ export type Bridge = {
     status?(): Promise<'default' | 'granted' | 'denied'>
   }
   openSheet?(url: string): Promise<void>       // 在 App 里弹出一页打开同站地址（报告页、应用授权），关掉时完成
-  switchServer?(): void                        // 回到 App 的连接页
+  switchServer?(): void                        // 回到 App 的连接页（桌面 App 0.22 起也有：回到启动页选用法）
   takePendingOpen?(): Promise<string | null>   // 点通知冷启动 App 时要打开的站内地址
 }
 
