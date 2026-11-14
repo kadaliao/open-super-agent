@@ -1207,5 +1207,6 @@
   "{name}：只能搜最近 {n} 天": "{name}: only covers the last {n} days",
   "没打开": "off",
   "回包里没有帖子": "No post in the response",
-  "没读到": "Couldn't read it"
+  "没读到": "Couldn't read it",
+  "{name}：要用电脑上的浏览器搜，这里没有电脑可用": "{name}: needs the computer's browser, and no computer is available here"
 }

@@ -476,7 +476,8 @@ def _platform(p: str) -> str:
     return alias.get(p, p)
 
 
-async def search_posts(platform: str, query: str, days: int | None = None, count: int | None = None, only: dict | None = None) -> str:
+async def search_posts(platform: str, query: str, days: int | None = None, count: int | None = None, only: dict | None = None,
+                       browser: bool = True) -> str:
     """搜某个平台上的帖子：按顺序试这个平台配好了的几家。via: browser 的（小红书）没有接口，告诉模型怎么用电脑上的浏览器去搜。"""
     query = (query or "").strip()
     if not query:
@@ -497,6 +498,9 @@ async def search_posts(platform: str, query: str, days: int | None = None, count
                 notes.append(i18n.t("{name}：只能搜最近 {n} 天", name=_tr(r, "title"), n=r["max_days"]))
                 continue
             if r.get("via") == "browser":
+                if not browser:   # 这一轮没有电脑（设置里关了电脑，或者是小应用调的）
+                    notes.append(i18n.t("{name}：要用电脑上的浏览器搜，这里没有电脑可用", name=_tr(r, "title")))
+                    continue
                 url = render(r.get("url") or "", {"query": quote(query)})
                 return i18n.t("{name} 没有接口，用电脑上的浏览器搜：browser_open 打开 {url}，用 browser_read 读结果，点开笔记看正文和评论。"
                               "页面要登录或出现验证码时调用 ask_human，请用户在右栏的电脑画面里登录（只要登一次）。"

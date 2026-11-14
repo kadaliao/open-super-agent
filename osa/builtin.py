@@ -38,6 +38,12 @@ async def _save_page(call: Call) -> str:
     return out
 
 
+async def _search_posts(call: Call) -> str:
+    a = call.args
+    return await tools.search_posts(str(a.get("platform") or ""), str(a.get("query") or ""), a.get("days"), a.get("count"),
+                                    browser=bool(call.env.get("use_pc")))
+
+
 async def _generate_image(call: Call) -> str:
     return await images.generate(call.bot, call.chat_id, call.private_chat_id, str(call.args.get("prompt") or ""), call.post,
                                  call.args.get("images"))
@@ -58,7 +64,7 @@ SEARCH_POSTS = {"type": "function", "function": {
                    "platform 是 x（推特）、reddit、xiaohongshu（小红书）之一。要最近的填 days。按条收费的平台别反复搜同一个词",
     "parameters": {"type": "object", "properties": {
         "platform": {"type": "string", "description": "x、reddit 或 xiaohongshu"},
-        "query": {"type": "string", "description": "搜索词。X 的搜索词可以用 lang:zh、from:用户名、min_faves:100 这类写法"},
+        "query": {"type": "string", "description": "搜索词。X 的搜索词可以用 lang:zh、from:用户名、-is:reply、has:links 这类写法（min_faves 这类网页上的写法接口不认）"},
         "days": {"type": "integer", "description": "可选：只要最近几天的，比如 7、30"},
         "count": {"type": "integer", "description": "可选：要几条，默认 10"}},
         "required": ["platform", "query"]}}}
@@ -75,9 +81,9 @@ def load():
     ctx.simple("web_search", WEB_SEARCH, tools.web_search,
                where=web, gated=True, parallel=2, describe="搜索网页，返回标题、链接、日期和摘要；能只要最近几天的（days）",
                progress=lambda a: i18n.t("搜索：{what}", what=str(a.get("query") or "")[:60]))
-    ctx.simple("search_posts", SEARCH_POSTS, tools.search_posts, where=web, gated=True, parallel=2,
+    ctx.tool(Tool("search_posts", SEARCH_POSTS, _search_posts, where=web, gated=True, parallel=2,
                describe="搜 X、Reddit、小红书上的帖子，看大家怎么说（带点赞、评论数）；能只要最近几天的",
-               progress=lambda a: i18n.t("搜 {platform}：{what}", platform=str(a.get("platform") or ""), what=str(a.get("query") or "")[:60]))
+                  progress=lambda a: i18n.t("搜 {platform}：{what}", platform=str(a.get("platform") or ""), what=str(a.get("query") or "")[:60])))
     ctx.simple("fetch_url", tools.schema("fetch_url", "读网页正文（截断到 8000 字）。要跑脚本才显示内容的网页一般也能读", {"url": "网址"}),
                tools.fetch_url, where=web, gated=True, parallel=3, describe="读网页正文（截断到 8000 字）",
                progress=lambda a: i18n.t("读取网页：{what}", what=str(a.get("url") or "")[:60]))

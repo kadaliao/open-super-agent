@@ -26,12 +26,12 @@ async def web_search(query: str, days=None) -> str:
     return await websearch.search(query, _days(days))
 
 
-async def search_posts(platform: str, query: str, days=None, count=None) -> str:
+async def search_posts(platform: str, query: str, days=None, count=None, browser: bool = True) -> str:
     try:
         count = int(count) if count not in (None, "") else None
     except (TypeError, ValueError):
         count = None
-    return await websearch.search_posts(platform, query, _days(days), count)
+    return await websearch.search_posts(platform, query, _days(days), count, browser=browser)
 
 
 # Clash、Surge 这类代理的 TUN 模式把所有域名解析到这一段假地址再转发出去，不是真的内网

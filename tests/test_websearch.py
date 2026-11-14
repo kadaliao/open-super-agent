@@ -309,3 +309,8 @@ async def test_reddit_thread_via_scrapecreators(monkeypatch):
     fake(monkeypatch, lambda req: (seen.append(req), httpx.Response(200, json={"title": "t", "content": "别的网站"}))[1])
     assert (await tools.fetch_url("https://example.org/a")).endswith("别的网站")
     assert [r.url.host for r in seen] == ["api.deepseek.com"]                 # 别的网站不走 Reddit 专用的
+
+
+async def test_posts_xiaohongshu_without_computer():
+    out = await tools.search_posts("xiaohongshu", "露营", browser=False)
+    assert out.startswith("搜索失败") and "没有电脑可用" in out and "browser_open" not in out
