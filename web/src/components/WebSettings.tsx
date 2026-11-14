@@ -10,7 +10,7 @@ type Field = { key: string; label: string; secret: boolean; optional: boolean; p
 type Service = { name: string; title: string; desc: string; link: string; missing: string; on: boolean; auto: boolean; price: number | null; provider: string; fields: Field[]
   platform: string; per_item: boolean; via: string }
 type Kind = { auto: boolean; services: Service[] }
-type Web = { search: Kind; fetch: Kind; posts: Kind; block: string[]; default_block: string[] }
+type Web = { search: Kind; fetch: Kind; posts: Kind; block: string[]; default_block: string[]; posts_budget_usd: number; usd_rate: number }
 type KindName = 'search' | 'fetch' | 'posts'
 
 export default function WebSettings() {
@@ -35,6 +35,7 @@ export default function WebSettings() {
     </Section>
     <Section title={t('社交平台的帖子')} action={reset('posts')}
       desc={t('Bot 想知道大家在 X、Reddit、小红书上怎么说时用。同一个平台开了几家的，按顺序试。{auto}', { auto: w.posts.auto ? t('现在是自动：配好了的都用。') : '' })}>
+      <Budget w={w} save={save} />
       <Services kind="posts" k={w.posts} save={save} />
     </Section>
     <Section title={t('不用的网站')} desc={t('这些网站（含子域名）不会出现在搜索结果里，Bot 也不会读、不会在浏览器里打开。')}>
@@ -130,6 +131,29 @@ function FieldInput({ s, f, save }: { s: Service; f: Field; save: (body: object,
         onChange={e => setV(e.target.value)} onKeyDown={e => { if (isEnter(e) && dirty) put(v.trim()) }} />
       <button className="btn" disabled={!dirty} onClick={() => put(v.trim())}>{t('保存')}</button>
       {f.secret && f.set && <button className="btn" onClick={() => put('')}>{t('删掉')}</button>}
+    </div>
+  )
+}
+
+// 每个任务搜按条收钱的帖子（X）最多花多少：X 一次 10 条 = 0.05 美元
+function Budget({ w, save }: { w: Web; save: (body: object, msg?: string) => Promise<boolean> }) {
+  const [v, setV] = useState(String(w.posts_budget_usd))
+  useEffect(() => setV(String(w.posts_budget_usd)), [w.posts_budget_usd])
+  const n = Number(v)
+  const ok = v.trim() !== '' && !Number.isNaN(n) && n >= 0 && n <= 10
+  const put = () => { if (ok && n !== w.posts_budget_usd) save({ posts_budget_usd: n }) }
+  return (
+    <div className="role-card web-budget">
+      <div className="role-top">
+        <div className="role-text"><b>{t('每个任务最多花')}</b>
+          <span>{t('按条收钱的平台（X 每条 0.005 美元，一次 10 条）在一个任务里最多花这么多，用完就让 Bot 用已有结果或免费的办法。0 是不用。')}</span></div>
+        <div className="web-budget-in">
+          <span>$</span>
+          <input type="number" min={0} max={10} step={0.05} value={v} onChange={e => setV(e.target.value)}
+            onBlur={put} onKeyDown={e => { if (isEnter(e)) put() }} />
+        </div>
+      </div>
+      {ok && <div className="role-meta"><span className="chip">{t('约 ¥{yuan}，X 最多 {n} 条', { yuan: (n * w.usd_rate).toFixed(2), n: Math.floor(n / 0.005 + 1e-9) })}</span></div>}
     </div>
   )
 }

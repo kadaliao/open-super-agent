@@ -1489,5 +1489,8 @@
   "填写": "Fill in",
   "社交平台的帖子": "Social posts",
   "Bot 想知道大家在 X、Reddit、小红书上怎么说时用。同一个平台开了几家的，按顺序试。{auto}": "Used when bots want to know what people say on X, Reddit or Xiaohongshu. If a platform has several services on, they're tried in order. {auto}",
-  "{price} / 千条": "{price} / 1,000 posts"
+  "{price} / 千条": "{price} / 1,000 posts",
+  "每个任务最多花": "Max spend per task",
+  "按条收钱的平台（X 每条 0.005 美元，一次 10 条）在一个任务里最多花这么多，用完就让 Bot 用已有结果或免费的办法。0 是不用。": "Per-post billed platforms (X: $0.005 per post, 10 per search) spend at most this much per task; after that the bot uses what it has or the free routes. 0 turns them off.",
+  "约 ¥{yuan}，X 最多 {n} 条": "≈ ¥{yuan}, up to {n} X posts"
 }

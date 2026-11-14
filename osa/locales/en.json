@@ -1208,5 +1208,14 @@
   "没打开": "off",
   "回包里没有帖子": "No post in the response",
   "没读到": "Couldn't read it",
-  "{name}：要用电脑上的浏览器搜，这里没有电脑可用": "{name}: needs the computer's browser, and no computer is available here"
+  "{name}：要用电脑上的浏览器搜，这里没有电脑可用": "{name}: needs the computer's browser, and no computer is available here",
+  "没有这条帖子（可能删了，或者要登录才能看）": "No such post (deleted, or it needs a login to view)",
+  "回复": "replies",
+  "页面里没找到热门话题表": "No trending table found on the page",
+  "（只有话题名和排名，看不到在说什么：要知道的话用 web_search 查话题名）": "(Topic names and ranks only, not what they're about: web_search a topic name to find out)",
+  "这个网址读不了：{url}": "Can't read this URL: {url}",
+  "引用": "Quoting",
+  "预算在 0 到 10 美元之间": "The budget must be between $0 and $10",
+  "{name}：这个任务搜帖子的预算用完了（每个任务最多 {usd} 美元，设置 → 搜索和读网页 里能改）。用已经搜到的；只想知道在热议什么，用 fetch_url 读 getdaytrends.com 的热门话题榜，再用 web_search 查": "{name}: this task's post-search budget is used up (at most ${usd} per task; change it under Settings → Search & web pages). Use what you already found; to see what's trending, read the getdaytrends.com list with fetch_url, then web_search it",
+  "预算要是数字": "The budget must be a number"
 }

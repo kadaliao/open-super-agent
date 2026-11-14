@@ -747,6 +747,9 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .test-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--good); }
 /* 设置 → 搜索和读网页：每家一行，右边上下调顺序；不用的网站是一排可以去掉的标签 */
 .web-top { display: flex; align-items: flex-start; gap: 14px; }
+.web-budget { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 14px; }
+.web-budget-in { display: flex; align-items: center; gap: 4px; flex: none; }
+.web-budget-in input { width: 84px; }
 .web-top .switch { flex: none; margin-top: 2px; }
 .web-move { display: flex; gap: 2px; flex: none; margin-top: -4px; }
 .web-move .icon-btn { width: 28px; height: 28px; }

@@ -61,7 +61,10 @@ WEB_SEARCH = {"type": "function", "function": {
 SEARCH_POSTS = {"type": "function", "function": {
     "name": "search_posts",
     "description": "搜社交平台上的帖子，看大家怎么说（口碑、讨论、最近的反应）：返回作者、日期、点赞评论转发数、链接和正文开头。"
-                   "platform 是 x（推特）、reddit、xiaohongshu（小红书）之一。要最近的填 days。按条收费的平台别反复搜同一个词",
+                   "platform 是 x（推特）、reddit、xiaohongshu（小红书）之一。要最近的填 days。"
+                   "X 按条收钱：只想知道 X 上现在在热议什么时别搜 X，用 fetch_url 读 https://getdaytrends.com/国家/"
+                   "（比如 united-states、japan、united-kingdom，全球是 https://getdaytrends.com/），再用 web_search 查感兴趣的话题，都很便宜；"
+                   "已经有 X 帖子链接的，用 fetch_url 读，不要钱",
     "parameters": {"type": "object", "properties": {
         "platform": {"type": "string", "description": "x、reddit 或 xiaohongshu"},
         "query": {"type": "string", "description": "搜索词。X 的搜索词可以用 lang:zh、from:用户名、-is:reply、has:links 这类写法（min_faves 这类网页上的写法接口不认）"},
@@ -84,7 +87,7 @@ def load():
     ctx.tool(Tool("search_posts", SEARCH_POSTS, _search_posts, where=web, gated=True, parallel=2,
                describe="搜 X、Reddit、小红书上的帖子，看大家怎么说（带点赞、评论数）；能只要最近几天的",
                   progress=lambda a: i18n.t("搜 {platform}：{what}", platform=str(a.get("platform") or ""), what=str(a.get("query") or "")[:60])))
-    ctx.simple("fetch_url", tools.schema("fetch_url", "读网页正文（截断到 8000 字）。要跑脚本才显示内容的网页一般也能读", {"url": "网址"}),
+    ctx.simple("fetch_url", tools.schema("fetch_url", "读网页正文（截断到 8000 字）。要跑脚本才显示内容的网页一般也能读；X 的单条帖子、Reddit 的帖子和评论也能读", {"url": "网址"}),
                tools.fetch_url, where=web, gated=True, parallel=3, describe="读网页正文（截断到 8000 字）",
                progress=lambda a: i18n.t("读取网页：{what}", what=str(a.get("url") or "")[:60]))
     ctx.tool(Tool("save_page", library.SAVE_PAGE, _save_page, when=_not_draft,

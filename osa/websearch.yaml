@@ -157,6 +157,33 @@ recipes:
       params: {url: $url}
     parse: reddit_comments
 
+  # ---- X 的单条帖子：X 嵌入帖子用的公开地址，不要钱、不用密钥，带点赞、回复数。只能读单条帖子（网址里有 /status/编号），搜不了。
+  #      不是 X 公开承诺的接口，哪天变了就读不到（换下一家）----
+  - name: x-post
+    kind: fetch
+    hosts: [x.com, twitter.com]
+    title: X 帖子（免费）
+    desc: 读单条 X 帖子的正文和点赞、回复数。用的是 X 嵌入帖子的公开地址，不要钱、不用密钥；只能读单条帖子，搜不了
+    en: {title: X post (free), desc: "Reads a single X post with like and reply counts via X's public embed endpoint: free, no key. Single posts only, no search"}
+    url_vars: {tweet_id: '/status(?:es)?/(\d+)'}
+    request:
+      method: GET
+      url: 'https://cdn.syndication.twimg.com/tweet-result?id=${tweet_id}&token=${x_token}'
+    parse: x_post
+
+  # ---- X 热门话题榜：getdaytrends.com 按国家列 X 现在的热门话题（只有话题名和排名），不要钱 ----
+  - name: getdaytrends
+    kind: fetch
+    hosts: [getdaytrends.com]
+    title: X 热门话题榜（getdaytrends）
+    desc: 读 getdaytrends.com 上各国 X 现在的热门话题（排名和话题名），不要钱。要知道话题在说什么，再用搜索网页查
+    en: {title: X trends (getdaytrends), desc: "Reads current X trending topics per country from getdaytrends.com (rank and name), free. Search the web to learn what a topic is about"}
+    request:
+      method: GET
+      url: $url
+      headers: {User-Agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36'}
+    parse: getdaytrends
+
   # ---- 直接抓：这台机器自己下载网页，去掉标签。跳转的每一跳都查是不是内网地址 ----
   - name: direct
     kind: fetch

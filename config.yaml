@@ -24,6 +24,7 @@ web:
   search: []                 # 按顺序试，前一家出错、被限流、没结果就换下一家。留空是自动：配好了的都用（有 DeepSeek 就先用它，DuckDuckGo 垫底）
   fetch: []                  # 同上。自动是 DeepSeek（有的话）→ 直接抓取
   block: [baidu.com]         # 不用的网站（含子域名）：搜索结果里去掉，fetch_url 和浏览器都不打开
+  posts_budget_usd: 0.05     # 每个任务搜按条收钱的帖子（X：每条 0.005 美元，一次 10 条）最多花多少美元；0 是不用
   # recipes: []
 
 search:

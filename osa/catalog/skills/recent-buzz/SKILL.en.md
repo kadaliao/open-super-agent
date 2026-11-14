@@ -14,8 +14,10 @@ Find out what people have been saying about a topic recently and write a report.
      Skip channels that clearly don't fit and say why in the report.
 3. Search (call these in the same round so they run in parallel):
    - web_search: one query in the user's language and one in English, with `days`.
-   - search_posts platform=x: one or two keywords, with `days`; add operators like lang:en or -is:reply if results are noisy.
-     X is billed per post, so search it at most three times in total.
+   - X: start cheap. For "what's hot lately" topics, read the trending list at https://getdaytrends.com/<country>/ with fetch_url (free),
+     then web_search the relevant trends. Use search_posts platform=x only to see the actual discussion: one keyword, with `days`,
+     adding lang:en or -is:reply if noisy. X is billed per post and each task has a budget, so usually search it once.
+     Read any post links you need in full with fetch_url (free).
    - search_posts platform=reddit: one or two keywords, with `days`.
    - Xiaohongshu: call search_posts platform=xiaohongshu and follow its instructions to search with the computer's browser; read at most 5 to 10 notes.
      If it asks to log in or shows a captcha, call ask_human so the user takes over; don't try it yourself.

@@ -135,10 +135,29 @@ def chosen(kind: str) -> list[str]:
     return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
 
 
+def _seen(kind: str) -> set[str] | None:
+    """保存顺序那时已经有的服务；之后才加进配方的，在选过的列表里按自己的默认（auto）算开不开。
+    以前保存的没记这个：当时只有不带 hosts 的（只管某些网站的读法是后来加的）。"""
+    s = _saved()
+    if kind not in s:
+        return None
+    seen = s.get(f"{kind}_seen")
+    return set(seen) if isinstance(seen, list) else {r["name"] for r in recipes(kind) if not r.get("hosts")}
+
+
+def _on(kind: str, r: dict, names: list[str]) -> bool:
+    if not names:
+        return bool(r.get("auto", True))
+    if r["name"] in names:
+        return True
+    seen = _seen(kind)
+    return seen is not None and r["name"] not in seen and bool(r.get("auto", True))
+
+
 def order(kind: str) -> list[dict]:
-    """这次按顺序试哪几家：选了的按选的顺序，没选是配好了的全部（auto: false 的除外）。"""
+    """这次按顺序试哪几家：选了的按选的顺序（后来新加的、默认开的排在后面），没选是配好了的全部（auto: false 的除外）。"""
     names = chosen(kind)
-    rs = [r for n in names if (r := recipe(kind, n))] if names else [r for r in recipes(kind) if r.get("auto", True)]
+    rs = [r for n in names if (r := recipe(kind, n))] + [r for r in recipes(kind) if r["name"] not in names and _on(kind, r, names)]
     return [r for r in rs if not missing(r)]
 
 
@@ -329,11 +348,70 @@ def _reddit_comments(d) -> tuple[str, str]:
     return str(post.get("title") or "").strip(), "\n".join(lines)
 
 
+def _x_token(tid: str) -> str:
+    """X 嵌入帖子的地址要带的 token：和 X 自己的嵌入代码一样，(编号 / 1e15 × π) 写成 36 进制、去掉 0 和小数点。现在不校验，照样算一个。"""
+    x = int(tid) / 1e15 * 3.141592653589793
+    whole, frac = int(x), x - int(x)
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    out = ""
+    while whole:
+        whole, d = divmod(whole, 36)
+        out = digits[d] + out
+    out = (out or "0") + "."
+    for _ in range(11):
+        frac *= 36
+        out += digits[int(frac)]
+        frac -= int(frac)
+    return re.sub(r"0+|\.", "", out) or "a"
+
+
+def _x_post(d) -> tuple[str, str]:
+    """X 嵌入帖子的回包：作者、日期、点赞回复数、正文（t.co 短链换成原地址），引用的帖子跟在后面。"""
+    if not isinstance(d, dict) or not (d.get("text") or d.get("note_tweet")):
+        raise Failed(i18n.t("没有这条帖子（可能删了，或者要登录才能看）"))
+    def body(t: dict) -> str:
+        text = str(((t.get("note_tweet") or {}).get("text")) or t.get("text") or "")
+        for u in (t.get("entities") or {}).get("urls") or []:
+            if u.get("url") and u.get("expanded_url"):
+                text = text.replace(u["url"], u["expanded_url"])
+        return re.sub(r"\s*https://t\.co/\w+$", "", text).strip()   # 最后那个是图片、视频的短链
+    user = d.get("user") or {}
+    names = (("favorite_count", i18n.t("赞")), ("conversation_count", i18n.t("回复")))
+    meta = [_date(d.get("created_at"))] + [f"{label} {n}" for k, label in names if (n := _num(d.get(k))) not in ("", "0")]
+    lines = [" · ".join(x for x in meta if x), "", body(d)]
+    if q := d.get("quoted_tweet"):
+        lines += ["", f"> {i18n.t('引用')} @{(q.get('user') or {}).get('screen_name', '?')}：{body(q)}"]
+    return f"@{user.get('screen_name', '?')}（{user.get('name', '')}）", "\n".join(lines)
+
+
+def _getdaytrends(page: str) -> tuple[str, str]:
+    """getdaytrends.com 的第一张表就是现在的热门话题：排名、话题名；每个话题附上 X 的搜索链接。"""
+    m = re.search(r"<table[\s\S]*?</table>", page)
+    rows = re.findall(r'class="pos">(\d+)</th>\s*<td class="main"><a[^>]*>([^<]+)</a>', m.group(0)) if m else []
+    if not rows:
+        raise Failed(i18n.t("页面里没找到热门话题表"))
+    title = _clean((re.search(r"<h1[^>]*>([\s\S]*?)</h1>", page) or re.search(r"<title>([^<]+)", page) or [None, ""])[1])
+    lines = [f"{n}. {html.unescape(t)} — https://x.com/search?q={quote(html.unescape(t))}" for n, t in rows[:30]]
+    return title, i18n.t("（只有话题名和排名，看不到在说什么：要知道的话用 web_search 查话题名）") + "\n\n" + "\n".join(lines)
+
+
 async def _fetch_one(c: httpx.AsyncClient, r: dict, url: str) -> tuple[str, str]:
     if r.get("parse") == "direct":
         from . import tools
         return "", await tools.direct_fetch(url)
-    d = _json(await _send(c, r, _vars(r, url=url)))
+    extra = {}
+    for k, rx in (r.get("url_vars") or {}).items():   # 从网址里取的变量（X 帖子的编号）
+        if not (m := re.search(rx, url)):
+            raise Failed(i18n.t("这个网址读不了：{url}", url=url[:80]))
+        extra[k] = m.group(1)
+    if r.get("parse") == "x_post":
+        extra["x_token"] = _x_token(extra["tweet_id"])
+    resp = await _send(c, r, _vars(r, url=url, **extra))
+    if r.get("parse") == "getdaytrends":
+        return _getdaytrends(resp.text)
+    d = _json(resp)
+    if r.get("parse") == "x_post":
+        return _x_post(d)
     if r.get("parse") == "reddit_comments":
         return _reddit_comments(d)
     page = r.get("page") or {}
@@ -463,6 +541,25 @@ async def fetch(url: str, private: bool = False, only: dict | None = None) -> st
 
 
 PLATFORMS = {"x": "X", "reddit": "Reddit", "xiaohongshu": "小红书"}
+BUDGET = 0.05          # 每个任务搜按条收钱的帖子（X）最多花多少美元：X 一次 10 条 = 0.05
+_spent: dict = {}      # 任务 → 这个任务在按条收钱的帖子上已经花的美元（只记在内存里，重启清零）
+
+
+def budget() -> float:
+    """每个任务搜按条收钱的帖子最多花多少美元（设置里改过的优先，其次 config.yaml 的 web.posts_budget_usd）。"""
+    s = _saved()
+    v = s["posts_budget_usd"] if "posts_budget_usd" in s else _cfg().get("posts_budget_usd", BUDGET)
+    try:
+        return max(0.0, float(v))
+    except (TypeError, ValueError):
+        return BUDGET
+
+
+def _task_key():
+    """花费算在谁头上：后台任务按任务，小应用按对话。"""
+    from .memory import WHO
+    who = WHO.get() or {}
+    return who.get("task_id") or (f"chat:{who['chat_id']}" if who.get("chat_id") else "other")
 
 
 def platforms() -> list[str]:
@@ -505,14 +602,29 @@ async def search_posts(platform: str, query: str, days: int | None = None, count
                 return i18n.t("{name} 没有接口，用电脑上的浏览器搜：browser_open 打开 {url}，用 browser_read 读结果，点开笔记看正文和评论。"
                               "页面要登录或出现验证码时调用 ask_human，请用户在右栏的电脑画面里登录（只要登一次）。"
                               "别连续快速翻很多页：请求太多会被风控。", name=_tr(r, "title"), url=url)
+            want = max(count, int(r.get("min_count") or 1))
+            per, key = float(r.get("price_usd_item") or 0), _task_key()
+            if per:   # 按条收钱的（X）：每个任务有预算，要的条数也不超过剩下的钱
+                left = budget() - _spent.get(key, 0.0)
+                afford = int(left / per + 1e-9)
+                if afford < int(r.get("min_count") or 1):
+                    notes.append(i18n.t("{name}：这个任务搜帖子的预算用完了（每个任务最多 {usd} 美元，设置 → 搜索和读网页 里能改）。"
+                                        "用已经搜到的；只想知道在热议什么，用 fetch_url 读 getdaytrends.com 的热门话题榜，再用 web_search 查",
+                                        name=_tr(r, "title"), usd=f"{budget():g}"))
+                    continue
+                want = min(want, afford)
             t0 = time.monotonic()
             try:
-                items = await _search_one(c, r, query, days, max(count, int(r.get("min_count") or 1)))
+                items = await _search_one(c, r, query, days, want)
             except Failed as e:
                 notes.append(f"{_tr(r, 'title')}：{e}")
                 continue
             if items:
                 _record(r, "posts", (time.monotonic() - t0) * 1000, len(items))
+                if per:
+                    if len(_spent) > 500:
+                        _spent.clear()
+                    _spent[key] = _spent.get(key, 0.0) + per * len(items)
             items = [e for e in items if not blocked_domain(e["url"])][:count]
             if items:
                 return _format_posts(items) + _tail(notes, _tr(r, "title"))
@@ -531,13 +643,15 @@ def _price(r: dict) -> float | None:
 
 
 def public() -> dict:
-    out: dict = {"block": block_list(), "default_block": [str(x) for x in _cfg().get("block") or []]}
+    from . import prices
+    out: dict = {"block": block_list(), "default_block": [str(x) for x in _cfg().get("block") or []],
+                 "posts_budget_usd": budget(), "usd_rate": prices._rate()}
     for kind in KINDS:
         names = chosen(kind)
         rows = []
         for r in recipes(kind):
             why = missing(r)
-            on = (r["name"] in names) if names else (r.get("auto", True) and not why)
+            on = _on(kind, r, names) and (bool(names) or not why)
             rows.append({
                 "name": r["name"], "title": _tr(r, "title"), "desc": _tr(r, "desc"), "link": r.get("link") or "",
                 "platform": PLATFORMS.get(r.get("platform") or "", r.get("platform") or ""), "per_item": bool(r.get("price_usd_item")),
@@ -565,12 +679,26 @@ def save(data: dict) -> dict:
         v = data[kind]
         if not v:
             s.pop(kind, None)
+            s.pop(f"{kind}_seen", None)
             continue
         if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
             raise ValueError(i18n.t("顺序要是名字的列表"))
         if bad := [x for x in v if not recipe(kind, x)]:
             raise ValueError(i18n.t("没有这个服务：{name}", name=bad[0]))
         s[kind] = list(dict.fromkeys(v))
+        s[f"{kind}_seen"] = [r["name"] for r in recipes(kind)]
+    if "posts_budget_usd" in data:
+        v = data["posts_budget_usd"]
+        if v is None:
+            s.pop("posts_budget_usd", None)
+        else:
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                raise ValueError(i18n.t("预算要是数字"))
+            if not 0 <= v <= 10:
+                raise ValueError(i18n.t("预算在 0 到 10 美元之间"))
+            s["posts_budget_usd"] = v
     if "block" in data:
         v = data["block"]
         if v is None:

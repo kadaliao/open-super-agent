@@ -26,6 +26,7 @@ def clean(monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
     monkeypatch.delenv("SCRAPECREATORS_API_KEY", raising=False)
+    websearch._spent.clear()
     for n in ("WEB_TAVILY_API_KEY", "WEB_JINA_API_KEY", "WEB_X_BEARER_TOKEN", "WEB_SCRAPECREATORS_API_KEY"):
         vault.delete(n)
     yield
@@ -55,13 +56,13 @@ def names(kind):
 
 def test_auto_order_without_deepseek():
     assert names("search") == ["duckduckgo"]       # 没填密钥、没填地址的不用
-    assert names("fetch") == ["direct"]           # Jina 默认不开
+    assert names("fetch") == ["x-post", "getdaytrends", "direct"]   # Jina 默认不开；只管某些网站的不用密钥，开着
 
 
 def test_auto_order_with_deepseek(monkeypatch):
     deepseek_on(monkeypatch)
     assert names("search") == ["deepseek", "duckduckgo"]
-    assert names("fetch") == ["deepseek", "direct"]
+    assert names("fetch") == ["deepseek", "x-post", "getdaytrends", "direct"]
 
 
 async def test_duckduckgo_parse_and_block(monkeypatch):
@@ -217,6 +218,7 @@ X_BODY = {"data": [{"id": "111", "text": "短的", "note_tweet": {"text": "长�
 
 async def test_posts_x(monkeypatch):
     monkeypatch.setenv("X_BEARER_TOKEN", "xb")
+    websearch.save({"posts_budget_usd": 1})   # 这里一个“任务”里搜三次
     seen = fake(monkeypatch, lambda req: httpx.Response(200, json=X_BODY))
     before = conn.execute("select coalesce(sum(cost), 0) from llm_calls where role='web' and model='posts'").fetchone()[0]
     out = await tools.search_posts("推特", "deepseek", days="3", count="2")
@@ -314,3 +316,74 @@ async def test_reddit_thread_via_scrapecreators(monkeypatch):
 async def test_posts_xiaohongshu_without_computer():
     out = await tools.search_posts("xiaohongshu", "露营", browser=False)
     assert out.startswith("搜索失败") and "没有电脑可用" in out and "browser_open" not in out
+
+
+# ---------- X 的单条帖子、热门话题榜（免费） ----------
+SYND = {"text": "Ground stop https://t.co/abc https://t.co/img", "favorite_count": 424, "conversation_count": 43,
+        "created_at": "2026-11-13T21:27:33.000Z", "user": {"screen_name": "mama", "name": "Mama B"},
+        "entities": {"urls": [{"url": "https://t.co/abc", "expanded_url": "https://faa.gov/x"}]},
+        "quoted_tweet": {"text": "原帖", "user": {"screen_name": "faa"}}}
+GDT = """<html><h1>Twitter Trends in United States</h1><table class="ranking"><tbody>
+<tr><th scope="row" class="pos">1</th><td class="main"><a class="string" href="/united-states/trend/Good%20Saturday/">Good Saturday</a></td></tr>
+<tr><th scope="row" class="pos">2</th><td class="main"><a class="string" href="/united-states/trend/%23A%26B/">#A&amp;B</a></td></tr>
+</tbody></table><table><tr><th class="pos">1</th><td class="main"><a>别的表</a></td></tr></table></html>"""
+
+
+async def test_x_post_free(monkeypatch):
+    deepseek_on(monkeypatch)
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=SYND))
+    out = await tools.fetch_url("https://x.com/mama/status/2121354304900735276?s=20")
+    assert out == ("# @mama（Mama B）\n\n2026-11-13 · 赞 424 · 回复 43\n\nGround stop https://faa.gov/x\n\n> 引用 @faa：原帖")
+    q = dict(seen[0].url.params)
+    assert seen[0].url.host == "cdn.syndication.twimg.com" and q["id"] == "2121354304900735276" and q["token"]
+
+
+async def test_x_non_post_links_fall_through(monkeypatch):
+    deepseek_on(monkeypatch)
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json={"title": "t", "content": "主页"}))
+    out = await tools.fetch_url("https://x.com/mama")
+    assert out.startswith("# t") and [r.url.host for r in seen] == ["api.deepseek.com"]     # 不是单条帖子：X 帖子那家跳过
+
+
+async def test_getdaytrends(monkeypatch):
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, text=GDT))
+    out = await tools.fetch_url("https://getdaytrends.com/united-states/")
+    assert out.startswith("# Twitter Trends in United States\n\n（只有话题名和排名")
+    assert out.endswith("1. Good Saturday — https://x.com/search?q=Good%20Saturday\n2. #A&B — https://x.com/search?q=%23A%26B")
+    assert seen[0].url.host == "getdaytrends.com" and seen[0].headers["user-agent"].startswith("Mozilla/5.0")
+
+
+def test_new_recipes_after_saved_order():
+    # 以前保存的顺序（没记 fetch_seen）：后来加的只管某些网站的读法照默认开着，用户自己没勾的通用服务还是关着
+    conn.execute("insert or replace into settings values('web', ?)", (json.dumps({"fetch": ["deepseek"]}),))
+    conn.commit()
+    assert names("fetch") == ["x-post", "getdaytrends"]          # 没有 DeepSeek 的密钥；direct 当时就有、没勾，所以不开
+    websearch.save({"fetch": ["direct"]})                        # 现在保存：记下当时全部的，没勾的都算关
+    assert names("fetch") == ["direct"]
+    assert json.loads(conn.execute("select value from settings where key='web'").fetchone()[0])["fetch_seen"]
+
+
+# ---------- 每个任务搜按条收钱的帖子的预算 ----------
+async def test_posts_budget_per_task(monkeypatch):
+    from osa import memory
+    monkeypatch.setenv("X_BEARER_TOKEN", "xb")
+    ten = {"data": [{"id": str(i), "text": f"t{i}", "created_at": "2026-11-14T00:00:00Z"} for i in range(10)]}
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=ten))
+    websearch._spent.clear()
+    token = memory.WHO.set({"task_id": 901})
+    try:
+        assert websearch.budget() == 0.05
+        out = await tools.search_posts("x", "a", count=20)
+        assert out.startswith("- ") and dict(seen[0].url.params)["max_results"] == "10"       # 要 20 条也只给预算内的 10 条
+        out = await tools.search_posts("x", "b")
+        assert out.startswith("搜索失败") and "预算用完了" in out and "getdaytrends" in out and len(seen) == 1   # 没再发请求
+        memory.WHO.set({"task_id": 902})                                                     # 别的任务另算
+        assert (await tools.search_posts("x", "c")).startswith("- ") and len(seen) == 2
+        websearch.save({"posts_budget_usd": 0})
+        memory.WHO.set({"task_id": 903})
+        assert "预算用完了" in await tools.search_posts("x", "d") and len(seen) == 2          # 0 是不用
+        with pytest.raises(ValueError):
+            websearch.save({"posts_budget_usd": 50})
+        assert websearch.public()["posts_budget_usd"] == 0
+    finally:
+        memory.WHO.reset(token)

@@ -13,7 +13,9 @@ apps: []
      小红书适合国内消费、生活方式、口碑。明显不相关的渠道不查，报告里写一句为什么没查。
 3. 搜（同一轮里一起调用，会并行跑）：
    - web_search：中文、英文各一个说法，带 days。
-   - search_posts platform=x：一两个英文（或原文）关键词，带 days；噪音多时加 lang:en、-is:reply 这类写法。按条收钱，X 一共最多搜三次。
+   - X：先用便宜的办法。话题是“最近在热议什么”这类的，用 fetch_url 读 https://getdaytrends.com/国家/ 的热门话题榜（免费），再用 web_search 查相关话题；
+     要看具体讨论时才用 search_posts platform=x，一个关键词，带 days，噪音多时加 lang:en、-is:reply。X 按条收钱，每个任务有预算，一般只搜一次。
+     结果里的帖子链接要细看的，用 fetch_url 读（不要钱）。
    - search_posts platform=reddit：一两个关键词，带 days。
    - 小红书：search_posts platform=xiaohongshu，照它返回的说法用电脑上的浏览器搜，最多看 5 到 10 篇笔记。
      要登录、出现验证码时调用 ask_human 请用户接手，不要自己试。
