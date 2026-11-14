@@ -1205,5 +1205,7 @@
   "浏览": "views",
   "{name} 没有接口，用电脑上的浏览器搜：browser_open 打开 {url}，用 browser_read 读结果，点开笔记看正文和评论。页面要登录或出现验证码时调用 ask_human，请用户在右栏的电脑画面里登录（只要登一次）。别连续快速翻很多页：请求太多会被风控。": "{name} has no API; search it with the computer's browser: browser_open {url}, read the results with browser_read, and open notes to see the text and comments. If the page asks to log in or shows a captcha, call ask_human so the user logs in through the computer view on the right (only once). Don't page through many results quickly: too many requests trigger risk control.",
   "{name}：只能搜最近 {n} 天": "{name}: only covers the last {n} days",
-  "没打开": "off"
+  "没打开": "off",
+  "回包里没有帖子": "No post in the response",
+  "没读到": "Couldn't read it"
 }

@@ -133,8 +133,11 @@ Bot 用 `web_search` 搜索网页、用 `fetch_url` 读网页正文。用哪家�
 | 社交平台的帖子（`search_posts`） | 要什么 | 说明 |
 |---|---|---|
 | X 官方接口 | X 开发者后台（console.x.com）的 Bearer Token（或环境变量 `X_BEARER_TOKEN`） | 按读到的帖子收钱，每条 0.005 美元，同一条一天内只算一次；`days` 超过 7 天时搜全部存档 |
+| Reddit（ScrapeCreators） | ScrapeCreators 的 API Key（或 `SCRAPECREATORS_API_KEY`） | 第三方的 Reddit 接口，带分数、评论数；每次 1 个点数，注册送 100 个，之后约 1.88 美元 / 千次。Reddit 不登录已经什么都看不了（住宅 IP 也是 403），官方接口要人工审批几周 |
 | Reddit 公开接口 | 不用密钥 | 服务器和代理的 IP 基本都被 Reddit 拦（403），默认不开 |
 | 小红书 | 在右栏的电脑画面里登录一次小红书 | 没有接口：`search_posts` 告诉 Bot 用电脑上的浏览器去搜，要登录或遇到验证码时请你接手 |
+
+读网页的配方可以写 `hosts`（只管这些网站）：这些网站的网址先用它读，别的网站不用它。Reddit 的帖子和评论就是这样走 ScrapeCreators 的（和搜帖子共用一个 Key），返回帖子正文和前四十条左右的评论。
 
 `search_posts` 返回作者、日期、点赞 / 评论 / 转发 / 浏览数、链接和正文开头。帖子配方多了 `platform`，`item` 能写 `author`、`likes`、`comments`、
 `shares`、`views`，`url` 能写成 `${id}` 这样的模板；`price_usd_item` 按返回的条数记费用，`max_days` 是最多能搜最近几天，

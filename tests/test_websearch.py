@@ -25,7 +25,8 @@ def clean(monkeypatch):
     conn.commit()
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
-    for n in ("WEB_TAVILY_API_KEY", "WEB_JINA_API_KEY", "WEB_X_BEARER_TOKEN"):
+    monkeypatch.delenv("SCRAPECREATORS_API_KEY", raising=False)
+    for n in ("WEB_TAVILY_API_KEY", "WEB_JINA_API_KEY", "WEB_X_BEARER_TOKEN", "WEB_SCRAPECREATORS_API_KEY"):
         vault.delete(n)
     yield
     conn.execute("delete from settings where key='web'")
@@ -271,3 +272,40 @@ async def test_posts_max_days_skips(monkeypatch):
     seen = fake(monkeypatch, lambda req: httpx.Response(200, json=X_BODY))
     out = await tools.search_posts("x", "q", days=30)
     assert out.startswith("搜索失败") and "只能搜最近 7 天" in out and not seen
+
+
+# ---------- Reddit（ScrapeCreators）----------
+SC_SEARCH = {"success": True, "credits_remaining": 99, "posts": [
+    {"title": "DeepSeek V4.1 本地跑", "selftext": "正文", "subreddit": "LocalLLaMA", "score": 321, "num_comments": 45,
+     "created_utc": 1794000000, "url": "https://www.reddit.com/r/LocalLLaMA/comments/abc/x/", "permalink": "/r/LocalLLaMA/comments/abc/x/"}],
+    "after": "t3_abc"}
+SC_THREAD = {"success": True, "post": {"title": "帖子标题", "selftext": "帖子正文", "subreddit": "LocalLLaMA", "author": "op",
+                                       "score": 1200, "num_comments": 3, "created_utc": 1794000000},
+             "comments": [{"author": "a", "body": "第一条", "score": 50, "replies": {"items": [
+                 {"author": "b", "body": "回复", "score": 5, "replies": {"items": [{"author": "c", "body": "太深了不要", "score": 1}]}}]}},
+                          {"author": "[deleted]", "body": "[deleted]", "score": 0}],
+             "more": {"has_more": False}}
+
+
+async def test_reddit_search_via_scrapecreators(monkeypatch):
+    monkeypatch.setenv("SCRAPECREATORS_API_KEY", "sc")
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=SC_SEARCH))
+    assert [r["name"] for r in websearch.order("posts") if r["platform"] == "reddit"] == ["scrapecreators"]   # 公开接口默认不开
+    out = await tools.search_posts("reddit", "deepseek", days=30)
+    assert out == "- r/LocalLLaMA · 2026-11-06 · 赞 321 · 评论 45 | https://www.reddit.com/r/LocalLLaMA/comments/abc/x/\n  DeepSeek V4.1 本地跑 正文"
+    req = seen[0]
+    assert req.headers["x-api-key"] == "sc" and dict(req.url.params) == {"query": "deepseek", "filter": "posts", "sort": "relevance", "timeframe": "month"}
+
+
+async def test_reddit_thread_via_scrapecreators(monkeypatch):
+    monkeypatch.setenv("SCRAPECREATORS_API_KEY", "sc")
+    deepseek_on(monkeypatch)
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=SC_THREAD))
+    out = await tools.fetch_url("https://www.reddit.com/r/LocalLLaMA/comments/abc/x/")
+    assert out == ("# 帖子标题\n\nr/LocalLLaMA · u/op · 2026-11-06 · 赞 1200 · 评论 3\n\n帖子正文\n\n## 评论\n"
+                   "- u/a（50）：第一条\n  - u/b（5）：回复")
+    assert seen[0].url.host == "api.scrapecreators.com" and dict(seen[0].url.params)["url"].endswith("/comments/abc/x/")
+    seen.clear()
+    fake(monkeypatch, lambda req: (seen.append(req), httpx.Response(200, json={"title": "t", "content": "别的网站"}))[1])
+    assert (await tools.fetch_url("https://example.org/a")).endswith("别的网站")
+    assert [r.url.host for r in seen] == ["api.deepseek.com"]                 # 别的网站不走 Reddit 专用的

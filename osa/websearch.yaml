@@ -139,6 +139,24 @@ recipes:
       headers: {Authorization: $bearer, Accept: application/json}
     page: {title: data.title, text: data.content}
 
+  # ---- 只管某些网站的（hosts）：这些网站的网址先用它读。Reddit 不登录读不了，帖子和评论走 ScrapeCreators（同名，共用填的 Key）----
+  - name: scrapecreators
+    kind: fetch
+    hosts: [reddit.com, redd.it]
+    title: Reddit（ScrapeCreators）
+    desc: 读 Reddit 的帖子和评论（Reddit 不登录读不了）。每次 1 个点数
+    en: {title: Reddit (ScrapeCreators), desc: "Reads Reddit posts and comments (Reddit can't be read logged out). 1 credit per call"}
+    link: https://app.scrapecreators.com/
+    fields:
+      - {key: api_key, label: API Key, secret: true, env: SCRAPECREATORS_API_KEY}
+    price_usd: 0.00188
+    request:
+      method: GET
+      url: https://api.scrapecreators.com/v1/reddit/post/comments
+      headers: {x-api-key: $api_key}
+      params: {url: $url}
+    parse: reddit_comments
+
   # ---- 直接抓：这台机器自己下载网页，去掉标签。跳转的每一跳都查是不是内网地址 ----
   - name: direct
     kind: fetch
@@ -178,6 +196,29 @@ recipes:
     results: data
     item: {url: 'https://x.com/i/web/status/${id}', text: [note_tweet.text, text], date: created_at,
            likes: public_metrics.like_count, comments: public_metrics.reply_count, shares: public_metrics.retweet_count, views: public_metrics.impression_count}
+
+  # ---- Reddit：ScrapeCreators（docs.scrapecreators.com/v1/reddit/search）。Reddit 不登录已经什么都不给看了（换住宅 IP 也是 403），
+  #      官方接口要人工审批几周，所以用它。每次 1 个点数（注册送 100 个，之后约 1.88 美元 / 千次）----
+  - name: scrapecreators
+    kind: posts
+    platform: reddit
+    title: Reddit（ScrapeCreators）
+    desc: 第三方的 Reddit 接口，带分数、评论数；读 Reddit 帖子和评论也走它。每次 1 个点数，注册送 100 个，之后约 1.88 美元 / 千次
+    en: {title: Reddit (ScrapeCreators), desc: "Third-party Reddit API with scores and comment counts; reading Reddit threads and comments also goes through it. 1 credit per call; 100 free on signup, then about $1.88 per 1,000"}
+    link: https://app.scrapecreators.com/
+    fields:
+      - {key: api_key, label: API Key, secret: true, env: SCRAPECREATORS_API_KEY}
+    price_usd: 0.00188
+    request:
+      method: GET
+      url: https://api.scrapecreators.com/v1/reddit/search
+      headers: {x-api-key: $api_key}
+      params: {query: $query, filter: posts, sort: relevance, timeframe: all}
+    recent:
+      params: {query: $query, filter: posts, sort: relevance, timeframe: $range}
+    results: posts
+    item: {url: [url, 'https://www.reddit.com${permalink}'], title: title, text: selftext, date: created_utc,
+           author: 'r/${subreddit}', likes: score, comments: num_comments}
 
   # ---- Reddit 公开接口：不用密钥，但服务器和代理的 IP 基本都被 Reddit 拦（403），所以默认不开 ----
   - name: reddit-public

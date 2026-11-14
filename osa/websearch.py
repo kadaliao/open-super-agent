@@ -297,11 +297,45 @@ async def _search_one(c: httpx.AsyncClient, r: dict, query: str, days: int | Non
     return _items(r, _json(resp))
 
 
+def _comment_lines(items, depth: int, out: list[str], budget: list[int]):
+    """评论按楼层缩进；最多两层、一共四十条左右，每条三百字以内。"""
+    for x in items or []:
+        if budget[0] <= 0 or not isinstance(x, dict):
+            return
+        body = _clean(x.get("body"))
+        if body and body not in ("[deleted]", "[removed]"):
+            budget[0] -= 1
+            score = x.get("score", x.get("ups"))
+            out.append("  " * depth + f"- u/{x.get('author') or '?'}" + (f"（{_num(score)}）" if score not in (None, "") else "")
+                       + f"：{body[:TEXT]}")
+        if depth < 1:
+            _comment_lines((x.get("replies") or {}).get("items"), depth + 1, out, budget)
+
+
+def _reddit_comments(d) -> tuple[str, str]:
+    post = d.get("post") or {} if isinstance(d, dict) else {}
+    if not post and not (d or {}).get("comments"):
+        raise Failed(i18n.t("回包里没有帖子"))
+    meta = [f"r/{post['subreddit']}" if post.get("subreddit") else "", f"u/{post['author']}" if post.get("author") else "",
+            _date(post.get("created_utc")), f"{i18n.t('赞')} {_num(post.get('score'))}" if post.get("score") else "",
+            f"{i18n.t('评论')} {_num(post.get('num_comments'))}" if post.get("num_comments") else ""]
+    lines = [" · ".join(x for x in meta if x)]
+    if post.get("selftext"):
+        lines += ["", str(post["selftext"]).strip()]
+    comments: list[str] = []
+    _comment_lines(d.get("comments"), 0, comments, [40])
+    if comments:
+        lines += ["", "## " + i18n.t("评论"), *comments]
+    return str(post.get("title") or "").strip(), "\n".join(lines)
+
+
 async def _fetch_one(c: httpx.AsyncClient, r: dict, url: str) -> tuple[str, str]:
     if r.get("parse") == "direct":
         from . import tools
         return "", await tools.direct_fetch(url)
     d = _json(await _send(c, r, _vars(r, url=url)))
+    if r.get("parse") == "reddit_comments":
+        return _reddit_comments(d)
     page = r.get("page") or {}
     title, text = _first(d, page.get("title") or "title"), _first(d, page.get("text") or "text")
     return str(title or "").strip(), str(text or "")
@@ -400,7 +434,11 @@ async def fetch(url: str, private: bool = False, only: dict | None = None) -> st
     elif private:
         rs = [r for r in recipes("fetch") if r.get("parse") == "direct"][:1]
     else:
-        rs = order("fetch") or [r for r in recipes("fetch") if r.get("parse") == "direct"][:1]
+        host = (urlsplit(url).hostname or "").lower()
+        mine = lambda r: any(host == h or host.endswith("." + h) for h in r.get("hosts") or [])   # noqa: E731
+        rs = order("fetch")
+        rs = [r for r in rs if mine(r)] + [r for r in rs if not r.get("hosts")]   # 只管某些网站的排前面，别的网站不用它
+        rs = rs or [r for r in recipes("fetch") if r.get("parse") == "direct"][:1]
     notes = []
     async with _client(30) as c:
         for r in rs:
@@ -587,6 +625,9 @@ async def test(kind: str, name: str) -> dict:
     elif kind == "posts":
         out = await search_posts(r.get("platform") or "", "DeepSeek", days=3, only=r)
         ok = out.startswith("- ") or r.get("via") == "browser"
+    elif r.get("hosts"):
+        out = await fetch("https://www.reddit.com/r/LocalLLaMA/comments/1xburkx/", only=r)
+        ok = not out.startswith(i18n.t("没读到"))
     else:
         out = await fetch("https://example.com/", only=r)
         ok = "Example Domain" in out
