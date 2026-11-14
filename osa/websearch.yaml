@@ -1,0 +1,148 @@
+# 搜索网页（web_search）、读网页（fetch_url）：各家接口怎么调（默认配方）。代码里不写死用哪家，全在这里。
+# 要加别的服务、改这里的，写在 config.yaml 的 web.recipes 里（同 kind 同名的替掉这里的），不用改代码。
+# 字段说明见 osa/websearch.py 开头。设置里没选过（“自动”）时按这里的顺序用配好了的，前一家出错、被限流、没结果就换下一家。
+
+recipes:
+  # ================= 搜索网页 =================
+  # ---- DeepSeek（2026-11 的接口文档：api-docs.deepseek.com/api/search）。自己的搜索引擎，中文覆盖好，支持 site: after: lang: ----
+  - name: deepseek
+    kind: search
+    title: DeepSeek
+    desc: DeepSeek 自己的搜索引擎，中文好。用模型服务里 DeepSeek 的 API Key，不用另外申请
+    en: {desc: "DeepSeek's own search engine, good for Chinese. Uses the DeepSeek API key from your model services"}
+    key: {provider: 'api\.deepseek\.com'}   # 用接口地址对上这个的模型服务的密钥
+    price_usd: 0.00075                      # 每次（有结果的才收钱）
+    request:
+      url: ${origin}/v1/tools/search
+      headers: {Authorization: $bearer}
+      json: {query: $query, count: $count}
+    recent:                                 # 只要最近几天的：搜索词后面加 after:日期
+      json: {query: '${query} after:${since}', count: $count}
+    results: results
+    item: {title: title, url: url, text: [summary, snippet], date: date}
+
+  # ---- Tavily（docs.tavily.com/documentation/api-reference/endpoint/search）。英文资料好，每月有免费额度 ----
+  - name: tavily
+    kind: search
+    title: Tavily
+    desc: 为 AI 做的搜索，英文资料好，每月有免费额度
+    en: {desc: "Search built for AI, good for English sources, with a monthly free quota"}
+    link: https://app.tavily.com/home
+    fields:
+      - {key: api_key, label: API Key, secret: true, env: TAVILY_API_KEY}
+    request:
+      url: https://api.tavily.com/search
+      headers: {Authorization: $bearer}
+      json: {query: $query, max_results: $count, search_depth: basic}
+    recent:
+      json: {query: $query, max_results: $count, search_depth: basic, start_date: $since}
+    results: results
+    item: {title: title, url: url, text: content, date: published_date}
+
+  # ---- Brave（api-dashboard.search.brave.com/app/documentation/web-search/get-started）。独立索引，英文好 ----
+  - name: brave
+    kind: search
+    title: Brave Search
+    desc: Brave 自己的索引，英文好
+    en: {desc: "Brave's own index, good for English"}
+    link: https://api-dashboard.search.brave.com/app/keys
+    fields:
+      - {key: api_key, label: API Key, secret: true, env: BRAVE_API_KEY}
+    request:
+      method: GET
+      url: https://api.search.brave.com/res/v1/web/search
+      headers: {X-Subscription-Token: $api_key, Accept: application/json}
+      params: {q: $query, count: $count}
+    recent:
+      params: {q: $query, count: $count, freshness: '${since}to${today}'}
+    results: web.results
+    item: {title: title, url: url, text: description, date: [page_age, age]}
+
+  # ---- 博查（open.bochaai.com）。中文网页搜索 ----
+  - name: bocha
+    kind: search
+    title: 博查
+    desc: 中文网页搜索，结果带长摘要
+    en: {title: Bocha, desc: "Chinese web search with long summaries"}
+    link: https://open.bochaai.com/
+    fields:
+      - {key: api_key, label: API Key, secret: true, env: BOCHA_API_KEY}
+    request:
+      url: https://api.bochaai.com/v1/web-search
+      headers: {Authorization: $bearer}
+      json: {query: $query, count: $count, summary: true, freshness: noLimit}
+    recent:
+      json: {query: $query, count: $count, summary: true, freshness: $range}
+    ranges: {day: oneDay, week: oneWeek, month: oneMonth, year: oneYear}
+    results: [data.webPages.value, webPages.value]
+    item: {title: name, url: url, text: [summary, snippet], date: datePublished}
+
+  # ---- SearXNG：自己搭的元搜索 ----
+  - name: searxng
+    kind: search
+    title: SearXNG
+    desc: 自己搭的元搜索，不要钱。要开 JSON 格式（settings.yml 的 search.formats 加上 json）
+    en: {desc: "Self-hosted metasearch, free. Enable the JSON format (add json to search.formats in settings.yml)"}
+    fields:
+      - {key: url, label: 地址, placeholder: 'http://localhost:8080', config: search.searxng_url, en: {label: Address}}
+    request:
+      method: GET
+      url: ${url}/search
+      params: {q: $query, format: json}
+    recent:
+      params: {q: $query, format: json, time_range: $range}
+    results: results
+    item: {title: title, url: url, text: content, date: publishedDate}
+
+  # ---- DuckDuckGo 网页版：不用配置，最后垫底 ----
+  - name: duckduckgo
+    kind: search
+    title: DuckDuckGo
+    desc: 不用配置，免费。中文结果一般，请求多了会被限流
+    en: {desc: "No setup, free. Weaker for Chinese; gets rate-limited under load"}
+    request:
+      url: https://html.duckduckgo.com/html/
+      form: {q: $query}
+    recent:
+      form: {q: $query, df: $range}
+    ranges: {day: d, week: w, month: m, year: y}
+    parse: duckduckgo
+
+  # ================= 读网页 =================
+  # ---- DeepSeek Fetch（api-docs.deepseek.com/api/fetch）：返回整理好的 Markdown ----
+  - name: deepseek
+    kind: fetch
+    title: DeepSeek
+    desc: 返回整理好的正文（Markdown），要跑脚本才显示内容的网页也能读。用 DeepSeek 的 API Key
+    en: {desc: "Returns clean page text (Markdown), including script-rendered pages. Uses your DeepSeek API key"}
+    key: {provider: 'api\.deepseek\.com'}
+    price_usd: 0.00075
+    request:
+      url: ${origin}/v1/tools/fetch
+      headers: {Authorization: $bearer}
+      json: {url: $url}
+    page: {title: title, text: content}
+
+  # ---- Jina Reader：不填 Key 也能用（限速）。会把网址发给 Jina，所以默认不用，要在设置里勾上 ----
+  - name: jina
+    kind: fetch
+    title: Jina Reader
+    desc: 把网页转成 Markdown，不填 Key 也能用（有限速）。会把要读的网址发给 Jina，默认不开
+    en: {desc: "Turns pages into Markdown; works without a key (rate-limited). Sends the URLs to Jina, so it's off by default"}
+    link: https://jina.ai/reader
+    auto: false
+    fields:
+      - {key: api_key, label: API Key, secret: true, optional: true, env: JINA_API_KEY}
+    request:
+      method: GET
+      url: https://r.jina.ai/${url}
+      headers: {Authorization: $bearer, Accept: application/json}
+    page: {title: data.title, text: data.content}
+
+  # ---- 直接抓：这台机器自己下载网页，去掉标签。跳转的每一跳都查是不是内网地址 ----
+  - name: direct
+    kind: fetch
+    title: 直接抓取
+    desc: 这台机器自己下载网页、去掉标签。不要钱，要跑脚本才显示内容的网页读不到
+    en: {title: Direct fetch, desc: "This machine downloads the page and strips the tags. Free; can't read script-rendered pages"}
+    parse: direct

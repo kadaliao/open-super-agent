@@ -1,4 +1,5 @@
-"""内置的网页工具：web_search、fetch_url。注册在 builtin.py，Router / Worker / 小应用都从 registry 找。"""
+"""内置的网页工具：web_search、fetch_url。注册在 builtin.py，Router / Worker / 小应用都从 registry 找。
+用哪家搜索、哪家读网页按配方来（websearch.py）；这里管安全检查（内网地址、不用的网站）和直接抓网页。"""
 import asyncio
 import html
 import ipaddress
@@ -6,6 +7,7 @@ import re
 import socket
 from urllib.parse import urljoin, urlsplit
 import httpx
+from . import websearch
 from .config import CFG
 
 UA = {"User-Agent": "open-super-agent/0.1"}
@@ -13,20 +15,12 @@ MAX_REDIRECTS = 5
 _TRANSPORT = None   # 测试时换成假的
 
 
-async def web_search(query: str) -> str:
-    async with httpx.AsyncClient(timeout=20, headers=UA, follow_redirects=True) as c:
-        if url := CFG["search"].get("searxng_url"):
-            r = await c.get(f"{url}/search", params={"q": query, "format": "json"})
-            items = r.json().get("results", [])[:8]
-            return "\n".join(f"- {i['title']} | {i['url']}\n  {i.get('content', '')}" for i in items) or "无结果"
-        r = await c.post("https://html.duckduckgo.com/html/", data={"q": query})
-        links = re.findall(r'class="result__a" href="([^"]+)"[^>]*>(.*?)</a>', r.text)
-        snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', r.text, re.S)
-        out = []
-        for i, (u, t) in enumerate(links[:8]):
-            s = re.sub("<.*?>", "", snippets[i]) if i < len(snippets) else ""
-            out.append(f"- {html.unescape(re.sub('<.*?>', '', t))} | {u}\n  {html.unescape(s)}")
-        return "\n".join(out) or "无结果"
+async def web_search(query: str, days=None) -> str:
+    try:
+        days = max(1, min(int(days), 3650)) if days not in (None, "", 0, "0") else None
+    except (TypeError, ValueError):
+        days = None
+    return await websearch.search(query, days)
 
 
 # Clash、Surge 这类代理的 TUN 模式把所有域名解析到这一段假地址再转发出去，不是真的内网
@@ -78,10 +72,22 @@ def _is_ip(host: str) -> bool:
 
 
 async def fetch_url(url: str) -> str:
+    url = str(url or "").strip()
+    if why := await blocked(url):
+        return why
+    if websearch.blocked_domain(url):
+        return websearch.refuse_text(url, fetching=True)
+    return await websearch.fetch(url, private=await private_host(url))
+
+
+async def direct_fetch(url: str) -> str:
+    """自己下载网页、去掉标签（配方里的 direct）。"""
     async with httpx.AsyncClient(timeout=20, headers=UA, follow_redirects=False, transport=_TRANSPORT) as c:
-        for _ in range(MAX_REDIRECTS + 1):   # 跳转自己跟：每一跳都要检查，免得公网地址跳到内网
+        for _ in range(MAX_REDIRECTS + 1):   # 跳转自己跟：每一跳都要检查，免得公网地址跳到内网、不用的网站
             if why := await blocked(url):
                 return why
+            if websearch.blocked_domain(url):
+                return websearch.refuse_text(url, fetching=True)
             r = await c.get(url)
             if not (r.is_redirect and r.headers.get("location")):
                 break

@@ -110,6 +110,60 @@ roles:
 API Key 先看保险库（界面上填的），没有再看 `api_key_env` 写的环境变量。在界面上删掉填的 key，就回到用环境变量。
 本机和内网地址（`localhost`、`host.docker.internal`、`192.168.*` 这类）不填 API Key 也算能用。
 
+## 搜索和读网页
+
+Bot 用 `web_search` 搜索网页、用 `fetch_url` 读网页正文。用哪家在 **设置 → 搜索和读网页** 里选：打开几家、排先后，
+前一家出错、被限流或没有结果就换下一家（换过的写在结果末尾，模型能看到）。没选过是“自动”：配好了的都用，按配方的顺序。
+
+| 搜索网页 | 要什么 | 说明 |
+|---|---|---|
+| DeepSeek | 模型服务里有 DeepSeek（`api.deepseek.com`）并填了 API Key | DeepSeek 自己的搜索引擎，中文好；0.75 美元 / 千次，有结果才收钱 |
+| Tavily | API Key（或环境变量 `TAVILY_API_KEY`） | 英文资料好，每月有免费额度 |
+| Brave Search | API Key（或 `BRAVE_API_KEY`） | 独立索引，英文好 |
+| 博查 | API Key（或 `BOCHA_API_KEY`） | 中文网页搜索 |
+| SearXNG | 地址（以前的 `search.searxng_url` 照样认） | 自己搭的元搜索，要在它的 settings.yml 里开 JSON 格式 |
+| DuckDuckGo | 不用配置 | 免费，最后垫底；中文结果一般，请求多了会被限流 |
+
+| 读网页 | 要什么 | 说明 |
+|---|---|---|
+| DeepSeek | 同上 | 返回整理好的 Markdown，要跑脚本才显示内容的网页也能读；0.75 美元 / 千次 |
+| Jina Reader | 不填 Key 也能用（有限速） | 会把网址发给 Jina，所以自动时不用，要自己打开 |
+| 直接抓取 | 不用配置 | 这台机器自己下载、去掉标签；本机和内网的网页（`tools.fetch_private: true` 时）只走这一家 |
+
+`web_search` 能带 `days`（只要最近几天的）：DeepSeek 在搜索词后面加 `after:日期`，别家换成各自的时间参数。
+DeepSeek 搜索、读网页的花费按配方里的单价记进观测页（“搜索和读网页”这一项）。
+
+**不用的网站**（`web.block`，设置里能改）：这些域名和它们的子域名不会出现在搜索结果里，`fetch_url` 不读，浏览器的 `browser_open` 也不打开。
+默认是 `[baidu.com]`。
+
+```yaml
+web:
+  search: [deepseek, duckduckgo]    # 留空是自动；界面上改过的优先
+  fetch: [deepseek, direct]
+  block: [baidu.com]
+  recipes:                          # 加别家：kind 和 name 都和默认的一样就替掉默认的那条
+    - name: my-search
+      kind: search                  # search 或 fetch
+      title: 我的搜索
+      fields:                       # 要用户填的（设置页上出现输入框）：secret 的存进保险库；env、config 是没填时看哪
+        - {key: api_key, label: API Key, secret: true, env: MY_SEARCH_KEY}
+      request:                      # method（默认 POST）、url、headers、params、json 或 form
+        method: GET
+        url: https://search.example.com/v1/search
+        headers: {Authorization: $bearer}     # bearer 是 "Bearer 密钥"
+        params: {q: $query, n: $count}
+      recent:                       # 带了 days 时替掉 request 里的同名项
+        params: {q: $query, n: $count, from: $since}
+      results: data.items           # 结果列表在回包哪里（可以写几个）
+      item: {title: name, url: link, text: [summary, snippet], date: published}
+      price_usd: 0.001              # 每次多少美元，记进费用（可以不写）
+```
+
+模板和画图的配方一样：值正好是 `$名字` 的换成变量，没有这个变量的整项去掉；字符串里的 `${名字}` 换成文字。
+变量有 `query`、`count`、`url`（要读的网址）、`days`、`since`（days 天前，YYYY-MM-DD）、`today`、`range`
+（day / week / month / year，用 `ranges` 换成接口的叫法）、`origin`（`key: {provider: 正则}` 用模型服务的密钥时，那个服务的协议和域名）、
+`bearer`，以及 `fields` 里的每一项。读网页的配方写 `page: {title: …, text: …}`。完整的例子见 `osa/websearch.yaml`。
+
 ## 单价和限额
 
 **单价自动获取**，不用自己填：每天从 [models.dev](https://models.dev) 拉一次（两百多家服务商、几千个模型），存在 `data/model-prices.json`。

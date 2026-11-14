@@ -3,6 +3,17 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+### 新增
+- **搜索网页、读网页能换服务了**：设置里多了“搜索和读网页”一页，能打开几家、排先后，前一家出错、被限流或没结果就自动换下一家。
+  模型服务里有 DeepSeek 的，默认先用 DeepSeek 新出的搜索和读网页接口（中文结果好很多，要跑脚本才显示的网页也能读；每次约 0.5 分钱，记在观测页），
+  DuckDuckGo 垫底。也能接 Tavily、Brave、博查、SearXNG、Jina Reader；别家写成配方加在 `config.yaml` 里，不用改代码。
+  写法见 [配置](docs/configuration.md#搜索和读网页)
+- **只搜最近几天的**：`web_search` 能带 `days`，查新闻、近况时只要最近的结果
+- **不用的网站**：列在这里的网站（默认是 baidu.com）不出现在搜索结果里，Bot 也不会读、不会在浏览器里打开
+
+### 改动
+- 后台任务查资料时不再在浏览器里打开搜索引擎的网站去搜（以前会遇到验证码），只用 `web_search`
+- DuckDuckGo 的结果链接换成真实地址（以前是 duckduckgo.com 的跳转链接），广告去掉了
 
 ## [0.22.0] - 2026-11-14
 ### 新增

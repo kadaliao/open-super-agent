@@ -10,6 +10,7 @@ import BotAvatar from './BotAvatar'
 import { describe, STATUS, when } from './Routines'
 import Channels from './Channels'
 import ModelSettings from './ModelSettings'
+import WebSettings from './WebSettings'
 import { ComputerSettings } from './Computer'
 import { ToastHost, useToast } from './settingsKit'
 import { bubblePref, canSetTheme, setBubblePref, setThemePref, themePref, type BubblePref, type ThemePref } from '../theme'
@@ -18,7 +19,7 @@ import { useBack } from '../swipe'
 
 // 设置：左边按类分组的导航，右边是这一页
 const GROUPS: { name: string; items: [string, string, string][] }[] = [
-  { name: t('模型与费用'), items: [['models', t('模型'), 'sparkles'], ['limits', t('限制与预算'), 'gauge']] },
+  { name: t('模型与费用'), items: [['models', t('模型'), 'sparkles'], ['web', t('搜索和读网页'), 'search'], ['limits', t('限制与预算'), 'gauge']] },
   { name: t('电脑'), items: [['computer', t('Bot 用的电脑'), 'monitor']] },
   { name: t('安全'), items: [['rules', t('确认规则'), 'shield'], ['vault', t('保险库'), 'key']] },
   { name: tc('nav', '连接'), items: [['channels', t('聊天软件'), 'message'], ['notify', t('通知'), 'bell'], ['mobile', t('手机 App'), 'smartphone']] },
@@ -28,6 +29,7 @@ const GROUPS: { name: string; items: [string, string, string][] }[] = [
 const TITLES = Object.fromEntries(GROUPS.flatMap(g => g.items.map(([k, v]) => [k, v])))
 const DESC: Record<string, string> = {
   models: t('Bot 用哪些大模型。先添加模型服务，再给每项工作选一个模型。'),
+  web: t('Bot 查资料时用哪家搜索网页、读网页。各家怎么调写在配方里（osa/websearch.yaml），在 config.yaml 里能加别家。'),
   limits: t('防止任务跑太久、花太多。改完离开输入框就保存。'),
   computer: t('Bot 上网、跑命令、处理文件用的那台电脑。你的 Mac 不在这里：它们是派任务的去处，在 Bot 右栏的“电脑”里管。'),
   triggers: t('所有 Bot 的定时任务，在这里就能开关。'),
@@ -79,6 +81,7 @@ export default function Settings({ onClose, initial }: { onClose: () => void; in
             </div>
             <div className="set-body">
               {title === 'models' && <ModelSettings />}
+              {title === 'web' && <WebSettings />}
               {title === 'limits' && <Limits />}
               {title === 'computer' && <ComputerSettings />}
               {title === 'rules' && <Rules />}

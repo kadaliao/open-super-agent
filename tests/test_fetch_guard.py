@@ -44,7 +44,7 @@ async def test_redirects_are_followed(monkeypatch):
             return httpx.Response(301, headers={"location": "/b"})
         return httpx.Response(200, text="<html><script>x()</script><p>到了 b</p></html>")
     monkeypatch.setattr(tools, "_TRANSPORT", httpx.MockTransport(handler))
-    assert await tools.fetch_url("https://site.example.invalid/a") == " 到了 b "
+    assert await tools.fetch_url("https://site.example.invalid/a") == "到了 b"
 
 
 async def test_private_allowed_when_configured(monkeypatch):

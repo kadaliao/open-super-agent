@@ -43,6 +43,16 @@ async def _generate_image(call: Call) -> str:
                                  call.args.get("images"))
 
 
+WEB_SEARCH = {"type": "function", "function": {
+    "name": "web_search",
+    "description": "搜索网页，返回标题、链接、日期和摘要。要新闻、近况、最近的讨论时填 days（只要最近几天的）。"
+                   "搜索词里可以写 site:域名 只搜某个网站。查资料用这个，不要在浏览器里打开搜索引擎的网站去搜",
+    "parameters": {"type": "object", "properties": {
+        "query": {"type": "string", "description": "搜索词"},
+        "days": {"type": "integer", "description": "可选：只要最近几天的结果，比如 7、30"}},
+        "required": ["query"]}}}
+
+
 def load():
     """注册全部内置工具（只做一次）。顺序就是给模型的顺序，别随手调换：换了模型服务的前缀缓存就不命中了。"""
     global _loaded
@@ -50,12 +60,12 @@ def load():
         return
     _loaded = True
     web = frozenset({WORKER, APPLET})
-    # parallel：只读的工具，Worker 一轮里要了好几个时一起跑。搜索只给 2：DuckDuckGo 一下子来太多会限流
-    ctx.simple("web_search", tools.schema("web_search", "搜索网页，返回标题、链接和摘要", {"query": "搜索词"}), tools.web_search,
-               where=web, gated=True, parallel=2, describe="搜索网页，返回标题、链接和摘要",
+    # parallel：只读的工具，Worker 一轮里要了好几个时一起跑。搜索只给 2：垫底的 DuckDuckGo 一下子来太多会限流
+    ctx.simple("web_search", WEB_SEARCH, tools.web_search,
+               where=web, gated=True, parallel=2, describe="搜索网页，返回标题、链接、日期和摘要；能只要最近几天的（days）",
                progress=lambda a: i18n.t("搜索：{what}", what=str(a.get("query") or "")[:60]))
-    ctx.simple("fetch_url", tools.schema("fetch_url", "抓取网页正文（截断到 8000 字）", {"url": "网址"}), tools.fetch_url,
-               where=web, gated=True, parallel=3, describe="抓取网页正文（截断到 8000 字）",
+    ctx.simple("fetch_url", tools.schema("fetch_url", "读网页正文（截断到 8000 字）。要跑脚本才显示内容的网页一般也能读", {"url": "网址"}),
+               tools.fetch_url, where=web, gated=True, parallel=3, describe="读网页正文（截断到 8000 字）",
                progress=lambda a: i18n.t("读取网页：{what}", what=str(a.get("url") or "")[:60]))
     ctx.tool(Tool("save_page", library.SAVE_PAGE, _save_page, when=_not_draft,
                   progress=lambda a: i18n.t("保存页面：{title}", title=str(a.get("title", ""))[:40])))

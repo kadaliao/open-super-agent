@@ -1,0 +1,476 @@
+"""搜索网页（web_search）、读网页（fetch_url）：按“配方”调各家的接口，代码里不写死用哪家。
+
+默认配方在 osa/websearch.yaml，config.yaml 的 web.recipes 可以加、改（kind 和 name 都一样的替掉默认的）。
+设置 → 搜索和读网页 里选用哪几家、排先后、填密钥和地址，存在 settings 表的 web 一行（密钥进保险库）。
+没选过是“自动”：配好了的都用（模型服务里有对应的、该填的填了），按配方的顺序；auto: false 的要自己勾上才用。
+按顺序试，前一家出错、被限流、没结果就换下一家；换过的写在结果末尾。
+
+配方（一条管一家的一类）：
+- name、kind（search / fetch）、title、desc、link（去哪申请密钥）、en（英文界面的 title / desc）。
+  搜索和读网页可以同名，同名的共用填的密钥和地址。
+- 密钥从哪来：key: {provider: 正则} 用模型服务里接口地址对上这个正则、配好了密钥的那家（变量 origin 是它的协议和域名）；
+  fields 是要用户填的：key、label、secret（是密钥：存进保险库，不再显示）、optional（可以不填）、placeholder、
+  env（没填时看这个环境变量）、config（没填时看 config.yaml 里这个路径，比如以前的 search.searxng_url）。
+- 怎么调：request 里写 method（默认 POST）、url、headers、params（网址后面的参数）、json 或 form。
+  带了 days（只要最近几天的）时，recent 里写的几项替掉 request 里的同名项。
+  模板同画图的配方（generation.render）：值正好是 $名字 的换成变量，没有这个变量的整项去掉；字符串里的 ${名字} 换成文字。
+  变量：query、count、url（要读的网址）、days、since（days 天前，YYYY-MM-DD）、today、range（day / week / month / year，
+  按 ranges 换成接口的叫法）、origin、fields 里的每一项、bearer（"Bearer 密钥"，没有密钥时没有这个变量）。
+- 结果在哪：搜索写 results（结果列表在回包里的路径，可以写几个）和 item（每条的 title、url、text、date 在哪，可以写几个）；
+  读网页写 page: {title, text}。parse 是代码里写好的解析：duckduckgo（DuckDuckGo 网页版）、direct（自己下载网页）。
+- price_usd：每次成功调用多少美元，记进费用统计（观测页）。
+
+不用的网站（web.block，设置里能改）：搜索结果里去掉，fetch_url 和浏览器都不打开。
+"""
+import datetime as dt
+import html
+import json
+import os
+import re
+import time
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+import httpx
+import yaml
+from . import i18n, providers, vault
+from .config import CFG
+from .generation import _error as http_error, _first, pick, render
+from .memory import conn
+
+KINDS = ("search", "fetch")
+COUNT = 8              # 每次搜几条
+TEXT = 300             # 每条摘要最多几个字（8 条就是两千多字，再长太占上下文）
+MAX_CHARS = 8000       # fetch_url 返回的正文最多几个字
+RANGES = ((1, "day"), (7, "week"), (31, "month"), (366, "year"))
+UA = {"User-Agent": "open-super-agent/0.1"}
+_TRANSPORT = None      # 测试时换成假的
+_DEFAULTS = yaml.safe_load((Path(__file__).parent / "websearch.yaml").read_text(encoding="utf-8"))
+_DOMAIN = re.compile(r"^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z0-9-]{2,63}$")
+
+
+class Failed(Exception):
+    """这一家这次不行（出错、限流、回包不对），换下一家。"""
+
+
+# ---------- 配方和设置 ----------
+def _cfg() -> dict:
+    return CFG.get("web") or {}
+
+
+def recipes(kind: str | None = None) -> list[dict]:
+    """config.yaml 的 web.recipes 排在默认的前面；kind 和 name 都一样的默认配方不要了。"""
+    mine = [r for r in (_cfg().get("recipes") or []) if isinstance(r, dict) and r.get("name") and r.get("kind") in KINDS]
+    have = {(r["kind"], r["name"]) for r in mine}
+    out = [*mine, *(r for r in _DEFAULTS["recipes"] if (r["kind"], r["name"]) not in have)]
+    return [r for r in out if kind is None or r["kind"] == kind]
+
+
+def recipe(kind: str, name: str) -> dict | None:
+    return next((r for r in recipes(kind) if r["name"] == name), None)
+
+
+def _saved() -> dict:
+    r = conn.execute("select value from settings where key='web'").fetchone()
+    try:
+        d = json.loads(r[0]) if r else {}
+    except ValueError:
+        d = {}
+    return d if isinstance(d, dict) else {}
+
+
+def _store(d: dict):
+    conn.execute("insert or replace into settings values('web', ?)", (json.dumps(d, ensure_ascii=False),))
+    conn.commit()
+
+
+def _tr(r: dict, k: str) -> str:
+    """配方里给人看的字（title、desc、label）：英文界面用 en 里写的。"""
+    if i18n.lang() == "en" and (v := (r.get("en") or {}).get(k)):
+        return v
+    return r.get(k) or ""
+
+
+def _vault_name(name: str, field: str) -> str:
+    return "WEB_" + re.sub(r"\W", "_", f"{name}_{field}".upper())
+
+
+def field_value(r: dict, f: dict) -> str:
+    """用户填的值；没填看环境变量（env）、config.yaml（config）、默认值。"""
+    if f.get("secret"):
+        v = vault.get(_vault_name(r["name"], f["key"]))
+    else:
+        v = ((_saved().get("fields") or {}).get(r["name"]) or {}).get(f["key"])
+    if not v and f.get("env"):
+        v = os.environ.get(f["env"], "")
+    if not v and f.get("config"):
+        v = pick(CFG, f["config"])
+    return str(v or f.get("default") or "").strip()
+
+
+def _provider(r: dict) -> str | None:
+    """key: {provider: 正则} 的配方用哪个模型服务的密钥；配方不用模型服务是 None，要用但没有配好的是空字符串。"""
+    want = (r.get("key") or {}).get("provider")
+    if not want:
+        return None
+    for name, p in CFG["providers"].items():
+        if re.search(want, p.get("base_url") or "", re.I) and providers.usable(name):
+            return name
+    return ""
+
+
+def missing(r: dict) -> str:
+    """这一家现在用不了的原因；能用返回空。"""
+    if _provider(r) == "":
+        return i18n.t("要先在 设置 → 模型 里添加 {name} 的模型服务", name=_tr(r, "title"))
+    for f in r.get("fields") or []:
+        if not f.get("optional") and not field_value(r, f):
+            return i18n.t("还没填：{label}", label=_tr(f, "label") or f["key"])
+    return ""
+
+
+def chosen(kind: str) -> list[str]:
+    """设置里选的顺序（没选过看 config.yaml 的 web.search / web.fetch）；空的是“自动”。"""
+    v = _saved().get(kind) or _cfg().get(kind) or []
+    return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
+
+def order(kind: str) -> list[dict]:
+    """这次按顺序试哪几家：选了的按选的顺序，没选是配好了的全部（auto: false 的除外）。"""
+    names = chosen(kind)
+    rs = [r for n in names if (r := recipe(kind, n))] if names else [r for r in recipes(kind) if r.get("auto", True)]
+    return [r for r in rs if not missing(r)]
+
+
+def block_list() -> list[str]:
+    s = _saved()
+    v = s["block"] if "block" in s else _cfg().get("block")
+    return [d for d in (str(x).strip().lower().strip(".") for x in v or []) if d]
+
+
+def blocked_domain(url: str) -> str | None:
+    """网址是不是在不用的网站里（域名本身和它的子域名），是的话返回那一项。"""
+    try:
+        host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return None
+    return next((d for d in block_list() if host == d or host.endswith("." + d)), None)
+
+
+def refuse_text(url: str, fetching: bool = False) -> str:
+    """不用的网站：给模型的话。fetching：fetch_url（和内网检查的说法一致，以“没抓取”开头）。"""
+    host = urlsplit(url).hostname or url
+    if fetching:
+        return f"没抓取：{host} 在不用的网站里（设置 → 搜索和读网页），不要从这个网站找信息"
+    return f"没打开：{host} 在不用的网站里（设置 → 搜索和读网页），不要从这个网站找信息"
+
+
+# ---------- 调接口 ----------
+def _vars(r: dict, **kw) -> dict:
+    v = {k: x for k, x in kw.items() if x is not None}
+    key = ""
+    if name := _provider(r):
+        p = urlsplit(CFG["providers"][name].get("base_url") or "")
+        v["origin"] = f"{p.scheme}://{p.netloc}"
+        key = providers.api_key(name)
+    for f in r.get("fields") or []:
+        if val := field_value(r, f):
+            v[f["key"]] = val.rstrip("/") if f["key"] == "url" else val
+            if f.get("secret") and not key:
+                key = val
+    if key:
+        v["bearer"] = f"Bearer {key}"
+    if days := kw.get("days"):
+        today = dt.date.today()
+        v["since"] = (today - dt.timedelta(days=days)).isoformat()
+        v["today"] = today.isoformat()
+        bucket = next((b for n, b in RANGES if days <= n), "year")
+        v["range"] = (r.get("ranges") or {}).get(bucket, bucket)
+    return v
+
+
+async def _send(c: httpx.AsyncClient, r: dict, v: dict) -> httpx.Response:
+    req = dict(r.get("request") or {})
+    if v.get("days") and r.get("recent"):
+        req |= r["recent"]
+    kw: dict = {}
+    if "params" in req:
+        kw["params"] = {k: str(x) for k, x in render(req["params"], v).items()}
+    if "json" in req:
+        kw["json"] = render(req["json"], v)
+    elif "form" in req:
+        kw["data"] = {k: str(x) for k, x in render(req["form"], v).items()}
+    headers = UA | {k: str(x) for k, x in render(req.get("headers") or {}, v).items()}
+    url = render(req.get("url") or "", v)
+    try:
+        resp = await c.request((req.get("method") or "POST").upper(), url, headers=headers, **kw)
+    except httpx.TimeoutException:
+        raise Failed(i18n.t("连接超时"))
+    except httpx.HTTPError as e:
+        raise Failed(i18n.t("连不上：{error}", error=type(e).__name__))
+    if resp.status_code == 429:
+        raise Failed(i18n.t("被限流了（HTTP 429）"))
+    if resp.status_code >= 400:
+        raise Failed(http_error(resp))
+    return resp
+
+
+def _json(resp: httpx.Response):
+    try:
+        return resp.json()
+    except ValueError:
+        raise Failed(i18n.t("返回的不是 JSON：{text}", text=resp.text[:120]))
+
+
+def _clean(s) -> str:
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", str(s or "")))).strip()
+
+
+def _ddg(text: str) -> list[dict]:
+    """DuckDuckGo 网页版的结果。链接是 duckduckgo.com/l/?uddg=真实地址，取出真实地址；广告（y.js）不要。"""
+    links = re.findall(r'class="result__a" href="([^"]+)"[^>]*>(.*?)</a>', text, re.S)
+    snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', text, re.S)
+    if not links and "anomaly" in text:
+        raise Failed(i18n.t("DuckDuckGo 要人机验证（请求太多被拦了）"))
+    out = []
+    for i, (u, t) in enumerate(links):
+        u = html.unescape(u)
+        if u.startswith("//"):
+            u = "https:" + u
+        if "uddg=" in u:
+            u = parse_qs(urlsplit(u).query).get("uddg", [u])[0]
+        if (urlsplit(u).hostname or "").endswith("duckduckgo.com"):
+            continue
+        out.append({"title": _clean(t), "url": u, "text": _clean(snippets[i]) if i < len(snippets) else "", "date": None})
+    return out
+
+
+async def _search_one(c: httpx.AsyncClient, r: dict, query: str, days: int | None) -> list[dict]:
+    resp = await _send(c, r, _vars(r, query=query, count=COUNT, days=days))
+    if r.get("parse") == "duckduckgo":
+        return _ddg(resp.text)
+    d = _json(resp)
+    paths = r.get("results") or "results"
+    found = next((x for p in (paths if isinstance(paths, list) else [paths]) if isinstance(x := pick(d, p), list)), None)
+    if found is None:
+        raise Failed(i18n.t("回包里没有结果列表"))
+    item = r.get("item") or {}
+    out = []
+    for x in found:
+        if isinstance(x, dict) and isinstance(u := _first(x, item.get("url") or "url"), str) and u.startswith(("http://", "https://")):
+            out.append({"title": _clean(_first(x, item.get("title") or "title")), "url": u,
+                        "text": _clean(_first(x, item.get("text") or "text")), "date": _first(x, item.get("date") or "date")})
+    return out
+
+
+async def _fetch_one(c: httpx.AsyncClient, r: dict, url: str) -> tuple[str, str]:
+    if r.get("parse") == "direct":
+        from . import tools
+        return "", await tools.direct_fetch(url)
+    d = _json(await _send(c, r, _vars(r, url=url)))
+    page = r.get("page") or {}
+    title, text = _first(d, page.get("title") or "title"), _first(d, page.get("text") or "text")
+    return str(title or "").strip(), str(text or "")
+
+
+def _date(v) -> str:
+    s = str(v or "").strip()
+    m = re.match(r"\d{4}-\d{2}-\d{2}", s)
+    return m.group(0) if m else s[:24]
+
+
+def _format(items: list[dict]) -> str:
+    lines = []
+    for e in items[:COUNT]:
+        head = f"- {e['title'] or e['url']} | {e['url']}" + (f" | {d}" if (d := _date(e.get("date"))) else "")
+        lines.append(head + (f"\n  {e['text'][:TEXT]}" if e.get("text") else ""))
+    return "\n".join(lines)
+
+
+def _record(r: dict, what: str, ms: float):
+    """收钱的服务：费用统计里记一行（0 token，费用按配方的单价）。"""
+    usd = r.get("price_usd")
+    if not usd:
+        return
+    from . import memory, prices
+    memory.add_usage("web", what, provider=_provider(r) or r["name"], cost=float(usd) * prices._rate(), ms=int(ms))
+
+
+def _client(timeout: float = 20) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=timeout, follow_redirects=True, transport=_TRANSPORT)
+
+
+def _tail(notes: list[str], used: str = "") -> str:
+    if not notes:
+        return ""
+    s = "；".join(notes)
+    return "\n" + (i18n.t("（{notes}；这次用的是 {name}）", notes=s, name=used) if used else i18n.t("（{notes}）", notes=s))
+
+
+# ---------- 两个工具 ----------
+async def search(query: str, days: int | None = None, only: dict | None = None) -> str:
+    """按顺序试各家，第一家有结果的算数。only：只试这一家（设置里的测试）。"""
+    query = (query or "").strip()
+    if not query:
+        return i18n.t("没有给搜索词")
+    rs = [only] if only else order("search")
+    if not rs:
+        return i18n.t("搜索不了：没有能用的搜索服务（设置 → 搜索和读网页）")
+    notes, empty = [], 0
+    async with _client() as c:
+        for r in rs:
+            t0 = time.monotonic()
+            try:
+                items = await _search_one(c, r, query, days)
+            except Failed as e:
+                notes.append(f"{_tr(r, 'title')}：{e}")
+                continue
+            if items:
+                _record(r, "search", (time.monotonic() - t0) * 1000)
+            items = [e for e in items if not blocked_domain(e["url"])]
+            if items:
+                return _format(items) + _tail(notes, _tr(r, "title"))
+            empty += 1
+            notes.append(i18n.t("{name}：没有结果", name=_tr(r, "title")))
+    head = i18n.t("无结果") if empty else i18n.t("搜索失败")
+    return head + _tail(notes)
+
+
+async def fetch(url: str, private: bool = False, only: dict | None = None) -> str:
+    """读一个网页：按顺序试各家。private（本机、内网地址，config 里允许了才走到这里）只能自己抓，不发给别家。"""
+    if only:
+        rs = [only]
+    elif private:
+        rs = [r for r in recipes("fetch") if r.get("parse") == "direct"][:1]
+    else:
+        rs = order("fetch") or [r for r in recipes("fetch") if r.get("parse") == "direct"][:1]
+    notes = []
+    async with _client(30) as c:
+        for r in rs:
+            t0 = time.monotonic()
+            try:
+                title, text = await _fetch_one(c, r, url)
+            except Failed as e:
+                notes.append(f"{_tr(r, 'title')}：{e}")
+                continue
+            except httpx.HTTPError as e:
+                notes.append(f"{_tr(r, 'title')}：{type(e).__name__}")
+                continue
+            if r.get("parse") == "direct" and text.startswith("没抓取"):
+                return text   # 直接抓时跳到了内网或不用的网站：原因原样给模型
+            text = re.sub(r"\n{3,}", "\n\n", text).strip()
+            if text:
+                _record(r, "fetch", (time.monotonic() - t0) * 1000)
+                head = f"# {title}\n\n" if title and title not in text.split("\n", 1)[0] else ""   # 正文第一行就是标题的不重复
+                return head + text[:MAX_CHARS] + _tail(notes, _tr(r, "title"))
+            notes.append(i18n.t("{name}：没读到内容", name=_tr(r, "title")))
+    return i18n.t("没读到：{why}", why="；".join(notes) or url)
+
+
+# ---------- 设置 ----------
+def _price(r: dict) -> float | None:
+    """每千次多少钱（按 pricing.usd_rate 换算）；不要钱的是 0；要自己的密钥、配方没写单价的不知道（None，按对方的套餐）。"""
+    from . import prices
+    if usd := r.get("price_usd"):
+        return round(float(usd) * 1000 * prices._rate(), 2)
+    return None if any(f.get("secret") and not f.get("optional") for f in r.get("fields") or []) else 0
+
+
+def public() -> dict:
+    out: dict = {"block": block_list(), "default_block": [str(x) for x in _cfg().get("block") or []]}
+    for kind in KINDS:
+        names = chosen(kind)
+        rows = []
+        for r in recipes(kind):
+            why = missing(r)
+            on = (r["name"] in names) if names else (r.get("auto", True) and not why)
+            rows.append({
+                "name": r["name"], "title": _tr(r, "title"), "desc": _tr(r, "desc"), "link": r.get("link") or "",
+                "missing": why, "on": on, "auto": r.get("auto", True), "price": _price(r),
+                "provider": _provider(r) or "",
+                "fields": [{"key": f["key"], "label": _tr(f, "label") or f["key"], "secret": bool(f.get("secret")),
+                            "optional": bool(f.get("optional")), "placeholder": f.get("placeholder") or "",
+                            "set": bool(field_value(r, f)),
+                            "value": "" if f.get("secret") else field_value(r, f)} for f in r.get("fields") or []]})
+        if names:
+            rank = {n: i for i, n in enumerate(names)}
+            rows.sort(key=lambda x: rank.get(x["name"], len(rank)))
+        out[kind] = {"auto": not names, "services": rows}
+    return out
+
+
+def save(data: dict) -> dict:
+    """改顺序（search / fetch：名字列表，null 或 [] 是回到自动）、不用的网站（block）、填的值（fields：{名字: {项: 值}}）。"""
+    from . import security
+    s = _saved()
+    for kind in KINDS:
+        if kind not in data:
+            continue
+        v = data[kind]
+        if not v:
+            s.pop(kind, None)
+            continue
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            raise ValueError(i18n.t("顺序要是名字的列表"))
+        if bad := [x for x in v if not recipe(kind, x)]:
+            raise ValueError(i18n.t("没有这个服务：{name}", name=bad[0]))
+        s[kind] = list(dict.fromkeys(v))
+    if "block" in data:
+        v = data["block"]
+        if v is None:
+            s.pop("block", None)
+        else:
+            if not isinstance(v, list):
+                raise ValueError(i18n.t("不用的网站要是域名的列表"))
+            ds = []
+            for x in v:
+                d = re.sub(r"^[a-z]+://", "", str(x).strip().lower()).split("/")[0].strip(".")
+                if d.startswith("www."):
+                    d = d[4:]
+                if not _DOMAIN.match(d):
+                    raise ValueError(i18n.t("不是域名：{text}", text=str(x)[:60]))
+                ds.append(d)
+            s["block"] = list(dict.fromkeys(ds))
+    for name, vals in (data.get("fields") or {}).items():
+        if security.demo():
+            raise ValueError(i18n.t("演示服务器上不能改搜索服务的密钥和地址"))
+        r = next((x for x in recipes() if x["name"] == name), None)
+        fs = {f["key"]: f for x in recipes() if x["name"] == name for f in x.get("fields") or []}
+        if not r or not isinstance(vals, dict):
+            raise ValueError(i18n.t("没有这个服务：{name}", name=name))
+        for k, val in vals.items():
+            f = fs.get(k)
+            if not f:
+                raise ValueError(i18n.t("没有这一项：{name}", name=k))
+            val = str(val or "").strip()
+            if k == "url" and val and not re.match(r"^https?://[^\s/]+", val):
+                raise ValueError(i18n.t("地址要以 http:// 或 https:// 开头"))
+            if f.get("secret") and val:
+                vault.put(_vault_name(name, k), val)
+            elif f.get("secret"):
+                vault.delete(_vault_name(name, k))
+            else:
+                box = s.setdefault("fields", {}).setdefault(name, {})
+                if val:
+                    box[k] = val
+                else:
+                    box.pop(k, None)
+    _store(s)
+    return public()
+
+
+async def test(kind: str, name: str) -> dict:
+    """真的调一次这一家（只这一家），给设置页的“测试”。"""
+    r = recipe(kind, name)
+    if not r:
+        raise ValueError(i18n.t("没有这个服务：{name}", name=name))
+    if why := missing(r):
+        return {"ok": False, "error": why, "ms": 0}
+    t0 = time.monotonic()
+    if kind == "search":
+        out = await search("DeepSeek", only=r)
+        ok = out.startswith("- ")
+    else:
+        out = await fetch("https://example.com/", only=r)
+        ok = "Example Domain" in out
+    ms = int((time.monotonic() - t0) * 1000)
+    return {"ok": ok, "ms": ms, "error": "" if ok else out.strip()[:300], "sample": out[:300] if ok else ""}

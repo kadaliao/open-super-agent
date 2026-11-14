@@ -20,7 +20,7 @@ from starlette.background import BackgroundTask
 from . import backup
 backup.apply_pending()   # 确认过的恢复：在打开数据库之前换上
 from . import applets, approvals, auth, avatars, botadmin, bots, catalog, channels, computer, dm, events, groups, i18n, library, mcp_hub, media, memories, memory, push, router as rt, routines
-from . import generation, mcpapps, observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault, videos
+from . import generation, mcpapps, observe, outputs, prices, providers, search, security, settings, skills, tasklog, teach, templates, unfurl, vault, videos, websearch
 from .computer import link
 from .computer.base import HOSTS
 from . import builtin, registry  # noqa: F401  builtin：导入即注册内置工具
@@ -344,6 +344,28 @@ async def media_public(request: Request, mid: str, exp: int = 0, sig: str = ""):
 @app.get("/api/videos/models")
 async def video_models():
     return await videos.models()
+
+
+# ---------- 搜索和读网页（websearch.py） ----------
+@app.get("/api/web")
+async def web_settings():
+    return websearch.public()
+
+
+@app.put("/api/web")
+async def save_web_settings(data: dict = Body(...)):
+    try:
+        return websearch.save(data)
+    except ValueError as e:
+        _err(e)
+
+
+@app.post("/api/web/test")
+async def test_web_service(data: dict = Body(...)):
+    try:
+        return await websearch.test(str(data.get("kind") or ""), str(data.get("name") or ""))
+    except ValueError as e:
+        _err(e)
 
 
 @app.get("/api/unfurl")

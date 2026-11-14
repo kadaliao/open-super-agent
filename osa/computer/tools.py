@@ -9,7 +9,7 @@ import contextvars
 import base64
 import re
 import time
-from .. import i18n, watchdog
+from .. import i18n, watchdog, websearch
 from . import ComputerError, current, macdesk
 from .base import HOSTS, SHELL_MAX_S
 
@@ -184,7 +184,8 @@ _BODY = """
 - 需要看页面长什么样（图表、图片、布局、验证码、确认操作是否成功）时用 computer_screenshot（截的是你窗口里的页面）；
   browser_* 搞不定的（画布类页面、没有编号的元素、组合键）用 computer_click / computer_type / computer_key 按截图坐标操作，
   这些操作后会自动附上新截图。
-- 只是查资料时，优先用 web_search / fetch_url，更快更省；需要登录、交互、看页面实际效果时才用浏览器。{shell}
+- 只是查资料时，用 web_search（要最近的填 days）/ fetch_url，更快更省；需要登录、交互、看页面实际效果时才用浏览器。
+  不要在浏览器里打开搜索引擎的网站去搜（又慢，还容易弹验证码）：web_search 结果不好就换个说法、换个语言，或者加 site: 再搜。{shell}
 - 看到验证码（滑块拼图、点选文字、图形验证、"环境异常"/"安全验证"页）、扫码登录、输密码登录、短信验证、
   人机校验时：**立刻**调用 ask_human，一次都不要自己尝试拖动或识别——这些就是为了拦自动程序设计的，试了只会失败、
   还可能让账号或 IP 被风控。ask_human 的 reason 写清楚要用户做什么（例如“拖动滑块完成拼图验证”）。
@@ -322,6 +323,8 @@ async def call(task, name: str, args: dict, notify_progress, key: str = "") -> t
             op = name.removeprefix("browser_")
             if op == "open" and not str(args.get("url", "")).startswith(("http://", "https://")):
                 return "只能打开 http / https 网址", None
+            if op == "open" and websearch.blocked_domain(str(args["url"])):
+                return websearch.refuse_text(str(args["url"])), None
             kw = {k: v for k, v in args.items() if v is not None}
             if "key" in kw:   # browser_key 的按键名：key 这个名字 c.browser 自己要用（谁在操作）
                 kw["name"] = kw.pop("key")
