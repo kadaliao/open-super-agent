@@ -130,6 +130,16 @@ Bot 用 `web_search` 搜索网页、用 `fetch_url` 读网页正文。用哪家�
 | Jina Reader | 不填 Key 也能用（有限速） | 会把网址发给 Jina，所以自动时不用，要自己打开 |
 | 直接抓取 | 不用配置 | 这台机器自己下载、去掉标签；本机和内网的网页（`tools.fetch_private: true` 时）只走这一家 |
 
+| 社交平台的帖子（`search_posts`） | 要什么 | 说明 |
+|---|---|---|
+| X 官方接口 | X 开发者后台（console.x.com）的 Bearer Token（或环境变量 `X_BEARER_TOKEN`） | 按读到的帖子收钱，每条 0.005 美元，同一条一天内只算一次；`days` 超过 7 天时搜全部存档 |
+| Reddit 公开接口 | 不用密钥 | 服务器和代理的 IP 基本都被 Reddit 拦（403），默认不开 |
+| 小红书 | 在右栏的电脑画面里登录一次小红书 | 没有接口：`search_posts` 告诉 Bot 用电脑上的浏览器去搜，要登录或遇到验证码时请你接手 |
+
+`search_posts` 返回作者、日期、点赞 / 评论 / 转发 / 浏览数、链接和正文开头。帖子配方多了 `platform`，`item` 能写 `author`、`likes`、`comments`、
+`shares`、`views`，`url` 能写成 `${id}` 这样的模板；`price_usd_item` 按返回的条数记费用，`max_days` 是最多能搜最近几天，
+`long` + `long_after` 是 `days` 超过多少天时换用的请求（X 的全部存档）。
+
 `web_search` 能带 `days`（只要最近几天的）：DeepSeek 在搜索词后面加 `after:日期`，别家换成各自的时间参数。
 DeepSeek 搜索、读网页的花费按配方里的单价记进观测页（“搜索和读网页”这一项）。
 

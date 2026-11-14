@@ -7,10 +7,11 @@ import { money, Section, useToast } from './settingsKit'
 
 // 设置 → 搜索和读网页：Bot 搜索网页、读网页时按顺序用打开的几家（websearch.py），前一家不行换下一家；不用的网站
 type Field = { key: string; label: string; secret: boolean; optional: boolean; placeholder: string; set: boolean; value: string }
-type Service = { name: string; title: string; desc: string; link: string; missing: string; on: boolean; auto: boolean; price: number | null; provider: string; fields: Field[] }
+type Service = { name: string; title: string; desc: string; link: string; missing: string; on: boolean; auto: boolean; price: number | null; provider: string; fields: Field[]
+  platform: string; per_item: boolean; via: string }
 type Kind = { auto: boolean; services: Service[] }
-type Web = { search: Kind; fetch: Kind; block: string[]; default_block: string[] }
-type KindName = 'search' | 'fetch'
+type Web = { search: Kind; fetch: Kind; posts: Kind; block: string[]; default_block: string[] }
+type KindName = 'search' | 'fetch' | 'posts'
 
 export default function WebSettings() {
   const [w, setW] = useState<Web | null>(null)
@@ -31,6 +32,10 @@ export default function WebSettings() {
     <Section title={t('读网页')} action={reset('fetch')}
       desc={t('Bot 读网页正文时用。本机和内网的网页只会由这台机器自己抓，不会发给别家。{auto}', { auto: w.fetch.auto ? t('现在是自动：配好了的都用。') : '' })}>
       <Services kind="fetch" k={w.fetch} save={save} />
+    </Section>
+    <Section title={t('社交平台的帖子')} action={reset('posts')}
+      desc={t('Bot 想知道大家在 X、Reddit、小红书上怎么说时用。同一个平台开了几家的，按顺序试。{auto}', { auto: w.posts.auto ? t('现在是自动：配好了的都用。') : '' })}>
+      <Services kind="posts" k={w.posts} save={save} />
     </Section>
     <Section title={t('不用的网站')} desc={t('这些网站（含子域名）不会出现在搜索结果里，Bot 也不会读、不会在浏览器里打开。')}>
       <BlockList w={w} save={save} />
@@ -94,13 +99,14 @@ function ServiceRow({ kind, s, order, first, last, onToggle, onMove, save }: {
         {order > 0 && <span className="chip ok">{t('第 {n} 个用', { n: order })}</span>}
         {needsField && <span className="chip warn">{s.on ? t('{why}，先跳过', { why: s.missing }) : s.missing}</span>}
         {!s.on && !s.auto && <span className="chip faint">{t('默认不开')}</span>}
-        {s.price !== null && <span className="chip">{s.price ? t('{price} / 千次', { price: money(s.price, '¥') }) : t('免费')}</span>}
+        {s.platform && !s.title.includes(s.platform) && <span className="chip">{s.platform}</span>}
+        {s.price !== null && <span className="chip">{s.price ? (s.per_item ? t('{price} / 千条', { price: money(s.price, '¥') }) : t('{price} / 千次', { price: money(s.price, '¥') })) : t('免费')}</span>}
         {s.provider && <span className="chip faint">{t('用模型服务 {name} 的 API Key', { name: s.provider })}</span>}
         <span className="grow" />
         {test?.ok && <span className="test-ok"><Icon name="check" size={14} />{t('能用 · {s} 秒', { s: ((test.ms || 0) / 1000).toFixed(1) })}</span>}
         {f0 && <button className="btn tiny" onClick={() => setOpen(!open)}>
           {s.fields.some(f => f.set) ? t('重新填写') : t('填写')}</button>}
-        {!s.missing && <button className="btn tiny" disabled={!!test?.busy} onClick={run}><Icon name="zap" size={13} />{test?.busy ? t('测试中…') : t('测试')}</button>}
+        {!s.missing && !s.via && <button className="btn tiny" disabled={!!test?.busy} onClick={run}><Icon name="zap" size={13} />{test?.busy ? t('测试中…') : t('测试')}</button>}
       </div>
       {s.missing && !needsField && <p className="muted small hint">{s.missing}</p>}
       {open && s.fields.map(f => <FieldInput key={f.key} s={s} f={f} save={save} />)}

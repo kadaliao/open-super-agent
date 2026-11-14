@@ -75,9 +75,9 @@ osa/
     checks.py      添加应用前的检查（邮箱先试登录一次）
     skills/        技能市场：每个技能一个文件夹（<名字>/SKILL.md，英文界面装 SKILL.en.md），格式见 docs/skills.md
   registry.py      工具注册表：Tool（schema、run、在哪些场合能用、要不要确认）、Source（事件来源）、Context（注册返回 disposer，dispose 反向撤销）、事件 on / emit / fire
-  builtin.py       内置工具的注册：web_search、fetch_url、save_page、read_page、page_data、send_file、generate_image、generate_video、search_memory、use_skill
+  builtin.py       内置工具的注册：web_search、search_posts、fetch_url、save_page、read_page、page_data、send_file、generate_image、generate_video、search_memory、use_skill
   tools.py         内置的网页工具：web_search、fetch_url 的入口，内网地址和不用的网站的检查，直接抓网页
-  websearch.py     搜索网页、读网页按配方调各家（默认配方 websearch.yaml：DeepSeek、Tavily、Brave、博查、SearXNG、DuckDuckGo；读网页 DeepSeek、Jina、直接抓），出错换下一家；设置 → 搜索和读网页
+  websearch.py     搜索网页、读网页按配方调各家（默认配方 websearch.yaml：DeepSeek、Tavily、Brave、博查、SearXNG、DuckDuckGo；读网页 DeepSeek、Jina、直接抓），出错换下一家；search_posts 搜 X / Reddit / 小红书的帖子（小红书指给浏览器）；设置 → 搜索和读网页
   unfurl.py        链接卡片：服务器取网页的标题、摘要、配图（og:*），不抓内网，缓存在 unfurls 表；YouTube 走 oEmbed
   skills.py        技能：增删改、/名字 解析、展开成给模型的说明、use_skill；带文件的技能包；导出成 .md / zip、分享链接、从文件、zip 或链接（含 GitHub 文件夹）导入；技能市场（catalog/skills）
   templates.py     Bot 模板：检查、内置模板（templates/*.yaml）、从 Bot 导出、分享、安装

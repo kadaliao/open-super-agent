@@ -24,7 +24,8 @@ def clean(monkeypatch):
     conn.execute("delete from settings where key='web'")
     conn.commit()
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    for n in ("WEB_TAVILY_API_KEY", "WEB_JINA_API_KEY"):
+    monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+    for n in ("WEB_TAVILY_API_KEY", "WEB_JINA_API_KEY", "WEB_X_BEARER_TOKEN"):
         vault.delete(n)
     yield
     conn.execute("delete from settings where key='web'")
@@ -204,3 +205,69 @@ async def test_settings_test_endpoint(monkeypatch):
     assert r["ok"] and r["sample"].startswith("- t")
     r = await websearch.test("search", "tavily")
     assert not r["ok"] and r["error"] == "还没填：API Key"
+
+
+# ---------- 社交平台的帖子 ----------
+X_BODY = {"data": [{"id": "111", "text": "短的", "note_tweet": {"text": "长帖子的全文"}, "created_at": "2026-11-14T05:02:34.000Z",
+                    "public_metrics": {"like_count": 12345, "reply_count": 3, "retweet_count": 0, "impression_count": 2000}},
+                   {"id": "222", "text": "第二条", "created_at": "2026-11-13T01:00:00.000Z", "public_metrics": {"like_count": 1}}],
+          "meta": {"result_count": 2}}
+
+
+async def test_posts_x(monkeypatch):
+    monkeypatch.setenv("X_BEARER_TOKEN", "xb")
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=X_BODY))
+    before = conn.execute("select coalesce(sum(cost), 0) from llm_calls where role='web' and model='posts'").fetchone()[0]
+    out = await tools.search_posts("推特", "deepseek", days="3", count="2")
+    assert out == ("- 2026-11-14 · 赞 1.2万 · 评论 3 · 浏览 2000 | https://x.com/i/web/status/111\n  长帖子的全文\n"
+                   "- 2026-11-13 · 赞 1 | https://x.com/i/web/status/222\n  第二条")
+    req = seen[0]
+    assert req.url.path == "/2/tweets/search/recent" and req.headers["authorization"] == "Bearer xb"
+    q = dict(req.url.params)
+    assert q["query"] == "deepseek -is:retweet" and q["max_results"] == "10" and q["start_time"].endswith("Z")   # 最少 10 条
+    cost = conn.execute("select coalesce(sum(cost), 0) from llm_calls where role='web' and model='posts'").fetchone()[0] - before
+    assert abs(cost - 2 * 0.005 * 7.1) < 1e-6                                                                    # 按返回的条数
+    await tools.search_posts("x", "deepseek", days=30)
+    assert seen[1].url.path == "/2/tweets/search/all"                                                         # 超过 7 天搜全部存档
+    await tools.search_posts("x", "deepseek")
+    assert seen[2].url.path == "/2/tweets/search/recent" and "start_time" not in dict(seen[2].url.params)
+
+
+async def test_posts_x_empty_and_errors(monkeypatch):
+    monkeypatch.setenv("X_BEARER_TOKEN", "xb")
+    fake(monkeypatch, lambda req: httpx.Response(200, json={"meta": {"result_count": 0}}))
+    assert (await tools.search_posts("x", "nothing")).startswith("无结果")
+    fake(monkeypatch, lambda req: httpx.Response(402, json={"title": "CreditsDepleted", "detail": "no credits"}))
+    out = await tools.search_posts("x", "q")
+    assert out.startswith("搜索失败") and "402" in out
+
+
+async def test_posts_not_configured_and_unknown():
+    out = await tools.search_posts("x", "q")
+    assert out.startswith("搜不了 X 的帖子") and "还没填：Bearer Token" in out
+    assert (await tools.search_posts("weibo", "q")).startswith("不认识这个平台")
+    assert set(websearch.platforms()) == {"x", "reddit", "xiaohongshu"}
+
+
+async def test_posts_reddit_mapping(monkeypatch):
+    websearch.save({"posts": ["reddit-public"]})
+    body = {"data": {"children": [{"data": {"permalink": "/r/LocalLLaMA/comments/abc/t/", "title": "标题", "selftext": "正文",
+                                            "created_utc": 1794000000, "subreddit": "LocalLLaMA", "score": 42, "num_comments": 7}}]}}
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=body))
+    out = await tools.search_posts("reddit", "deepseek", days=7)
+    assert out == "- r/LocalLLaMA · 2026-11-06 · 赞 42 · 评论 7 | https://www.reddit.com/r/LocalLLaMA/comments/abc/t/\n  标题 正文"
+    assert dict(seen[0].url.params)["t"] == "week"
+
+
+async def test_posts_xiaohongshu_points_to_browser():
+    out = await tools.search_posts("小红书", "露营 装备")
+    assert "browser_open" in out and "keyword=%E9%9C%B2%E8%90%A5%20%E8%A3%85%E5%A4%87" in out and "ask_human" in out
+
+
+async def test_posts_max_days_skips(monkeypatch):
+    monkeypatch.setenv("X_BEARER_TOKEN", "xb")
+    x = dict(websearch.recipe("posts", "x"), max_days=7)
+    monkeypatch.setitem(CFG, "web", {**(CFG.get("web") or {}), "recipes": [x]})
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=X_BODY))
+    out = await tools.search_posts("x", "q", days=30)
+    assert out.startswith("搜索失败") and "只能搜最近 7 天" in out and not seen

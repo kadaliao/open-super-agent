@@ -52,6 +52,17 @@ WEB_SEARCH = {"type": "function", "function": {
         "days": {"type": "integer", "description": "可选：只要最近几天的结果，比如 7、30"}},
         "required": ["query"]}}}
 
+SEARCH_POSTS = {"type": "function", "function": {
+    "name": "search_posts",
+    "description": "搜社交平台上的帖子，看大家怎么说（口碑、讨论、最近的反应）：返回作者、日期、点赞评论转发数、链接和正文开头。"
+                   "platform 是 x（推特）、reddit、xiaohongshu（小红书）之一。要最近的填 days。按条收费的平台别反复搜同一个词",
+    "parameters": {"type": "object", "properties": {
+        "platform": {"type": "string", "description": "x、reddit 或 xiaohongshu"},
+        "query": {"type": "string", "description": "搜索词。X 的搜索词可以用 lang:zh、from:用户名、min_faves:100 这类写法"},
+        "days": {"type": "integer", "description": "可选：只要最近几天的，比如 7、30"},
+        "count": {"type": "integer", "description": "可选：要几条，默认 10"}},
+        "required": ["platform", "query"]}}}
+
 
 def load():
     """注册全部内置工具（只做一次）。顺序就是给模型的顺序，别随手调换：换了模型服务的前缀缓存就不命中了。"""
@@ -64,6 +75,9 @@ def load():
     ctx.simple("web_search", WEB_SEARCH, tools.web_search,
                where=web, gated=True, parallel=2, describe="搜索网页，返回标题、链接、日期和摘要；能只要最近几天的（days）",
                progress=lambda a: i18n.t("搜索：{what}", what=str(a.get("query") or "")[:60]))
+    ctx.simple("search_posts", SEARCH_POSTS, tools.search_posts, where=web, gated=True, parallel=2,
+               describe="搜 X、Reddit、小红书上的帖子，看大家怎么说（带点赞、评论数）；能只要最近几天的",
+               progress=lambda a: i18n.t("搜 {platform}：{what}", platform=str(a.get("platform") or ""), what=str(a.get("query") or "")[:60]))
     ctx.simple("fetch_url", tools.schema("fetch_url", "读网页正文（截断到 8000 字）。要跑脚本才显示内容的网页一般也能读", {"url": "网址"}),
                tools.fetch_url, where=web, gated=True, parallel=3, describe="读网页正文（截断到 8000 字）",
                progress=lambda a: i18n.t("读取网页：{what}", what=str(a.get("url") or "")[:60]))

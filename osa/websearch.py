@@ -29,7 +29,7 @@ import os
 import re
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 import httpx
 import yaml
 from . import i18n, providers, vault
@@ -37,8 +37,9 @@ from .config import CFG
 from .generation import _error as http_error, _first, pick, render
 from .memory import conn
 
-KINDS = ("search", "fetch")
+KINDS = ("search", "fetch", "posts")
 COUNT = 8              # 每次搜几条
+POSTS = 10             # 搜帖子默认几条（X 一次最少 10 条，按条收钱）
 TEXT = 300             # 每条摘要最多几个字（8 条就是两千多字，再长太占上下文）
 MAX_CHARS = 8000       # fetch_url 返回的正文最多几个字
 RANGES = ((1, "day"), (7, "week"), (31, "month"), (366, "year"))
@@ -183,6 +184,8 @@ def _vars(r: dict, **kw) -> dict:
         today = dt.date.today()
         v["since"] = (today - dt.timedelta(days=days)).isoformat()
         v["today"] = today.isoformat()
+        start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days) + dt.timedelta(minutes=1)   # 留一分钟，免得刚好超出“最近 7 天”
+        v["since_time"] = start.strftime("%Y-%m-%dT%H:%M:%SZ")
         bucket = next((b for n, b in RANGES if days <= n), "year")
         v["range"] = (r.get("ranges") or {}).get(bucket, bucket)
     return v
@@ -190,7 +193,10 @@ def _vars(r: dict, **kw) -> dict:
 
 async def _send(c: httpx.AsyncClient, r: dict, v: dict) -> httpx.Response:
     req = dict(r.get("request") or {})
-    if v.get("days") and r.get("recent"):
+    days = v.get("days")
+    if days and r.get("long") and days > int(r.get("long_after") or 0):
+        req |= r["long"]          # 比 long_after 天还早的（X 的全部存档）
+    elif days and r.get("recent"):
         req |= r["recent"]
     kw: dict = {}
     if "params" in req:
@@ -244,22 +250,51 @@ def _ddg(text: str) -> list[dict]:
     return out
 
 
-async def _search_one(c: httpx.AsyncClient, r: dict, query: str, days: int | None) -> list[dict]:
-    resp = await _send(c, r, _vars(r, query=query, count=COUNT, days=days))
-    if r.get("parse") == "duckduckgo":
-        return _ddg(resp.text)
-    d = _json(resp)
+POST_FIELDS = ("author", "likes", "comments", "shares", "views")
+
+
+def _get(x: dict, spec):
+    """item 里一项的取法：路径（a.b.0），或带 ${路径} 的模板（https://x.com/i/web/status/${id}）；写几个时第一个有值的算数。"""
+    for s in spec if isinstance(spec, list) else [spec]:
+        if not isinstance(s, str):
+            continue
+        if "${" in s:
+            parts = {m: pick(x, m) for m in re.findall(r"\$\{([\w.]+)\}", s)}
+            if all(v not in (None, "") for v in parts.values()):
+                return re.sub(r"\$\{([\w.]+)\}", lambda m: str(parts[m.group(1)]), s)
+        elif (v := pick(x, s)) not in (None, ""):
+            return v
+    return None
+
+
+def _items(r: dict, d) -> list[dict]:
+    """按 results、item 从回包里取出一条条结果。回包里没有结果列表算没结果（X 没搜到时就不给 data）；带 errors 的算出错。"""
     paths = r.get("results") or "results"
     found = next((x for p in (paths if isinstance(paths, list) else [paths]) if isinstance(x := pick(d, p), list)), None)
     if found is None:
-        raise Failed(i18n.t("回包里没有结果列表"))
+        if isinstance(d, dict) and (e := d.get("errors") or d.get("error")):
+            e = e[0] if isinstance(e, list) and e else e
+            raise Failed(str((e.get("message") or e.get("detail") or e) if isinstance(e, dict) else e)[:200])
+        return []
     item = r.get("item") or {}
     out = []
     for x in found:
-        if isinstance(x, dict) and isinstance(u := _first(x, item.get("url") or "url"), str) and u.startswith(("http://", "https://")):
-            out.append({"title": _clean(_first(x, item.get("title") or "title")), "url": u,
-                        "text": _clean(_first(x, item.get("text") or "text")), "date": _first(x, item.get("date") or "date")})
+        if not isinstance(x, dict) or not isinstance(u := _get(x, item.get("url") or "url"), str) or not u.startswith(("http://", "https://")):
+            continue
+        e = {"title": _clean(_get(x, item.get("title") or "title")), "url": u,
+             "text": _clean(_get(x, item.get("text") or "text")), "date": _get(x, item.get("date") or "date")}
+        for k in POST_FIELDS:
+            if k in item:
+                e[k] = _get(x, item[k])
+        out.append(e)
     return out
+
+
+async def _search_one(c: httpx.AsyncClient, r: dict, query: str, days: int | None, count: int = COUNT) -> list[dict]:
+    resp = await _send(c, r, _vars(r, query=query, count=count, days=days))
+    if r.get("parse") == "duckduckgo":
+        return _ddg(resp.text)
+    return _items(r, _json(resp))
 
 
 async def _fetch_one(c: httpx.AsyncClient, r: dict, url: str) -> tuple[str, str]:
@@ -273,6 +308,8 @@ async def _fetch_one(c: httpx.AsyncClient, r: dict, url: str) -> tuple[str, str]
 
 
 def _date(v) -> str:
+    if isinstance(v, (int, float)) and v > 1e8:   # Unix 时间（秒；Reddit 的 created_utc）
+        return dt.datetime.fromtimestamp(v / 1000 if v > 1e11 else v, dt.timezone.utc).date().isoformat()
     s = str(v or "").strip()
     m = re.match(r"\d{4}-\d{2}-\d{2}", s)
     return m.group(0) if m else s[:24]
@@ -286,13 +323,34 @@ def _format(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _record(r: dict, what: str, ms: float):
-    """收钱的服务：费用统计里记一行（0 token，费用按配方的单价）。"""
-    usd = r.get("price_usd")
+def _num(v) -> str:
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return ""
+    return f"{n / 10000:.1f}万".replace(".0万", "万") if n >= 10000 else str(n)
+
+
+def _format_posts(items: list[dict]) -> str:
+    """帖子：作者、日期、互动数、链接，下面是正文开头。"""
+    names = (("likes", i18n.t("赞")), ("comments", i18n.t("评论")), ("shares", i18n.t("转发")), ("views", i18n.t("浏览")))
+    lines = []
+    for e in items:
+        meta = [str(e["author"]) if e.get("author") else "", _date(e.get("date"))]
+        meta += [f"{label} {n}" for k, label in names if (n := _num(e.get(k))) not in ("", "0")]   # 0 的不写
+        head = "- " + " · ".join(x for x in meta if x) + f" | {e['url']}"
+        body = " ".join(x for x in (e.get("title"), e.get("text")) if x)
+        lines.append(head + (f"\n  {body[:TEXT]}" if body else ""))
+    return "\n".join(lines)
+
+
+def _record(r: dict, what: str, ms: float, n: int = 1):
+    """收钱的服务：费用统计里记一行（0 token，费用按配方的单价：每次 price_usd，或者每条结果 price_usd_item）。"""
+    usd = float(r.get("price_usd") or 0) + float(r.get("price_usd_item") or 0) * n
     if not usd:
         return
     from . import memory, prices
-    memory.add_usage("web", what, provider=_provider(r) or r["name"], cost=float(usd) * prices._rate(), ms=int(ms))
+    memory.add_usage("web", what, provider=_provider(r) or r["name"], cost=usd * prices._rate(), ms=int(ms))
 
 
 def _client(timeout: float = 20) -> httpx.AsyncClient:
@@ -366,11 +424,66 @@ async def fetch(url: str, private: bool = False, only: dict | None = None) -> st
     return i18n.t("没读到：{why}", why="；".join(notes) or url)
 
 
+PLATFORMS = {"x": "X", "reddit": "Reddit", "xiaohongshu": "小红书"}
+
+
+def platforms() -> list[str]:
+    """配方里有的平台（给 search_posts 的说明用）。"""
+    return list(dict.fromkeys(r.get("platform") for r in recipes("posts") if r.get("platform")))
+
+
+def _platform(p: str) -> str:
+    p = (p or "").strip().lower()
+    alias = {"twitter": "x", "推特": "x", "小红书": "xiaohongshu", "xhs": "xiaohongshu", "红书": "xiaohongshu"}
+    return alias.get(p, p)
+
+
+async def search_posts(platform: str, query: str, days: int | None = None, count: int | None = None, only: dict | None = None) -> str:
+    """搜某个平台上的帖子：按顺序试这个平台配好了的几家。via: browser 的（小红书）没有接口，告诉模型怎么用电脑上的浏览器去搜。"""
+    query = (query or "").strip()
+    if not query:
+        return i18n.t("没有给搜索词")
+    plat = _platform(platform)
+    allr = [r for r in recipes("posts") if r.get("platform") == plat]
+    if not allr:
+        return i18n.t("不认识这个平台：{name}。能搜的：{list}", name=platform, list="、".join(platforms()))
+    rs = [only] if only else [r for r in order("posts") if r.get("platform") == plat]
+    if not rs:
+        why = "；".join(f"{_tr(r, 'title')}：{missing(r) or i18n.t('没打开')}" for r in allr)
+        return i18n.t("搜不了 {name} 的帖子：{why}（设置 → 搜索和读网页）", name=PLATFORMS.get(plat, plat), why=why)
+    count = max(1, min(int(count or POSTS), 50))
+    notes, empty = [], 0
+    async with _client() as c:
+        for r in rs:
+            if days and r.get("max_days") and days > int(r["max_days"]):
+                notes.append(i18n.t("{name}：只能搜最近 {n} 天", name=_tr(r, "title"), n=r["max_days"]))
+                continue
+            if r.get("via") == "browser":
+                url = render(r.get("url") or "", {"query": quote(query)})
+                return i18n.t("{name} 没有接口，用电脑上的浏览器搜：browser_open 打开 {url}，用 browser_read 读结果，点开笔记看正文和评论。"
+                              "页面要登录或出现验证码时调用 ask_human，请用户在右栏的电脑画面里登录（只要登一次）。"
+                              "别连续快速翻很多页：请求太多会被风控。", name=_tr(r, "title"), url=url)
+            t0 = time.monotonic()
+            try:
+                items = await _search_one(c, r, query, days, max(count, int(r.get("min_count") or 1)))
+            except Failed as e:
+                notes.append(f"{_tr(r, 'title')}：{e}")
+                continue
+            if items:
+                _record(r, "posts", (time.monotonic() - t0) * 1000, len(items))
+            items = [e for e in items if not blocked_domain(e["url"])][:count]
+            if items:
+                return _format_posts(items) + _tail(notes, _tr(r, "title"))
+            empty += 1
+            notes.append(i18n.t("{name}：没有结果", name=_tr(r, "title")))
+    return (i18n.t("无结果") if empty else i18n.t("搜索失败")) + _tail(notes)
+
+
 # ---------- 设置 ----------
 def _price(r: dict) -> float | None:
-    """每千次多少钱（按 pricing.usd_rate 换算）；不要钱的是 0；要自己的密钥、配方没写单价的不知道（None，按对方的套餐）。"""
+    """每千次（按条收钱的是每千条）多少钱（按 pricing.usd_rate 换算）；不要钱的是 0；要自己的密钥、配方没写单价的不知道（None）。"""
     from . import prices
-    if usd := r.get("price_usd"):
+    if usd := r.get("price_usd") or r.get("price_usd_item"):
         return round(float(usd) * 1000 * prices._rate(), 2)
     return None if any(f.get("secret") and not f.get("optional") for f in r.get("fields") or []) else 0
 
@@ -385,6 +498,8 @@ def public() -> dict:
             on = (r["name"] in names) if names else (r.get("auto", True) and not why)
             rows.append({
                 "name": r["name"], "title": _tr(r, "title"), "desc": _tr(r, "desc"), "link": r.get("link") or "",
+                "platform": PLATFORMS.get(r.get("platform") or "", r.get("platform") or ""), "per_item": bool(r.get("price_usd_item")),
+                "via": r.get("via") or "",
                 "missing": why, "on": on, "auto": r.get("auto", True), "price": _price(r),
                 "provider": _provider(r) or "",
                 "fields": [{"key": f["key"], "label": _tr(f, "label") or f["key"], "secret": bool(f.get("secret")),
@@ -469,6 +584,9 @@ async def test(kind: str, name: str) -> dict:
     if kind == "search":
         out = await search("DeepSeek", only=r)
         ok = out.startswith("- ")
+    elif kind == "posts":
+        out = await search_posts(r.get("platform") or "", "DeepSeek", days=3, only=r)
+        ok = out.startswith("- ") or r.get("via") == "browser"
     else:
         out = await fetch("https://example.com/", only=r)
         ok = "Example Domain" in out

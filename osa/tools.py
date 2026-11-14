@@ -15,12 +15,23 @@ MAX_REDIRECTS = 5
 _TRANSPORT = None   # 测试时换成假的
 
 
-async def web_search(query: str, days=None) -> str:
+def _days(v) -> int | None:
     try:
-        days = max(1, min(int(days), 3650)) if days not in (None, "", 0, "0") else None
+        return max(1, min(int(v), 3650)) if v not in (None, "", 0, "0") else None
     except (TypeError, ValueError):
-        days = None
-    return await websearch.search(query, days)
+        return None
+
+
+async def web_search(query: str, days=None) -> str:
+    return await websearch.search(query, _days(days))
+
+
+async def search_posts(platform: str, query: str, days=None, count=None) -> str:
+    try:
+        count = int(count) if count not in (None, "") else None
+    except (TypeError, ValueError):
+        count = None
+    return await websearch.search_posts(platform, query, _days(days), count)
 
 
 # Clash、Surge 这类代理的 TUN 模式把所有域名解析到这一段假地址再转发出去，不是真的内网

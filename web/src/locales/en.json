@@ -1486,5 +1486,8 @@
   "已恢复": "Restored",
   "恢复 config.yaml 里的": "Restore from config.yaml",
   "{why}，先跳过": "{why}, skipped",
-  "填写": "Fill in"
+  "填写": "Fill in",
+  "社交平台的帖子": "Social posts",
+  "Bot 想知道大家在 X、Reddit、小红书上怎么说时用。同一个平台开了几家的，按顺序试。{auto}": "Used when bots want to know what people say on X, Reddit or Xiaohongshu. If a platform has several services on, they're tried in order. {auto}",
+  "{price} / 千条": "{price} / 1,000 posts"
 }

@@ -146,3 +146,63 @@ recipes:
     desc: 这台机器自己下载网页、去掉标签。不要钱，要跑脚本才显示内容的网页读不到
     en: {title: Direct fetch, desc: "This machine downloads the page and strips the tags. Free; can't read script-rendered pages"}
     parse: direct
+
+  # ================= 社交平台的帖子（search_posts） =================
+  # 多了 platform（x / reddit / xiaohongshu）；item 还能写 author、likes、comments、shares、views；url 可以是 ${路径} 模板。
+  # price_usd_item：按返回的条数收钱；max_days：最多能搜最近几天（超出就换下一家）；long + long_after：days 超过这么多天时换成 long 里的请求。
+
+  # ---- X 官方接口（docs.x.com/x-api/posts/search/introduction）。按条收费：每条帖子 0.005 美元，同一条一天内只算一次 ----
+  # 不带 expansions=author_id：带了会多读用户资料，每个 0.01 美元
+  - name: x
+    kind: posts
+    platform: x
+    title: X 官方接口
+    desc: X 自己的帖子搜索，带点赞、转发、回复数。按读到的帖子收钱（同一条一天内只算一次）；超过 7 天的搜全部存档
+    en: {title: X API, desc: "X's own post search with likes, reposts and replies. Billed per post read (each post counted once a day); older than 7 days searches the full archive"}
+    link: https://console.x.com/
+    fields:
+      - {key: bearer_token, label: Bearer Token, secret: true, env: X_BEARER_TOKEN}
+    price_usd_item: 0.005
+    min_count: 10                    # 接口一次最少给 10 条
+    request:
+      method: GET
+      url: https://api.x.com/2/tweets/search/recent
+      headers: {Authorization: $bearer}
+      params: {query: '${query} -is:retweet', max_results: $count, sort_order: relevancy, tweet.fields: 'created_at,public_metrics,note_tweet,lang'}
+    recent:
+      params: {query: '${query} -is:retweet', max_results: $count, sort_order: relevancy, tweet.fields: 'created_at,public_metrics,note_tweet,lang', start_time: $since_time}
+    long_after: 7
+    long:
+      url: https://api.x.com/2/tweets/search/all
+      params: {query: '${query} -is:retweet', max_results: $count, sort_order: relevancy, tweet.fields: 'created_at,public_metrics,note_tweet,lang', start_time: $since_time}
+    results: data
+    item: {url: 'https://x.com/i/web/status/${id}', text: [note_tweet.text, text], date: created_at,
+           likes: public_metrics.like_count, comments: public_metrics.reply_count, shares: public_metrics.retweet_count, views: public_metrics.impression_count}
+
+  # ---- Reddit 公开接口：不用密钥，但服务器和代理的 IP 基本都被 Reddit 拦（403），所以默认不开 ----
+  - name: reddit-public
+    kind: posts
+    platform: reddit
+    title: Reddit 公开接口
+    desc: 不用密钥。服务器、代理的 IP 基本都被 Reddit 拦着（403），家里直连的网络才可能用
+    en: {title: Reddit public API, desc: "No key needed. Reddit blocks most server and proxy IPs (403); may only work on a home connection"}
+    auto: false
+    request:
+      method: GET
+      url: https://www.reddit.com/search.json
+      params: {q: $query, sort: relevance, t: all, limit: $count, raw_json: 1}
+    recent:
+      params: {q: $query, sort: relevance, t: $range, limit: $count, raw_json: 1}
+    results: data.children
+    item: {url: 'https://www.reddit.com${data.permalink}', title: data.title, text: data.selftext, date: data.created_utc,
+           author: 'r/${data.subreddit}', likes: data.score, comments: data.num_comments}
+
+  # ---- 小红书：没有接口，用电脑上登录过的浏览器（search_posts 告诉模型怎么搜）----
+  - name: xiaohongshu-browser
+    kind: posts
+    platform: xiaohongshu
+    title: 小红书（电脑上的浏览器）
+    desc: 没有接口，Bot 用电脑上的浏览器搜。第一次要你在右栏的电脑画面里登录小红书，之后登录状态一直在
+    en: {title: Xiaohongshu (computer's browser), desc: "No API: the bot searches with the computer's browser. Log in once in the computer view on the right"}
+    via: browser
+    url: 'https://www.xiaohongshu.com/search_result?keyword=${query}&source=web_search_result_notes'
