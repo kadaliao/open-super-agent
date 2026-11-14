@@ -757,8 +757,8 @@ async def test(kind: str, name: str) -> dict:
     elif kind == "posts":
         out = await search_posts(r.get("platform") or "", "DeepSeek", days=3, only=r)
         ok = out.startswith("- ") or r.get("via") == "browser"
-    elif r.get("hosts"):
-        out = await fetch("https://www.reddit.com/r/LocalLLaMA/comments/1xburkx/", only=r)
+    elif r.get("hosts"):   # 只管某些网站的：读配方里写的 test_url（那个网站上的一页）
+        out = await fetch(r.get("test_url") or f"https://{r['hosts'][0]}/", only=r)
         ok = not out.startswith(i18n.t("没读到"))
     else:
         out = await fetch("https://example.com/", only=r)

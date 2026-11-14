@@ -143,6 +143,7 @@ recipes:
   - name: scrapecreators
     kind: fetch
     hosts: [reddit.com, redd.it]
+    test_url: https://www.reddit.com/r/LocalLLaMA/comments/1xburkx/   # 设置里“测试”读这个
     title: Reddit（ScrapeCreators）
     desc: 读 Reddit 的帖子和评论（Reddit 不登录读不了）。每次 1 个点数
     en: {title: Reddit (ScrapeCreators), desc: "Reads Reddit posts and comments (Reddit can't be read logged out). 1 credit per call"}
@@ -162,6 +163,7 @@ recipes:
   - name: x-post
     kind: fetch
     hosts: [x.com, twitter.com]
+    test_url: https://x.com/jack/status/20
     title: X 帖子（免费）
     desc: 读单条 X 帖子的正文和点赞、回复数。用的是 X 嵌入帖子的公开地址，不要钱、不用密钥；只能读单条帖子，搜不了
     en: {title: X post (free), desc: "Reads a single X post with like and reply counts via X's public embed endpoint: free, no key. Single posts only, no search"}
@@ -175,6 +177,7 @@ recipes:
   - name: getdaytrends
     kind: fetch
     hosts: [getdaytrends.com]
+    test_url: https://getdaytrends.com/
     title: X 热门话题榜（getdaytrends）
     desc: 读 getdaytrends.com 上各国 X 现在的热门话题（排名和话题名），不要钱。要知道话题在说什么，再用搜索网页查
     en: {title: X trends (getdaytrends), desc: "Reads current X trending topics per country from getdaytrends.com (rank and name), free. Search the web to learn what a topic is about"}

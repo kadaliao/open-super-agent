@@ -387,3 +387,10 @@ async def test_posts_budget_per_task(monkeypatch):
         assert websearch.public()["posts_budget_usd"] == 0
     finally:
         memory.WHO.reset(token)
+
+
+async def test_settings_test_uses_each_sites_own_url(monkeypatch):
+    seen = fake(monkeypatch, lambda req: httpx.Response(200, json=SYND) if req.url.host == "cdn.syndication.twimg.com"
+                else httpx.Response(200, text=GDT))
+    assert (await websearch.test("fetch", "x-post"))["ok"] and dict(seen[0].url.params)["id"] == "20"
+    assert (await websearch.test("fetch", "getdaytrends"))["ok"] and str(seen[1].url) == "https://getdaytrends.com/"
