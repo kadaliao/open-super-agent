@@ -3,6 +3,8 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [未发布]
+
+## [0.22.0] - 2026-11-14
 ### 新增
 - **画图能照着图片画**：发一张图说“改成水彩风格”“把背景换成海边”“照这个商品画一张海报”，Bot 把图交给画图模型照着画；
   画好的图也能接着改（“把刚才那张的猫换成狗”）。确认卡片上写着用了哪几张参考图。
@@ -613,7 +615,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.21.1...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/kadaliao/open-super-agent/compare/v0.21.1...v0.22.0
 [0.21.1]: https://github.com/kadaliao/open-super-agent/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/kadaliao/open-super-agent/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/kadaliao/open-super-agent/compare/v0.19.0...v0.20.0
