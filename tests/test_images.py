@@ -9,6 +9,7 @@ from osa import approvals, avatars, bots, generation, images, library, media, me
 from osa.config import CFG
 
 PNG = providers._png(8, 8, (10, 200, 30))
+pytestmark = pytest.mark.usefixtures("offline_model_list")
 
 
 @pytest.fixture

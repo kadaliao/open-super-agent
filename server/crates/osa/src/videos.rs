@@ -385,7 +385,8 @@ async fn run(mid: i64, chat_id: i64, bot_id: Option<i64>, mut meta: Value) {
                         return Err(t!("服务没有返回视频"));
                     }
                     let secs = meta["seconds"].as_i64();
-                    let price = generation::video_price(&provider, &model, secs);
+                    let price =
+                        if job["magpie"] == true { meta["price"].as_f64() } else { generation::video_price(&provider, &model, secs) };
                     generation::record("video", &provider, &model, price);
                     let att = json!({"name": item["name"], "size": item["size"], "media": item["id"], "mime": item["mime"]});
                     let mut m = json!({"kind": "video", "prompt": meta["prompt"], "model": model, "provider": provider, "price": price,

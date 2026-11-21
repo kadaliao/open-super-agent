@@ -10,6 +10,7 @@ from osa.config import CFG
 
 MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 200
 PNG = providers._png(16, 9, (10, 120, 200))
+pytestmark = pytest.mark.usefixtures("offline_model_list")
 
 
 @pytest.fixture
@@ -259,3 +260,28 @@ async def test_video_models_from_typed_list(monkeypatch):
     assert got == [("sfl", "MiniMaxAI/MiniMax-H3")]   # MiniMax-M2 是对话模型，不算
     await generation.catalog("video")
     assert len(asked) == 1   # 缓存住了
+
+
+async def test_magpie_resume_without_model_list(monkeypatch):
+    """已提交的任务在重启或网关隐藏模型后，仍按原协议轮询和带密钥下载。"""
+    monkeypatch.setitem(CFG["providers"], "relay", {"base_url": "http://localhost:3425/v1"})
+    monkeypatch.setattr(providers, "api_key", lambda name: "relay-key")
+    monkeypatch.setitem(providers._models, "relay", {"ts": time.time(), "magpie_media": {"video": {"studio/reel": "video"}}})
+    statuses = iter(["in_progress", "completed", "failed"])
+
+    def handle(req):
+        assert req.headers["authorization"] == "Bearer relay-key"
+        if req.url.path == "/v1/videos":
+            assert json.loads(req.content) == {"model": "studio/reel", "prompt": "海浪"}
+            return httpx.Response(200, json={"id": "video_1"})
+        if req.url.path == "/v1/videos/video_1":
+            return httpx.Response(200, json={"status": next(statuses), "error": {"message": "quota exceeded"}})
+        assert req.url.path == "/v1/videos/video_1/content"
+        return httpx.Response(200, content=MP4)
+
+    monkeypatch.setattr(generation, "_TRANSPORT", httpx.MockTransport(handle))
+    job = await generation.submit("relay", "studio/reel", "海浪", [])
+    providers._models.clear()
+    assert await generation.poll(job) == ("running", None)
+    assert await generation.poll(job) == ("done", MP4)
+    assert await generation.poll(job) == ("failed", "quota exceeded")

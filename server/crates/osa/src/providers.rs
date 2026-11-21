@@ -273,6 +273,9 @@ impl Client {
                 .header("user-agent", "OpenAI/Python 2.0 (osa)")
                 .header("x-stainless-retry-count", attempt.to_string());
             rb = rb.timeout(self.timeout.unwrap_or(Duration::from_secs(600)));
+            if method == reqwest::Method::GET && path == "models" {
+                rb = rb.header("X-Magpie-Drawers", "1").header("X-Magpie-Videomakers", "1");
+            }
             if let Some(b) = body {
                 rb = rb.json(b);
             }
@@ -481,7 +484,7 @@ pub async fn complete_role(role: &str, msgs: &Value, response_format: Option<Val
 }
 
 // ---------- 模型列表 ----------
-async fn list_models(base_url: &str, key: &str) -> Result<Vec<String>, ApiError> {
+async fn list_models(base_url: &str, key: &str) -> Result<Value, ApiError> {
     let c = Client {
         base_url: base_url.into(),
         key: if key.is_empty() { "none".into() } else { key.into() },
@@ -489,20 +492,36 @@ async fn list_models(base_url: &str, key: &str) -> Result<Vec<String>, ApiError>
         retries: 0,
     };
     let v = c.get_json("models").await?;
-    let mut ids: Vec<String> =
-        v["data"].as_array().map(|a| a.iter().filter_map(|m| m["id"].as_str().map(String::from)).collect()).unwrap_or_default();
+    let mut ids = Vec::new();
+    let mut media = json!({"image": {}, "video": {}});
+    let mut magpie = false;
+    for row in v["data"].as_array().into_iter().flatten() {
+        let Some(id) = row["id"].as_str().filter(|id| !id.is_empty()) else { continue };
+        if row["magpie_label"].is_string() {
+            magpie = true;
+            if let Some(kind @ ("image" | "video")) = row["kind"].as_str() {
+                let edit =
+                    kind == "image" && row["supported_endpoint_types"].as_array().is_some_and(|a| a.iter().any(|x| x == "image-edit"));
+                media[kind][id] = json!(if edit { "edit" } else { kind });
+                continue;
+            }
+        }
+        ids.push(id);
+    }
     ids.sort();
     ids.dedup();
-    Ok(ids)
+    let mut out = json!({"ok": true, "models": ids, "error": "", "note": ""});
+    if magpie {
+        out["magpie_media"] = media;
+    } else if ids.is_empty() {
+        out["note"] = json!(t!("连上了，但是没有列出模型，选模型时直接填名字"));
+    }
+    Ok(out)
 }
 
 pub async fn check(base_url: &str, key: &str) -> Value {
     match list_models(base_url, key).await {
-        Ok(models) => {
-            let note =
-                if models.is_empty() { t!("连上了，但是没有列出模型，选模型时直接填名字") } else { String::new() };
-            json!({"ok": true, "models": models, "error": "", "note": note})
-        }
+        Ok(m) => m,
         Err(e) if e.status == Some(404) => {
             json!({"ok": true, "models": [], "error": "", "note": t!("这个服务不提供模型列表，选模型时直接填名字")})
         }
@@ -513,7 +532,7 @@ pub async fn check(base_url: &str, key: &str) -> Value {
     }
 }
 
-pub async fn models(name: &str, refresh: bool) -> Result<Value, String> {
+pub async fn inventory(name: &str, refresh: bool) -> Result<Value, String> {
     let p = provider(name).ok_or_else(|| t!("没有这个模型服务：{name}", name = name))?;
     let cached = MODELS.lock().get(name).cloned();
     let m = match cached {
@@ -524,7 +543,7 @@ pub async fn models(name: &str, refresh: bool) -> Result<Value, String> {
             } else {
                 check(p["base_url"].as_str().unwrap_or(""), &api_key(name)).await
             };
-            if m["ok"] == true && m["models"].as_array().is_none_or(|a| a.is_empty()) {
+            if m["ok"] == true && m["magpie_media"].is_null() && m["models"].as_array().is_none_or(|a| a.is_empty()) {
                 let known = crate::prices::models_of(name);
                 if !known.is_empty() {
                     m["models"] = json!(known);
@@ -536,9 +555,20 @@ pub async fn models(name: &str, refresh: bool) -> Result<Value, String> {
             m
         }
     };
+    Ok(m)
+}
+
+/// None 是普通服务；空串是 Magpie 没列出这个用途。
+pub fn magpie_recipe(name: &str, kind: &str, model: &str) -> Option<String> {
+    let models = MODELS.lock();
+    let media = models.get(name)?.get("magpie_media")?;
+    Some(media[kind][model].as_str().unwrap_or("").to_string())
+}
+
+pub async fn models(name: &str, refresh: bool) -> Result<Value, String> {
+    let mut out = inventory(name, refresh).await?;
     let list: Vec<String> =
-        m["models"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-    let mut out = m.clone();
+        out["models"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
     out["name"] = json!(name);
     out["items"] = json!(crate::prices::annotate(name, &list));
     Ok(out)

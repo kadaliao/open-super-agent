@@ -8,6 +8,41 @@ prefer:   # 设置里选“自动”时按这个顺序挑：模型名里有这�
   edit: [qwen-image-edit-2, gpt-image, seedream, qwen-image-edit, kontext, kolors]   # 照着图片画：会按说的改的排前面
   video: [wan2.2-t2v, wan2.2-i2v, minimax-h, seedance, wan2.7, cogvideox-3, wan, vidu, cogvideox]
 
+# Magpie 的 /models 按 kind 和 image-edit 能力匹配，保留完整的 provider/model。
+magpie:
+  image:
+    name: magpie-image
+    kind: image
+    request: &magpie-draw
+      path: /images/generations
+      json: {model: $model, prompt: $prompt, response_format: b64_json}
+    result: &magpie-image-result [data.0.b64_json, data.0.url]
+  edit:
+    name: magpie-image-edit
+    kind: image
+    images: 1
+    request: *magpie-draw
+    edit:
+      path: /images/edits
+      form: {model: $model, prompt: $prompt, response_format: b64_json}
+      files: {image: images}
+    result: *magpie-image-result
+  video:
+    name: magpie-video
+    kind: video
+    frames: 1
+    request:
+      path: /videos
+      json: {model: $model, prompt: $prompt, input_reference: $image1}
+    task: id
+    poll:
+      request: {method: GET, path: "/videos/${id}"}
+      status: status
+      done: [completed]
+      failed: [failed, cancelled]
+      error: [error.message, error.code]
+    content_path: "/videos/${id}/content"
+
 recipes:
   # ================= 画图 =================
   # ---- 硅基流动（2026-11 的接口文档：docs.siliconflow.com/cn/api-reference/images/images-generations）----

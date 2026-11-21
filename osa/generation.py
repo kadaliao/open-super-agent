@@ -36,11 +36,12 @@ _TRANSPORT = None             # 测试时换成假的
 _DEFAULTS = yaml.safe_load((Path(__file__).parent / "generation.yaml").read_text(encoding="utf-8"))
 
 
-def recipes() -> list[dict]:
+def recipes(magpie: str | None = None) -> list[dict]:
     """config.yaml 的 generation.recipes 排在默认的前面；同名的默认配方不要了。"""
     mine = ((CFG.get("generation") or {}).get("recipes")) or []
     names = {r.get("name") for r in mine}
-    return [*mine, *(r for r in _DEFAULTS["recipes"] if r.get("name") not in names)]
+    defaults = _DEFAULTS["recipes"] if magpie is None else [_DEFAULTS["magpie"].get(magpie)]
+    return [*mine, *(r for r in defaults if r and r.get("name") not in names)]
 
 
 def prefer(kind: str) -> list[str]:
@@ -61,7 +62,7 @@ def _base(provider: str) -> str:
 def recipe(kind: str, provider: str, model: str) -> dict | None:
     """这个服务的这个模型按哪条配方调；没有对上的返回 None（不是这一类模型）。"""
     base = _base(provider).lower()
-    for r in recipes():
+    for r in recipes(providers.magpie_recipe(provider, kind, model)):
         if r.get("kind") != kind:
             continue
         host = r.get("host")
@@ -84,7 +85,8 @@ async def catalog(kind: str) -> list[dict]:
         if not providers.usable(name):
             continue
         try:
-            listed = (await providers.models(name)).get("models") or []
+            inventory = await providers.models(name)
+            listed = [*(inventory.get("models") or []), *inventory.get("magpie_media", {}).get(kind, {})]
         except ValueError:
             continue
         title = providers.describe(name)["title"]
@@ -347,12 +349,16 @@ async def _call(c: httpx.AsyncClient, provider: str, req: dict, v: dict, refs: l
         raise ValueError(i18n.t("返回的不是 JSON：{text}", text=r.text[:120]))
 
 
-async def _fetch(c: httpx.AsyncClient, found, limit: int) -> bytes:
+async def _fetch(c: httpx.AsyncClient, found, limit: int, *, key: str = "") -> bytes:
     if isinstance(found, str) and found.startswith(("http://", "https://")):
-        got = await c.get(found)   # 结果地址一般一小时到一天后失效，当场取回来
-        if got.status_code >= 400:
-            raise ValueError(f"HTTP {got.status_code}")
-        b = got.content
+        async with c.stream("GET", found, headers={"Authorization": f"Bearer {key}"} if key else {}) as got:
+            if got.status_code >= 400:
+                raise ValueError(f"HTTP {got.status_code}")
+            b = bytearray()
+            async for chunk in got.aiter_bytes():
+                if len(b) + len(chunk) > limit:
+                    raise ValueError(i18n.t("服务没有返回结果"))
+                b.extend(chunk)
     else:
         try:
             b = base64.b64decode(str(found or ""), validate=False)
@@ -360,7 +366,7 @@ async def _fetch(c: httpx.AsyncClient, found, limit: int) -> bytes:
             b = b""
     if not b or len(b) > limit:
         raise ValueError(i18n.t("服务没有返回结果"))
-    return b
+    return bytes(b)
 
 
 def _client(timeout: float = 180) -> httpx.AsyncClient:
@@ -379,6 +385,7 @@ async def draw(prompt: str, provider: str, model: str, refs: list[Ref] | None = 
     if not prompt:
         raise ValueError(i18n.t("写一句想要画什么"))
     _usable(provider, model)
+    await providers.inventory(provider)
     r = recipe("image", provider, model)
     if not r:
         raise ValueError(i18n.t("{model} 不是画图的模型", model=model))
@@ -402,6 +409,7 @@ async def draw(prompt: str, provider: str, model: str, refs: list[Ref] | None = 
 async def submit(provider: str, model: str, prompt: str, refs: list[Ref], seconds=None, ratio=None) -> dict:
     """提交一个视频任务，返回 job（之后 poll 用，存在消息里，服务重启后接着查）。"""
     _usable(provider, model)
+    await providers.inventory(provider)
     r = recipe("video", provider, model)
     if not r:
         raise ValueError(i18n.t("{model} 不是生成视频的模型", model=model))
@@ -413,12 +421,15 @@ async def submit(provider: str, model: str, prompt: str, refs: list[Ref], second
     tid = pick(d, r.get("task") or "id")
     if not tid:
         raise ValueError(i18n.t("服务没有返回任务编号"))
-    return {"provider": provider, "model": model, "id": str(tid), "seconds": v.get("seconds"), "ratio": v.get("ratio")}
+    job = {"provider": provider, "model": model, "id": str(tid), "seconds": v.get("seconds"), "ratio": v.get("ratio")}
+    if r is _DEFAULTS["magpie"]["video"]:
+        job["magpie"] = True   # 重启后也能按提交时的协议取成片，无需重新列模型
+    return job
 
 
 async def poll(job: dict) -> tuple[str, bytes | str | None]:
     """查一次视频任务：("running", None)、("done", 视频内容)、("failed", 原因)。"""
-    r = recipe("video", job["provider"], job["model"])
+    r = _DEFAULTS["magpie"]["video"] if job.get("magpie") else recipe("video", job["provider"], job["model"])
     if not r:
         return "failed", i18n.t("找不到 {model} 的配方", model=job["model"])
     p = r["poll"]
@@ -434,7 +445,12 @@ async def poll(job: dict) -> tuple[str, bytes | str | None]:
         if status not in [str(x) for x in p.get("done") or []]:
             return "running", None
         try:
+            if path := r.get("content_path"):
+                url = _base(job["provider"]) + "/" + render(path, {"id": job["id"]}).lstrip("/")
+                return "done", await _fetch(c, url, MAX_VIDEO, key=providers.api_key(job["provider"]))
             return "done", await _fetch(c, _first(d, r.get("result") or []), MAX_VIDEO)
+        except httpx.HTTPError as e:
+            return "running", str(e)
         except ValueError as e:
             return "failed", str(e)
 

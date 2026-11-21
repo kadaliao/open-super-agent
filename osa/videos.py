@@ -272,7 +272,8 @@ async def _run(mid: int, chat_id: int, bot_id: int | None, meta: dict):
             item = media.save(got, _name(meta["prompt"], got), limit=generation.MAX_VIDEO, video=True)
             if not item["mime"].startswith("video/"):
                 raise ValueError(i18n.t("服务没有返回视频"))
-            price = prices.video_price(meta["provider"], meta["model"], meta.get("seconds"))
+            # Magpie 任务可以在网关目录尚未加载时恢复，沿用确认时的报价。
+            price = meta.get("price") if job.get("magpie") else prices.video_price(meta["provider"], meta["model"], meta.get("seconds"))
             generation.record("video", meta["provider"], meta["model"], price)
             att = {"name": item["name"], "size": item["size"], "media": item["id"], "mime": item["mime"]}
             await _post(bot_id, "task", f"[生成视频] {meta['prompt']}", chat_id, kind="video", prompt=meta["prompt"],

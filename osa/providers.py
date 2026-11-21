@@ -208,17 +208,33 @@ def brief(e: Exception) -> str:
 
 
 # ---------- 模型列表 ----------
-async def _list(base_url: str, key: str) -> list[str]:
-    c = AsyncOpenAI(base_url=base_url, api_key=key or "none", timeout=15, max_retries=0)
-    page = await c.models.list()
-    return sorted({m.id for m in page.data if getattr(m, "id", None)})
+async def _list(base_url: str, key: str) -> dict:
+    # Magpie 的普通列表只有对话模型。用网关支持的请求头，一次取回同一密钥能用的三类模型。
+    async with AsyncOpenAI(base_url=base_url, api_key=key or "none", timeout=15, max_retries=0) as c:
+        page = await c.models.list(extra_headers={"X-Magpie-Drawers": "1", "X-Magpie-Videomakers": "1"})
+    ids = set()
+    media = {"image": {}, "video": {}}
+    magpie = False
+    for m in page.data:
+        if not getattr(m, "id", None):
+            continue
+        kind = getattr(m, "kind", None)
+        if getattr(m, "magpie_label", None) is not None:
+            magpie = True
+            if kind in ("image", "video"):
+                edit = kind == "image" and "image-edit" in (getattr(m, "supported_endpoint_types", None) or [])
+                media[kind][m.id] = "edit" if edit else kind
+                continue
+        ids.add(m.id)
+    return {"models": sorted(ids), **({"magpie_media": media} if magpie else {})}
 
 
 async def check(base_url: str, key: str) -> dict:
     """拉一次模型列表，顺便验证地址和密钥。有的服务不提供列表（404），这时只能自己填模型名字。"""
     try:
-        models = await _list(base_url, key)
-        return {"ok": True, "models": models, "error": "", "note": "" if models else i18n.t("连上了，但是没有列出模型，选模型时直接填名字")}
+        listed = await _list(base_url, key)
+        has_models = listed["models"] or any(listed.get("magpie_media", {}).values())
+        return {**listed, "ok": True, "error": "", "note": "" if has_models else i18n.t("连上了，但是没有列出模型，选模型时直接填名字")}
     except openai.NotFoundError:
         return {"ok": True, "models": [], "error": "", "note": i18n.t("这个服务不提供模型列表，选模型时直接填名字")}
     except openai.AuthenticationError as e:
@@ -227,8 +243,7 @@ async def check(base_url: str, key: str) -> dict:
         return {"ok": False, "models": [], "error": explain(e, base_url), "note": ""}
 
 
-async def models(name: str, refresh: bool = False) -> dict:
-    """这个服务有哪些模型，带上单价和能力。服务自己不列的，用 models.dev 里这一家的列表。"""
+async def inventory(name: str, refresh: bool = False) -> dict:
     from . import prices
     if name not in CFG["providers"]:
         raise ValueError(i18n.t("没有这个模型服务：{name}", name=name))
@@ -238,10 +253,22 @@ async def models(name: str, refresh: bool = False) -> dict:
             m = {"ok": False, "models": [], "error": i18n.t("还没填 API Key"), "note": ""}
         else:
             m = await check(CFG["providers"][name]["base_url"], api_key(name))
-        if m["ok"] and not m["models"] and (known := prices.models_of(name)):
+        if m["ok"] and not m["models"] and "magpie_media" not in m and (known := prices.models_of(name)):
             m.update(models=known, note=i18n.t("这个服务没有列出模型，下面是 models.dev 收录的，也可以直接填名字"))
         m["ts"] = time.time()
         _models[name] = m
+    return m
+
+
+def magpie_recipe(name: str, kind: str, model: str) -> str | None:
+    """None 是普通服务；空串是 Magpie 没列出这个用途。"""
+    media = _models.get(name, {}).get("magpie_media")
+    return None if media is None else media.get(kind, {}).get(model, "")
+
+
+async def models(name: str, refresh: bool = False) -> dict:
+    from . import prices
+    m = await inventory(name, refresh)
     return {**m, "name": name, "items": prices.annotate(name, m["models"])}
 
 

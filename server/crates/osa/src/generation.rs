@@ -26,11 +26,15 @@ pub fn defaults() -> &'static Value {
 }
 
 /// config.yaml 的 generation.recipes 排在默认的前面；同名的默认配方不要了
-pub fn recipes() -> Vec<Value> {
+fn recipes(magpie: Option<&str>) -> Vec<Value> {
     let mine: Vec<Value> = config::get("generation.recipes").as_array().cloned().unwrap_or_default();
     let names: Vec<Value> = mine.iter().map(|r| r["name"].clone()).collect();
     let mut out = mine;
-    for r in DEFAULTS["recipes"].as_array().cloned().unwrap_or_default() {
+    let defaults = match magpie {
+        Some(key) => DEFAULTS["magpie"].get(key).into_iter().cloned().collect(),
+        None => DEFAULTS["recipes"].as_array().cloned().unwrap_or_default(),
+    };
+    for r in defaults {
         if !names.contains(&r["name"]) {
             out.push(r);
         }
@@ -72,7 +76,7 @@ fn host_ok(r: &Value, provider: &str, base: &str) -> bool {
 /// 这个服务的这个模型按哪条配方调
 pub fn recipe(kind: &str, provider: &str, model: &str) -> Option<Value> {
     let b = base(provider).to_lowercase();
-    for r in recipes() {
+    for r in recipes(providers::magpie_recipe(provider, kind, model).as_deref()) {
         if r["kind"] != kind {
             continue;
         }
@@ -110,7 +114,7 @@ static LISTS: LazyLock<Mutex<HashMap<(String, String), (f64, Vec<String>)>>> = L
 fn list_paths(kind: &str, provider: &str) -> Vec<String> {
     let b = base(provider).to_lowercase();
     let mut out: Vec<String> = vec![];
-    for r in recipes() {
+    for r in recipes(None) {
         if r["kind"] == kind && py::truthy(&r["list"]) && py::truthy(&r["host"]) && host_ok(&r, provider, &b) {
             let l = py::str_of(&r["list"]);
             if !out.contains(&l) {
@@ -147,7 +151,7 @@ async fn listed(provider: &str, path: &str) -> Vec<String> {
 pub fn offers(kind: &str, provider: &str) -> Vec<String> {
     let b = base(provider).to_lowercase();
     let mut out: Vec<String> = vec![];
-    for r in recipes() {
+    for r in recipes(None) {
         if r["kind"] == kind && py::truthy(&r["offer"]) && py::truthy(&r["host"]) && host_ok(&r, provider, &b) {
             for m in r["offer"].as_array().cloned().unwrap_or_default() {
                 let m = py::str_of(&m);
@@ -171,6 +175,9 @@ pub async fn catalog(kind: &str) -> Vec<Value> {
         let Ok(m) = providers::models(&name, false).await else { continue };
         let title = py::str_of(&providers::describe(&name)["title"]);
         let mut all: Vec<String> = m["models"].as_array().map(|a| a.iter().map(py::str_of).collect()).unwrap_or_default();
+        if let Some(media) = m["magpie_media"][kind].as_object() {
+            all.extend(media.keys().cloned());
+        }
         for p in list_paths(kind, &name) {
             all.extend(listed(&name, &p).await);
         }
@@ -604,14 +611,25 @@ async fn call(c: &reqwest::Client, provider: &str, req: &Value, v: &Map<String, 
     serde_json::from_str(&text).map_err(|_| t!("返回的不是 JSON：{text}", text = py::head(&text, 120)))
 }
 
-async fn fetch_result(c: &reqwest::Client, found: &Value, limit: usize) -> Result<Vec<u8>, String> {
+async fn fetch_result(c: &reqwest::Client, found: &Value, limit: usize, key: &str) -> Result<Vec<u8>, String> {
     let b = match found.as_str() {
         Some(s) if s.starts_with("http://") || s.starts_with("https://") => {
-            let got = c.get(s).send().await.map_err(|e| e.to_string())?;
+            let mut request = c.get(s);
+            if !key.is_empty() {
+                request = request.bearer_auth(key);
+            }
+            let mut got = request.send().await.map_err(|e| e.to_string())?;
             if got.status().as_u16() >= 400 {
                 return Err(format!("HTTP {}", got.status().as_u16()));
             }
-            got.bytes().await.map(|b| b.to_vec()).unwrap_or_default()
+            let mut buf = Vec::new();
+            while let Some(chunk) = got.chunk().await.map_err(|e| e.to_string())? {
+                if buf.len() + chunk.len() > limit {
+                    return Err(t!("服务没有返回结果"));
+                }
+                buf.extend_from_slice(&chunk);
+            }
+            buf
         }
         _ => {
             let s = if found.is_null() { String::new() } else { py::str_of(found) };
@@ -648,6 +666,7 @@ pub async fn draw(prompt: &str, provider: &str, model: &str, refs: &[Ref]) -> Re
         return Err(t!("写一句想要画什么"));
     }
     usable(provider)?;
+    providers::inventory(provider, false).await?;
     let r = recipe("image", provider, model).ok_or_else(|| t!("{model} 不是画图的模型", model = model))?;
     let why = check(&caps("image", provider, model), &refs, model);
     if !why.is_empty() {
@@ -664,7 +683,7 @@ pub async fn draw(prompt: &str, provider: &str, model: &str, refs: &[Ref]) -> Re
         } else {
             json!([])
         };
-        fetch_result(&c, &first(&d, &paths), MAX_IMAGE).await
+        fetch_result(&c, &first(&d, &paths), MAX_IMAGE, "").await
     }
     .await
     .map_err(|e| t!("画图失败：{e}", e = e))?;
@@ -683,6 +702,7 @@ pub async fn submit(
     ratio: Option<&str>,
 ) -> Result<Value, String> {
     usable(provider)?;
+    providers::inventory(provider, false).await?;
     let r = recipe("video", provider, model).ok_or_else(|| t!("{model} 不是生成视频的模型", model = model))?;
     let why = check(&caps("video", provider, model), refs, model);
     if !why.is_empty() {
@@ -694,8 +714,12 @@ pub async fn submit(
     if !py::truthy(&tid) {
         return Err(t!("服务没有返回任务编号"));
     }
-    Ok(json!({"provider": provider, "model": model, "id": py::str_of(&tid), "seconds": v.get("seconds").cloned().unwrap_or(Value::Null),
-              "ratio": v.get("ratio").cloned().unwrap_or(Value::Null)}))
+    let mut job =
+        json!({"provider": provider, "model": model, "id": py::str_of(&tid), "seconds": v.get("seconds"), "ratio": v.get("ratio")});
+    if r == DEFAULTS["magpie"]["video"] {
+        job["magpie"] = json!(true);
+    }
+    Ok(job)
 }
 
 pub enum Poll {
@@ -708,7 +732,8 @@ pub enum Poll {
 pub async fn poll(job: &Value) -> Poll {
     let provider = job["provider"].as_str().unwrap_or("");
     let model = job["model"].as_str().unwrap_or("");
-    let Some(r) = recipe("video", provider, model) else {
+    let rc = if job["magpie"] == true { Some(DEFAULTS["magpie"]["video"].clone()) } else { recipe("video", provider, model) };
+    let Some(r) = rc else {
         return Poll::Failed(t!("找不到 {model} 的配方", model = model));
     };
     let p = &r["poll"];
@@ -732,7 +757,13 @@ pub async fn poll(job: &Value) -> Poll {
     if !list("done").contains(&status) {
         return Poll::Running(None);
     }
-    match fetch_result(&c, &first(&d, &r.get("result").cloned().unwrap_or(json!([]))), MAX_VIDEO).await {
+    let (found, key) = if let Some(path) = r["content_path"].as_str() {
+        let path = py::str_of(&render(&json!(path), &v));
+        (json!(format!("{}/{}", base(provider), path.trim_start_matches('/'))), providers::api_key(provider))
+    } else {
+        (first(&d, &r["result"]), String::new())
+    };
+    match fetch_result(&c, &found, MAX_VIDEO, &key).await {
         Ok(b) => Poll::Done(b),
         Err(e) => Poll::Failed(e),
     }

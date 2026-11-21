@@ -1922,6 +1922,10 @@ async def get_settings():
 @app.put("/api/settings")
 async def put_settings(data: dict = Body(...)):
     try:
+        # 直接调设置接口时，也要按网关公布的用途校验模型。
+        for field in ("image_model", "image_edit_model", "video_model"):
+            if provider := (data.get(field) or {}).get("provider"):
+                await providers.inventory(provider.strip())
         out = settings.save(data)
     except ValueError as e:
         _err(e)

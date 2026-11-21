@@ -9,6 +9,7 @@ from osa import avatars, bots, generation, memory, providers, server
 from osa.config import CFG
 
 PNG = providers._png(4, 4, (255, 0, 0))
+pytestmark = pytest.mark.usefixtures("offline_model_list")
 
 
 def data_url(b: bytes, mime: str = "image/png") -> str:

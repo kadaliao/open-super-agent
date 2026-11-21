@@ -159,7 +159,7 @@ pub fn matched(provider: &str) -> Option<String> {
     let url = norm(&base);
     let ps = d["providers"].as_object().cloned().unwrap_or_default();
     let mut pid = ps.iter().find(|(_, x)| x["api"].as_str().is_some_and(|a| !a.is_empty() && norm(a) == url)).map(|(k, _)| k.clone());
-    if pid.is_none() && url.contains("api.openai.com") {
+    if pid.is_none() && url.contains("api.openai.com") && ps.contains_key("openai") {
         pid = Some("openai".into());
     }
     if pid.is_none() {
@@ -218,7 +218,8 @@ fn tier_v(v: &Value, k: usize) -> Value {
 
 fn unit_price(table: &str, provider: &str, model: &str) -> Option<Value> {
     let base = provider_cfg(provider)["base_url"].as_str().unwrap_or("").to_lowercase();
-    if providers::is_local(&base) {
+    let kind = if table == "images" { "image" } else { "video" };
+    if providers::is_local(&base) && providers::magpie_recipe(provider, kind, model).is_none() {
         return Some(json!(0.0));
     }
     let tail = model.rsplit('/').next().unwrap_or(model).to_lowercase();

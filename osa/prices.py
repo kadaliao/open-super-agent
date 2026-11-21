@@ -98,7 +98,7 @@ def match(provider: str | None) -> str | None:
     if k not in _matched:
         url = _norm(p["base_url"])
         pid = next((pid for pid, x in _data["providers"].items() if x["api"] and _norm(x["api"]) == url), None)
-        if not pid and "api.openai.com" in url:
+        if not pid and "api.openai.com" in url and "openai" in _data["providers"]:
             pid = "openai"
         if not pid:
             pid = ALIAS.get(p.get("preset") or provider or "")
@@ -129,9 +129,10 @@ def _manual(model: str):
 
 def _unit_price(table_name: str, provider: str, model: str):
     """pricing.images / pricing.videos 里这个模型的那一项；本机的算 0，没写的返回 None。"""
-    from .providers import _local
+    from .providers import _local, magpie_recipe
     base = ((CFG["providers"].get(provider) or {}).get("base_url") or "").lower()
-    if _local(base):
+    kind = "image" if table_name == "images" else "video"
+    if _local(base) and magpie_recipe(provider, kind, model) is None:
         return 0.0
     tail = model.rsplit("/", 1)[-1].lower()
     for host, table in (CFG["pricing"].get(table_name) or {}).items():

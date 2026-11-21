@@ -314,6 +314,11 @@ pub fn save(data: &Value) -> Result<Value, String> {
 }
 
 pub async fn update(d: &Value) -> Result<Value, String> {
+    for field in ["image_model", "image_edit_model", "video_model"] {
+        if let Some(name) = d[field]["provider"].as_str().map(str::trim).filter(|s| !s.is_empty()) {
+            providers::inventory(name, false).await?;
+        }
+    }
     save(d)
 }
 
@@ -339,7 +344,7 @@ async fn put_settings(Body(d): Body) -> Res {
     if !d.is_object() {
         return Err(ApiError::new(422, "Input should be a valid dictionary"));
     }
-    let out = save(&d)?;
+    let out = update(&d).await?;
     if d.get("computer_parallel").is_some() {
         crate::computer::get(0).recheck();
     }

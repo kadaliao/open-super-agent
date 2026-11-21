@@ -55,6 +55,11 @@ Qwen-Image-Edit、FLUX.1-Kontext、Kolors（各 1 张），OpenAI 的 gpt-image�
 
 ### 画图和生成视频的配方
 
+用 Magpie 时，在「设置 → 模型 → 添加 → 其他」填网关的 OpenAI 兼容地址（本机默认 `http://127.0.0.1:3425/v1`）和对应密钥。
+保存后，在「画图模型」和「视频模型」里选网关列出的完整模型名。可以单独把 embedding 设为硅基流动。
+「照着图片画」只列出网关声明支持改图的模型。要核对网关给这把密钥开放了哪些模型，可以查 `GET /v1/models?kind=image,video`。
+Magpie 的单价取决于上游账户。在 `pricing.images` 或 `pricing.videos` 下按服务名和模型名填写；未填写时显示「价格未知」。
+
 各家生图、生视频的接口参数都不一样（字段名、参考图怎么传、异步任务怎么查），所以**代码里不写死**，写成一条条配方：
 默认的在 `osa/generation.yaml`，`config.yaml` 的 `generation.recipes` 里写的排在默认的前面，`name` 和默认的一样就替掉默认的那条。
 新出的模型、别家的服务，照着加一条就行，不用改代码、不用等新版本。
@@ -90,6 +95,7 @@ generation:
 `size`、`id`、`origin`、`image1`…`imageN`、`images`（参考图列表）、`media`（全部参考素材）。列表里写 `{$each: media, as: {...}}`
 按每个素材展开一项，素材里有 `url`、`type`（image / video）、`role`（按 `roles` 换成接口的叫法，比如 `{first: first_frame, video: reference_video}`）。
 参考图默认传 base64，写 `image_url: url` 改成传临时网址；画图带参考图时换成 `edit` 里写的请求（`form` + `files` 是 multipart 上传）。
+视频完成后需要从同一服务下载文件时，可以写 `content_path: /videos/${id}/content`，下载时会带上该服务的密钥。
 `skip: true` 的配方表示“这类不算”。完整的例子见 `osa/generation.yaml`。
 
 服务和模型旁边显示品牌图标：模型按名字认（`deepseek-…`、`qwen…`、`claude-…`、OpenRouter 的 `openai/gpt-…` 这类都认得），

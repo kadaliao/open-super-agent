@@ -54,6 +54,15 @@ class Sink:
 
 
 @pytest.fixture
+def offline_model_list(monkeypatch):
+    """画图、视频的单元测试不向真实服务发现模型。"""
+    async def listed(base_url, key):
+        return {"models": []}
+    monkeypatch.setattr(providers, "_list", listed)
+    monkeypatch.setattr(providers, "_models", {})
+
+
+@pytest.fixture
 def llm(monkeypatch):
     fake = FakeLLM()
     monkeypatch.setattr(providers, "client", lambda name, timeout=None: fake.client)
