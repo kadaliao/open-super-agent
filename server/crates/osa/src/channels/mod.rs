@@ -1200,7 +1200,12 @@ fn doubt_card(ev: &Value, who: &str, task_head: &str) -> Card {
         (Ok(a), Ok(b)) => a == b,
         _ => before == now,
     };
-    let mut body = t!("服务重启时这一步正在执行，说不准有没有做成。");
+    // 为什么说不准：卡住超时被打断（stall）、任务被停下（stopped）、服务重启（restart，没写也按它）
+    let mut body = match d["why"].as_str().unwrap_or("") {
+        "stall" => t!("这一步卡住超时、没做完就被打断了，说不准有没有做成。"),
+        "stopped" => t!("任务被停下时这一步正在执行，说不准有没有做成。"),
+        _ => t!("服务重启时这一步正在执行，说不准有没有做成。"),
+    };
     let mut head = tool_head(&tool);
     if let Some(s) = d["started"].as_f64().filter(|s| *s > 0.0) {
         head += &t!("（{time} 开始）", time = py::strftime_at(s, "%H:%M:%S"));

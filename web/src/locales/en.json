@@ -803,6 +803,8 @@
   "不做了，任务停下": "Not redone, the task stopped",
   "没再做这一步": "This step wasn't redone",
   "这一步在服务重启时正在做（{time} 开始的），不确定有没有做成": "This step was running when the server restarted (started at {time}); it's not certain whether it went through",
+  "这一步卡住超时、没做完就被打断了（{time} 开始的），不确定有没有做成": "This step stalled and was cut off before it finished (started at {time}); it's not certain whether it went through",
+  "任务被停下时这一步正在做（{time} 开始的），不确定有没有做成": "This step was running when the task was stopped (started at {time}); it's not certain whether it went through",
   "要不要再做一次？": "Do it again?",
   "Bot 查过：{what}": "The Bot checked: {what}",
   "Bot 没查出来": "The Bot couldn't find out",

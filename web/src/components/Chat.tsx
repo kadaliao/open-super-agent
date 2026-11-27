@@ -629,7 +629,9 @@ export function DoubtCard({ a, inTask }: { a: Approval; inTask?: boolean }) {
     : at.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   return (
     <div className="approval-card doubt">
-      <div className="doubt-head">⚠ {t('这一步在服务重启时正在做（{time} 开始的），不确定有没有做成', { time: when })}</div>
+      <div className="doubt-head">⚠ {d.why === 'stall' ? t('这一步卡住超时、没做完就被打断了（{time} 开始的），不确定有没有做成', { time: when })
+        : d.why === 'stopped' ? t('任务被停下时这一步正在做（{time} 开始的），不确定有没有做成', { time: when })
+        : t('这一步在服务重启时正在做（{time} 开始的），不确定有没有做成', { time: when })}</div>
       <div className="approval-title">{t('要不要再做一次？')} <code>{tool}</code>{!inTask && <Origin a={a} />}</div>
       {!inTask && <div className="muted small">{tn('来自任务 {id}：{goal}', { id: <button className="link-btn" onClick={() => showTask(a.task_id)}>#{a.task_id}</button>, goal: a.goal })}</div>}
       <pre className="approval-args">{args}</pre>

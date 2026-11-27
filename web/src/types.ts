@@ -97,7 +97,7 @@ export type Approval = {
   mac?: number; mac_name?: string   // 派到你的 Mac 上的任务（请你帮忙时去那台 Mac 上处理）
   question?: string; options?: string[]
   // 服务重启时这一步（写操作）正在做、说不准做没做成，Bot 要再做一次：started 那一步开始的时间（秒），checked Bot 查过什么（可能是空的）
-  doubt?: { started: number; tool: string; args: any; checked: string }
+  doubt?: { started: number; tool: string; args: any; checked: string; why?: 'stall' | 'stopped' | 'restart' }
   answer?: string   // 这个页面上你在卡片上选的：问题的回答，说不准的那一步选的 done / stop（服务端的事件里没有，卡片有了结果后显示）
 }
 export type Stream = { sid: string; text: string; thinking: string; started: number; bot_id: number }

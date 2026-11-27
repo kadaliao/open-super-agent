@@ -276,7 +276,11 @@ pub fn message_for(ev: &Value) -> Option<Value> {
             let tool = ev["doubt"]["tool"].as_str().filter(|s| !s.is_empty()).or(ev["tool"].as_str()).unwrap_or("").to_string();
             return out(
                 t!("{who} 有一步要你定", who = who),
-                t!("服务重启时 {tool} 这一步正在做，说不准有没有做成：再做一次，还是算已经做成？", tool = tool),
+                match ev["doubt"]["why"].as_str().unwrap_or("") {
+                    "stall" => t!("{tool} 这一步卡住超时被打断了，说不准有没有做成：再做一次，还是算已经做成？", tool = tool),
+                    "stopped" => t!("任务被停下时 {tool} 这一步正在做，说不准有没有做成：再做一次，还是算已经做成？", tool = tool),
+                    _ => t!("服务重启时 {tool} 这一步正在做，说不准有没有做成：再做一次，还是算已经做成？", tool = tool),
+                },
                 url,
                 tag,
             );
