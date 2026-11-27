@@ -1,9 +1,11 @@
 // 卡片页（描述、你的原话、在等你回答的问题、交付的结果、背后的任务）和新建卡片
+// 卡片页是全局的一层：看板、对话里的卡片标记、任务详情都用 openNeed(id) 打开它，盖在当前页面上，关掉回到原来的地方
 import { useEffect, useRef, useState } from 'react'
-import { useStore } from '../store'
+import { openBoard, openNeed, useStore } from '../store'
 import { t } from '../i18n'
-import { assignee, columnName, createNeed, fetchNeed, needAction, onBoard, openTask, patchNeed, refreshWaiting, running, waitReason } from '../board'
-import type { Need, NeedDetail, NeedTask, Project, Question } from '../board'
+import { assignee, columnName, createNeed, fetchBoard, fetchNeed, fetchProjects, needAction, onBoard, openTask, patchNeed, refreshWaiting, running, waitReason } from '../board'
+import type { Need, NeedDetail, NeedTask, Project } from '../board'
+import type { Approval } from '../types'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { Icon } from '../icons'
@@ -16,16 +18,27 @@ const taskStatus = (x: NeedTask) => x.waiting_kind === 'question' ? t('等你回
     running: t('进行中'), done: t('完成'), failed: t('失败'), cancelled: t('已取消'), interrupted: t('已中断'),
   } as Record<string, string>)[x.status] || x.status
 
-export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
-  id: number; projects: Project[]; onClose: () => void; onOpen: (id: number) => void; onChanged: (n: Need) => void
-}) {
+// 卡片页改了一张卡：看板收到后先把它挪到新的列，不等 board 事件
+export const needChanged = (n: Need) => window.dispatchEvent(new CustomEvent('osa-need', { detail: n }))
+
+/** App 里挂一个：store 里 needOpen 有值就打开那张卡 */
+export function NeedHost() {
+  const id = useStore(s => s.needOpen)
+  return id ? <NeedPage key={id} id={id} /> : null
+}
+
+function NeedPage({ id }: { id: number }) {
   const bots = useStore(s => s.bots)
+  const view = useStore(s => s.view)
+  const onClose = () => openNeed(null)
   const root = useRef<HTMLDivElement>(null)
   useBack(onClose, root)
   const [n, setN] = useState<NeedDetail | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
   const [err, setErr] = useState('')
   const [title, setTitle] = useState<string | null>(null)   // 正在改的标题；null 是没在改
   const [body, setBody] = useState<string | null>(null)
+  const [after, setAfter] = useState<number[] | null>(null) // 正在改的“在这之后开始”
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
@@ -33,16 +46,16 @@ export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
   }
   const latest = useRef(load)
   latest.current = load
-  useEffect(() => { setN(null); setTitle(null); setBody(null); load() }, [id])
+  useEffect(() => { load(); fetchProjects().then(setProjects).catch(() => {}) }, [])
   useEffect(() => onBoard(nid => { if (nid === null || nid === id) latest.current() }), [id])
   useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && title === null && body === null) onClose() }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && title === null && body === null && after === null) onClose() }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [title, body])
+  }, [title, body, after])
 
   // 改完：接口返回的卡（没有 results、questions）盖在现有的上面，看板那边也挪过去
-  const got = (x: Need) => { setN(cur => cur ? { ...cur, ...x } : cur); onChanged(x); refreshWaiting() }
+  const got = (x: Need) => { setN(cur => cur ? { ...cur, ...x } : cur); needChanged(x); refreshWaiting() }
   const run = async (f: () => Promise<Need>) => {
     setBusy(true)
     try { got(await f()); setErr('') } catch (e: any) { setErr(e.message) }
@@ -59,6 +72,12 @@ export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
     if (body !== n.body) await run(() => patchNeed(id, { body }))
     setBody(null)
   }
+  const saveAfter = async () => {
+    if (!n || after === null) return
+    const same = after.length === n.after.length && after.every(x => n.after.includes(x))
+    if (!same) await run(() => patchNeed(id, { after }))
+    setAfter(null)
+  }
   const stop = async (a: 'done' | 'cancel') => {
     if (!n) return
     if (running(n)) {
@@ -67,7 +86,8 @@ export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
     }
     run(() => needAction(id, a))
   }
-  const goTask = (taskId: number, botId?: number | null, chatId?: number | null) => { onClose(); openTask(taskId, botId, chatId) }
+  // 去看任务：关掉卡片页，任务详情里有“回到卡片”
+  const goTask = (taskId: number, botId?: number | null, chatId?: number | null) => { onClose(); openTask(taskId, botId, chatId, id) }
 
   if (!n) return (
     <div className="modal-bg" ref={root} onMouseDown={onClose}>
@@ -79,9 +99,11 @@ export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
   )
 
   const bot = assignee(bots, n.assignee_bot_id)
+  const primary = bots.find(b => b.is_primary)
   const ended = n.column === 'done' || n.column === 'cancelled'
   const reason = n.column === 'waiting' ? waitReason(n) : ''
   const archived = !!n.archived
+  const started = n.tasks.length > 0
   return (
     <div className="modal-bg" ref={root} onMouseDown={onClose}>
       <div className="modal medium bd-need" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()}>
@@ -90,6 +112,7 @@ export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
           <span className={`bd-col-chip ${n.column}`}>{columnName(n.column)}</span>
           {reason && <span className="bd-reason">{reason}</span>}
           {archived && <span className="chip faint">{t('已归档')}</span>}
+          {view !== 'board' && <button className="link-btn small bd-to-board" onClick={() => openBoard()}>{t('在看板里看')}</button>}
           <button className="icon-btn bd-close" onClick={onClose} title={t('关闭')}><Icon name="x" size={18} /></button>
         </div>
 
@@ -110,16 +133,28 @@ export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
               {projects.map(p => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
             </select>
           </label>
-          {bot && <span className="bd-meta-item">{t('交给')}<span className="bd-who"><BotAvatar avatar={bot.avatar} size={18} /><span>{bot.name}</span></span></span>}
+          <label className="bd-meta-item">{t('交给')}
+            {bot && <BotAvatar avatar={bot.avatar} size={18} />}
+            <select value={bot?.id ?? ''} disabled={busy || archived}
+              onChange={e => { const v = Number(e.target.value); run(() => patchNeed(id, { assignee_bot_id: v === primary?.id ? null : v })) }}>
+              {!bot && <option value="">{t('已删除的 Bot')}</option>}
+              {bots.map(b => <option key={b.id} value={b.id}>{b.name}{b.is_primary ? ' ★' : ''}</option>)}
+            </select>
+          </label>
           {n.progress && n.progress.total > 0 && <span className="bd-meta-item">{t('完成了')}<b>{t('{done}/{total} 项', { done: n.progress.done, total: n.progress.total })}</b></span>}
         </div>
+        {started && !ended && <p className="muted small bd-hint">{t('换人只影响以后：已经在做的任务不换，下次开始时交给新选的 Bot。')}</p>}
 
-        {n.blocked_by.length > 0 && <div className="bd-sec">
-          <h4>{t('在等这些卡')}</h4>
-          {n.blocked_by.map(b => <button key={b.id} className="bd-row" onClick={() => onOpen(b.id)}>
-            {b.key && <span className="bd-key">{b.key}</span>}<span className="bd-row-text">{b.title}</span>
-            <span className={`bd-col-chip ${b.column}`}>{columnName(b.column)}</span>
-          </button>)}
+        {(n.after.length > 0 || (!ended && !archived)) && <div className="bd-sec">
+          <h4>{t('在这之后开始')}{after === null && !archived && <button className="link-btn small" onClick={() => setAfter(n.after)}>{n.after.length ? t('修改') : t('设置')}</button>}</h4>
+          {after !== null
+            ? <AfterPicker self={n.id} picked={after} onChange={setAfter} onCancel={() => setAfter(null)} onSave={saveAfter} busy={busy} />
+            : n.blocked_by.length > 0
+              ? n.blocked_by.map(b => <button key={b.id} className="bd-row" onClick={() => openNeed(b.id)}>
+                  {b.key && <span className="bd-key">{b.key}</span>}<span className="bd-row-text">{b.title}</span>
+                  <span className={`bd-col-chip ${b.column}`}>{columnName(b.column)}</span>
+                </button>)
+              : <p className="muted small">{n.after.length ? t('前面的 {n} 张卡都完成了。', { n: n.after.length }) : t('不用等别的卡。')}</p>}
         </div>}
 
         {n.questions.length > 0 && <div className="bd-sec bd-questions">
@@ -180,8 +215,37 @@ export function NeedPage({ id, projects, onClose, onOpen, onChanged }: {
   )
 }
 
+// 选“在这之后开始”：还没完成的卡（自己除外），加上已经选了的
+function AfterPicker({ self, picked, onChange, onCancel, onSave, busy }: {
+  self: number; picked: number[]; onChange: (ids: number[]) => void; onCancel: () => void; onSave: () => void; busy: boolean
+}) {
+  const [list, setList] = useState<Need[] | null>(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    fetchBoard({ project: null, q: '', from: null, to: null, archived: false }).then(b => {
+      const all = Object.values(b.columns).flat()
+      setList(all.filter(x => x.id !== self && (picked.includes(x.id) || x.column === 'todo' || x.column === 'doing' || x.column === 'waiting')))
+    }).catch(e => setErr(e.message))
+  }, [])
+  return <>
+    {err && <div className="error-line">{err}</div>}
+    {!list ? <div className="muted small">{t('加载中…')}</div> : !list.length ? <p className="muted small">{t('没有别的还没完成的卡。')}</p> :
+      <div className="bd-after">
+        {list.map(x => <label key={x.id} className="check">
+          <input type="checkbox" checked={picked.includes(x.id)} onChange={e => onChange(e.target.checked ? [...picked, x.id] : picked.filter(i => i !== x.id))} />
+          {x.key && <span className="bd-key">{x.key}</span>}<span className="bd-row-text">{x.title}</span>
+        </label>)}
+      </div>}
+    <p className="muted small">{t('选了的卡都完成后，这张卡自动开始，并带上它们的结果；其中有取消或失败的就不开始。')}</p>
+    <div className="bd-edit-actions">
+      <button className="btn tiny" onClick={onCancel}>{t('取消')}</button>
+      <button className="btn tiny primary" disabled={busy || !list} onClick={onSave}>{t('保存')}</button>
+    </div>
+  </>
+}
+
 // 一个在等你的问题（或者确认、请你接手）：点了去那个任务
-function Ask({ a, onGo }: { a: Question; onGo: () => void }) {
+function Ask({ a, onGo }: { a: Approval; onGo: () => void }) {
   const text = a.kind === 'question' ? a.question || a.goal : a.kind === 'help' ? t('请你接手电脑') : t('等你确认：{tool}', { tool: a.tool })
   return (
     <button className="bd-row bd-ask" onClick={onGo}>

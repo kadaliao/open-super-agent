@@ -5,6 +5,7 @@ import { plain } from '../plain'
 import { isEnter } from '../keys'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
+import NeedTag from './NeedTag'
 import Markdown from './Markdown'
 import { locale, t, tn } from '../i18n'
 import { ask, notice } from './Dialog'
@@ -315,6 +316,7 @@ function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: T
         {status === 'running' && <button className="ghost-btn" onClick={() => api(`/api/tasks/${m.id}/cancel`, { method: 'POST' })}>{t('停止')}</button>}
       </div>
       <div className="task-goal">{goal}</div>
+      {(task?.need || m.meta.need_id) && <div className="task-need"><NeedTag need={task?.need} id={m.meta.need_id} /></div>}
       {(m.meta.mac || task?.mac) && <div className="task-action">{t('在你的 Mac「{name}」上做', { name: m.meta.mac || task?.mac })}</div>}
       {handoffTo && <div className="task-action">{t('做完交给 {name}', { name: handoffTo.name })}</div>}
       {replyTo && <div className="task-action">{t('做完把结果回给 {name}', { name: replyTo.name })}</div>}
@@ -789,6 +791,7 @@ export function MessageList({ chat, list, reply, since }: { chat: ChatT; list: M
                 : m.meta.applet && <button className="via link-btn" onClick={() => openLibrary(m.meta.applet.id)}>{t('来自小应用「{title}」', { title: m.meta.applet.title })}</button>}
               <div className="bubble"><Linkify text={text} /></div></div>}
             {!text && items.length > 0 && m.meta.via && <span className="via">{VIA[m.meta.via] || m.meta.via}</span>}
+            {m.meta.need_id && <div className="user-need"><NeedTag id={m.meta.need_id} from /></div>}
             {text && textEmbeds(text).map(u => <div key={u} className="user-embed"><LinkEmbed href={u} fallback={null} /></div>)}
             <ThreadLink m={m} reply={reply} />
             {reply && <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={text || m.content} /><ReplyBtn m={m} reply={reply} /></div>}

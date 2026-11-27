@@ -2,7 +2,7 @@
 // 只有两种拖法：待办 → 进行中（开始），任何一列 → 已完成（标记完成）。手机上不拖，卡片页里有同样的按钮。
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { useStore } from '../store'
+import { openNeed, useStore } from '../store'
 import { locale, t, tc } from '../i18n'
 import type { Bot } from '../types'
 import { assignee, columnName, COLUMNS, fetchBoard, merge, needAction, oldest, onBoard, refreshWaiting, running, waitReason } from '../board'
@@ -10,7 +10,7 @@ import type { Board as BoardData, Column, Filter, Need } from '../board'
 import BotAvatar from './BotAvatar'
 import { Icon } from '../icons'
 import { ask } from './Dialog'
-import { NeedPage, NewNeed } from './BoardNeed'
+import { NewNeed } from './BoardNeed'
 import { Projects } from './BoardProjects'
 import '../board.css'
 
@@ -63,7 +63,6 @@ export default function Board() {
   const [data, setData] = useState<BoardData | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState<number | null>(null)       // 打开着的卡片页
   const [creating, setCreating] = useState(false)
   const [projects, setProjects] = useState(false)
   const [folded, setFolded] = useState(true)                  // 已取消的折起来
@@ -115,6 +114,12 @@ export default function Board() {
     if (!!n.archived === archived) cols[n.column] = [n, ...(cols[n.column] || [])]
     return { ...d, columns: cols }
   })
+  // 卡片页（盖在看板上）改了卡
+  useEffect(() => {
+    const h = (e: Event) => place((e as CustomEvent).detail as Need)
+    window.addEventListener('osa-need', h)
+    return () => window.removeEventListener('osa-need', h)
+  }, [archived])
   const act = async (n: Need, a: 'start' | 'done') => {
     if (a === 'done' && running(n) && !await ask(t('“{title}”下面还有任务在做，标记完成会停掉它们。', { title: n.title }), { ok: t('标记完成'), danger: true })) return
     try { place(await needAction(n.id, a)); refreshWaiting() }
@@ -199,7 +204,7 @@ export default function Board() {
 
   const card = (n: Need, drag: boolean) => (
     <NeedCard key={n.id} n={n} bots={bots} drag={drag && !archived}
-      onOpen={() => setOpen(n.id)} onDragStart={dragStart(n)} onDragEnd={dragEnd} dragging={dragging?.id === n.id} />
+      onOpen={() => openNeed(n.id)} onDragStart={dragStart(n)} onDragEnd={dragEnd} dragging={dragging?.id === n.id} />
   )
 
   let body
@@ -261,7 +266,6 @@ export default function Board() {
           {body}
         </div>
       </div>
-      {open !== null && <NeedPage id={open} projects={projList} onClose={() => setOpen(null)} onOpen={setOpen} onChanged={place} />}
       {creating && <NewNeed projects={projList} project={typeof project === 'number' ? project : null}
         open={cols ? [...cols.todo, ...cols.doing, ...cols.waiting] : []}
         onClose={() => setCreating(false)} onCreated={n => { setCreating(false); place(n); refreshWaiting() }} />}

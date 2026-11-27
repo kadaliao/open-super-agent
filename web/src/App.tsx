@@ -7,6 +7,7 @@ import Library from './components/Library'
 import Market from './components/Market'
 import Observe from './components/Observe'
 import Board from './components/Board'
+import { NeedHost } from './components/BoardNeed'
 import Sidebar from './components/Sidebar'
 import Settings from './components/Settings'
 import Onboarding from './components/Onboarding'
@@ -25,7 +26,8 @@ export default function App() {
   const [newGroup, setNewGroup] = useState(false)
   const [settings, setSettings] = useState<string | false>(false)   // 打开时是哪一页（空字符串：上次看的那页）
   const [onboard, setOnboard] = useState(false)                     // 第一次打开时的引导
-  const [details, setDetails] = useState(() => localStorage.getItem('osa.details') === '1')
+  // 右栏开没开记在这台设备上。手机上右栏占满整个屏幕，刷新后不再自己打开（不然一打开就看不到对话）
+  const [details, setDetails] = useState(() => !matchMedia('(max-width: 760px)').matches && localStorage.getItem('osa.details') === '1')
   const [side, setSide] = useState(false)   // 手机上的侧栏抽屉
   useDrawer(() => setSide(true), side)      // 左边缘右滑：没有别的层时把它拉出来
   const [tab, setTab] = useState(() => localStorage.getItem('osa.tab') || 'computer')
@@ -54,6 +56,12 @@ export default function App() {
     }
     window.addEventListener('osa-unlinked', h)
     return () => window.removeEventListener('osa-unlinked', h)
+  }, [])
+  // 任务详情里点“回到卡片”（手机上）：关掉占满屏幕的右栏
+  useEffect(() => {
+    const h = () => setDetails(false)
+    window.addEventListener('osa-close-panel', h)
+    return () => window.removeEventListener('osa-close-panel', h)
   }, [])
   // 点了任务卡片上的“过程”：打开右栏的任务标签
   useEffect(() => {
@@ -154,6 +162,7 @@ export default function App() {
       {newGroup && <NewGroupDialog onClose={() => setNewGroup(false)} />}
       {settings !== false && <Settings initial={settings || undefined} onClose={() => setSettings(false)} />}
       {onboard && <Onboarding onClose={() => setOnboard(false)} />}
+      <NeedHost />
       <ImageViewer />
       <UpdateBar />
     </div>
