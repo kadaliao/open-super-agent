@@ -781,18 +781,29 @@ impl Router {
         let owner = if py::truthy(&args["shared"]) { None } else { Some(self.bot_id) };
         let rid = &args["replace_id"];
         let text = args["text"].as_str().unwrap_or("");
+        let until = match memories::parse_until(args.get("until")) {
+            Ok(u) => u,
+            Err(e) => return format!("没记住：{e}"),
+        };
         let r = match rid.as_i64().filter(|r| rid.is_i64() && memories::visible(*r, self.bot_id)) {
             Some(r) => {
                 let keep = memories::get(r).map(|m| m["bot_id"].as_i64()).unwrap_or(None);
-                memories::update(r, Some(text), Some(if args.get("shared").is_some() { owner } else { keep }))
+                memories::update(r, Some(text), Some(if args.get("shared").is_some() { owner } else { keep })).map(|m| match until {
+                    Some(u) => {
+                        memories::set_until(r, u);
+                        memories::get(r).unwrap_or(m)
+                    }
+                    None => m,
+                })
             }
-            None => memories::add(owner, text, "chat"),
+            None => memories::add_until(owner, text, "chat", until.flatten()),
         };
         match r {
             Ok(m) => {
                 self.emit(json!({"type": "memories_changed"}), None);
+                let until = m["until"].as_f64().map(|u| format!("，到 {} 为止", memories::until_day(u))).unwrap_or_default();
                 format!(
-                    "已记住 #{}（{}）：{}",
+                    "已记住 #{}（{}{until}）：{}",
                     py::str_of(&m["id"]),
                     if m["shared"] == true { "所有 Bot 共享" } else { "只有你知道" },
                     py::str_of(&m["text"])

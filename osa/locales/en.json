@@ -1231,5 +1231,17 @@
   "文档：{tool}": "Docs: {tool}",
   "[文档评论]《{title}》{who}：{body}": "[Doc comment] \"{title}\" {who}: {body}",
   "（任务没做完：{result}）": "(Task not finished: {result})",
-  "文档服务没有启动": "The docs service isn't running"
+  "文档服务没有启动": "The docs service isn't running",
+  "正在整理记忆，等它做完再撤销": "Memories are being tidied up; undo once it finishes",
+  "没有可以撤销的整理": "There's no tidy-up to undo",
+  "完成": "done",
+  "失败": "failed",
+  "已取消": "cancelled",
+  "已中断": "interrupted",
+  "还在做": "still running",
+  "……还有 {n} 件": ["…and {n} more", "…and {n} more"],
+  "{date} 做过的事（{n} 件）：": ["Done on {date} ({n} item):", "Done on {date} ({n} items):"],
+  "正在整理记忆，稍等": "Memories are already being tidied up, hang on",
+  "这条看起来像密码或密钥，不记进记忆（记忆每次都会发给模型）；要存的话放进保险库": "This looks like a password or key, so it isn't saved as a memory (memories are sent to the model every time). Put it in the vault instead",
+  "截止日要写成 YYYY-MM-DD，比如 2026-12-31": "Write the expiry date as YYYY-MM-DD, e.g. 2026-12-31"
 }
