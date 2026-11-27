@@ -597,6 +597,8 @@ pub fn register(ctx: &Context) {
     let run: crate::registry::RunFn = Arc::new(|c: Call| -> BoxFuture<'static, Out> { Box::pin(tool_ask_user(c)) });
     let mut tool = Tool::new("ask_user", ask_schema(), run);
     tool.where_ = vec![WORKER];
+    // Router 靠这句知道 Worker 能在任务中途问用户（列在“后台 Worker 当前能用的工具”里）
+    tool.describe = "任务中途向用户提一个问题（在对话里出一张卡片，可以带选项），等用户回答后接着做；要用户拿主意的事不用事先问清，写进 goal 让任务到时候问".into();
     tool.when = Some(ask_when);
     tool.progress = Some(Arc::new(ask_progress));
     if let Err(e) = ctx.tool(tool) {
