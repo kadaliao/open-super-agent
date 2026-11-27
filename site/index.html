@@ -82,22 +82,26 @@
 <section id="tour" aria-labelledby="tour-h">
   <div class="wrap">
     <h2 id="tour-h">看看长什么样</h2>
-    <p class="section-lede">下面的截图用的是演示数据：一个独立开发者准备发布“潮汐笔记 2.0”，三个 Bot 和页面里的内容都是真模型跑出来的。</p>
+    <p class="section-lede">下面的截图用的是演示数据：一个独立开发者准备发布“潮汐笔记 2.0”，三个 Bot 和页面里的内容都是真模型跑出来的；需求看板、任务能对话两张的对话是演示用的剧本。</p>
     <div class="tour">
       <ul class="tour-list" role="tablist" aria-label="功能截图">
         <li><button class="tour-tab" role="tab" id="t-group" aria-controls="p-group" style="--accent:var(--nova)"><b>群聊分工</b><span>Nova 派活，Radar 查完竞品交给 Quill，Quill 把公告开头写进资料库。</span></button></li>
         <li><button class="tour-tab" role="tab" id="t-task" aria-controls="p-task" style="--accent:var(--quill)"><b>后台任务</b><span>耗时的活放到后台，你接着聊；右栏是每一步：搜网页、搜 X / Reddit / 小红书、读网页。</span></button></li>
-        <li><button class="tour-tab" role="tab" id="t-applet" aria-controls="p-applet" style="--accent:var(--radar)"><b>小应用</b><span>一句话让 Nova 做一个发布倒计时，待办能直接勾。</span></button></li>
-        <li><button class="tour-tab" role="tab" id="t-events" aria-controls="p-events" style="--accent:var(--nova)"><b>事件</b><span>“这个网页有变化就告诉我”：Radar 盯着新版本发布和定价页变化。</span></button></li>
-        <li><button class="tour-tab" role="tab" id="t-skills" aria-controls="p-skills" style="--accent:var(--quill)"><b>技能</b><span>右栏是 Radar 会的技能，从技能市场装的 /周报整理、/近期动态；也能点“演示一遍”教它新的，以后输入 /名字 就能重做。</span></button></li>
-        <li><button class="tour-tab" role="tab" id="t-observe" aria-controls="p-observe" style="--accent:var(--radar)"><b>观测</b><span>花了多少、做得快不快、哪里出了错，能按 Bot 看，有每日预算。</span></button></li>
-        <li><button class="tour-tab" role="tab" id="t-apps" aria-controls="p-apps" style="--accent:var(--nova)"><b>应用市场</b><span>40 个应用，Notion、Gmail、飞书、钉钉、腾讯文档……登录或填 token 就能连。</span></button></li>
+        <li><button class="tour-tab" role="tab" id="t-board" aria-controls="p-board" style="--accent:var(--radar)"><b>需求看板</b><span>每件事一张卡，按待办、进行中、等你处理、已完成排好，在哪一列由背后的任务决定。</span></button></li>
+        <li><button class="tour-tab" role="tab" id="t-talk" aria-controls="p-talk" style="--accent:var(--nova)"><b>任务能对话</b><span>写公告写到一半补一句“开头先说同步变快了”，它停下来问你用哪种语气。</span></button></li>
+        <li><button class="tour-tab" role="tab" id="t-applet" aria-controls="p-applet" style="--accent:var(--quill)"><b>小应用</b><span>一句话让 Nova 做一个发布倒计时，待办能直接勾。</span></button></li>
+        <li><button class="tour-tab" role="tab" id="t-events" aria-controls="p-events" style="--accent:var(--radar)"><b>事件</b><span>“这个网页有变化就告诉我”：Radar 盯着新版本发布和定价页变化。</span></button></li>
+        <li><button class="tour-tab" role="tab" id="t-skills" aria-controls="p-skills" style="--accent:var(--nova)"><b>技能</b><span>右栏是 Radar 会的技能，从技能市场装的 /周报整理、/近期动态；也能点“演示一遍”教它新的，以后输入 /名字 就能重做。</span></button></li>
+        <li><button class="tour-tab" role="tab" id="t-observe" aria-controls="p-observe" style="--accent:var(--quill)"><b>观测</b><span>花了多少、做得快不快、哪里出了错，能按 Bot 看，有每日预算。</span></button></li>
+        <li><button class="tour-tab" role="tab" id="t-apps" aria-controls="p-apps" style="--accent:var(--radar)"><b>应用市场</b><span>40 个应用，Notion、Gmail、飞书、钉钉、腾讯文档……登录或填 token 就能连。</span></button></li>
       </ul>
       <div class="tour-stage">
         <div class="window">
           <div class="window-bar"><i></i><i></i><i></i></div>
           <img id="p-group" role="tabpanel" aria-labelledby="t-group" src="images/chat-group.webp" width="1600" height="1000" loading="lazy" alt="群聊“2.0 发布小组”：Nova 把活分给 Radar，Radar 挑出三条竞品价格的差异点交给 Quill，Quill 写好发布公告的开头段存进资料库">
           <img id="p-task" role="tabpanel" aria-labelledby="t-task" src="images/task-steps.webp" width="1600" height="1000" loading="lazy" hidden alt="Radar 的后台任务做完，右栏列着每一步：搜网页、搜 Reddit、搜小红书、搜 X、读网页，各用了几秒">
+          <img id="p-board" role="tabpanel" aria-labelledby="t-board" src="images/board.webp" width="1600" height="1000" loading="lazy" hidden alt="“需求”看板：待办、进行中、等你处理、已完成四列，卡片带项目编号，等你处理的两张标着“等你回答”">
+          <img id="p-talk" role="tabpanel" aria-labelledby="t-talk" src="images/task-talk.webp" width="1600" height="1000" loading="lazy" hidden alt="写公告的任务：给任务 #10 补了一句，任务停下来问用哪种语气，右栏是任务详情">
           <img id="p-applet" role="tabpanel" aria-labelledby="t-applet" src="images/applet.webp" width="1600" height="1000" loading="lazy" hidden alt="对话里的小应用“发布倒计时”：离上线还有 3 天 15 小时，下面是还没完成的任务，能勾选">
           <img id="p-events" role="tabpanel" aria-labelledby="t-events" src="images/events.webp" width="1600" height="1000" loading="lazy" hidden alt="右栏“事件”：“Obsidian 新版本发布”和“flomo 定价页变化”，各有测试、现在看一次、暂停、编辑、记录">
           <img id="p-skills" role="tabpanel" aria-labelledby="t-skills" src="images/skills.webp" width="1600" height="1000" loading="lazy" hidden alt="Radar 的右栏“技能”：/周报整理 和 /近期动态 两个从技能市场装的技能，上面有演示一遍、技能市场、导入；对话里 Radar 用 /近期动态 建好了每周一的定时任务和两个事件">
@@ -115,13 +119,13 @@
     <h2 id="features-h">它能做什么</h2>
     <p class="section-lede">每个 Bot 有自己的人设、记忆和对话，也有自己的电脑。你说一句，它去做，做的每一步都看得到。</p>
     <ul class="points">
-      <li><h3>会聊天，也会派活</h3><p>耗时的活交给后台任务，你接着聊。几个 Bot 能拉群，一个查完资料，自动交给另一个写总结。</p></li>
+      <li><h3>会聊天，也会派活</h3><p>耗时的活交给后台任务，你接着聊。做到一半能补一句，拿不准时它停下来问你，做完回一句就接着做，服务重启了也接着做。几个 Bot 能拉群，一个查完资料，自动交给另一个写总结。</p></li>
+      <li><h3>交代过的事一眼看到</h3><p>每件事一张卡，在“需求”看板上按待办、进行中、等你处理、已完成排好，卡片归到项目下、带编号。记忆每天夜里自己整理，过期的不再读，不满意能撤销。</p></li>
       <li><h3>一台能看、能接手的电脑</h3><p>Bot 在电脑上查资料、填表、下载文件，你实时看屏幕，几个任务各开一个浏览器窗口。电脑也可以就是你的 Mac：给了权限，它能操作微信、访达这些 App，你一动鼠标它就停下。</p></li>
       <li><h3>查得到最新的</h3><p>搜网页、读网页默认走免费的服务，不用填 API Key；想换 DeepSeek、Tavily 这些也行，用到收费的会写明钱从哪扣。还能搜 X、Reddit、小红书上的帖子，带点赞和评论数。</p></li>
       <li><h3>连上你在用的应用</h3><p>应用市场收录了 40 个，Notion、Gmail、GitHub、飞书、钉钉、腾讯文档……也能接任意 MCP。</p></li>
       <li><h3>和 Bot 一起写文档</h3><p>文档你直接编辑，选中一段、@ 某个 Bot，它就来改、在评论里回你。生成一个链接，别人不用登录就能看。</p></li>
-      <li><h3>先问再做</h3><p>发邮件、提交表单这类操作先弹卡片问你；密钥加密存在保险库里，不进聊天记录。</p></li>
-      <li><h3>模型随便换，花多少看得到</h3><p>DeepSeek、Kimi、智谱、OpenAI、本机的 Ollama，任何兼容 OpenAI 的接口都行。画图、改图、生成视频也按配置接各家。</p></li>
+      <li><h3>先问再做，模型随便换</h3><p>发邮件、提交表单这类操作先弹卡片问你，密钥加密存在保险库里。DeepSeek、Kimi、智谱、OpenAI、本机的 Ollama，任何兼容 OpenAI 的接口都行，花了多少在观测页里看。</p></li>
       <li><h3>教一遍就会，到点就做</h3><p>演示一遍就成了技能。说“每天 9 点帮我……”就建好定时任务，说“这个网页有变化就告诉我”就建好事件。</p></li>
       <li><h3>在国内好用，数据在你手里</h3><p>飞书、钉钉、企业微信里直接说话；默认不需要国外的付费服务。跑在你自己的机器上，全部数据能导出成一个加密文件。</p></li>
     </ul>

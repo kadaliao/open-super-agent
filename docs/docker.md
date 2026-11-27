@@ -29,6 +29,10 @@ docker compose up -d     # 第一次要构建镜像，大约 5–10 分钟
 | 更新到新版本 | `git pull && docker compose up -d --build` |
 | 停止 | `docker compose down` |
 
+停服务（`down`、`restart`、更新时重建容器）时，服务先等正在做的任务把手上那一步做完、存好再退出，最多 30 秒（`limits.shutdown_wait_s`），
+起来以后这些任务接着做。所以 `compose.yaml` 里给服务写了 `stop_grace_period: 40s`（Docker 默认只等 10 秒就强杀）。没有任务在做时马上就停。
+自己改过 compose 文件的，在 `osa` 服务下也加上这一行；把 `shutdown_wait_s` 改大时，这里跟着改得比它长。
+
 ## 数据放在哪
 
 | 内容 | 位置 |
