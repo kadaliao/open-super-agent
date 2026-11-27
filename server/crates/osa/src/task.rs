@@ -99,8 +99,8 @@ pub struct Task {
     pub closed: AtomicBool,
     /// 停服务时停在了步与步之间
     pub parked: AtomicBool,
-    /// 重启后恢复时，重启那一刻还开着的工具步（taskstore::StepInfo）
-    pub resume_steps: Mutex<Option<Vec<crate::taskstore::StepInfo>>>,
+    /// 从存下的过程接着做时，末尾那一轮没拿全结果的 tool_calls 怎么处理（taskstore::Resume）
+    pub resume_steps: Mutex<Option<crate::taskstore::Resume>>,
     /// 重启时说不准有没有做成的写操作
     pub doubts: Mutex<Vec<crate::taskstore::Doubt>>,
     /// 模型这一步调工具前说的话（卡片上的“查过什么”）

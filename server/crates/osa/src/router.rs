@@ -1185,6 +1185,9 @@ impl Router {
             let s = task.st.lock();
             (s.status.clone(), s.result.clone(), s.started, s.steps)
         };
+        if status != "done" {
+            taskstore::keep_open_steps(&task); // 还开着的工具步：重试、接着做时照“说不准”处理
+        }
         tasklog::close(&task, &status, if status == "failed" { &result } else { "" });
         let elapsed = py::round0(py::now() - started);
         if status == "done" && task.quiet_ok && routines::is_quiet(&result) {
@@ -1250,6 +1253,7 @@ impl Router {
         };
         t.cancel.cancel();
         memory::update_meta(tid, &json!({"status": "cancelled", "elapsed": py::round0(py::now() - started), "steps": steps}));
+        taskstore::keep_open_steps(&t); // 停下时正在执行的写操作：重试、接着做时照“说不准”处理
         tasklog::close(&t, "cancelled", &result);
         self.add(
             "task",
