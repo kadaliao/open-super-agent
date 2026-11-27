@@ -60,6 +60,9 @@ limits:
   watchdog_interval_s: 15
   approval_timeout_s: 1800   # 写操作等待确认的时限，超时按拒绝
   daily_token_budget: 2000000
+  task_retry_s: [15, 30, 60]  # 任务里模型服务临时出错（408、429、5xx、连不上）时等几秒重试，都不行才算失败
+  task_stall_s: 180          # 任务多久没动静算卡住：先从上一步重试一次，再卡住才取消
+  shutdown_wait_s: 30        # 正常停服务时等任务把正在执行的那一步做完、存好，最多等多久
 
 memory:
   db: data/osa.db

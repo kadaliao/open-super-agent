@@ -1331,6 +1331,30 @@
      "properties": {}
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "tell_task",
+    "description": "把用户接着说的、关于某个任务的话（补充要求、纠正、追问结果、让它接着做）转给那个任务，不要为此再派新任务。任务正在做：它做下一步之前会看到；任务在等用户回答问题：这句话就是回答；任务已经结束：它带着这句话接着做一轮，做完结果自动发到对话里。task_id 见“当前任务”。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "task_id": {
+       "type": "integer",
+       "description": "任务编号（#后面的数字）"
+      },
+      "text": {
+       "type": "string",
+       "description": "要转给任务的话，写完整（任务看不到这里的对话）"
+      }
+     },
+     "required": [
+      "task_id",
+      "text"
+     ]
+    }
+   }
   }
  ],
  "message_bot": {

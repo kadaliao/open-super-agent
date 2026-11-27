@@ -79,9 +79,13 @@ class Server:
             e["OSA_ROOT"] = str(ROOT)
         else:
             cmd = [sys.executable, "-m", "uvicorn", "osa.server:app", "--host", "127.0.0.1", "--port", str(self.port)]
+        self._cmd, self._env = cmd, e   # restart() 用
         self.log = open(self.tmp / "server.log", "w")
         self.proc = subprocess.Popen(cmd, cwd=ROOT, env=e, stdout=self.log, stderr=subprocess.STDOUT)
         self.http = httpx.Client(base_url=self.url, timeout=20, trust_env=False)
+        self._wait_up()
+
+    def _wait_up(self):
         end = time.time() + 30
         while True:
             if self.proc.poll() is not None:
@@ -94,6 +98,21 @@ class Server:
             if time.time() > end:
                 raise RuntimeError("30 秒内服务没起来")
             time.sleep(0.05)
+
+    def restart(self, kill: bool = False, timeout: float = 60) -> float:
+        """停掉再起来，数据目录、端口、配置都不变。kill=True 是强杀（SIGKILL），否则正常停（SIGTERM）。返回停下来用了几秒。"""
+        t0 = time.time()
+        if kill:
+            self.proc.kill()
+        else:
+            self.proc.terminate()
+        self.proc.wait(timeout)
+        took = time.time() - t0
+        self.log.close()
+        self.log = open(self.tmp / "server.log", "a")
+        self.proc = subprocess.Popen(self._cmd, cwd=ROOT, env=self._env, stdout=self.log, stderr=subprocess.STDOUT)
+        self._wait_up()
+        return took
 
     def stop(self):
         self.proc.terminate()

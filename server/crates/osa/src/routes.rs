@@ -26,4 +26,5 @@ pub fn extra() -> axum::Router {
         .merge(computer::routes())
         .merge(consolidate::routes())
         .merge(board::routes())
+        .merge(taskstore::routes())
 }

@@ -7,7 +7,7 @@ use crate::registry::{self, Call, Out, PostFn, ROUTER};
 use crate::task::{Handoff, NewTask, Task};
 use crate::{
     approvals, assets, botadmin, bots, catalog, config, dsml, groups, i18n, mcp_hub, media, memories, memory, providers, py, routines,
-    security, server, skills, tasklog, worker,
+    security, server, skills, tasklog, taskstore, worker,
 };
 use futures::future::BoxFuture;
 use parking_lot::Mutex;
@@ -713,6 +713,7 @@ impl Router {
                 }
             }
             "list_tasks" => self.task_list().into(),
+            "tell_task" => taskstore::tell(self.bot_id, py::to_int(&args["task_id"]).unwrap_or(0), &s("text")).await.into(),
             "cancel_task" => {
                 let tid = py::to_int(&args["task_id"]).unwrap_or(0);
                 let Some(woke) = &ctx.turn.woke else {
@@ -882,6 +883,7 @@ impl Router {
         }
         let label = if d.label.is_empty() { String::new() } else { format!("{} ", d.label) };
         let tid = self.add("task", &format!("[任务已派发] {label}{}", d.goal), Some(cid), meta);
+        let store = d.mode.is_empty() || d.mode == "single";
         let task = Task::new(NewTask {
             id: tid,
             goal: d.goal,
@@ -897,18 +899,26 @@ impl Router {
             notes: d.notes,
             mac: d.mac.as_ref().and_then(|m| m["id"].as_i64()).unwrap_or(0),
             mac_name: d.mac.as_ref().map(|m| py::str_of(&m["name"])).unwrap_or_default(),
+            round: 1,
+            store,
             ..Default::default()
         });
         if let Some(f) = d.on_done {
             *task.on_done.lock() = Some(f);
         }
-        TASKS.lock().insert(tid, task.clone());
+        taskstore::create(&task, d.mac.as_ref());
+        self.start(task.clone());
+        task
+    }
+
+    /// 让一个建好的任务跑起来（新派的、接着做的、重启后恢复的）
+    pub fn start(self: &Arc<Self>, task: Arc<Task>) {
+        TASKS.lock().insert(task.id, task.clone());
         let me = self.clone();
         let t2 = task.clone();
         let fut: BoxFuture<'static, ()> = Box::pin(async move { me.run(t2).await });
         tokio::spawn(fut);
-        self.emit(json!({"type": "task", "task": task.public()}), Some(cid));
-        task
+        self.emit(json!({"type": "task", "task": task.public()}), Some(task.chat_id));
     }
 
     fn routine_list(&self) -> String {
@@ -929,21 +939,23 @@ impl Router {
     }
 
     fn task_list(&self) -> String {
-        let rs: Vec<String> = self
-            .tasks()
+        let live = self.tasks();
+        let mut rs: Vec<String> = live
             .iter()
             .map(|t| {
+                let waiting = t.waiting_kind();
                 let s = t.st.lock();
-                format!(
-                    "#{} [{}] {} 步数={} {}",
-                    t.id,
-                    if s.waiting_approval.is_some() { "等待确认".to_string() } else { s.status.clone() },
-                    t.mode,
-                    s.steps,
-                    py::head(&t.goal, 50)
-                )
+                let state = match waiting.as_deref() {
+                    Some("question") => "等用户回答".to_string(),
+                    Some(_) => "等待确认".to_string(),
+                    None => s.status.clone(),
+                };
+                let more = if s.status != "running" && t.store { taskstore::CAN_TELL } else { "" };
+                format!("#{} [{state}] {} 步数={} {}{more}", t.id, t.mode, s.steps, py::head(&t.goal, 50))
             })
             .collect();
+        let ids: Vec<i64> = live.iter().map(|t| t.id).collect();
+        rs.extend(taskstore::recent_lines(self.bot_id, &ids));
         if rs.is_empty() { "暂无任务".into() } else { rs.join("\n") }
     }
 
@@ -993,7 +1005,9 @@ impl Router {
                 if reply.is_some() && asked {
                     tokio::spawn(dm::after_task(task.clone()));
                 }
+                taskstore::finished(&task, "cancelled");
                 self.done(&task).await;
+                taskstore::after_round(&task);
                 return;
             }
             Some(Ok(Some(why))) => {
@@ -1007,11 +1021,20 @@ impl Router {
                     memories::log_work(self.bot_id, task.id, &task.goal);
                 }
             }
+            Some(Err(e)) if e.downcast_ref::<taskstore::Parked>().is_some() => {
+                // 停服务时停在了步与步之间：状态留着 running，启动后接着做
+                task.parked.store(true, std::sync::atomic::Ordering::SeqCst);
+                return;
+            }
             Some(Err(e)) => {
                 let mut s = task.st.lock();
                 s.status = "failed".into();
                 s.result = t!("任务失败：{error}", error = providers::brief(&e));
             }
+        }
+        let note = taskstore::doubt_note(&task);
+        if !note.is_empty() {
+            task.st.lock().result.push_str(&note);
         }
         let (status, result, started, steps) = {
             let s = task.st.lock();
@@ -1023,11 +1046,13 @@ impl Router {
             task.st.lock().quiet = true;
             memory::update_meta(task.id, &json!({"status": "done", "quiet": true, "elapsed": elapsed, "steps": steps}));
             self.emit(json!({"type": "task", "task": task.public()}), Some(task.chat_id));
+            taskstore::finished(&task, "done");
             self.done(&task).await;
+            taskstore::after_round(&task);
             return;
         }
         memory::update_meta(task.id, &json!({"status": status, "elapsed": elapsed, "steps": steps}));
-        let mut meta = json!({"kind": "result", "task_id": task.id, "status": status, "elapsed": py::round0(py::now() - started)});
+        let mut meta = json!({"kind": "result", "task_id": task.id, "status": status, "elapsed": py::round0(py::now() - started), "round": task.round});
         let files = task.files.lock().clone();
         if !files.is_empty() {
             meta["attachments"] = json!(files);
@@ -1036,7 +1061,9 @@ impl Router {
         if !apps.is_empty() {
             meta["apps"] = json!(apps);
         }
-        self.add("task", &format!("[任务 #{} 结果]\n{result}", task.id), Some(task.chat_id), meta);
+        // 在讨论串里回复过这个任务的，结果发进讨论串
+        let result_chat = task.st.lock().result_chat.unwrap_or(task.chat_id);
+        self.add("task", &format!("[任务 #{} 结果]\n{result}", task.id), Some(result_chat), meta);
         self.emit(json!({"type": "task", "task": task.public()}), Some(task.chat_id));
         registry::fire("task_done", json!({"task": task.public(), "bot": self.bot(), "result": result}));
         let (h, reply) = {
@@ -1049,7 +1076,9 @@ impl Router {
         if reply {
             tokio::spawn(dm::after_task(task.clone()));
         }
+        taskstore::finished(&task, &status);
         self.done(&task).await;
+        taskstore::after_round(&task);
     }
 
     async fn done(&self, task: &Arc<Task>) {

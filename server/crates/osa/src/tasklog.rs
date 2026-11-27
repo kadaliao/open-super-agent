@@ -200,6 +200,15 @@ pub fn close(task: &Task, status: &str, text: &str) {
     }
 }
 
+/// 还开着的步骤（想到一半、工具调到一半）都结束掉：重试这一步、从上一步重来之前用
+pub fn end_open(task: &Task, status: &str) {
+    let open_steps: Vec<StepRef> = LIVE.lock().values().filter(|s| s.lock().task_id == task.id).cloned().collect();
+    for s in open_steps {
+        let w = s.lock().worker.clone();
+        Log::new(task, &w).finish(&s, status, None, None);
+    }
+}
+
 pub fn steps(task_id: i64) -> Vec<Value> {
     let live = LIVE.lock().clone();
     db::rows(&format!("select {} from task_steps where task_id=? order by id", KEYS.join(", ")), params![task_id])
@@ -218,15 +227,23 @@ pub fn steps(task_id: i64) -> Vec<Value> {
 }
 
 // ---------- 任务列表 ----------
+/// 列表、详情共用的列：messages 的 id, ts, content, meta, chat_id, bot_id，再加 task_runs 的轮次、存没存过程
+const COLS: &str = "id, ts, content, meta, chat_id, bot_id, (select round from task_runs where task_id=messages.id),
+    (select msgs is not null from task_runs where task_id=messages.id)";
+
 fn task_out(r: &[Value]) -> Value {
     let r = r.to_vec();
     let m = r.j(3);
     let c = r.s(2);
     let goal = c.strip_prefix("[任务已派发]").unwrap_or(&c).trim().to_string();
+    let status = m.get("status").cloned().unwrap_or(json!("done"));
+    let waiting = if status == "running" { r[0].as_i64().and_then(crate::router::task).and_then(|t| t.waiting_kind()) } else { None };
     json!({"id": r[0], "ts": r[1], "goal": goal, "mode": m.get("mode").cloned().unwrap_or(json!("single")),
-           "status": m.get("status").cloned().unwrap_or(json!("done")), "elapsed": m.get("elapsed").cloned().unwrap_or(Value::Null),
+           "status": status, "elapsed": m.get("elapsed").cloned().unwrap_or(Value::Null),
            "steps": m.get("steps").cloned().unwrap_or(Value::Null), "chat_id": r[4], "bot_id": r[5],
-           "handoff_to": m.get("handoff_to").cloned().unwrap_or(Value::Null)})
+           "handoff_to": m.get("handoff_to").cloned().unwrap_or(Value::Null),
+           "waiting_kind": waiting, "can_continue": r.get(7).is_some_and(py::truthy),
+           "round": r.get(6).and_then(|v| v.as_i64()).unwrap_or(1)})
 }
 
 pub const DISPATCH: &str = "role='task' and (json_extract(meta, '$.kind')='dispatch' or content like '[任务已派发]%')";
@@ -244,17 +261,18 @@ pub fn list_tasks(bot_id: Option<i64>, chat_id: Option<i64>, before: Option<i64>
         args.push(json!(c));
     }
     args.push(json!(limit));
-    let sql = format!("select id, ts, content, meta, chat_id, bot_id from messages where {} order by id desc limit ?", wh.join(" and "));
+    let sql = format!("select {COLS} from messages where {} order by id desc limit ?", wh.join(" and "));
     db::rows(&sql, rusqlite::params_from_iter(args.iter().map(db::J))).iter().map(|r| task_out(r)).collect()
 }
 
 pub fn detail(task_id: i64) -> Option<Value> {
-    let r = db::row(&format!("select id, ts, content, meta, chat_id, bot_id from messages where id=? and {DISPATCH}"), params![task_id])?;
+    let r = db::row(&format!("select {COLS} from messages where id=? and {DISPATCH}"), params![task_id])?;
     let mut t = task_out(&r);
+    // 接着做过的任务有几条结果，取最新的；在讨论串里回复过的，结果在讨论串里
     let res = db::row(
-        "select content, meta, ts from messages where chat_id=? and id>? and role='task'
-        and json_extract(meta, '$.task_id')=? and json_extract(meta, '$.kind')='result' order by id limit 1",
-        params![t["chat_id"].as_i64(), task_id, task_id],
+        "select content, meta, ts from messages where id>? and role='task'
+        and json_extract(meta, '$.task_id')=? and json_extract(meta, '$.kind')='result' order by id desc limit 1",
+        params![task_id, task_id],
     );
     if let Some(res) = res {
         static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[任务 #\d+ 结果\]\n?").unwrap());
@@ -276,13 +294,17 @@ pub fn detail(task_id: i64) -> Option<Value> {
 }
 
 pub fn startup() {
+    // 重启前在做、存着过程、最近动过的任务等应用和聊天软件都起好以后接着做（taskstore::resume），别的标成中断
+    let keep = crate::taskstore::resumable();
     db::exec("update task_steps set status='interrupted' where status in ('running', 'waiting')", []);
     db::exec(
         &format!(
-            "update messages set meta=json_set(meta, '$.status', 'interrupted') where {DISPATCH} and json_extract(meta, '$.status')='running'"
+            "update messages set meta=json_set(meta, '$.status', 'interrupted') where {DISPATCH} and json_extract(meta, '$.status')='running'
+            and id not in (select value from json_each(?))"
         ),
-        [],
+        params![py::dumps_u(&json!(keep))],
     );
+    crate::taskstore::hold(keep);
     prune();
 }
 

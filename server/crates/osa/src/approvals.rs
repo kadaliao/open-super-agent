@@ -301,6 +301,11 @@ impl Drop for Guard {
 
 /// 创建确认请求并等待用户决定。返回 (是否允许, 用户附言, 改过以后的参数)
 pub async fn request(task: &Arc<Task>, tool: &str, args: &Value, req: Req<'_>) -> (bool, String, Value) {
+    request_with(task, tool, args, req, &Value::Null).await
+}
+
+/// 同上，卡片上多带几个字段（任务提问的 question、options），原样放进公开字段
+pub async fn request_with(task: &Arc<Task>, tool: &str, args: &Value, req: Req<'_>, extra: &Value) -> (bool, String, Value) {
     let kind = if req.kind.is_empty() { "approval" } else { req.kind };
     let limit = if req.limit == 0 { 3000 } else { req.limit };
     let value = subject(tool, args);
@@ -353,6 +358,11 @@ pub async fn request(task: &Arc<Task>, tool: &str, args: &Value, req: Req<'_>) -
     }
     if !req.editable.is_empty() {
         item["editable"] = json!(req.editable.iter().filter(|k| args[**k].is_string()).collect::<Vec<_>>());
+    }
+    if let Some(extra) = extra.as_object() {
+        for (k, v) in extra {
+            item[k] = v.clone();
+        }
     }
     PENDING.lock().insert(aid, Pending { item: item.clone(), tx: Some(tx), args: args.clone() });
     task.st.lock().waiting_approval = Some(aid);

@@ -4,8 +4,8 @@
 use crate::computer::tools as ctools;
 use crate::registry::{self, Call, Out, WORKER};
 use crate::task::Task;
-use crate::tasklog::{Log, StepRef};
-use crate::{approvals, bots, config, dsml, i18n, memories, memory, providers, py, router, watchdog};
+use crate::tasklog::{self, Log, StepRef};
+use crate::{approvals, bots, config, dsml, i18n, memories, memory, providers, py, router, taskstore, watchdog};
 use futures::future::join_all;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -226,8 +226,55 @@ async fn call_tool(
         log.update(step, Some(&text), None);
         router::progress(task);
     };
+    // 重启时说不准有没有做成的写操作又要做一次：一律先问（“总是允许”的规则这次不算）
+    let open = task.doubts.lock().iter().position(|d| d.settled.is_none() && d.tool == name);
+    if let Some(i) = open {
+        let d = task.doubts.lock()[i].clone();
+        let checked = task.last_say.lock().clone();
+        let extra = json!({"doubt": {"started": d.started, "tool": d.tool, "args": d.args, "checked": checked}});
+        log.update(step, None, Some("waiting"));
+        let (ok, note, after) =
+            approvals::request_with(task, name, &args, approvals::Req { once: true, ..Default::default() }, &extra).await;
+        log.update(step, None, Some("running"));
+        let how = match (ok, note.trim()) {
+            (true, _) => "redo",
+            (false, "done") => "done",
+            (false, "stop") => "stop",
+            _ => "skip",
+        };
+        if let Some(x) = task.doubts.lock().get_mut(i) {
+            x.settled = Some(how);
+        }
+        match how {
+            "redo" => {
+                return run_tool(task, log, step, name, after, env, shots, &progress, true).await;
+            }
+            "done" => return ("用户确认这一步之前已经做成，不用再做。".into(), "done".into()),
+            "stop" => {
+                router::cancel(task.id, &t!("用户在确认卡片上让任务停下"));
+                return ("用户让任务停下。".into(), "rejected".into());
+            }
+            _ => return (format!("用户拒绝了这个操作，没有执行。{note}").trim().to_string(), "rejected".into()),
+        }
+    }
+    run_tool(task, log, step, name, args, env, shots, &progress, false).await
+}
+
+/// 执行工具（confirmed：已经确认过，不再按规则问）
+#[allow(clippy::too_many_arguments)]
+async fn run_tool(
+    task: &Arc<Task>,
+    log: &Log,
+    step: &StepRef,
+    name: &str,
+    args: Value,
+    env: &Value,
+    shots: &mut Vec<ctools::Shot>,
+    progress: &(dyn Fn(String) + Sync),
+    confirmed: bool,
+) -> (String, String) {
     if ctools::is_name(name) {
-        let (out, shot) = ctools::call(task, name, &args, &progress, None).await;
+        let (out, shot) = ctools::call(task, name, &args, progress, None).await;
         if let Some(s) = shot {
             shots.push(s);
         }
@@ -238,7 +285,7 @@ async fn call_tool(
     };
     progress(progress_text(&tool, name, &args));
     let mut args = args;
-    if tool.gated && approvals::decide(name, None, &args).0 {
+    if !confirmed && tool.gated && approvals::decide(name, None, &args).0 {
         log.update(step, None, Some("waiting"));
         let (ok, note, after) = approvals::request(task, name, &args, approvals::Req::default()).await;
         if !ok {
@@ -336,6 +383,7 @@ async fn run_calls(task: &Arc<Task>, log: &Log, calls: &[Value], env: &Value) ->
             let env = env.clone();
             let name = call["function"]["name"].as_str().unwrap_or("").to_string();
             let raw = call["function"]["arguments"].as_str().unwrap_or("").to_string();
+            let call_id = call["id"].clone();
             async move {
                 let mut shots = vec![];
                 let _permit = match &sem {
@@ -345,6 +393,10 @@ async fn run_calls(task: &Arc<Task>, log: &Log, calls: &[Value], env: &Value) ->
                 let (out, status) = call_tool(&task, &log, &step, &name, &raw, &env, &mut shots).await;
                 drop(_permit);
                 log.finish(&step, &status, Some(&out), None);
+                // 做完一个存一个：整轮做完前重启的话，做完的不用重做
+                if env["pages"] == true {
+                    taskstore::save_result(&task, &call_id, &py::head(&out, 8000));
+                }
                 task.touch();
                 (out, shots)
             }
@@ -355,46 +407,184 @@ async fn run_calls(task: &Arc<Task>, log: &Log, calls: &[Value], env: &Value) ->
     results
 }
 
+/// 模型服务临时出错（408、429、5xx、连接断了、超时）：等一会儿重试
+fn transient(e: &anyhow::Error) -> bool {
+    match e.downcast_ref::<providers::ApiError>() {
+        Some(a) => match a.status {
+            None => true,
+            Some(s) => s == 408 || s == 429 || s >= 500,
+        },
+        None => false,
+    }
+}
+
+/// 临时出错后等几秒再试：limits.task_retry_s，默认 15、30、60 秒，第四次还不行才算失败
+fn retry_waits() -> Vec<f64> {
+    match config::get("limits.task_retry_s") {
+        Value::Array(a) => a.iter().filter_map(|v| v.as_f64()).collect(),
+        Value::Null => vec![15.0, 30.0, 60.0],
+        v => v.as_f64().map(|w| vec![w]).unwrap_or_default(),
+    }
+}
+
+/// 新的一步：Watchdog 觉得卡住了就取消它
+fn new_step(task: &Task) -> tokio_util::sync::CancellationToken {
+    let t = tokio_util::sync::CancellationToken::new();
+    *task.step.lock() = t.clone();
+    t
+}
+
+/// 调一次模型，临时出错按 retry_waits 重试。返回 None：这一步卡住了，被 Watchdog 叫停，要从上一步重试
+async fn model_step(
+    task: &Arc<Task>,
+    log: &Log,
+    client: &providers::Client,
+    model: &str,
+    msgs: &[Value],
+    tools: Option<&[Value]>,
+) -> anyhow::Result<Option<Value>> {
+    let waits = retry_waits();
+    let mut tries = 0;
+    loop {
+        // 停服务时存着过程的任务停在这里（Heavy 不存过程，照常做完）
+        if task.store && taskstore::stopping() {
+            return Err(taskstore::Parked.into());
+        }
+        let token = new_step(task);
+        let r = tokio::select! {
+            r = reply(task, log, "worker", client, model, msgs, tools) => r,
+            _ = token.cancelled() => return Ok(None),
+        };
+        match r {
+            Ok(m) => return Ok(Some(m)),
+            Err(e) if transient(&e) && tries < waits.len() => {
+                let wait = waits[tries];
+                tries += 1;
+                tasklog::end_open(task, "error");
+                log.note(
+                    &t!(
+                        "模型服务临时出错：{error}。{n} 秒后重试（第 {k} 次）",
+                        error = providers::brief(&e),
+                        n = py::round_n(wait, 1),
+                        k = tries
+                    ),
+                    "error",
+                );
+                task.touch();
+                let end = py::now() + wait.max(0.0);
+                while py::now() < end && !token.is_cancelled() && !(task.store && taskstore::stopping()) {
+                    tokio::time::sleep(std::time::Duration::from_secs_f64((end - py::now()).clamp(0.0, 0.2))).await;
+                }
+                task.touch();
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// 把收件箱里的话（用户补充的、系统的提醒）接进对话，并记进任务过程
+fn take_inbox(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>) -> bool {
+    let got: Vec<crate::task::Note> = std::mem::take(&mut *task.inbox.lock());
+    for n in &got {
+        msgs.push(json!({"role": "user", "content": n.model}));
+        if n.kind == "user" {
+            let s = log.start("user", "", "", "running");
+            log.finish(&s, "done", Some(&n.shown), None);
+        } else {
+            log.note(&n.shown, "done");
+        }
+    }
+    !got.is_empty()
+}
+
 async fn run_inner(task: Arc<Task>, goal: &str, label: &str) -> anyhow::Result<String> {
     let (client, model) = providers::client_for("worker")?;
     let use_pc = config::get_bool("computer.enabled", true);
     let pages = label.is_empty();
-    let mut system = WORKER_PROMPT.replace("{date}", &py::strftime("%Y-%m-%d")).replace("{lang}", answer_lang());
-    if pages {
-        system += &format!("\n{}", page_hint());
-    }
-    if pages && use_pc {
-        system += &format!("\n{FILE_HINT}");
-    }
-    if use_pc {
-        system += &format!("\n\n{}", ctools::system_hint());
-    }
-    let known = memories::worker_block(task.bot_id);
-    if !known.is_empty() {
-        system += &format!("\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}");
-    }
-    let mut msgs = vec![json!({"role": "system", "content": system}), json!({"role": "user", "content": goal})];
+    let seed = if pages { task.seed.lock().take() } else { None };
+    let mut msgs = match seed {
+        Some(m) => m,
+        None => {
+            let mut system = WORKER_PROMPT.replace("{date}", &py::strftime("%Y-%m-%d")).replace("{lang}", answer_lang());
+            if pages {
+                system += &format!("\n{}", page_hint());
+            }
+            if pages && use_pc {
+                system += &format!("\n{FILE_HINT}");
+            }
+            if use_pc {
+                system += &format!("\n\n{}", ctools::system_hint());
+            }
+            let known = memories::worker_block(task.bot_id);
+            if !known.is_empty() {
+                system += &format!("\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}");
+            }
+            vec![json!({"role": "system", "content": system}), json!({"role": "user", "content": goal})]
+        }
+    };
     let env = json!({"scope": WORKER, "pages": pages, "use_pc": use_pc});
     let mut schemas = registry::schemas(WORKER, &env);
     if use_pc {
         schemas.extend(ctools::schemas());
     }
     let log = Log::new(&task, label);
+    // 只有正式的 Worker（不是 Heavy 的草稿）存过程
+    let store = pages && task.store;
     let max = config::get_i64("limits.worker_max_steps", 30);
+    let resume = task.resume_steps.lock().take().filter(|_| store);
+    if let Some(steps) = resume {
+        resume_tail(&task, &log, &mut msgs, steps, &env).await;
+    }
     for _ in 0..max {
+        take_inbox(&task, &log, &mut msgs);
+        if store {
+            taskstore::save(&task, &msgs);
+        }
+        // 正在停服务：过程存好了，停在这里（任务留着 running，启动后接着做）
+        if store && taskstore::stopping() {
+            return Err(taskstore::Parked.into());
+        }
+        let mark = msgs.len();
         ctools::prune_images(&mut msgs, 2);
-        let m = reply(&task, &log, "worker", &client, &model, &msgs, Some(&schemas)).await?;
+        let Some(m) = model_step(&task, &log, &client, &model, &msgs, Some(&schemas)).await? else {
+            stalled(&task, &log, &mut msgs, mark);
+            continue;
+        };
         {
             let mut s = task.st.lock();
             s.steps += 1;
             s.last_progress = py::now();
         }
         let Some(calls) = m["tool_calls"].as_array().cloned().filter(|c| !c.is_empty()) else {
-            return Ok(m["content"].as_str().unwrap_or("").to_string());
+            task.st.lock().stall_retried = false;
+            let answer = m["content"].as_str().unwrap_or("").to_string();
+            msgs.push(m);
+            // 回答的时候用户又说了话：接着做，不急着交
+            if !task.inbox.lock().is_empty() {
+                continue;
+            }
+            if store {
+                taskstore::save(&task, &msgs);
+            }
+            return Ok(answer);
         };
+        *task.last_say.lock() = m["content"].as_str().unwrap_or("").to_string();
         msgs.push(m);
+        if store {
+            taskstore::save(&task, &msgs);
+        }
+        let token = new_step(&task);
+        let results = tokio::select! {
+            r = run_calls(&task, &log, &calls, &env) => Some(r),
+            _ = token.cancelled() => None,
+        };
+        let Some(results) = results else {
+            stalled(&task, &log, &mut msgs, mark);
+            continue;
+        };
+        task.st.lock().stall_retried = false;
         let mut shots = vec![];
-        for (call, (out, got)) in calls.iter().zip(run_calls(&task, &log, &calls, &env).await) {
+        for (call, (out, got)) in calls.iter().zip(results) {
             msgs.push(json!({"role": "tool", "tool_call_id": call["id"], "content": py::head(&out, 8000)}));
             shots.extend(got);
         }
@@ -403,9 +593,104 @@ async fn run_inner(task: Arc<Task>, goal: &str, label: &str) -> anyhow::Result<S
         }
     }
     log.note(&t!("步数用完了，根据已有信息写结果"), "done");
+    take_inbox(&task, &log, &mut msgs);
     msgs.push(json!({"role": "user", "content": "步数用完了，请根据已有信息给出最终答案。"}));
-    let m = reply(&task, &log, "worker", &client, &model, &msgs, None).await?;
-    Ok(m["content"].as_str().unwrap_or("").to_string())
+    let m = loop {
+        match model_step(&task, &log, &client, &model, &msgs, None).await? {
+            Some(m) => break m,
+            None => {
+                let n = msgs.len();
+                stalled(&task, &log, &mut msgs, n);
+            }
+        }
+    };
+    let answer = m["content"].as_str().unwrap_or("").to_string();
+    msgs.push(m);
+    if store {
+        taskstore::save(&task, &msgs);
+    }
+    Ok(answer)
+}
+
+/// 重启后恢复：存下的过程末尾那一轮 tool_calls 还没全部拿到结果。已有结果的照旧；没开始的、在等确认的、只读的重新执行；
+/// 说不准有没有做成的写操作不重做，结果写成“不知道有没有做成”，记进任务的 doubts，之后再调同一个工具时一律先问
+async fn resume_tail(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>, steps: Vec<taskstore::StepInfo>, env: &Value) {
+    let Some(ai) = msgs.iter().rposition(|m| m["role"] == "assistant") else { return };
+    let Some(calls) = msgs[ai]["tool_calls"].as_array().cloned().filter(|c| !c.is_empty()) else { return };
+    let mut have: HashMap<String, Value> = HashMap::new();
+    for m in &msgs[ai + 1..] {
+        if m["role"] == "tool" {
+            have.insert(py::str_of(&m["tool_call_id"]), m.clone());
+        }
+    }
+    msgs.truncate(ai + 1);
+    let mut steps = steps;
+    let mut rerun = vec![];
+    let mut doubts: HashMap<String, String> = HashMap::new();
+    for c in &calls {
+        let id = py::str_of(&c["id"]);
+        if have.contains_key(&id) {
+            continue;
+        }
+        let name = c["function"]["name"].as_str().unwrap_or("").to_string();
+        let raw = c["function"]["arguments"].as_str().unwrap_or("").to_string();
+        let detail = py::head(&raw, 2000);
+        let step = steps.iter().position(|s| s.name == name && s.detail == detail).map(|i| steps.remove(i));
+        let uncertain = match &step {
+            None => false,                             // 还没开始
+            Some(s) if s.status == "waiting" => false, // 在等确认，没做
+            Some(_) => !redo_safe(&name, c, env),
+        };
+        if uncertain {
+            let s = step.unwrap();
+            let args = py::head(&raw, 1000);
+            doubts.insert(id, taskstore::doubt_text(&name, &args, s.ts));
+            task.doubts.lock().push(taskstore::Doubt { tool: name.clone(), args, started: s.ts, settled: None });
+            log.note(&t!("服务重启时 {tool} 这一步正在执行，说不准有没有做成：先让 Bot 查一下，要再做会先问你", tool = name), "done");
+        } else {
+            rerun.push(c.clone());
+        }
+    }
+    let results = if rerun.is_empty() { vec![] } else { run_calls(task, log, &rerun, env).await };
+    let mut redone: HashMap<String, String> = HashMap::new();
+    let mut shots = vec![];
+    for (c, (out, got)) in rerun.iter().zip(results) {
+        redone.insert(py::str_of(&c["id"]), out);
+        shots.extend(got);
+    }
+    for c in &calls {
+        let id = py::str_of(&c["id"]);
+        if let Some(m) = have.remove(&id) {
+            msgs.push(m);
+        } else {
+            let out = doubts.remove(&id).or_else(|| redone.remove(&id)).unwrap_or_default();
+            msgs.push(json!({"role": "tool", "tool_call_id": c["id"], "content": py::head(&out, 8000)}));
+        }
+    }
+    if let Some(s) = shots.last() {
+        msgs.push(ctools::image_message(&s.png, s.caption.as_deref(), true));
+    }
+}
+
+/// 重做一遍也没关系的调用：只读的（不用确认、能并行的：查询、读网页、读文件），和只是问用户的。
+/// 电脑和浏览器的操作当写操作（它们能自己看屏幕、页面核对）；拿不准的一律当写操作
+fn redo_safe(name: &str, call: &Value, env: &Value) -> bool {
+    if ["ask_user", "ask_human", "ask_approval"].contains(&name) {
+        return true;
+    }
+    if ctools::is_name(name) {
+        return false;
+    }
+    // 应用的工具：只有判断为只读的（approvals::read_only）才标了能并行
+    lane(call, env).is_some()
+}
+
+/// 这一步卡住了：丢掉做了一半的，从上一步重试
+fn stalled(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>, mark: usize) {
+    msgs.truncate(mark);
+    tasklog::end_open(task, "error");
+    log.note(&t!("这一步一直没有进展，从上一步重试"), "error");
+    task.touch();
 }
 
 /// Heavy 模式：N 个 Worker 独立并行解题，Reviewer 互审后汇总
