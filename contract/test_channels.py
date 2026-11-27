@@ -675,6 +675,13 @@ def tool_text(body: dict) -> str:
     return "\n".join(m["content"] for m in body["messages"] if m["role"] == "tool")
 
 
+
+def quote_ready():
+    """引用一张卡片回复之前等一下：假平台一收到卡片测试就能拿到它的消息 id，可服务要等平台回了话才把“这条消息是哪张卡”记下来。
+    人手不会这么快；机器慢的时候（CI）测试抢在前面，引用就对不上卡片，这句话会照常交给 Bot。"""
+    time.sleep(0.6)
+
+
 def by_goal(plan: dict[str, list]):
     """Worker 的剧本按任务分：请求里带着哪个任务的标记，就给那个任务的下一条（几个任务同时跑时不会拿错）"""
     def pick(body):
@@ -865,6 +872,7 @@ def test_question_other_words_telegram(xsrv, fake, tg2, chans):
     assert pending(xsrv, aid)
 
     # 引用提问卡片回复：就是回答，直接交给任务，Bot 没有新请求
+    quote_ready()
     tg2.say(OWNER, "后天", reply_to=tg2.mid(card))
     tg_done(tg2, "已回答：后天")
     until(lambda: results(xsrv, chat, t1), what="[tn1] 的结果")
@@ -916,6 +924,7 @@ def test_question_feishu(xsrv, fake, fs, chans):
     tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq4] 查酒店"], lambda: fs.say(FS_OWNER, "帮我查酒店"))
     mid, card = fs.card("飞书住几晚？")
     n_router = len(fake.bodies("router", "FsAsk"))
+    quote_ready()
     fs.say(FS_OWNER, "两晚", parent_id=mid)
     until(lambda: "已回答：两晚" in fs.done(mid), what="引用回复算回答")
     until(lambda: results(xsrv, chat, tid), what="结果")
@@ -1039,6 +1048,7 @@ def test_doubt_cards(xsrv, fake, tg2, fs, dd, chans, pushsvc):
     # 引用说不准的卡片回复：不算回答，交给 Bot（它在状态里看得到这一步说不准）
     n = len(fake.bodies("router", "TgAsk"))
     fake.script("router:TgAsk", "这一步我再看看")
+    quote_ready()
     tg2.say(OWNER, "这一步怎么说", reply_to=tg2.mid(tcards["redo"]))
     until(lambda: any("这一步我再看看" in t for t in tg2.texts(OWNER)), what="引用说不准卡片的回复交给了 Bot")
     asked = [b for b in fake.bodies("router", "TgAsk")[n:] if "这一步怎么说" in user_text(b)]
