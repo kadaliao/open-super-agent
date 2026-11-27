@@ -121,7 +121,9 @@ def test_start_with_primary_bot(srv, fake, ws):
     assert n["key"] == "PRI-1" and n["column"] == "doing"
     msg = until(lambda: srv.find(p["chat_id"], role="user", text="PRI-1 首页太慢"), what="替你发给主 Bot 的消息")[0]
     assert msg["content"].startswith("PRI-1 首页太慢") and "手机上打开要 5 秒" in msg["content"]
+    assert msg["meta"]["need_id"] == n["id"]   # 替你发的消息带 need_id，这一轮派的任务都归这张卡
     disp = until(lambda: srv.find(p["chat_id"], kind="dispatch"), what="主 Bot 派的任务")[0]
+    assert disp["meta"]["need_id"] == n["id"]
     until(lambda: column(srv, n["id"]) == "done", what="卡片到 done")
     c = card(srv, n["id"])
     assert [t["id"] for t in c["tasks"]] == [disp["id"]] and c["latest"] == "首页慢是因为图片太大"

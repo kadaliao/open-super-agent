@@ -1284,5 +1284,6 @@
   "用户在确认卡片上让任务停下": "Stopped by you on the confirmation card",
   "模型服务临时出错：{error}。{n} 秒后重试（第 {k} 次）": "The model service had a temporary error: {error}. Retrying in {n} s (attempt {k})",
   "服务重启时 {tool} 这一步正在执行，说不准有没有做成：先让 Bot 查一下，要再做会先问你": "The step {tool} was running when the server restarted, so it's unclear whether it went through: the bot will check first, and will ask you before redoing it",
-  "这一步一直没有进展，从上一步重试": "This step made no progress; retrying from the previous step"
+  "这一步一直没有进展，从上一步重试": "This step made no progress; retrying from the previous step",
+  "这个项目的记忆最多 {n} 条，先删掉一些旧的": "A project can have at most {n} memories; delete some old ones first"
 }

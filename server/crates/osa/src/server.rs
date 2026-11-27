@@ -39,6 +39,7 @@ pub fn broadcast(event: Value) {
         }
     }
     crate::channels::on_event(&event);
+    crate::board::on_event(&event); // 确认卡片弹出、关掉：卡片的列跟着变
     let text = py::dumps_u(&event);
     let nobody = {
         let mut c = CLIENTS.lock();
@@ -63,6 +64,13 @@ pub fn client_count() -> usize {
 pub async fn safe_handle(chat: Value, text: String, via: String, attachments: Vec<Value>) {
     let text = media::with_marks(&text, &attachments);
     let cid = chat["id"].as_i64().unwrap_or(0);
+    // 消息以卡片编号开头（OPC-12 加上英国）、那张卡正好一个任务在做：交给那个任务，Bot 不被叫醒（网页和聊天软件都走这里）
+    if let Some((_, running)) = crate::board::mention(&text)
+        && running.len() == 1
+        && crate::taskstore::tell_from(running[0], &text, cid)
+    {
+        return;
+    }
     let r = if chat["kind"] == "group" {
         groups::on_user(&chat, &text, &via, &attachments).await;
         Ok(())

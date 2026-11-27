@@ -6,8 +6,8 @@ use crate::dm::{self, Turn};
 use crate::registry::{self, Call, Out, PostFn, ROUTER};
 use crate::task::{Handoff, NewTask, Task};
 use crate::{
-    approvals, assets, botadmin, bots, catalog, config, dsml, groups, i18n, mcp_hub, media, memories, memory, providers, py, routines,
-    security, server, skills, tasklog, taskstore, worker,
+    approvals, assets, board, botadmin, bots, catalog, config, dsml, groups, i18n, mcp_hub, media, memories, memory, providers, py,
+    routines, security, server, skills, tasklog, taskstore, worker,
 };
 use futures::future::BoxFuture;
 use parking_lot::Mutex;
@@ -113,6 +113,40 @@ pub struct Ctx {
     pub turn_dms: i64,
     pub turn_waits: i64,
     pub files: Arc<Mutex<Vec<Value>>>,
+    /// 这一轮是用户的消息引起的：那条消息 (id, 原话)。别的 Bot 的私信、交接、小应用替你发的、系统叫醒的是 None（不归卡）
+    pub user_msg: Option<(i64, String)>,
+    /// 这一轮是从看板开始的卡（替你发的那条消息 meta.need_id）：这一轮派的任务都归它
+    pub board_need: Option<i64>,
+    /// 这一轮第一个任务归的卡：同一轮里派的几个任务归同一张
+    pub turn_need: Option<i64>,
+}
+
+/// 这一轮是不是用户的消息引起的：(那条消息, 从看板开始的卡)
+fn user_turn(bot_id: i64, chat_id: i64, turn: &Turn) -> (Option<(i64, String)>, Option<i64>) {
+    if turn.woke.is_some() || turn.reply.is_some() {
+        return (None, None);
+    }
+    let Some(r) = crate::db::row(
+        "select id, content, meta from messages where chat_id=? and role='user' order by id desc limit 1",
+        rusqlite::params![chat_id],
+    ) else {
+        return (None, None);
+    };
+    use crate::db::RowExt;
+    let (mid, meta) = (r.i(0), r.j(2));
+    if py::truthy(&meta["applet"]) {
+        return (None, None);
+    }
+    // 群里别的 Bot 交接给我的（那条用户消息之后有交给我的交接）：不是用户直接提的
+    let handed = crate::db::exists(
+        "select 1 from messages where chat_id=? and id>? and role='task' and json_extract(meta, '$.kind')='handoff'
+         and json_extract(meta, '$.to')=?",
+        rusqlite::params![chat_id, mid, bot_id],
+    );
+    if handed {
+        return (None, None);
+    }
+    (Some((mid, r.s(1))), meta["need_id"].as_i64())
 }
 
 pub fn fmt(template: &str, kv: &[(&str, &str)]) -> String {
@@ -190,8 +224,21 @@ impl Router {
         attachments: &[Value],
         applet: Option<Value>,
     ) -> anyhow::Result<()> {
+        self.handle_user_with(text, via, chat_id, attachments, applet, json!({})).await
+    }
+
+    /// 同上，消息的 meta 里多带几个字段（看板替你发的带 need_id）
+    pub async fn handle_user_with(
+        self: &Arc<Self>,
+        text: &str,
+        via: &str,
+        chat_id: Option<i64>,
+        attachments: &[Value],
+        applet: Option<Value>,
+        extra: Value,
+    ) -> anyhow::Result<()> {
         let cid = chat_id.unwrap_or_else(|| self.chat_id());
-        let mut meta = json!({});
+        let mut meta = if extra.is_object() { extra } else { json!({}) };
         if !via.is_empty() {
             meta["via"] = json!(via);
         }
@@ -205,7 +252,11 @@ impl Router {
             meta["skill"] = skill["name"].clone();
             meta["skill_prompt"] = json!(skills::expand(&skill, &rest));
         }
-        self.add("user", text, Some(cid), meta);
+        let need = meta["need_id"].as_i64();
+        let mid = self.add("user", text, Some(cid), meta);
+        if let Some(n) = need {
+            board::started_msg(n, mid);
+        }
         self.respond(cid, Turn::default()).await
     }
 
@@ -223,7 +274,18 @@ impl Router {
         let r = memory::WHO
             .scope(who, async move {
                 let Some(chat) = bots::chat(chat_id) else { return Ok(()) };
-                let mut ctx = Ctx { chat, turn, turn_tasks: vec![], turn_dms: 0, turn_waits: 0, files: Arc::new(Mutex::new(vec![])) };
+                let (user_msg, board_need) = user_turn(me.bot_id, chat_id, &turn);
+                let mut ctx = Ctx {
+                    chat,
+                    turn,
+                    turn_tasks: vec![],
+                    turn_dms: 0,
+                    turn_waits: 0,
+                    files: Arc::new(Mutex::new(vec![])),
+                    user_msg,
+                    board_need,
+                    turn_need: None,
+                };
                 match me.think(&mut ctx).await {
                     Ok(shown) => {
                         if let Some(o) = &owed
@@ -513,6 +575,7 @@ impl Router {
                 ("tools", &tool_names.join("、")),
                 ("memories", &if recent.is_empty() { String::new() } else { format!("\n\n{recent}") }),
                 ("turn", &self.turn_block(&ctx.turn)),
+                ("board", &self.board_block(cid)),
             ],
         );
         let viewer = if ctx.chat["kind"] == "group" { Some(self.bot_id) } else { None };
@@ -623,6 +686,19 @@ impl Router {
                     groups::expect(chat_id, h.to);
                 }
                 let mode = if s("mode").is_empty() { "single".to_string() } else { s("mode") };
+                // 归卡：只有用户的消息引起的这一轮；从看板开始的、同一轮里先派的，都归同一张
+                let explicit = board::resolve_need(&args["need_id"]);
+                if py::truthy(&args["need_id"]) && explicit.is_none() {
+                    return format!("没派发：没有卡片 {}（不确定就不写 need_id，会新建一张）", s("need_id")).into();
+                }
+                let need = ctx.user_msg.as_ref().map(|(mid, text)| board::NeedReq {
+                    need: s("need"),
+                    need_id: explicit.or(ctx.board_need).or(ctx.turn_need),
+                    project: s("project"),
+                    user_text: text.clone(),
+                    chat_id,
+                    origin_msg: Some(*mid),
+                });
                 let task = self
                     .dispatch(Dispatch {
                         goal: s("goal"),
@@ -632,21 +708,35 @@ impl Router {
                         reply: ctx.turn.reply.clone(),
                         depth: ctx.turn.depth(),
                         mac: mac.clone(),
+                        need,
                         ..Default::default()
                     })
                     .await;
                 ctx.turn_tasks.push(task.id);
+                let card = board::need_of_task(task.id);
+                if ctx.turn_need.is_none() {
+                    ctx.turn_need = card["id"].as_i64();
+                }
+                let on_card = match card["key"].as_str() {
+                    Some(k) => format!("（卡片 {k}）"),
+                    None if card.is_object() => format!("（卡片 #{}）", py::str_of(&card["id"])),
+                    None => String::new(),
+                };
                 if handoff.is_some() {
-                    return format!("已派发任务 #{}，做完后结果会自动交给 {to_name}", task.id).into();
+                    return format!("已派发任务 #{}{on_card}，做完后结果会自动交给 {to_name}", task.id).into();
                 }
                 if let Some(r) = task.st.lock().reply.clone() {
-                    return format!("已派发任务 #{}，做完后结果会自动发给 {}", task.id, dm::name_of(Some(r.bot))).into();
+                    return format!("已派发任务 #{}{on_card}，做完后结果会自动发给 {}", task.id, dm::name_of(Some(r.bot))).into();
                 }
                 if let Some(m) = mac {
-                    return format!("已派发任务 #{}，在用户的 Mac「{}」上做（开始前会先请用户确认）", task.id, py::str_of(&m["name"]))
-                        .into();
+                    return format!(
+                        "已派发任务 #{}{on_card}，在用户的 Mac「{}」上做（开始前会先请用户确认）",
+                        task.id,
+                        py::str_of(&m["name"])
+                    )
+                    .into();
                 }
-                format!("已派发任务 #{}", task.id).into()
+                format!("已派发任务 #{}{on_card}", task.id).into()
             }
             "message_bot" => {
                 let to = bots::by_name(&s("to"));
@@ -713,6 +803,7 @@ impl Router {
                 }
             }
             "list_tasks" => self.task_list().into(),
+            "update_need" => board::update_need(self.bot_id, &args).into(),
             "tell_task" => taskstore::tell(self.bot_id, py::to_int(&args["task_id"]).unwrap_or(0), &s("text")).await.into(),
             "cancel_task" => {
                 let tid = py::to_int(&args["task_id"]).unwrap_or(0);
@@ -779,6 +870,27 @@ impl Router {
     }
 
     fn remember(&self, args: &Value) -> String {
+        let project = args["project"].as_str().unwrap_or("").trim().to_string();
+        if !project.is_empty() && !args["replace_id"].is_i64() {
+            let Some(pid) = board::project_id_by_key(&project) else { return format!("没记住：没有项目 {project}") };
+            let until = match memories::parse_until(args.get("until")) {
+                Ok(u) => u.flatten(),
+                Err(e) => return format!("没记住：{e}"),
+            };
+            return match memories::add_project(pid, args["text"].as_str().unwrap_or(""), "chat", until) {
+                Ok(m) => {
+                    self.emit(json!({"type": "memories_changed"}), None);
+                    let until = m["until"].as_f64().map(|u| format!("，到 {} 为止", memories::until_day(u))).unwrap_or_default();
+                    format!(
+                        "已记住 #{}（项目 {}，只有这个项目的任务读到{until}）：{}",
+                        py::str_of(&m["id"]),
+                        board::project_label(pid).unwrap_or_default(),
+                        py::str_of(&m["text"])
+                    )
+                }
+                Err(e) => format!("没记住：{e}"),
+            };
+        }
         let owner = if py::truthy(&args["shared"]) { None } else { Some(self.bot_id) };
         let rid = &args["replace_id"];
         let text = args["text"].as_str().unwrap_or("");
@@ -882,7 +994,18 @@ impl Router {
             meta["mac"] = m["name"].clone();
         }
         let label = if d.label.is_empty() { String::new() } else { format!("{} ", d.label) };
+        // 归卡（看板）：派发消息的 meta 带 need_id
+        let need_id = d.need.as_ref().and_then(|r| board::pick(self.bot_id, r));
+        if let Some(n) = need_id {
+            meta["need_id"] = json!(n);
+        }
         let tid = self.add("task", &format!("[任务已派发] {label}{}", d.goal), Some(cid), meta);
+        let mut notes = d.notes;
+        if let Some(n) = need_id {
+            board::link_task(n, tid);
+            // 项目的简介和目录接在任务交代后面
+            notes.push_str(&board::notes_for(tid));
+        }
         let store = d.mode.is_empty() || d.mode == "single";
         let task = Task::new(NewTask {
             id: tid,
@@ -896,7 +1019,7 @@ impl Router {
             reply: d.reply,
             depth: d.depth,
             quiet_ok: d.quiet_ok,
-            notes: d.notes,
+            notes,
             mac: d.mac.as_ref().and_then(|m| m["id"].as_i64()).unwrap_or(0),
             mac_name: d.mac.as_ref().map(|m| py::str_of(&m["name"])).unwrap_or_default(),
             round: 1,
@@ -919,6 +1042,7 @@ impl Router {
         let fut: BoxFuture<'static, ()> = Box::pin(async move { me.run(t2).await });
         tokio::spawn(fut);
         self.emit(json!({"type": "task", "task": task.public()}), Some(task.chat_id));
+        board::task_changed(task.id);
     }
 
     fn routine_list(&self) -> String {
@@ -957,6 +1081,25 @@ impl Router {
         let ids: Vec<i64> = live.iter().map(|t| t.id).collect();
         rs.extend(taskstore::recent_lines(self.bot_id, &ids));
         if rs.is_empty() { "暂无任务".into() } else { rs.join("\n") }
+    }
+
+    /// 状态里的看板：项目列表和进行中的卡（board::state_block），加上这个对话里进行中的卡所属项目的记忆
+    fn board_block(&self, chat_id: i64) -> String {
+        let mut parts = vec![];
+        let b = board::state_block(self.bot_id);
+        if !b.is_empty() {
+            parts.push(format!("看板（用户提的每件事一张卡；派任务时用 need_id 归到已有的卡，改卡用 update_need）：\n{b}"));
+        }
+        for p in board::chat_projects(chat_id) {
+            let lines = memories::project_lines(p);
+            if !lines.is_empty() {
+                parts.push(format!(
+                    "项目 {}的记忆（这个对话里有它进行中的卡；#后面是编号，只和这个项目有关的事 remember 时写 project）：\n{lines}",
+                    board::project_label(p).unwrap_or_default()
+                ));
+            }
+        }
+        if parts.is_empty() { String::new() } else { format!("\n\n{}", parts.join("\n\n")) }
     }
 
     async fn use_mac(&self, task: &Arc<Task>) -> String {
@@ -1006,6 +1149,7 @@ impl Router {
                     tokio::spawn(dm::after_task(task.clone()));
                 }
                 taskstore::finished(&task, "cancelled");
+                board::task_changed(task.id); // 看板：重新算列，等它的卡可能开始
                 let _ = taskstore::doubt_note(&task); // 取消了没有结果可注明：了结的标成注明过，没了结的接着带
                 self.done(&task).await;
                 taskstore::after_round(&task);
@@ -1048,6 +1192,7 @@ impl Router {
             memory::update_meta(task.id, &json!({"status": "done", "quiet": true, "elapsed": elapsed, "steps": steps}));
             self.emit(json!({"type": "task", "task": task.public()}), Some(task.chat_id));
             taskstore::finished(&task, "done");
+            board::task_changed(task.id); // 看板：重新算列，等它的卡可能开始
             self.done(&task).await;
             taskstore::after_round(&task);
             return;
@@ -1078,6 +1223,7 @@ impl Router {
             tokio::spawn(dm::after_task(task.clone()));
         }
         taskstore::finished(&task, &status);
+        board::task_changed(task.id); // 看板：重新算列，等它的卡可能开始
         self.done(&task).await;
         taskstore::after_round(&task);
     }
@@ -1112,6 +1258,7 @@ impl Router {
             json!({"kind": "cancel", "task_id": tid}),
         );
         self.emit(json!({"type": "task", "task": t.public()}), Some(t.chat_id));
+        board::task_changed(tid);
         t!("已取消 #{id}", id = tid)
     }
 }
@@ -1130,6 +1277,8 @@ pub struct Dispatch {
     pub quiet_ok: bool,
     pub notes: String,
     pub mac: Option<Value>,
+    /// 归到哪张卡（看板）：None 是不归卡（不是用户提的事）
+    pub need: Option<board::NeedReq>,
 }
 
 /// dispatch 的 mac：按名字找用户登记过的 Mac

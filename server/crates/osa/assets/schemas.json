@@ -1155,6 +1155,18 @@
       "handoff_note": {
        "type": "string",
        "description": "交接时要对方做什么"
+      },
+      "need": {
+       "type": "string",
+       "description": "用户会得到什么，用用户的语言写一句（写结果，不写谁去做），比如“一份三家竞品的价格对比”。会成为看板上这张卡的标题；不写就用用户的原话"
+      },
+      "need_id": {
+       "type": "string",
+       "description": "可选：归到看板上已有的卡（卡片编号如 OPC-12，或 #后面的数字）。用户接着补充、追问的是已有的卡时写，不要另开一张"
+      },
+      "project": {
+       "type": "string",
+       "description": "可选：明显属于某个项目时写项目编号（见状态里“看板”的项目列表）"
       }
      },
      "required": [
@@ -1214,6 +1226,10 @@
       "until": {
        "type": "string",
        "description": "可选：截止日 YYYY-MM-DD。有日期的事（活动、截止日、报价有效期）写上，过了这天就不再记得"
+      },
+      "project": {
+       "type": "string",
+       "description": "可选：项目编号。只和某个项目有关的长期信息（这个项目的约定、背景、偏好）写上，只有这个项目的任务才读到"
       }
      },
      "required": [
@@ -1352,6 +1368,48 @@
      "required": [
       "task_id",
       "text"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "update_need",
+    "description": "改看板上的卡：rename 改标题（title），merge 把这张并进另一张（into，任务跟过去），cancel 取消（还在做的任务停掉），done 标成完成，move 移到别的项目（project，空着是移出项目）。主 Bot 能改所有卡，别的 Bot 只能改交给它的。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "string",
+       "description": "卡片编号如 OPC-12，或 #后面的数字"
+      },
+      "action": {
+       "type": "string",
+       "enum": [
+        "rename",
+        "merge",
+        "cancel",
+        "done",
+        "move"
+       ]
+      },
+      "title": {
+       "type": "string",
+       "description": "rename 时：新标题"
+      },
+      "into": {
+       "type": "string",
+       "description": "merge 时：并进哪张卡（编号或数字）"
+      },
+      "project": {
+       "type": "string",
+       "description": "move 时：项目编号，空着是移出项目"
+      }
+     },
+     "required": [
+      "id",
+      "action"
      ]
     }
    }

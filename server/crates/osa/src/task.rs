@@ -234,13 +234,15 @@ impl Task {
 
     pub fn public(&self) -> Value {
         let waiting = self.waiting_kind();
+        // 归在哪张卡上（看板）：从 need_tasks 读，合并了卡也对
+        let need = if self.fake_id.is_none() { crate::board::need_of_task(self.id) } else { Value::Null };
         let s = self.st.lock();
         let mut o = json!({"id": self.id_value(), "goal": self.goal, "mode": self.mode, "status": s.status, "steps": s.steps,
             "bot_id": self.bot_id, "chat_id": self.chat_id, "started": s.started,
             "waiting_approval": s.waiting_approval, "last_action": s.last_action,
             "elapsed": crate::py::round0(crate::py::now() - s.started), "quiet": s.quiet,
             "waiting_kind": if s.status == "running" { json!(waiting) } else { Value::Null },
-            "can_continue": self.store, "round": self.round});
+            "can_continue": self.store, "round": self.round, "need": need});
         if self.mac != 0 {
             o["mac"] = json!(self.mac_name);
         }

@@ -279,7 +279,8 @@ fn post_followup(bot_id: i64, chat_id: i64, task_id: i64, text: &str) {
 }
 
 /// 用户发给任务的一句话：在做的下一步之前交给它，在等回答的就是回答，结束了的接着做一轮
-fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, How), ApiError> {
+/// thread：在讨论串里回复的（之后的结果也发进讨论串）；post：给任务的话存在哪个对话（没给是任务的对话）
+fn deliver_in(task_id: i64, text: &str, thread: Option<i64>, post: Option<i64>) -> Result<(Arc<Task>, How), ApiError> {
     let text = text.trim();
     if text.is_empty() {
         return Err(ApiError::bad(t!("要说的话不能为空")));
@@ -289,7 +290,7 @@ fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, 
         let question = t.waiting_kind().as_deref() == Some("question") && t.status() == "running";
         let aid = t.st.lock().waiting_approval;
         if question && let Some(aid) = aid {
-            post_followup(t.bot_id, thread.unwrap_or(t.chat_id), task_id, text);
+            post_followup(t.bot_id, thread.or(post).unwrap_or(t.chat_id), task_id, text);
             if let Some(th) = thread {
                 t.st.lock().result_chat = Some(th);
             }
@@ -306,7 +307,7 @@ fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, 
             }
         };
         if queued {
-            post_followup(t.bot_id, thread.unwrap_or(t.chat_id), task_id, text);
+            post_followup(t.bot_id, thread.or(post).unwrap_or(t.chat_id), task_id, text);
             if let Some(th) = thread {
                 t.st.lock().result_chat = Some(th);
             }
@@ -317,9 +318,25 @@ fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, 
         return Err(ApiError::bad(t!("服务刚重启，这个任务正在恢复，稍后再说")));
     }
     let run = load(task_id).filter(|r| r.msgs.is_some()).ok_or_else(|| ApiError::bad(why_not(&d)))?;
-    post_followup(run.bot_id, thread.unwrap_or(run.chat_id), task_id, text);
+    post_followup(run.bot_id, thread.or(post).unwrap_or(run.chat_id), task_id, text);
     let t = continue_round(task_id, run, vec![Note::user(text)], thread, None)?;
     Ok((t, How::Continue))
+}
+
+fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, How), ApiError> {
+    deliver_in(task_id, text, thread, None)
+}
+
+/// 消息以卡片编号开头、那张卡正好一个任务在做（server::safe_handle）：交给那个任务，Bot 不被叫醒。
+/// 给任务的话存在用户发消息的那个对话里。交出去了返回 true
+pub fn tell_from(task_id: i64, text: &str, chat_id: i64) -> bool {
+    match deliver_in(task_id, text, None, Some(chat_id)) {
+        Ok(_) => true,
+        Err(e) => {
+            tracing::warn!("消息交给任务 #{task_id} 没成：{:?}", e.detail);
+            false
+        }
+    }
 }
 
 pub fn message(task_id: i64, text: &str) -> Result<Value, ApiError> {

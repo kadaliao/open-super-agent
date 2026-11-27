@@ -520,6 +520,14 @@ async fn run_inner(task: Arc<Task>, goal: &str, label: &str) -> anyhow::Result<S
             if !known.is_empty() {
                 system += &format!("\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}");
             }
+            // 任务所属项目的记忆：只有这个项目的任务读到
+            if let Some(p) = crate::board::project_of_task(task.id) {
+                let pm = memories::project_lines(p);
+                if !pm.is_empty() {
+                    let name = crate::board::project_label(p).unwrap_or_default();
+                    system += &format!("\n\n这个任务属于项目 {name}，项目的记忆（做事时遵守）：\n{pm}");
+                }
+            }
             vec![json!({"role": "system", "content": system}), json!({"role": "user", "content": goal})]
         }
     };

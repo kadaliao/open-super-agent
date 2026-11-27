@@ -161,13 +161,23 @@ pub async fn undo() -> Result<(i64, usize), String> {
 
 // ---------- 整理 ----------
 
-fn notes(bot_id: Option<i64>, pinned: bool) -> Vec<Value> {
+/// 一组：一个 Bot 自己的、共享的（两个都是 project_id 为空），或者一个项目的
+#[derive(Clone, Copy, Debug)]
+enum Group {
+    Bot(i64),
+    Shared,
+    Project(i64),
+}
+
+fn notes(g: Group, pinned: bool) -> Vec<Value> {
+    let (wh, id) = match g {
+        Group::Bot(b) => ("bot_id=? and project_id is null", Some(b)),
+        Group::Shared => ("bot_id is ? and project_id is null", None),
+        Group::Project(p) => ("project_id=?", Some(p)),
+    };
     db::rows(
-        &format!(
-            "select id, text, updated, until from memories where bot_id is ? and kind='note' and pinned=? and {} order by id",
-            active_sql()
-        ),
-        params![bot_id, pinned as i64],
+        &format!("select id, text, updated, until from memories where {wh} and kind='note' and pinned=? and {} order by id", active_sql()),
+        params![id, pinned as i64],
     )
     .iter()
     .map(|r| json!({"id": r[0], "text": r[1], "updated": r[2], "until": r[3]}))
@@ -234,10 +244,7 @@ fn apply(run: &mut Run, group: &[Value], ops: &[Value]) -> usize {
                 changed += 1;
             }
             "merge" => {
-                let mut list: Vec<i64> = o["ids"]
-                    .as_array()
-                    .map(|a| a.iter().filter_map(id_of).collect())
-                    .unwrap_or_default();
+                let mut list: Vec<i64> = o["ids"].as_array().map(|a| a.iter().filter_map(id_of).collect()).unwrap_or_default();
                 list.retain(|i| ids.contains(i) && !used.contains(i));
                 list.sort();
                 list.dedup();
@@ -279,16 +286,21 @@ fn apply(run: &mut Run, group: &[Value], ops: &[Value]) -> usize {
     changed
 }
 
-/// 一组（一个 Bot 的，或者共享的）：问一次模型，照着改
-async fn group(run: &mut Run, bot_id: Option<i64>) -> usize {
-    let items = notes(bot_id, false);
+/// 一组（一个 Bot 的、共享的，或者一个项目的）：问一次模型，照着改
+async fn group(run: &mut Run, g: Group) -> usize {
+    let items = notes(g, false);
     if items.len() < MIN_NOTES {
         return 0;
     }
-    let pinned = notes(bot_id, true);
-    let whose = match bot_id {
-        None => "所有 Bot 共享的用户事实".to_string(),
-        Some(b) => format!("Bot「{}」自己的记忆", bots::get(b).map(|x| py::str_of(&x["name"])).unwrap_or_default()),
+    let pinned = notes(g, true);
+    let whose = match g {
+        Group::Shared => "所有 Bot 共享的用户事实".to_string(),
+        Group::Bot(b) => format!("Bot「{}」自己的记忆", bots::get(b).map(|x| py::str_of(&x["name"])).unwrap_or_default()),
+        Group::Project(p) => format!("项目 {}的记忆", crate::board::project_label(p).unwrap_or_default()),
+    };
+    let bot_id = match g {
+        Group::Bot(b) => Some(b),
+        _ => None,
     };
     let mut user = format!("今天是 {}。下面是{whose}：\n{}", py::strftime("%Y-%m-%d"), listing(&items));
     if !pinned.is_empty() {
@@ -405,18 +417,30 @@ pub async fn run_once() -> Result<(i64, usize, bool), String> {
     let _g = LOCK.try_lock().map_err(|_| t!("正在整理记忆，稍等"))?;
     let now = py::now();
     let mut run = Run::start();
-    let groups: Vec<Option<i64>> = db::rows(
+    let mut groups: Vec<Group> = db::rows(
         &format!(
-            "select distinct bot_id from memories where kind='note' and bot_id is not null and pinned=0 and {} order by bot_id",
+            "select distinct bot_id from memories where kind='note' and bot_id is not null and project_id is null and pinned=0 and {} order by bot_id",
             active_sql()
         ),
         [],
     )
     .iter()
-    .map(|r| r[0].as_i64())
-    .filter(|b| b.is_some_and(|b| bots::get(b).is_some()))
-    .chain(std::iter::once(None))
+    .filter_map(|r| r[0].as_i64())
+    .filter(|b| bots::get(*b).is_some())
+    .map(Group::Bot)
+    .chain(std::iter::once(Group::Shared))
     .collect();
+    // 每个项目的记忆单独一组
+    groups.extend(
+        db::rows(
+            &format!("select distinct project_id from memories where kind='note' and project_id is not null and pinned=0 and {} order by project_id", active_sql()),
+            [],
+        )
+        .iter()
+        .filter_map(|r| r[0].as_i64())
+        .filter(|p| crate::board::project_label(*p).is_some())
+        .map(Group::Project),
+    );
     let total = groups.len() + 2;
     progress(0, total);
     // 过了截止日的（置顶的不算）

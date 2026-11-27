@@ -1,15 +1,16 @@
 //! 需求看板和项目：你要的每件事一张卡（需求），归在项目下、带编号（`OPC-12`）；卡在哪一列由它背后的任务算出来，不存。
 //! 约定见 docs/plans/tasks-board.md 的“看板和项目”。
 //!
-//! 第一波不改 router.rs / worker.rs / task.rs：任务的情况从现成的地方读（内存里的任务、`messages` 里派发那条的
-//! `meta.status`、待确认列表）；任务状态变了靠 registry 的 `task_done` 和一个每秒一次的轻量检查发 `board` 事件。
+//! 任务的情况从现成的地方读（内存里的任务、`messages` 里派发那条的 `meta.status`、待确认列表）。
+//! 第二波接进了对话：Router 派任务时归卡（`pick` + `link_task`）、任务状态变了调 `task_changed`、确认卡片的事件经
+//! `on_event` 也算任务状态变了；`watcher` 只留作兜底（每 5 秒看一遍还有任务在跑的卡）。
 
 use crate::db::{self, J, RowExt};
 use crate::router::{self, Dispatch};
 use crate::task::Task;
 use crate::tasklog::DISPATCH;
 use crate::web::{ApiError, Body, Q, Res, ok, qi, qs};
-use crate::{approvals, bots, providers, py, registry, server};
+use crate::{approvals, bots, memories, providers, py, server};
 use axum::extract::Path;
 use axum::routing::{get, post};
 use parking_lot::Mutex;
@@ -17,7 +18,7 @@ use regex::Regex;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 pub const COLUMNS: [&str; 5] = ["todo", "doing", "waiting", "done", "cancelled"];
 /// 结束的卡片（完成、取消）除了归档的只留最近这么多张
@@ -88,23 +89,41 @@ fn check_watched() {
     }
 }
 
-async fn on_task_done(kw: Value) {
-    let Some(tid) = kw["task"]["id"].as_i64() else { return };
-    for nid in needs_of(tid) {
-        changed(nid);
-        watch(nid);
+/// 后台兜底：任务状态变了都会调 task_changed，这里每 5 秒再看一遍还有任务在跑的卡，漏掉的变化最多晚 5 秒
+pub async fn watcher() {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        check_watched();
     }
 }
 
-/// 后台：任务结束（registry 的 task_done）马上发事件；等确认、被取消这些没有钩子的，每秒看一次
-pub async fn watcher() {
-    let ctx = registry::Context::new("board");
-    ctx.on("task_done", Arc::new(|kw| Box::pin(on_task_done(kw))));
-    std::mem::forget(ctx);
-    loop {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        check_watched();
+/// 确认卡片 id → 任务 id（确认卡片的后续事件里没有 task_id）
+static CARDS: LazyLock<Mutex<HashMap<i64, i64>>> = LazyLock::new(Default::default);
+
+/// server::broadcast 发出的每个事件都过一下：确认卡片弹出、关掉也算任务状态变了（开始等你、不等了）
+pub fn on_event(ev: &Value) {
+    if ev["type"] != "approval" {
+        return;
     }
+    let Some(aid) = ev["id"].as_i64() else { return };
+    let tid = if ev["status"] == "pending" {
+        let Some(t) = ev["task_id"].as_i64() else { return };
+        CARDS.lock().insert(aid, t);
+        t
+    } else {
+        match CARDS.lock().remove(&aid) {
+            Some(t) => t,
+            None => return,
+        }
+    };
+    if needs_of(tid).is_empty() {
+        return;
+    }
+    // 卡片关掉的事件比任务那边清掉“在等”早一点点：稍等再算
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        task_changed(tid);
+    });
 }
 
 // ---------- 任务 ----------
@@ -144,13 +163,31 @@ fn needs_of(task_id: i64) -> Vec<i64> {
     db::rows("select need_id from need_tasks where task_id=? order by need_id", params![task_id]).iter().map(|r| r.i(0)).collect()
 }
 
+/// 任务归在哪张卡上：{id, key, title}，没有是 null（任务的公开字段 need）
+pub fn need_of_task(task_id: i64) -> Value {
+    match needs_of(task_id).into_iter().next().and_then(load) {
+        Some(n) => json!({"id": n.id, "key": n.key(), "title": n.title}),
+        None => Value::Null,
+    }
+}
+
+/// 任务归在哪张卡上（卡片 id）
+pub fn need_id_of(task_id: i64) -> Option<i64> {
+    needs_of(task_id).into_iter().next()
+}
+
+/// 任务所属的项目（卡片在项目里）
+pub fn project_of_task(task_id: i64) -> Option<i64> {
+    needs_of(task_id).into_iter().filter_map(load).find_map(|n| n.project_id)
+}
+
 /// 任务的结果（结果那条消息去掉开头的标记）
 fn result_of(t: &Value) -> Option<String> {
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[任务 #\d+ 结果\]\n?").unwrap());
     let r = db::row(
-        "select content from messages where chat_id=? and id>? and role='task'
+        "select content from messages where id>? and role='task'
          and json_extract(meta, '$.task_id')=? and json_extract(meta, '$.kind')='result' order by id desc limit 1",
-        params![t["chat_id"].as_i64(), t["id"].as_i64(), t["id"].as_i64()],
+        params![t["id"].as_i64(), t["id"].as_i64()],
     )?;
     Some(RE.replace(&r.s(0), "").into_owned())
 }
@@ -514,8 +551,8 @@ fn start(id: i64) -> Result<Value, ApiError> {
         let goal = start_text(&n, false);
         let rt = router::runtime(bot_id);
         tokio::spawn(async move {
-            let t = rt.dispatch(Dispatch { goal, mode: "single".into(), ..Default::default() }).await;
-            link(id, t.id);
+            let need = Some(NeedReq { need_id: Some(id), ..Default::default() });
+            rt.dispatch(Dispatch { goal, mode: "single".into(), need, ..Default::default() }).await;
             TURNS.lock().remove(&id);
             watch(id);
         });
@@ -544,52 +581,22 @@ fn start_text(n: &Need, with_key: bool) -> String {
     s
 }
 
-/// 像你发了一条消息那样交给主 Bot；这一轮里它派出的任务归到这张卡上
+/// 像你发了一条消息那样交给主 Bot：那条消息的 meta 带 need_id，这一轮里它派的任务都归这张卡（router.rs 里接）
 async fn tell_primary(id: i64, bot_id: i64, cid: i64, text: String) {
-    let before = db::scalar_i64("select coalesce(max(id), 0) from messages", []);
     let rt = router::runtime(bot_id);
-    let fut = rt.handle_user(&text, "", Some(cid), &[], None);
-    tokio::pin!(fut);
-    let r = loop {
-        tokio::select! {
-            r = &mut fut => break r,
-            _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => link_turn(id, bot_id, cid, before, &text),
-        }
-    };
+    let r = rt.handle_user_with(&text, "", Some(cid), &[], None, json!({"need_id": id})).await;
     if let Err(e) = r {
         tracing::error!("看板卡片 #{id} 交给主 Bot 出错：{e:#}");
         server::broadcast(json!({"type": "error", "chat_id": cid, "message": t!("出错了：{e}", e = providers::brief(&e))}));
     }
-    link_turn(id, bot_id, cid, before, &text);
     TURNS.lock().remove(&id);
     changed(id);
     watch(id);
 }
 
-/// 找到替你发的那条消息，把它之后这个 Bot 在这个对话里派的任务归到卡上。
-/// 第一波的简单办法：同一个对话里同时还有上一轮没说完的话，那一轮派的任务也可能被算进来（第二波在 router.rs 里正式接）
-fn link_turn(id: i64, bot_id: i64, cid: i64, before: i64, text: &str) {
-    let mid = match load(id).and_then(|n| n.start_msg) {
-        Some(m) => m,
-        None => {
-            let Some(m) = db::row(
-                "select id from messages where chat_id=? and id>? and role='user' and content=? order by id limit 1",
-                params![cid, before, text],
-            ) else {
-                return;
-            };
-            let m = m.i(0);
-            db::exec("update needs set start_msg=? where id=?", params![m, id]);
-            m
-        }
-    };
-    let ids = db::rows(
-        &format!("select id from messages where chat_id=? and id>? and bot_id=? and {DISPATCH} order by id"),
-        params![cid, mid, bot_id],
-    );
-    for r in ids {
-        link(id, r.i(0));
-    }
+/// 替你发给主 Bot 的那条消息存好了（router.rs 调）：记下来，卡片上“它回了什么”要用
+pub fn started_msg(need_id: i64, msg_id: i64) {
+    db::exec("update needs set start_msg=? where id=?", params![msg_id, need_id]);
 }
 
 /// 手动标完成、取消：停掉它下面还在做的任务
@@ -706,6 +713,13 @@ async fn board(q: Q) -> Res {
     let sql = format!("select {COLS} from needs n left join projects p on p.id=n.project_id where {} order by n.id desc", wh.join(" and "));
     let needs: Vec<Need> = db::rows(&sql, rusqlite::params_from_iter(args.iter().map(J))).iter().map(Need::from_row).collect();
     let mut cards: Vec<Value> = needs.iter().map(card_of).collect();
+    // 各列的总数（不受分页、“只留最近 500 张”影响；侧栏的数字用它）
+    let mut counts: serde_json::Map<String, Value> = COLUMNS.iter().map(|c| (c.to_string(), json!(0))).collect();
+    for c in &cards {
+        if let Some(n) = counts.get_mut(c["column"].as_str().unwrap_or("")) {
+            *n = json!(n.as_i64().unwrap_or(0) + 1);
+        }
+    }
     if !archived {
         // 结束的卡片只留最近 KEEP_ENDED 张
         let mut ended: Vec<(f64, i64)> = cards
@@ -730,7 +744,7 @@ async fn board(q: Q) -> Res {
             a.push(c);
         }
     }
-    ok(json!({"columns": cols, "projects": list_projects(), "more": more}))
+    ok(json!({"columns": cols, "projects": list_projects(), "more": more, "counts": counts}))
 }
 
 // ---------- 项目 ----------
@@ -835,12 +849,30 @@ async fn delete_project(Path(id): Path<i64>) -> Res {
     // 卡片留下，变成不属于项目
     db::exec("update needs set project_id=null, no=null, updated=? where project_id=?", params![py::now(), id]);
     db::exec("delete from projects where id=?", params![id]);
+    // 项目的记忆一起删
+    if memories::delete_for_project(id) > 0 {
+        server::broadcast(json!({"type": "memories_changed"}));
+    }
     projects_changed(id);
     ok(json!({"ok": true}))
 }
 
+async fn project_memories(Path(id): Path<i64>) -> Res {
+    project(id).ok_or_else(|| ApiError::not_found(t!("没有这个项目")))?;
+    ok(json!(memories::list_project(id)))
+}
+
+async fn add_project_memory(Path(id): Path<i64>, Body(d): Body) -> Res {
+    project(id).ok_or_else(|| ApiError::not_found(t!("没有这个项目")))?;
+    let until = memories::parse_until(d.get("until"))?.flatten();
+    let m = memories::add_project(id, d["text"].as_str().unwrap_or(""), "manual", until)?;
+    server::broadcast(json!({"type": "memories_changed"}));
+    ok(m)
+}
+
 pub fn routes() -> axum::Router {
     axum::Router::new()
+        .route("/api/projects/{id}/memories", get(project_memories).post(add_project_memory))
         .route("/api/board", get(board))
         .route("/api/needs", post(create_need))
         .route("/api/needs/{id}", get(get_need).patch(patch_need))
@@ -849,37 +881,207 @@ pub fn routes() -> axum::Router {
         .route("/api/projects/{id}", axum::routing::patch(patch_project).delete(delete_project))
 }
 
-// ---------- 给第二波留的（第一波还没人调） ----------
+// ---------- 接进对话（router.rs 调） ----------
 
-/// 派任务时归到卡上：给了 need_id 而且卡在就归到它上面；没有就新建一张（标题用 `need`，没写就取你的原话）。
-/// `project` 是项目编号或名字。都没有（不是你提的事）返回 None
-#[allow(dead_code)]
-pub fn attach(task_id: i64, bot_id: i64, chat_id: i64, need: &str, need_id: Option<i64>, project: &str, user_text: &str) -> Option<i64> {
-    if let Some(n) = need_id.and_then(load) {
-        link(n.id, task_id);
+/// 派任务时怎么归卡（Router 的 dispatch 带过来）。`need_id` 有就归到它上面；没有就新建一张，标题用 `need`，没写取用户的原话
+#[derive(Clone, Debug, Default)]
+pub struct NeedReq {
+    pub need: String,
+    pub need_id: Option<i64>,
+    pub project: String,
+    pub user_text: String,
+    pub chat_id: i64,
+    pub origin_msg: Option<i64>,
+}
+
+/// 选（或新建）这个任务要归的卡。都没有（不是用户提的事）返回 None
+pub fn pick(bot_id: i64, r: &NeedReq) -> Option<i64> {
+    if let Some(n) = r.need_id.and_then(load) {
+        // 手动标过完成、取消的卡又有新任务：回到由任务决定的列
+        if !n.status.is_empty() || n.started.is_none() {
+            db::exec("update needs set status='', started=coalesce(started, ?), updated=? where id=?", params![py::now(), py::now(), n.id]);
+        }
         return Some(n.id);
     }
-    let need = need.trim();
-    let user_text = user_text.trim();
+    let need = r.need.trim();
+    let user_text = r.user_text.trim();
     if need.is_empty() && user_text.is_empty() {
         return None;
     }
     let (title, auto) = if need.is_empty() { (first_line(user_text, TITLE_MAX), true) } else { (py::head(need, TITLE_MAX), false) };
     let primary = bots::get(bot_id).is_some_and(|b| b["is_primary"] == true);
-    let msg = db::scalar("select max(id) from messages where chat_id=? and role='user'", params![chat_id]).as_i64();
+    let msg =
+        r.origin_msg.or_else(|| db::scalar("select max(id) from messages where chat_id=? and role='user'", params![r.chat_id]).as_i64());
     let id = insert(NewNeed {
-        project_id: project_by_key(project).and_then(|p| p["id"].as_i64()),
+        project_id: project_by_key(&r.project).and_then(|p| p["id"].as_i64()),
         title,
         auto_title: auto,
         source_text: user_text.to_string(),
         assignee: (!primary).then_some(bot_id),
-        origin: msg.map(|m| (chat_id, m)),
+        origin: msg.map(|m| (r.chat_id, m)),
         started: true,
         ..Default::default()
     });
     changed(id);
+    Some(id)
+}
+
+/// 把任务归到卡上（pick 之后、任务开始之前调）
+pub fn link_task(need_id: i64, task_id: i64) {
+    link(need_id, task_id);
+}
+
+/// 派任务时归到卡上：pick + link_task
+pub fn attach(task_id: i64, bot_id: i64, chat_id: i64, need: &str, need_id: Option<i64>, project: &str, user_text: &str) -> Option<i64> {
+    let r = NeedReq { need: need.into(), need_id, project: project.into(), user_text: user_text.into(), chat_id, origin_msg: None };
+    let id = pick(bot_id, &r)?;
     link(id, task_id);
     Some(id)
+}
+
+/// 卡片的 id 或编号（`12`、`"12"`、`"OPC-12"`）→ 卡片 id。没有这张卡是 None
+pub fn resolve_need(v: &Value) -> Option<i64> {
+    if let Some(i) = v.as_i64() {
+        return load(i).map(|n| n.id);
+    }
+    let s = v.as_str()?.trim().trim_start_matches('#');
+    if s.is_empty() {
+        return None;
+    }
+    if let Ok(i) = s.parse::<i64>() {
+        return load(i).map(|n| n.id);
+    }
+    let (k, no) = s.rsplit_once('-')?;
+    let no: i64 = no.trim().parse().ok()?;
+    db::row("select n.id from needs n join projects p on p.id=n.project_id where upper(p.key)=upper(?) and n.no=?", params![k.trim(), no])
+        .map(|r| r.i(0))
+}
+
+/// 项目编号（或名字）→ 项目 id
+pub fn project_id_by_key(key: &str) -> Option<i64> {
+    project_by_key(key).and_then(|p| p["id"].as_i64())
+}
+
+/// Router 的 update_need：rename / merge / cancel / done / move。主 Bot 能改所有卡，别的 Bot 只能改交给它的
+pub fn update_need(bot_id: i64, args: &Value) -> String {
+    let Some(n) = resolve_need(&args["id"]).and_then(load) else {
+        return format!("没改：没有卡片 {}", py::str_of(&args["id"]));
+    };
+    let primary = bots::get(bot_id).is_some_and(|b| b["is_primary"] == true);
+    let mine = match n.assignee {
+        Some(a) => a == bot_id,
+        None => primary,
+    };
+    if !primary && !mine {
+        return format!("没改：卡片 {} 不是交给你的，要改请私信主 Bot", n.label());
+    }
+    let label = n.label();
+    match args["action"].as_str().unwrap_or("") {
+        "rename" => match clean_title(&args["title"]) {
+            Ok(t) => {
+                set(n.id, "title", &json!(t));
+                set(n.id, "auto_title", &json!(0));
+                changed(n.id);
+                format!("已把卡片 {label} 改名为「{t}」")
+            }
+            Err(e) => format!("没改：{}", e.detail.as_str().unwrap_or("")),
+        },
+        "merge" => {
+            let Some(into) = resolve_need(&args["into"]).and_then(load) else {
+                return format!("没合并：没有卡片 {}", py::str_of(&args["into"]));
+            };
+            if into.id == n.id {
+                return "没合并：不能并进它自己".into();
+            }
+            merge(&n, &into);
+            format!("已把卡片 {label} 并进 {}，它的任务都归到那张卡上", into.label())
+        }
+        "cancel" => match finish(n.id, "cancelled") {
+            Ok(_) => format!("已取消卡片 {label}（还在做的任务停掉了）"),
+            Err(e) => format!("没改：{}", e.detail.as_str().unwrap_or("")),
+        },
+        "done" => match finish(n.id, "done") {
+            Ok(_) => format!("已把卡片 {label} 标成完成"),
+            Err(e) => format!("没改：{}", e.detail.as_str().unwrap_or("")),
+        },
+        "move" => {
+            let key = args["project"].as_str().unwrap_or("").trim().to_string();
+            let p = if key.is_empty() {
+                None
+            } else {
+                match project_id_by_key(&key) {
+                    Some(p) => Some(p),
+                    None => return format!("没移：没有项目 {key}"),
+                }
+            };
+            if p != n.project_id {
+                let no = p.map(next_no);
+                db::exec("update needs set project_id=?, no=?, updated=? where id=?", params![p, no, py::now(), n.id]);
+                changed(n.id);
+            }
+            let now = load(n.id).map(|x| x.label()).unwrap_or_default();
+            if p.is_some() {
+                format!("已把卡片移到项目 {key}，现在是 {now}")
+            } else {
+                format!("已把卡片 {label} 移出项目")
+            }
+        }
+        a => format!("没改：action 只能是 rename、merge、cancel、done、move，不认识 {a}"),
+    }
+}
+
+/// 把 from 并进 into：任务跟过去，等 from 的卡改成等 into，描述接在后面，from 删掉
+fn merge(from: &Need, into: &Need) {
+    for t in task_ids(from.id) {
+        db::exec("insert or ignore into need_tasks(need_id, task_id) values(?, ?)", params![into.id, t]);
+    }
+    db::exec("delete from need_tasks where need_id=?", params![from.id]);
+    let mut body = into.body.clone();
+    let extra = if from.body.is_empty() { from.title.clone() } else { format!("{}\n{}", from.title, from.body) };
+    body = if body.is_empty() { extra } else { format!("{body}\n\n{extra}") };
+    set(into.id, "body", &json!(py::head(&body, BODY_MAX)));
+    for r in db::rows("select id, after from needs where after like ?", params![format!("%{}%", from.id)]) {
+        let mut a = parse_ids(&r.s(1));
+        if a.contains(&from.id) {
+            a.retain(|x| *x != from.id);
+            if r.i(0) != into.id && !a.contains(&into.id) {
+                a.push(into.id);
+            }
+            set(r.i(0), "after", &json!(py::dumps_u(&json!(a))));
+        }
+    }
+    db::exec("delete from needs where id=?", params![from.id]);
+    WATCH.lock().remove(&from.id);
+    changed(from.id);
+    watch(into.id);
+    changed(into.id);
+}
+
+/// 这个对话里进行中的卡所属的项目（Router 的状态里带这些项目的记忆）
+pub fn chat_projects(chat_id: i64) -> Vec<i64> {
+    let rows = db::rows(
+        &format!(
+            "select distinct n.id from needs n where n.archived=0 and n.status='' and n.project_id is not null and
+            (n.origin_chat=? or n.id in (select t.need_id from need_tasks t join messages m on m.id=t.task_id where m.chat_id=?))"
+        ),
+        params![chat_id, chat_id],
+    );
+    let mut out: Vec<i64> = vec![];
+    for n in rows.iter().filter_map(|r| load(r.i(0))) {
+        let col = column_of(&n);
+        if (col == "doing" || col == "waiting")
+            && let Some(p) = n.project_id
+            && !out.contains(&p)
+        {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// 项目的名字和编号（给提示词）
+pub fn project_label(project_id: i64) -> Option<String> {
+    project(project_id).map(|p| format!("{}「{}」", py::str_of(&p["key"]), py::str_of(&p["name"])))
 }
 
 fn column_zh(c: &str) -> &'static str {
@@ -893,7 +1095,6 @@ fn column_zh(c: &str) -> &'static str {
 }
 
 /// 给 Router 看的项目列表和进行中的卡（主 Bot 看全部，别的 Bot 只看交给它的）。都没有是空的
-#[allow(dead_code)]
 pub fn state_block(bot_id: i64) -> String {
     let primary = bots::get(bot_id).is_some_and(|b| b["is_primary"] == true);
     let mut out: Vec<String> = vec![];
@@ -942,7 +1143,6 @@ pub fn state_block(bot_id: i64) -> String {
 static MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*([A-Za-z0-9]{2,8})-(\d+)(?:$|[\s，,：:。.])").unwrap());
 
 /// 消息开头的卡片编号（`OPC-12 加上英国`）→ (卡, 它正在做的任务)
-#[allow(dead_code)]
 pub fn mention(text: &str) -> Option<(i64, Vec<i64>)> {
     let c = MENTION.captures(text)?;
     let no: i64 = c[2].parse().ok()?;
@@ -964,7 +1164,6 @@ fn ready(n: &Need) -> bool {
 }
 
 /// 任务状态变了：重新算列、发事件；卡完成了，让等它的卡开始
-#[allow(dead_code)]
 pub fn task_changed(task_id: i64) {
     for nid in needs_of(task_id) {
         changed(nid);
@@ -986,7 +1185,6 @@ pub fn task_changed(task_id: i64) {
 }
 
 /// 任务所属项目的简介和目录，接在任务交代后面。不属于项目是空的
-#[allow(dead_code)]
 pub fn notes_for(task_id: i64) -> String {
     let Some(p) = needs_of(task_id).into_iter().filter_map(load).find_map(|n| n.project_id).and_then(project) else {
         return String::new();

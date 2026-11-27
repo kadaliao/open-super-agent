@@ -243,7 +243,7 @@ fn task_out(r: &[Value]) -> Value {
            "steps": m.get("steps").cloned().unwrap_or(Value::Null), "chat_id": r[4], "bot_id": r[5],
            "handoff_to": m.get("handoff_to").cloned().unwrap_or(Value::Null),
            "waiting_kind": waiting, "can_continue": r.get(7).is_some_and(py::truthy),
-           "round": r.get(6).and_then(|v| v.as_i64()).unwrap_or(1)})
+           "round": r.get(6).and_then(|v| v.as_i64()).unwrap_or(1), "need": r[0].as_i64().map(crate::board::need_of_task).unwrap_or(Value::Null)})
 }
 
 pub const DISPATCH: &str = "role='task' and (json_extract(meta, '$.kind')='dispatch' or content like '[任务已派发]%')";
