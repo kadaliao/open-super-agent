@@ -32,6 +32,8 @@ pub fn migrate() {
     );
     // 重启时说不准有没有做成的写操作（Doubt 的 JSON 数组）：再重启一次、接着做、重试都还在
     db::add_column("task_runs", "doubts", "text");
+    // 任务停下（取消、失败）时还开着的工具步：重试、接着做时照“说不准”处理（见 Resume）
+    db::add_column("task_runs", "open_steps", "text");
 }
 
 // ---------- 存、取 ----------
@@ -129,16 +131,6 @@ fn can_continue(task_id: i64) -> bool {
     db::exists("select 1 from task_runs where task_id=? and msgs is not null", params![task_id])
 }
 
-/// 接着做、重试：末尾一轮没有全部拿到结果的 tool_calls 去掉（连同它后面的）
-fn trim_dangling(msgs: &mut Vec<Value>) {
-    let Some(ai) = msgs.iter().rposition(|m| m["role"] == "assistant") else { return };
-    let Some(calls) = msgs[ai]["tool_calls"].as_array().filter(|c| !c.is_empty()) else { return };
-    let got: Vec<&Value> = msgs[ai + 1..].iter().filter(|m| m["role"] == "tool").map(|m| &m["tool_call_id"]).collect();
-    if calls.iter().any(|c| !got.contains(&&c["id"])) {
-        msgs.truncate(ai);
-    }
-}
-
 struct Dispatched {
     bot_id: i64,
     chat_id: i64,
@@ -170,12 +162,19 @@ fn continue_round(
     resume: Option<Vec<StepInfo>>,
 ) -> Result<Arc<Task>, ApiError> {
     let bot = bots::get(run.bot_id).ok_or_else(|| ApiError::bad(t!("这个任务的 Bot 已经删除了")))?;
-    let mut msgs = run.msgs.unwrap_or_default();
-    if resume.is_none() {
-        trim_dangling(&mut msgs);
-    }
-    let a = &run.args;
+    let msgs = run.msgs.unwrap_or_default();
     let again = resume.is_some();
+    // 末尾那一轮没拿全结果的 tool_calls：重启恢复的重新执行（只读的）或记成说不准；
+    // 重试、接着做的不重新执行，给个“没有执行 / 没做完”的结果让模型重新决定，写操作同样记成说不准
+    let plan = match resume {
+        Some(steps) => Resume { steps, why: "restart", rerun: true },
+        None => {
+            let status = db::scalar("select status from task_runs where task_id=?", params![task_id]);
+            let (steps, why) = stopped_steps(task_id, status.as_str() == Some("interrupted"));
+            Resume { steps, why, rerun: false }
+        }
+    };
+    let a = &run.args;
     let round = if again { run.round } else { run.round + 1 };
     let result_chat = if again { a["result_chat"].as_i64() } else { thread };
     let mac = &a["mac"];
@@ -206,7 +205,8 @@ fn continue_round(
     if let Some(h) = &task.st.lock().handoff {
         crate::groups::expect(task.chat_id, h.to);
     }
-    *task.resume_steps.lock() = resume;
+    *task.resume_steps.lock() = Some(plan);
+    db::exec("update task_runs set open_steps=null where task_id=?", params![task_id]);
     // 上一轮（或重启前）还没了结的说不准的写操作带过来：那一步到底做没做成仍然没人确认过
     *task.doubts.lock() = load_doubts(task_id);
     task.inbox.lock().extend(notes);
@@ -279,7 +279,8 @@ fn post_followup(bot_id: i64, chat_id: i64, task_id: i64, text: &str) {
 }
 
 /// 用户发给任务的一句话：在做的下一步之前交给它，在等回答的就是回答，结束了的接着做一轮
-fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, How), ApiError> {
+/// thread：在讨论串里回复的（之后的结果也发进讨论串）；post：给任务的话存在哪个对话（没给是任务的对话）
+fn deliver_in(task_id: i64, text: &str, thread: Option<i64>, post: Option<i64>) -> Result<(Arc<Task>, How), ApiError> {
     let text = text.trim();
     if text.is_empty() {
         return Err(ApiError::bad(t!("要说的话不能为空")));
@@ -289,7 +290,7 @@ fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, 
         let question = t.waiting_kind().as_deref() == Some("question") && t.status() == "running";
         let aid = t.st.lock().waiting_approval;
         if question && let Some(aid) = aid {
-            post_followup(t.bot_id, thread.unwrap_or(t.chat_id), task_id, text);
+            post_followup(t.bot_id, thread.or(post).unwrap_or(t.chat_id), task_id, text);
             if let Some(th) = thread {
                 t.st.lock().result_chat = Some(th);
             }
@@ -306,7 +307,7 @@ fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, 
             }
         };
         if queued {
-            post_followup(t.bot_id, thread.unwrap_or(t.chat_id), task_id, text);
+            post_followup(t.bot_id, thread.or(post).unwrap_or(t.chat_id), task_id, text);
             if let Some(th) = thread {
                 t.st.lock().result_chat = Some(th);
             }
@@ -317,9 +318,25 @@ fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, 
         return Err(ApiError::bad(t!("服务刚重启，这个任务正在恢复，稍后再说")));
     }
     let run = load(task_id).filter(|r| r.msgs.is_some()).ok_or_else(|| ApiError::bad(why_not(&d)))?;
-    post_followup(run.bot_id, thread.unwrap_or(run.chat_id), task_id, text);
+    post_followup(run.bot_id, thread.or(post).unwrap_or(run.chat_id), task_id, text);
     let t = continue_round(task_id, run, vec![Note::user(text)], thread, None)?;
     Ok((t, How::Continue))
+}
+
+fn deliver(task_id: i64, text: &str, thread: Option<i64>) -> Result<(Arc<Task>, How), ApiError> {
+    deliver_in(task_id, text, thread, None)
+}
+
+/// 消息以卡片编号开头、那张卡正好一个任务在做（server::safe_handle）：交给那个任务，Bot 不被叫醒。
+/// 给任务的话存在用户发消息的那个对话里。交出去了返回 true
+pub fn tell_from(task_id: i64, text: &str, chat_id: i64) -> bool {
+    match deliver_in(task_id, text, None, Some(chat_id)) {
+        Ok(_) => true,
+        Err(e) => {
+            tracing::warn!("消息交给任务 #{task_id} 没成：{:?}", e.detail);
+            false
+        }
+    }
 }
 
 pub fn message(task_id: i64, text: &str) -> Result<Value, ApiError> {
@@ -435,6 +452,83 @@ pub struct StepInfo {
     pub status: String,
 }
 
+impl StepInfo {
+    fn to_json(&self) -> Value {
+        json!({"name": self.name, "detail": self.detail, "ts": self.ts, "status": self.status})
+    }
+    fn of(v: &Value) -> StepInfo {
+        StepInfo {
+            name: py::str_of(&v["name"]),
+            detail: py::str_of(&v["detail"]),
+            ts: v["ts"].as_f64().unwrap_or(0.0),
+            status: py::str_of(&v["status"]),
+        }
+    }
+}
+
+/// 末尾那一轮没拿全结果的 tool_calls 怎么处理（worker::resume_tail，三条路共用）。
+/// why：stall（卡住超时）、stopped（任务被停下）、restart（服务重启）；rerun：没开始的、在等确认的、只读的重新执行，
+/// 不然给个“没有执行 / 没做完”的结果让模型重新决定。开始了、没有结果的写操作一律记成说不准
+#[derive(Clone, Debug)]
+pub struct Resume {
+    pub steps: Vec<StepInfo>,
+    pub why: &'static str,
+    pub rerun: bool,
+}
+
+/// 这个任务现在还开着的工具步（开始了、没有结果；在等确认的状态是 waiting）
+pub fn open_steps(task_id: i64) -> Vec<StepInfo> {
+    db::rows(
+        "select name, detail, ts, status from task_steps where task_id=? and kind='tool' and status in ('running', 'waiting') order by id",
+        params![task_id],
+    )
+    .into_iter()
+    .map(|r| StepInfo { name: r.s(0), detail: r.s(1), ts: r.f(2), status: r.s(3) })
+    .collect()
+}
+
+/// 任务停下（取消、失败）时、开着的步结束之前调：存下还开着的工具步，重试、接着做时用；
+/// 正在执行的写操作在过程里注明一句（没人重试的话就到此为止）
+pub fn keep_open_steps(task: &Task) {
+    if !task.store {
+        return;
+    }
+    let steps = open_steps(task.id);
+    let js: Vec<Value> = steps.iter().map(StepInfo::to_json).collect();
+    db::exec("update task_runs set open_steps=? where task_id=?", params![py::dumps_u(&json!(js)), task.id]);
+    for s in steps.iter().filter(|s| s.status == "running" && crate::worker::is_write(&s.name, &s.detail)) {
+        tasklog::Log::new(task, "")
+            .note(&t!("任务停下时 {tool} 正在执行，说不准有没有做成；重试或接着做时会先让 Bot 查，再做要先问你", tool = s.name), "error");
+    }
+}
+
+/// 重试、接着做：上次停下时存下的开着的步；没存（升级前、服务重启后没接着做被标成中断的）就从过程里找那时还开着、后来被标成中断的
+fn stopped_steps(task_id: i64, interrupted: bool) -> (Vec<StepInfo>, &'static str) {
+    let saved = db::scalar("select open_steps from task_runs where task_id=?", params![task_id]);
+    if let Some(v) = saved.as_str().and_then(|s| serde_json::from_str::<Value>(s).ok()) {
+        return (v.as_array().map(|a| a.iter().map(StepInfo::of).collect()).unwrap_or_default(), "stopped");
+    }
+    if interrupted {
+        let steps = db::rows(
+            "select name, detail, ts, 'running' from task_steps where task_id=? and kind='tool' and status='interrupted' order by id",
+            params![task_id],
+        )
+        .into_iter()
+        .map(|r| StepInfo { name: r.s(0), detail: r.s(1), ts: r.f(2), status: r.s(3) })
+        .collect();
+        return (steps, "restart");
+    }
+    (vec![], "stopped")
+}
+
+/// 卡住时取消了这一步：已经做完的调用的结果（save_result 一个个存下的）
+pub fn saved_results(task: &Task, calls: &[Value]) -> Vec<Value> {
+    let ids: Vec<&Value> = calls.iter().map(|c| &c["id"]).collect();
+    let Some(msgs) = load(task.id).and_then(|r| r.msgs) else { return vec![] };
+    let Some(ai) = msgs.iter().rposition(|m| m["role"] == "assistant") else { return vec![] };
+    msgs[ai + 1..].iter().filter(|m| m["role"] == "tool" && ids.contains(&&m["tool_call_id"])).cloned().collect()
+}
+
 /// 启动时挑出来、等着恢复的任务，和它们还开着的工具步
 static HELD: LazyLock<Mutex<HashMap<i64, Vec<StepInfo>>>> = LazyLock::new(Default::default);
 
@@ -453,14 +547,7 @@ pub fn resumable() -> Vec<i64> {
     .collect();
     let mut held = HELD.lock();
     for id in &ids {
-        let steps = db::rows(
-            "select name, detail, ts, status from task_steps where task_id=? and kind='tool' and status in ('running', 'waiting') order by id",
-            params![id],
-        )
-        .into_iter()
-        .map(|r| StepInfo { name: r.s(0), detail: r.s(1), ts: r.f(2), status: r.s(3) })
-        .collect();
-        held.insert(*id, steps);
+        held.insert(*id, open_steps(*id));
     }
     ids
 }
@@ -528,11 +615,13 @@ pub struct Doubt {
     pub settled: Option<String>,
     /// 了结以后已经在某一轮的结果里注明过（之后不再带）
     pub noted: bool,
+    /// 为什么说不准：stall（卡住超时）、stopped（任务被停下）、restart（服务重启）
+    pub why: String,
 }
 
 impl Doubt {
     fn to_json(&self) -> Value {
-        json!({"tool": self.tool, "args": self.args, "started": self.started, "settled": self.settled, "noted": self.noted})
+        json!({"tool": self.tool, "args": self.args, "started": self.started, "settled": self.settled, "noted": self.noted, "why": self.why})
     }
 
     fn of(v: &Value) -> Option<Doubt> {
@@ -542,6 +631,7 @@ impl Doubt {
             started: v["started"].as_f64().unwrap_or(0.0),
             settled: v["settled"].as_str().map(String::from),
             noted: v["noted"] == true,
+            why: v["why"].as_str().unwrap_or("restart").to_string(),
         })
     }
 }
@@ -563,9 +653,14 @@ pub fn load_doubts(task_id: i64) -> Vec<Doubt> {
 }
 
 /// 说不准的那一步给模型的工具结果
-pub fn doubt_text(tool: &str, args: &str, started: f64) -> String {
+pub fn doubt_text(why: &str, tool: &str, args: &str, started: f64) -> String {
+    let when = match why {
+        "stall" => "这一步卡住超时、没有做完就被打断了",
+        "stopped" => "这一步没有做完任务就被停下了",
+        _ => "这一步在服务重启时正在执行",
+    };
     format!(
-        "这一步在服务重启时正在执行，不知道有没有做成：工具 {tool}，参数 {args}，{} 开始执行。\
+        "{when}，不知道有没有做成：工具 {tool}，参数 {args}，{} 开始执行。\
 先用只读的办法查一下它有没有做成（比如已发送的邮件、文件在不在、页面现在的样子、记录有没有多一条），查到了就照查到的接着做；\
 查不出来、确实要再做一次的，照常调用这个工具，会先请用户确认。",
         py::strftime_at(started, "%H:%M:%S")
@@ -598,7 +693,12 @@ pub fn doubt_note(task: &Task) -> String {
                 Some(_) => t!("用户决定不再做"),
                 None => t!("之后没有再做这一步"),
             };
-            format!("\n\n{}", t!("（注：服务重启时 {tool} 这一步正在执行，说不准有没有做成；{how}。）", tool = d.tool, how = how))
+            let note = match d.why.as_str() {
+                "stall" => t!("（注：{tool} 这一步卡住超时被打断，说不准有没有做成；{how}。）", tool = d.tool, how = how),
+                "stopped" => t!("（注：任务被停下时 {tool} 这一步正在执行，说不准有没有做成；{how}。）", tool = d.tool, how = how),
+                _ => t!("（注：服务重启时 {tool} 这一步正在执行，说不准有没有做成；{how}。）", tool = d.tool, how = how),
+            };
+            format!("\n\n{note}")
         })
         .collect()
 }

@@ -530,3 +530,88 @@ def test_unsettled_doubt_carried_to_next_round(llm):
             ws.close()
         srv.stop()
         llm.reset()
+
+
+# ---------- 卡住、用户停下时没做完的写操作（wire 补充说明 1） ----------
+@pytest.fixture(scope="module")
+def ssrv(llm):
+    # 2 秒没动静算卡住；假应用的慢工具；写操作平常不用确认
+    s = Server(llm, config={"limits": limits(task_stall_s=2, watchdog_interval_s=1), "mcp_servers": SLOW_APP})
+    wait_app(s)
+    s.post("/api/rules", {"pattern": "slow__slow_append", "action": "allow"})
+    yield s
+    s.stop()
+
+
+def test_stalled_write_becomes_doubt(ssrv, fake):
+    ws = Socket(ssrv)
+    try:
+        log = ssrv.tmp / "stall.log"
+        bot = ssrv.make_bot("StallWrite")
+        fake.script("router:StallWrite", Call("dispatch", {"goal": "追加一行"}), "派了")
+        fake.script("worker", Call("slow__slow_append", {"text": "s-1", "seconds": 6, "log": str(log)}),
+                    Call("slow__slow_append", {"text": "s-2", "seconds": 0.1, "log": str(log)}), "收尾了")
+        ws.say(bot["chat_id"], "追加一行")
+        tid = until(lambda: ssrv.find(bot["chat_id"], kind="dispatch"), what="派发")[0]["id"]
+        card = until(lambda: [a for a in ssrv.get("/api/bootstrap")["approvals"] if a["task_id"] == tid], timeout=15,
+                     what="卡住后再调同一个工具照样弹卡片")[0]
+        assert card["doubt"]["why"] == "stall" and "s-1" in card["doubt"]["args"] and card["scopes"] == ["once"]
+        body = fake.bodies("worker")[1]
+        assert "卡住超时" in tool_text(body) and "不知道有没有做成" in tool_text(body)
+        ws.send({"type": "approve", "id": card["id"], "ok": False, "note": "done"})
+        res = until(lambda: results(ssrv, bot["chat_id"], tid), timeout=15, what="结果")
+        assert res[0]["meta"]["status"] == "done" and "卡住超时被打断" in res[0]["content"] and "之前已经做成" in res[0]["content"]
+        assert "用户确认这一步之前已经做成" in tool_text(fake.bodies("worker")[-1])
+        assert [x for x in lines(log) if x.startswith("append-start")] == ["append-start s-1"]
+        notes = [s["title"] for s in detail(ssrv, tid)["steps"] if s["kind"] == "note"]
+        assert any("做完的留着" in n for n in notes)
+    finally:
+        ws.close()
+
+
+def test_stopped_write_then_retry_asks(ssrv, fake):
+    ws = Socket(ssrv)
+    try:
+        log = ssrv.tmp / "stop.log"
+        bot = ssrv.make_bot("StopWrite")
+        fake.script("router:StopWrite", Call("dispatch", {"goal": "追加一行"}), "派了")
+        # 1.5 秒：比卡住的时限短，不会被当成卡住
+        fake.script("worker", Call("slow__slow_append", {"text": "t-1", "seconds": 1.5, "log": str(log)}),
+                    Call("slow__slow_append", {"text": "t-2", "seconds": 0.1, "log": str(log)}), "收尾了")
+        ws.say(bot["chat_id"], "追加一行")
+        tid = until(lambda: ssrv.find(bot["chat_id"], kind="dispatch"), what="派发")[0]["id"]
+        until(lambda: "append-start t-1" in lines(log), what="写操作开始执行")
+        ssrv.post(f"/api/tasks/{tid}/cancel")
+        until(lambda: detail(ssrv, tid)["task"]["status"] == "cancelled", what="停下")
+        notes = [s["title"] for s in detail(ssrv, tid)["steps"] if s["kind"] == "note"]
+        assert any("任务停下时 slow__slow_append 正在执行" in n for n in notes)
+        r = ssrv.post(f"/api/tasks/{tid}/retry")
+        assert r["task"]["status"] == "running"
+        card = until(lambda: [a for a in ssrv.get("/api/bootstrap")["approvals"] if a["task_id"] == tid], timeout=15,
+                     what="重试后再调同一个工具照样弹卡片")[0]
+        assert card["doubt"]["why"] == "stopped" and "t-1" in card["doubt"]["args"]
+        assert "没有做完任务就被停下了" in tool_text(fake.bodies("worker")[1])
+        ws.send({"type": "approve", "id": card["id"], "ok": False, "note": "done"})
+        res = until(lambda: results(ssrv, bot["chat_id"], tid), timeout=15, what="结果")
+        assert "任务被停下时 slow__slow_append" in res[-1]["content"]
+        assert [x for x in lines(log) if x.startswith("append-start")] == ["append-start t-1"]
+    finally:
+        ws.close()
+
+
+def test_stalled_read_only_retries_once(ssrv, fake):
+    ws = Socket(ssrv)
+    try:
+        log = ssrv.tmp / "lookup.log"
+        bot = ssrv.make_bot("StallRead")
+        fake.script("router:StallRead", Call("dispatch", {"goal": "慢慢查"}), "派了")
+        fake.script("worker", Call("slow__slow_lookup", {"seconds": 5, "log": str(log)}), "不会走到这里")
+        ws.say(bot["chat_id"], "慢慢查")
+        tid = until(lambda: ssrv.find(bot["chat_id"], kind="dispatch"), what="派发")[0]["id"]
+        until(lambda: [m for m in ssrv.find(bot["chat_id"], kind="cancel") if m["meta"]["task_id"] == tid], timeout=20,
+              what="重做一次还卡住才取消")
+        assert lines(log).count("lookup-start") == 2   # 只读的：重做了一次
+        assert len(fake.bodies("worker")) == 1   # 没有当成说不准、没有再问模型
+    finally:
+        ws.close()
+    time.sleep(4)   # 等假应用那边睡完

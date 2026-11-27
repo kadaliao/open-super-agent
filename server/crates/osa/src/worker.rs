@@ -231,7 +231,7 @@ async fn call_tool(
     if let Some(i) = open {
         let d = task.doubts.lock()[i].clone();
         let checked = task.last_say.lock().clone();
-        let extra = json!({"doubt": {"started": d.started, "tool": d.tool, "args": d.args, "checked": checked}});
+        let extra = json!({"doubt": {"started": d.started, "tool": d.tool, "args": d.args, "checked": checked, "why": d.why}});
         log.update(step, None, Some("waiting"));
         let (ok, note, after) =
             approvals::request_with(task, name, &args, approvals::Req { once: true, ..Default::default() }, &extra).await;
@@ -327,6 +327,15 @@ async fn run_tool(
     }
 }
 
+/// 工具自己报了超时、连接断了这类错（应用那头可能其实做成了）
+fn maybe_done(out: &str) -> bool {
+    let head = py::head(out, 400).to_lowercase();
+    (head.contains("出错") || head.contains("error") || head.contains("失败") || head.contains("failed"))
+        && ["timeout", "timed out", "超时", "connection", "连接", "连不上", "broken pipe", "reset by peer", "eof"]
+            .iter()
+            .any(|k| head.contains(k))
+}
+
 /// 这个调用能不能和相邻的只读调用一起跑：能就返回 (组, 同组同时最多几个)
 fn lane(call: &Value, env: &Value) -> Option<(String, usize)> {
     let name = call["function"]["name"].as_str().unwrap_or("");
@@ -391,8 +400,11 @@ async fn run_calls(task: &Arc<Task>, log: &Log, calls: &[Value], env: &Value) ->
                     Some(s) => Some(s.acquire().await),
                     None => None,
                 };
-                let (out, status) = call_tool(&task, &log, &step, &name, &raw, &env, &mut shots).await;
+                let (mut out, status) = call_tool(&task, &log, &step, &name, &raw, &env, &mut shots).await;
                 drop(_permit);
+                if maybe_done(&out) && is_write(&name, &raw) {
+                    out.push_str("\n（写操作超时或连接断了：这一步可能已经做成了。重做之前先用只读的办法查一下有没有做成。）");
+                }
                 log.finish(&step, &status, Some(&out), None);
                 // 做完一个存一个：整轮做完前重启的话，做完的不用重做
                 if env["pages"] == true {
@@ -520,6 +532,14 @@ async fn run_inner(task: Arc<Task>, goal: &str, label: &str) -> anyhow::Result<S
             if !known.is_empty() {
                 system += &format!("\n\n关于用户（长期记忆，做事时遵守其中的偏好）：\n{known}");
             }
+            // 任务所属项目的记忆：只有这个项目的任务读到
+            if let Some(p) = crate::board::project_of_task(task.id) {
+                let pm = memories::project_lines(p);
+                if !pm.is_empty() {
+                    let name = crate::board::project_label(p).unwrap_or_default();
+                    system += &format!("\n\n这个任务属于项目 {name}，项目的记忆（做事时遵守）：\n{pm}");
+                }
+            }
             vec![json!({"role": "system", "content": system}), json!({"role": "user", "content": goal})]
         }
     };
@@ -533,8 +553,8 @@ async fn run_inner(task: Arc<Task>, goal: &str, label: &str) -> anyhow::Result<S
     let store = pages && task.store;
     let max = config::get_i64("limits.worker_max_steps", 30);
     let resume = task.resume_steps.lock().take().filter(|_| store);
-    if let Some(steps) = resume {
-        resume_tail(&task, &log, &mut msgs, steps, &env).await;
+    if let Some(plan) = resume {
+        resume_tail(&task, &log, &mut msgs, plan, &env).await;
     }
     for _ in 0..max {
         take_inbox(&task, &log, &mut msgs);
@@ -580,6 +600,20 @@ async fn run_inner(task: Arc<Task>, goal: &str, label: &str) -> anyhow::Result<S
             _ = token.cancelled() => None,
         };
         let Some(results) = results else {
+            if store {
+                // 卡住时取消了这一步：做完的调用结果留着，只读的重新执行，开始了、没有结果的写操作记成说不准
+                // （这时不算“重试这一步”：模型拿到说不准的结果接着往下走）
+                let open = taskstore::open_steps(task.id);
+                msgs.extend(taskstore::saved_results(&task, &calls));
+                tasklog::end_open(&task, "error");
+                log.note(&t!("这一步一直没有进展：做完的留着，没做完的重新处理"), "error");
+                task.touch();
+                let plan = taskstore::Resume { steps: open, why: "stall", rerun: true };
+                if resume_tail(&task, &log, &mut msgs, plan, &env).await {
+                    task.st.lock().stall_retried = false;
+                }
+                continue;
+            }
             stalled(&task, &log, &mut msgs, mark);
             continue;
         };
@@ -613,21 +647,27 @@ async fn run_inner(task: Arc<Task>, goal: &str, label: &str) -> anyhow::Result<S
     Ok(answer)
 }
 
-/// 重启后恢复：存下的过程末尾那一轮 tool_calls 还没全部拿到结果。已有结果的照旧；没开始的、在等确认的、只读的重新执行；
-/// 说不准有没有做成的写操作不重做，结果写成“不知道有没有做成”，记进任务的 doubts，之后再调同一个工具时一律先问
-async fn resume_tail(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>, steps: Vec<taskstore::StepInfo>, env: &Value) {
-    let Some(ai) = msgs.iter().rposition(|m| m["role"] == "assistant") else { return };
-    let Some(calls) = msgs[ai]["tool_calls"].as_array().cloned().filter(|c| !c.is_empty()) else { return };
+/// 存下的过程末尾那一轮 tool_calls 还没全部拿到结果（服务重启后恢复、卡住时取消了这一步、重试和接着做，三条路共用）。
+/// 已有结果的照旧；没开始的、在等确认的、只读的：plan.rerun 时重新执行，不然给一句“没有执行 / 没做完”让模型重新决定；
+/// 开始了、没有结果的写操作不重做，结果写成“不知道有没有做成”，记进任务的 doubts（存数据库），之后再调同一个工具时一律先问。
+/// 返回有没有记下说不准的写操作
+async fn resume_tail(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>, plan: taskstore::Resume, env: &Value) -> bool {
+    let Some(ai) = msgs.iter().rposition(|m| m["role"] == "assistant") else { return false };
+    let Some(calls) = msgs[ai]["tool_calls"].as_array().cloned().filter(|c| !c.is_empty()) else { return false };
     let mut have: HashMap<String, Value> = HashMap::new();
     for m in &msgs[ai + 1..] {
         if m["role"] == "tool" {
             have.insert(py::str_of(&m["tool_call_id"]), m.clone());
         }
     }
+    if calls.iter().all(|c| have.contains_key(&py::str_of(&c["id"]))) && msgs.len() == ai + 1 + have.len() {
+        return false; // 都有结果，原样
+    }
     msgs.truncate(ai + 1);
-    let mut steps = steps;
+    let mut steps = plan.steps;
     let mut rerun = vec![];
-    let mut doubts: HashMap<String, String> = HashMap::new();
+    let mut fixed: HashMap<String, String> = HashMap::new();
+    let mut doubted = false;
     for c in &calls {
         let id = py::str_of(&c["id"]);
         if have.contains_key(&id) {
@@ -637,29 +677,46 @@ async fn resume_tail(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>, steps: 
         let raw = c["function"]["arguments"].as_str().unwrap_or("").to_string();
         let detail = py::head(&raw, 2000);
         let step = steps.iter().position(|s| s.name == name && s.detail == detail).map(|i| steps.remove(i));
-        let uncertain = match &step {
-            None => false,                             // 还没开始
-            Some(s) if s.status == "waiting" => false, // 在等确认，没做
-            Some(_) => !redo_safe(&name, c, env),
-        };
-        if uncertain {
-            let s = step.unwrap();
-            let args = py::head(&raw, 1000);
-            doubts.insert(id, taskstore::doubt_text(&name, &args, s.ts));
-            task.doubts.lock().push(taskstore::Doubt { tool: name.clone(), args, started: s.ts, settled: None, noted: false });
-            log.note(&t!("服务重启时 {tool} 这一步正在执行，说不准有没有做成：先让 Bot 查一下，要再做会先问你", tool = name), "done");
-        } else {
-            rerun.push(c.clone());
+        let started = step.as_ref().filter(|s| s.status != "waiting");
+        match started {
+            Some(s) if !redo_safe(&name, c, env) => {
+                let args = py::head(&raw, 1000);
+                fixed.insert(id, taskstore::doubt_text(plan.why, &name, &args, s.ts));
+                task.doubts.lock().push(taskstore::Doubt {
+                    tool: name.clone(),
+                    args,
+                    started: s.ts,
+                    settled: None,
+                    noted: false,
+                    why: plan.why.to_string(),
+                });
+                doubted = true;
+                let note = match plan.why {
+                    "stall" => t!("{tool} 这一步卡住超时被打断，说不准有没有做成：先让 Bot 查一下，要再做会先问你", tool = name),
+                    "stopped" => t!("任务被停下时 {tool} 这一步正在执行，说不准有没有做成：先让 Bot 查一下，要再做会先问你", tool = name),
+                    _ => t!("服务重启时 {tool} 这一步正在执行，说不准有没有做成：先让 Bot 查一下，要再做会先问你", tool = name),
+                };
+                log.note(&note, "done");
+            }
+            _ if plan.rerun => rerun.push(c.clone()),
+            Some(_) => {
+                fixed.insert(id, "这一步没有做完任务就停下了（只读的，没有影响）。还需要的话重新调用。".into());
+            }
+            None if step.is_some() => {
+                fixed.insert(id, "这一步没有执行：任务停下时它还在等用户确认。还需要的话重新调用（会再请用户确认）。".into());
+            }
+            None => {
+                fixed.insert(id, "这一步没有执行：任务停下时它还没开始。还需要的话重新调用。".into());
+            }
         }
     }
-    if !doubts.is_empty() {
-        taskstore::save_doubts(task); // 新记下的和重启前没了结的并在一起存
+    if doubted {
+        taskstore::save_doubts(task); // 新记下的和之前没了结的并在一起存
     }
     let results = if rerun.is_empty() { vec![] } else { run_calls(task, log, &rerun, env).await };
-    let mut redone: HashMap<String, String> = HashMap::new();
     let mut shots = vec![];
     for (c, (out, got)) in rerun.iter().zip(results) {
-        redone.insert(py::str_of(&c["id"]), out);
+        fixed.insert(py::str_of(&c["id"]), out);
         shots.extend(got);
     }
     for c in &calls {
@@ -667,13 +724,21 @@ async fn resume_tail(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>, steps: 
         if let Some(m) = have.remove(&id) {
             msgs.push(m);
         } else {
-            let out = doubts.remove(&id).or_else(|| redone.remove(&id)).unwrap_or_default();
+            let out = fixed.remove(&id).unwrap_or_default();
             msgs.push(json!({"role": "tool", "tool_call_id": c["id"], "content": py::head(&out, 8000)}));
         }
     }
     if let Some(s) = shots.last() {
         msgs.push(ctools::image_message(&s.png, s.caption.as_deref(), true));
     }
+    doubted
+}
+
+/// 是不是写操作（重做一遍会有后果的）：工具名和参数（任务过程里存的那份）。拿不准的算写操作
+pub fn is_write(name: &str, raw: &str) -> bool {
+    let env = json!({"scope": WORKER, "pages": true, "use_pc": config::get_bool("computer.enabled", true)});
+    let call = json!({"function": {"name": name, "arguments": raw}});
+    !redo_safe(name, &call, &env)
 }
 
 /// 重做一遍也没关系的调用：只读的（不用确认、能并行的：查询、读网页、读文件），和只是问用户的。

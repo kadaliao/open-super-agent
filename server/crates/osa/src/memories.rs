@@ -2,6 +2,9 @@
 //! kind=digest 是整理时写的每日摘要（共享，见 consolidate.rs）。对应 osa/memories.py。
 //!
 //! until（截止日，秒，那一天结束的时刻）过了的不再进任何提示词，下次整理时删掉；pinned（置顶）的不过期，整理时也不动。
+//!
+//! project_id 不为空的是项目记忆（bot_id 为空）：只有这个项目的任务的 Worker 读到，Router 在状态里看到当前对话里进行中的卡
+//! 所属项目的记忆。下面“共享的”（bot_id 为空）查询都要带 `project_id is null`。
 
 use crate::db::{self, RowExt};
 use crate::{memory, providers, py};
@@ -20,8 +23,14 @@ pub const PROMPT_RELATED: usize = 20;
 pub const PROMPT_WORK: i64 = 10;
 /// 每日摘要多久以内的才放进每轮的状态（服务停了很久，就不带一条很旧的）
 pub const DIGEST_FRESH: f64 = 3.0 * 86400.0;
+/// 一个项目最多记几条
+pub const MAX_PROJECT: i64 = 100;
+/// 提示词里每个项目最多带几条
+pub const PROMPT_PROJECT: i64 = 40;
 
-const COLS: &str = "id, bot_id, kind, text, source, created, updated, until, pinned";
+const COLS: &str = "id, bot_id, kind, text, source, created, updated, until, pinned, project_id";
+/// 不是项目记忆（原来的记忆）
+const NO_PROJECT: &str = "project_id is null";
 
 pub fn migrate() {
     db::batch(
@@ -33,6 +42,7 @@ pub fn migrate() {
     // osa/memories.py 的 insert 都写了列名，加列不影响 Python 版
     db::add_column("memories", "until", "real");
     db::add_column("memories", "pinned", "integer default 0");
+    db::add_column("memories", "project_id", "integer");
 }
 
 /// 还在用的：置顶的，或者没有截止日、截止日还没到的（拼进 SQL 的条件）
@@ -41,8 +51,9 @@ pub fn active_sql() -> String {
 }
 
 fn out(r: &[Value]) -> Value {
-    json!({"id": r[0], "bot_id": r[1], "shared": r[1].is_null(), "kind": r[2], "text": r[3], "source": r[4],
-           "created": r[5], "updated": r[6], "until": r[7], "pinned": py::truthy(&r[8])})
+    let project = r.get(9).cloned().unwrap_or(Value::Null);
+    json!({"id": r[0], "bot_id": r[1], "shared": r[1].is_null() && project.is_null(), "kind": r[2], "text": r[3], "source": r[4],
+           "created": r[5], "updated": r[6], "until": r[7], "pinned": py::truthy(&r[8]), "project_id": project})
 }
 
 /// 过期了没有（置顶的不过期）
@@ -57,7 +68,7 @@ pub fn get(mid: i64) -> Option<Value> {
 /// 面板用：全部，过期的也在（置顶的排前面）
 fn list(bot_id: Option<i64>, kind: &str, limit: i64) -> Vec<Value> {
     db::rows(
-        &format!("select {COLS} from memories where bot_id is ? and kind=? order by pinned desc, updated desc limit ?"),
+        &format!("select {COLS} from memories where bot_id is ? and kind=? and {NO_PROJECT} order by pinned desc, updated desc limit ?"),
         params![bot_id, kind, limit],
     )
     .iter()
@@ -69,7 +80,7 @@ fn list(bot_id: Option<i64>, kind: &str, limit: i64) -> Vec<Value> {
 fn active(bot_id: Option<i64>, kind: &str, limit: i64) -> Vec<Value> {
     db::rows(
         &format!(
-            "select {COLS} from memories where bot_id is ? and kind=? and {} order by pinned desc, updated desc limit ?",
+            "select {COLS} from memories where bot_id is ? and kind=? and {NO_PROJECT} and {} order by pinned desc, updated desc limit ?",
             active_sql()
         ),
         params![bot_id, kind, limit],
@@ -161,15 +172,17 @@ pub fn add(bot_id: Option<i64>, text: &str, source: &str) -> Result<Value, Strin
 pub fn add_until(bot_id: Option<i64>, text: &str, source: &str, until: Option<f64>) -> Result<Value, String> {
     let text = clean(text)?;
     let now = py::now();
-    if let Some(old) = db::row("select id from memories where bot_id is ? and kind='note' and lower(text)=lower(?)", params![bot_id, text])
-    {
+    if let Some(old) = db::row(
+        &format!("select id from memories where bot_id is ? and kind='note' and {NO_PROJECT} and lower(text)=lower(?)"),
+        params![bot_id, text],
+    ) {
         db::exec("update memories set updated=? where id=?", params![now, old.i(0)]);
         if until.is_some() {
             set_until(old.i(0), until);
         }
         return Ok(get(old.i(0)).unwrap_or(Value::Null));
     }
-    let n = db::scalar_i64("select count(*) from memories where bot_id is ? and kind='note'", params![bot_id]);
+    let n = db::scalar_i64(&format!("select count(*) from memories where bot_id is ? and kind='note' and {NO_PROJECT}"), params![bot_id]);
     let cap = if bot_id.is_none() { MAX_SHARED } else { MAX_NOTES };
     if n >= cap {
         return Err(if bot_id.is_none() {
@@ -205,6 +218,64 @@ pub fn update(mid: i64, text: Option<&str>, bot_id: Option<Option<i64>>) -> Resu
 
 pub fn delete(mid: i64) {
     db::exec("delete from memories where id=?", params![mid]);
+}
+
+/// 删项目时它的记忆一起删。返回删了几条
+pub fn delete_for_project(project_id: i64) -> usize {
+    db::exec("delete from memories where project_id=?", params![project_id])
+}
+
+/// 项目的记忆（面板用：全部，过期的也在）
+pub fn list_project(project_id: i64) -> Vec<Value> {
+    db::rows(
+        &format!("select {COLS} from memories where project_id=? and kind='note' order by pinned desc, updated desc limit 1000"),
+        params![project_id],
+    )
+    .iter()
+    .map(|r| out(r))
+    .collect()
+}
+
+/// 项目还在用的记忆（进提示词）
+pub fn active_project(project_id: i64, limit: i64) -> Vec<Value> {
+    db::rows(
+        &format!(
+            "select {COLS} from memories where project_id=? and kind='note' and {} order by pinned desc, updated desc limit ?",
+            active_sql()
+        ),
+        params![project_id, limit],
+    )
+    .iter()
+    .map(|r| out(r))
+    .collect()
+}
+
+/// 记一条项目记忆（不属于哪个 Bot）。同一个项目里已经有一模一样的就只刷新时间
+pub fn add_project(project_id: i64, text: &str, source: &str, until: Option<f64>) -> Result<Value, String> {
+    let text = clean(text)?;
+    let now = py::now();
+    if let Some(old) =
+        db::row("select id from memories where project_id=? and kind='note' and lower(text)=lower(?)", params![project_id, text])
+    {
+        db::exec("update memories set updated=? where id=?", params![now, old.i(0)]);
+        if until.is_some() {
+            set_until(old.i(0), until);
+        }
+        return Ok(get(old.i(0)).unwrap_or(Value::Null));
+    }
+    if db::scalar_i64("select count(*) from memories where project_id=? and kind='note'", params![project_id]) >= MAX_PROJECT {
+        return Err(t!("这个项目的记忆最多 {n} 条，先删掉一些旧的", n = MAX_PROJECT));
+    }
+    let mid = db::insert(
+        "insert into memories(bot_id, kind, text, source, created, updated, until, project_id) values(null,?,?,?,?,?,?,?)",
+        params!["note", text, source, now, now, until, project_id],
+    );
+    Ok(get(mid).unwrap_or(Value::Null))
+}
+
+/// 项目记忆在提示词里的样子（#后面是编号）。没有是空的
+pub fn project_lines(project_id: i64) -> String {
+    lines(&active_project(project_id, PROMPT_PROJECT))
 }
 
 pub fn delete_for_bot(bot_id: i64) {
@@ -255,15 +326,14 @@ fn note_tail(m: &Value) -> String {
 }
 
 fn lines(items: &[Value]) -> String {
-    items
-        .iter()
-        .map(|m| format!("- #{} {}{}", py::str_of(&m["id"]), py::str_of(&m["text"]), note_tail(m)))
-        .collect::<Vec<_>>()
-        .join("\n")
+    items.iter().map(|m| format!("- #{} {}{}", py::str_of(&m["id"]), py::str_of(&m["text"]), note_tail(m))).collect::<Vec<_>>().join("\n")
 }
 
 fn count(bot_id: Option<i64>) -> i64 {
-    db::scalar_i64(&format!("select count(*) from memories where bot_id is ? and kind='note' and {}", active_sql()), params![bot_id])
+    db::scalar_i64(
+        &format!("select count(*) from memories where bot_id is ? and kind='note' and {NO_PROJECT} and {}", active_sql()),
+        params![bot_id],
+    )
 }
 
 pub async fn related(bot_id: i64, text: &str) -> Vec<i64> {
@@ -274,7 +344,7 @@ pub async fn related(bot_id: i64, text: &str) -> Vec<i64> {
         .await
         .into_iter()
         .filter_map(|h| h["ref"].as_i64())
-        .filter(|i| get(*i).is_some_and(|m| !expired(&m)))
+        .filter(|i| get(*i).is_some_and(|m| !expired(&m) && m["project_id"].is_null()))
         .collect()
 }
 
@@ -313,7 +383,7 @@ pub fn turn_block(bot_id: i64, related_ids: &[i64]) -> String {
         .iter()
         .filter(|i| !shown_ids.contains(i))
         .filter_map(|i| get(*i))
-        .filter(|m| m["kind"] == "note" && !expired(m))
+        .filter(|m| m["kind"] == "note" && !expired(m) && m["project_id"].is_null())
         .take(PROMPT_RELATED)
         .collect();
     let work = list(Some(bot_id), "work", PROMPT_WORK);
