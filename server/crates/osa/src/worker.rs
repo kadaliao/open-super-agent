@@ -281,8 +281,18 @@ async fn run_tool(
         }
         return (out, "done".into());
     }
-    let Some(tool) = registry::available(name, WORKER, env) else {
-        return ("未知工具".into(), "error".into());
+    let tool = match registry::available(name, WORKER, env) {
+        Some(t) => t,
+        None => {
+            // 应用的工具、而应用还在连（服务刚重启，应用是在后台连的）：等它连上再看一次，免得把“还没连上”当成“没有这个工具”
+            if name.contains("__") {
+                crate::taskstore::wait_apps().await;
+            }
+            match registry::available(name, WORKER, env) {
+                Some(t) => t,
+                None => return ("未知工具".into(), "error".into()),
+            }
+        }
     };
     progress(progress_text(&tool, name, &args));
     let mut args = args;

@@ -189,8 +189,15 @@ pub fn utf16_len(s: &str) -> usize {
 }
 
 /// 任务结束：还没做完的步骤跟着结束；失败、取消的话记一笔原因
+/// 这个任务还开着的步。先把 LIVE 里的拷出来、放开 LIVE 的锁，再逐个看：
+/// finish() 是先锁住一步、再锁 LIVE 的，这里要是拿着 LIVE 去锁每一步，两个任务差不多同时结束时就会互相等死，整个服务卡住。
+fn open_of(task_id: i64) -> Vec<StepRef> {
+    let all: Vec<StepRef> = LIVE.lock().values().cloned().collect();
+    all.into_iter().filter(|s| s.lock().task_id == task_id).collect()
+}
+
 pub fn close(task: &Task, status: &str, text: &str) {
-    let open_steps: Vec<StepRef> = LIVE.lock().values().filter(|s| s.lock().task_id == task.id).cloned().collect();
+    let open_steps = open_of(task.id);
     for s in open_steps {
         let w = s.lock().worker.clone();
         Log::new(task, &w).finish(&s, if status == "cancelled" { "cancelled" } else { "error" }, None, None);
@@ -202,7 +209,7 @@ pub fn close(task: &Task, status: &str, text: &str) {
 
 /// 还开着的步骤（想到一半、工具调到一半）都结束掉：重试这一步、从上一步重来之前用
 pub fn end_open(task: &Task, status: &str) {
-    let open_steps: Vec<StepRef> = LIVE.lock().values().filter(|s| s.lock().task_id == task.id).cloned().collect();
+    let open_steps = open_of(task.id);
     for s in open_steps {
         let w = s.lock().worker.clone();
         Log::new(task, &w).finish(&s, status, None, None);

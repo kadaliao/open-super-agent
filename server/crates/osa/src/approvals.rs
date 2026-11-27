@@ -432,6 +432,10 @@ pub fn resolve(aid: i64, ok: bool, note: &str, always: bool, edits: &Value, scop
         ev["rule"] = json!(pattern);
     }
     ev["edited"] = json!(edited);
+    // 提问的回答、说不准那一步选了什么（done / stop）：带上，聊天软件和别的窗口才写得出“已回答：……”“已经做成了”
+    if item["kind"] == "question" || !item["doubt"].is_null() {
+        ev["note"] = json!(note);
+    }
     tokio::spawn(async move { server::broadcast(ev) });
     let mut out = if ok { t!("已允许请求 #{id}", id = aid) } else { t!("已拒绝请求 #{id}", id = aid) };
     if scope == "always" {

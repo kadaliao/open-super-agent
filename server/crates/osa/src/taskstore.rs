@@ -589,7 +589,8 @@ pub async fn resume() {
 }
 
 /// 应用是后台连的：等启用了的都连上（或者连不上），最多 20 秒，不然恢复的任务一上来调应用的工具就是“未知工具”
-async fn wait_apps() {
+/// 等启用了的应用都离开“连接中”（最多 20 秒）。没有应用在连时 0.3 秒就返回
+pub async fn wait_apps() {
     let end = py::now() + 20.0;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     while py::now() < end {

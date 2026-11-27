@@ -615,3 +615,23 @@ def test_stalled_read_only_retries_once(ssrv, fake):
     finally:
         ws.close()
     time.sleep(4)   # 等假应用那边睡完
+
+
+def test_many_tasks_ending_together_do_not_hang(tsrv, tws, fake):
+    """几个任务差不多同时结束时服务不能卡死：tasklog 里结束一步（先锁这一步、再锁 LIVE）和关掉一个任务（以前是拿着 LIVE 去锁每一步）
+    锁的先后相反，两边撞上就互相等死，之后所有接口都不回。"""
+    bot = tsrv.make_bot("Crowd")
+    n, rounds = 8, 6
+    for r in range(rounds):
+        fake.script("router:Crowd", *[Call("dispatch", {"goal": f"第 {r} 轮第 {i} 件"}) for i in range(n)], "派了")
+        fake.script("worker", *[Call("demo__search_notes", {"query": "x"}), "好"] * n)
+        tws.say(bot["chat_id"], f"第 {r} 轮，一次派 {n} 个")
+        until(lambda: len(tsrv.find(bot["chat_id"], kind="dispatch")) == (r + 1) * n, 20, "这一轮的任务都派出去")
+        try:
+            idle(tsrv, 20)
+        except AssertionError:
+            pass   # 卡死的话下面的请求会超时，报错更清楚
+        assert tsrv.http.get("/api/bootstrap", timeout=5).status_code == 200, "服务不回了：任务同时结束时卡死"
+        fake.reset()
+    done = [m for m in tsrv.find(bot["chat_id"], kind="dispatch") if m["meta"]["status"] in ("done", "failed")]
+    assert len(done) == n * rounds, f"{len(done)} / {n * rounds} 个任务有结果"
