@@ -195,7 +195,8 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - **iPhone app** (TestFlight): connect by scanning a QR code on your computer with the Camera; pushes go through an encrypted relay, arrive even when the app is closed, show their content on the lock screen, and open the right conversation when tapped. See [iPhone app](mobile.md) (Chinese).
 - **Chat apps**: talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, in the same conversation as the web UI.
   - Approval requests arrive as buttons, and you can send files (and voice messages on DingTalk and WeCom).
-  - When a task asks you something, the options are buttons and a plain reply counts as the answer; a step that may or may not have gone through gets **Do it again**, **It went through** and **Stop the task**.
+  - When a task asks you something, the options are buttons and replying to the card (quoting it) answers it; anything else you say goes to the Bot, which tells whether it answers the question.
+    A step that may or may not have gone through gets **Do it again**, **It went through** and **Stop the task**.
   - No public address needed ([setup guide](channels.md), Chinese).
 - **Push notifications**: when no page is open, approvals, questions from tasks and finished tasks are pushed to your phone or computer.
 
