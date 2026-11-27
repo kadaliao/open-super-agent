@@ -8,3 +8,4 @@ osa/static/dist/
 .env
 .pytest_cache/
 server/target/
+.scratch/

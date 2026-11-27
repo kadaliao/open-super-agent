@@ -9,3 +9,4 @@
 | [小应用：Bot 做出能操作的界面；之后的插件化](applets.md)（第 1 步；插件后来去掉了） | 2026-11-08 |
 | [资料库页面变成大家一起写的文档](docs.md)（按段编辑、块编辑器、评论叫醒 Bot、子页面、版本历史；[v2](docs-v2.md)：外部 Agent、数据库）。0.25.0 起从 OSA 撤回，拆成 [Open Agent Docs](https://github.com/kadaliao/open-agent-docs)，文中的代码在 git 历史里（`db1352b`） | 2026-11-15 |
 | [文档改用 Open Agent Docs](oad.md)（OSA 起 OAD 子进程、转发、每个 Bot 一个 Agent、评论叫醒） | 进行中 |
+| [把事交出去、看得见做到哪](tasks-board.md)（任务能对话和接着做、需求看板和项目、记忆整理、团队） | 进行中 |
