@@ -160,7 +160,10 @@ impl Telegram {
             .iter()
             .map(|b| json!({"text": b[0], "callback_data": format!("ap:{id}:{}", py::str_of(&b[1]))}))
             .collect();
-        if !btns.is_empty() {
+        // 提问的选项、说不准那一步的三个选择字多：一个按钮一行
+        if matches!(card["kind"].as_str(), Some("question" | "doubt")) {
+            rows.extend(btns.into_iter().map(|b| json!([b])));
+        } else if !btns.is_empty() {
             rows.push(json!(btns));
         }
         if let Some(l) = card["link"].as_array()

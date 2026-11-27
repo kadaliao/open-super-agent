@@ -1,7 +1,7 @@
 //! 钉钉：企业内部应用的机器人 + Stream 模式收消息。对应 osa/channels/dingtalk.py（协议说明见那里）。
 //! 确认请求是一条 markdown，“按钮”是 dtmd:// 链接，点一下就替用户发出“允许一次 #12”。OSA_DINGTALK_API 可以换成假的服务器。
 
-use super::{Card, Chan, Platform, err_name, fmt, word_command};
+use super::{Card, Chan, Platform, err_name, fmt, reply_hints, word_command};
 use crate::i18n::Later;
 use crate::py;
 use async_trait::async_trait;
@@ -378,22 +378,21 @@ impl Platform for DingTalk {
     async fn send_card(&self, ch: &Arc<Chan>, peer: &str, card: &Card) -> anyhow::Result<String> {
         let btns = card["buttons"].as_array().cloned().unwrap_or_default();
         let mut links: Vec<String> =
-            btns.iter().map(|b| link(b[0].as_str().unwrap_or(""), &word_command(b[1].as_str().unwrap_or(""), &card["id"]))).collect();
+            btns.iter().map(|b| link(b[0].as_str().unwrap_or(""), &word_command(card, b[1].as_str().unwrap_or("")))).collect();
         if let Some(l) = card["link"].as_array() {
             links.push(format!("[{}]({})", py::str_of(&l[0]), py::str_of(&l[1])));
         }
-        let say = btns
-            .iter()
-            .take(2)
-            .map(|b| t!("“{text}”", text = word_command(b[1].as_str().unwrap_or(""), &card["id"])))
-            .collect::<Vec<_>>()
-            .join(&t!("、"));
+        // 提问卡片：“回答 #12 你的回答”“不回答 #12”；说不准那一步：三种回复都写出来；别的写前两个
+        let says = match card["kind"].as_str() {
+            Some("question" | "doubt") => reply_hints(card),
+            _ => reply_hints(card).into_iter().take(2).collect(),
+        };
         let title = py::str_of(&card["title"]);
         let text = format!(
             "### {title}\n\n{}\n\n{}\n\n{}",
             py::str_of(&card["body"]),
             links.join(" ｜ "),
-            t!("点上面的链接，或者直接回复{say}。", say = say)
+            t!("点上面的链接，或者直接回复{say}。", say = says.join(&t!("、")))
         );
         self.markdown(ch, peer, &title, &fmt::dingtalk_md(&text)).await?;
         Ok(String::new())

@@ -215,6 +215,8 @@ pub struct Chan {
     rx: Mutex<Option<mpsc::UnboundedReceiver<Job>>>,
     cards: Mutex<HashMap<i64, (String, Card)>>,
     pub carding: Mutex<HashSet<i64>>,
+    /// 在这边处理的卡片，处理完卡片上写什么（“已回答：……”“已经做成了”）：确认结果的事件里没有这些
+    marks: Mutex<HashMap<i64, String>>,
     jobs: Mutex<Vec<JoinHandle<()>>>,
     typer: Mutex<Option<JoinHandle<()>>>,
     pub platform: Arc<dyn Platform>,
@@ -248,6 +250,7 @@ impl Chan {
             rx: Mutex::new(Some(rx)),
             cards: Mutex::new(HashMap::new()),
             carding: Mutex::new(HashSet::new()),
+            marks: Mutex::new(HashMap::new()),
             jobs: Mutex::new(vec![]),
             typer: Mutex::new(None),
         })
@@ -340,13 +343,19 @@ impl Chan {
         }));
     }
 
-    fn finish_card(self: &Arc<Self>, peer: String, aid: i64, status: String) {
+    fn finish_card(self: &Arc<Self>, peer: String, aid: i64, status: String, note: Option<String>) {
         let me = self.clone();
         self.queue(Box::pin(async move {
             let hit = me.cards.lock().remove(&aid);
             me.carding.lock().remove(&aid);
+            let mark = me.marks.lock().remove(&aid);
             let Some((mid, card)) = hit else { return Ok(()) };
-            let done = t!(done_text(card["kind"].as_str().unwrap_or(""), &status));
+            let kind = card["kind"].as_str().unwrap_or("");
+            let done = match (mark, note) {
+                (Some(m), _) => m,
+                (None, Some(n)) if kind == "question" && status == "approved" => answered(&n),
+                _ => done_text(kind, &status),
+            };
             let mut c = card.clone();
             c["buttons"] = json!([]);
             c["link"] = Value::Null;
@@ -384,7 +393,9 @@ impl Chan {
                 } else {
                     status
                 };
-                self.finish_card(peer, aid, st.to_string());
+                // 网页上回答的问题：事件里带了回答（note）就写出来
+                let note = ev["note"].as_str().map(str::trim).filter(|n| !n.is_empty()).map(String::from);
+                self.finish_card(peer, aid, st.to_string(), note);
             }
         } else if t == "stream_start" && mine {
             self.start_typing();
@@ -460,6 +471,16 @@ impl Chan {
             }
             return;
         }
+        // “回答 #12 北京”：回答指定的那个问题
+        if let Some((aid, said)) = answer_cmd(&text)
+            && self.carding.lock().contains(&aid)
+        {
+            let (okd, toast) = self.answer(aid, &said);
+            if !okd {
+                self.say(&toast, None);
+            }
+            return;
+        }
         if cmd == "/stop" {
             let done: Vec<String> = router::tasks()
                 .into_iter()
@@ -474,6 +495,18 @@ impl Chan {
                 },
                 None,
             );
+        }
+        // 这个对话里正好有一个问题在等：直接回的这句话就是回答，不交给 Bot（有几个在等、或者带了文件时照常交给 Bot）
+        if files.is_empty()
+            && !text.is_empty()
+            && !text.starts_with('/')
+            && let [aid] = self.questions()[..]
+        {
+            let (okd, toast) = self.answer(aid, &text);
+            if !okd {
+                self.say(&toast, None);
+            }
+            return;
         }
         let Some(chat) = bots::chat(chat_id) else {
             return self.say(&t!("绑定的对话不存在了，请在网页的 设置 → 聊天软件 里重新选择。"), None);
@@ -562,13 +595,20 @@ impl Chan {
         if !self.carding.lock().contains(&aid) {
             return (false, t!("这个按钮已经失效了"));
         }
-        let item = approvals::PENDING.lock().get(&aid).map(|p| p.item.clone());
+        let item = approvals::PENDING.lock().get(&aid).filter(|p| p.tx.is_some()).map(|p| p.item.clone());
         let Some(item) = item else { return (false, t!("已经处理过了")) };
-        if act_word(&act).is_none() {
+        let opt = option_index(&act);
+        if act_word(&act).is_none() && opt.is_none() {
             return (false, t!("这个按钮已经失效了"));
         }
-        let help = item["kind"] == "help";
-        if (["done", "fail"].contains(&act.as_str()) && !help) || (["ok", "no", "always", "task"].contains(&act.as_str()) && help) {
+        let kind = card_kind(&item);
+        let fits = match kind {
+            "help" => ["done", "fail"].contains(&act.as_str()),
+            "question" => act == "skip" || opt.is_some(),
+            "doubt" => ["redo", "made", "stop"].contains(&act.as_str()),
+            _ => ["ok", "no", "always", "task"].contains(&act.as_str()),
+        };
+        if !fits {
             return (false, t!("这个请求不能这样处理"));
         }
         if act == "done" {
@@ -579,12 +619,65 @@ impl Chan {
             approvals::resolve(aid, false, "用户表示处理不了", false, &Value::Null, None, None);
             return (true, t!("已告诉 Bot"));
         }
-        let scope = match act.as_str() {
-            "always" => Some("always"),
-            "task" => Some("task"),
-            _ => None,
+        if let Some(i) = opt {
+            let Some(choice) = item["options"].get(i).and_then(|v| v.as_str()).map(String::from) else {
+                return (false, t!("这个按钮已经失效了"));
+            };
+            self.marks.lock().insert(aid, answered(&choice));
+            approvals::resolve(aid, true, &choice, false, &Value::Null, None, None);
+            return (true, t!("已回答：{answer}", answer = py::head(&choice, 100)));
+        }
+        // 不回答；说不准那一步：再做一次（ok）、已经做成了（note done）、不做了停下任务（note stop）
+        let (ok, note, mark, toast) = match act.as_str() {
+            "skip" => (false, "", t!("✕ 没有回答"), t!("已告诉 Bot 你不回答")),
+            "redo" => (true, "", t!("✓ 再做一次"), t!("好的，再做一次")),
+            "made" => (false, "done", t!("✓ 已经做成了，不再做"), t!("好的，不再做这一步")),
+            "stop" => (false, "stop", t!("⏹ 不做了，任务停下"), t!("好的，任务停下")),
+            _ => {
+                let scope = match act.as_str() {
+                    "always" => Some("always"),
+                    "task" => Some("task"),
+                    _ => None,
+                };
+                let ok = ["ok", "always", "task"].contains(&act.as_str());
+                return (true, approvals::resolve(aid, ok, "", false, &Value::Null, scope, None));
+            }
         };
-        (true, approvals::resolve(aid, ["ok", "always", "task"].contains(&act.as_str()), "", false, &Value::Null, scope, None))
+        self.marks.lock().insert(aid, mark);
+        approvals::resolve(aid, ok, note, false, &Value::Null, None, None);
+        (true, toast)
+    }
+
+    /// 这个连接上还在等回答的问题（卡片发到了这边的）
+    fn questions(&self) -> Vec<i64> {
+        let mine: HashSet<i64> = self.carding.lock().clone();
+        approvals::PENDING
+            .lock()
+            .iter()
+            .filter(|(id, p)| mine.contains(id) && p.tx.is_some() && p.item["kind"] == "question")
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// 用一句话回答一个问题：和网页上回复任务一样交给任务（对话里留一条“给任务的话”），交不过去的直接了结卡片
+    fn answer(&self, aid: i64, text: &str) -> (bool, String) {
+        let text = text.trim();
+        let item = approvals::PENDING.lock().get(&aid).filter(|p| p.tx.is_some()).map(|p| p.item.clone());
+        let Some(item) = item else { return (false, t!("已经处理过了")) };
+        if card_kind(&item) != "question" {
+            return (false, t!("这个请求不能这样处理"));
+        }
+        if text.is_empty() {
+            return (false, t!("回答不能为空"));
+        }
+        self.marks.lock().insert(aid, answered(text));
+        if let Some(tid) = item["task_id"].as_i64() {
+            let _ = crate::taskstore::message(tid, text);
+        }
+        if approvals::PENDING.lock().get(&aid).is_some_and(|p| p.tx.is_some()) {
+            approvals::resolve(aid, true, text, false, &Value::Null, None, None);
+        }
+        (true, t!("已回答：{answer}", answer = py::head(text, 100)))
     }
 }
 
@@ -988,6 +1081,13 @@ pub fn card_for(ev: &Value) -> Card {
     let tool = ev["tool"].as_str().unwrap_or("").to_string();
     let args = py::head(&args_full, 800);
     let goal = WS.replace_all(ev["goal"].as_str().unwrap_or(""), " ").into_owned();
+    let task_head = t!("任务 #{id}：{goal}", id = ev["task_id"].clone(), goal = goal.clone()) + &origin;
+    if ev["kind"] == "question" {
+        return question_card(ev, &who, &task_head);
+    }
+    if ev["doubt"].is_object() {
+        return doubt_card(ev, &who, &task_head);
+    }
     let mut when = String::new();
     if let Some(e) = ev["expires"].as_f64() {
         when = format!("\n{}", t!("后台任务，{time} 前没确认按拒绝处理。", time = py::strftime_at(e, "%H:%M")));
@@ -1051,26 +1151,155 @@ pub fn card_for(ev: &Value) -> Card {
     json!({"id": ev["id"], "kind": "approval", "title": t!("⚠️ {name} 需要你确认", name = who), "body": body, "buttons": buttons, "link": null, "done": ""})
 }
 
-const ACTS: [(&str, &str); 6] =
-    [("ok", "允许一次"), ("no", "拒绝"), ("always", "总是允许"), ("task", "本次任务内允许"), ("done", "处理完了"), ("fail", "处理不了")];
+/// 提问卡片上最多放几个选项按钮（Discord 一行最多 5 个按钮，还要留一个给“不回答”），其余写在正文里
+const MAX_OPTION_BUTTONS: usize = 4;
+
+/// “应用 @mail 的 **send**”/“**send**”
+fn tool_head(tool: &str) -> String {
+    match tool.rfind("__") {
+        Some(i) => t!("应用 @{app} 的 **{tool}**", app = tool[..i].to_string(), tool = tool[i + 2..].to_string()),
+        None => format!("**{tool}**"),
+    }
+}
+
+/// 任务问用户一个问题（kind: question）：选项是按钮，另有“不回答”；也可以直接回一句话
+fn question_card(ev: &Value, who: &str, task_head: &str) -> Card {
+    let question = ev["question"].as_str().unwrap_or("").trim().to_string();
+    let options: Vec<String> =
+        ev["options"].as_array().map(|a| a.iter().map(py::str_of).filter(|s| !s.trim().is_empty()).collect()).unwrap_or_default();
+    let mut buttons: Vec<Value> =
+        options.iter().take(MAX_OPTION_BUTTONS).enumerate().map(|(i, o)| btn(py::head(o.trim(), 40), &format!("a{i}"), "")).collect();
+    buttons.push(btn(t!("不回答"), "skip", "danger"));
+    let mut body = question;
+    if options.len() > MAX_OPTION_BUTTONS {
+        body += &format!("\n\n{}", t!("其他候选：{options}", options = options[MAX_OPTION_BUTTONS..].join(&t!("、"))));
+    }
+    body += &format!("\n\n{task_head}");
+    if let Some(e) = ev["expires"].as_f64() {
+        body += &format!("\n{}", t!("后台任务，{time} 前没回答就不等了。", time = py::strftime_at(e, "%H:%M")));
+    }
+    body += &format!(
+        "\n\n{}",
+        t!("点一个选项，或者直接回一句话作答；同时有几个问题在等时，回复“回答 #{id} 你的回答”。", id = ev["id"].clone())
+    );
+    json!({"id": ev["id"], "kind": "question", "title": t!("❓ {name} 有个问题要你回答", name = who), "body": body,
+           "buttons": buttons, "options": options, "link": null, "done": ""})
+}
+
+/// 服务重启时正在执行、说不准有没有做成的那一步又要做（带 doubt）：再做一次 / 已经做成了 / 不做了停下任务
+fn doubt_card(ev: &Value, who: &str, task_head: &str) -> Card {
+    let d = &ev["doubt"];
+    let tool = d["tool"].as_str().filter(|s| !s.is_empty()).or(ev["tool"].as_str()).unwrap_or("").to_string();
+    let pretty = |s: &str| match serde_json::from_str::<Value>(s) {
+        Ok(v) if v.is_object() || v.is_array() => py::dumps_indent(&v, 1, false),
+        _ => s.to_string(),
+    };
+    let before = d["args"].as_str().unwrap_or("").trim().to_string();
+    let now = ev["args"].as_str().unwrap_or("").trim().to_string();
+    let same = match (serde_json::from_str::<Value>(&before), serde_json::from_str::<Value>(&now)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => before == now,
+    };
+    let mut body = t!("服务重启时这一步正在执行，说不准有没有做成。");
+    let mut head = tool_head(&tool);
+    if let Some(s) = d["started"].as_f64().filter(|s| *s > 0.0) {
+        head += &t!("（{time} 开始）", time = py::strftime_at(s, "%H:%M:%S"));
+    }
+    body += &format!("\n\n{head}\n```\n{}\n```", py::head(&pretty(&before), 600));
+    if !same && !now.is_empty() {
+        body += &format!("\n{}\n```\n{}\n```", t!("再做一次的话用这些参数："), py::head(&pretty(&now), 600));
+    }
+    let checked = d["checked"].as_str().unwrap_or("").trim().to_string();
+    let checked = if checked.is_empty() { t!("没查出来") } else { py::head(&checked, 600) };
+    body += &format!("\n\n{}\n\n{task_head}", t!("Bot 查过：{checked}", checked = checked));
+    let buttons =
+        vec![btn(t!("再做一次"), "redo", "primary"), btn(t!("已经做成了"), "made", ""), btn(t!("不做了，停下任务"), "stop", "danger")];
+    json!({"id": ev["id"], "kind": "doubt", "title": t!("⚠️ {name} 有一步要你定", name = who), "body": body,
+           "buttons": buttons, "link": null, "done": ""})
+}
+
+/// 按钮动作 → 打字时说的那个词（钉钉、企业微信发不了卡片时让用户回复的就是它）
+const ACTS: [(&str, &str); 10] = [
+    ("ok", "允许一次"),
+    ("no", "拒绝"),
+    ("always", "总是允许"),
+    ("task", "本次任务内允许"),
+    ("done", "处理完了"),
+    ("fail", "处理不了"),
+    ("skip", "不回答"),
+    ("redo", "再做一次"),
+    ("made", "已经做成"),
+    ("stop", "停下任务"),
+];
 
 fn act_word(act: &str) -> Option<&'static str> {
     ACTS.iter().find(|(a, _)| *a == act).map(|(_, w)| *w)
 }
 
-/// 点了等于按按钮的那句话（用界面的语言）
-pub fn word_command(act: &str, aid: &Value) -> String {
-    format!("{} #{}", t!(act_word(act).unwrap_or("")), py::str_of(aid))
+/// 提问卡片上第几个选项的按钮（a0、a1……）
+fn option_index(act: &str) -> Option<usize> {
+    act.strip_prefix('a').filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).and_then(|n| n.parse().ok())
+}
+
+/// 卡片是哪一种：help（请你帮忙）、question（任务提问）、doubt（重启时说不准做没做成的那一步）、approval（普通确认）
+pub fn card_kind(item: &Value) -> &'static str {
+    match item["kind"].as_str() {
+        Some("help") => "help",
+        Some("question") => "question",
+        _ if item["doubt"].is_object() => "doubt",
+        _ => "approval",
+    }
+}
+
+fn answered(text: &str) -> String {
+    t!("✓ 已回答：{answer}", answer = py::head(text.trim(), 200))
+}
+
+/// 点了等于按按钮的那句话（用界面的语言）。提问卡片的选项是“回答 #12 北京”
+pub fn word_command(card: &Card, act: &str) -> String {
+    let aid = py::str_of(&card["id"]);
+    if let Some(i) = option_index(act) {
+        let choice = card["options"].get(i).map(py::str_of).unwrap_or_default();
+        return format!("{} #{aid} {choice}", t!("回答"));
+    }
+    format!("{} #{aid}", act_say(act))
+}
+
+/// 打字说的那个词，用界面的语言（新加的几个写成字面量，i18n 检查才找得到）
+fn act_say(act: &str) -> String {
+    match act {
+        "skip" => t!("不回答"),
+        "redo" => t!("再做一次"),
+        "made" => t!("已经做成"),
+        "stop" => t!("停下任务"),
+        _ => t!(act_word(act).unwrap_or("")),
+    }
+}
+
+/// 没有按钮的地方（钉钉、企业微信发不了卡片时）告诉用户可以回复什么
+pub fn reply_hints(card: &Card) -> Vec<String> {
+    let btns = card["buttons"].as_array().cloned().unwrap_or_default();
+    let acts: Vec<String> = btns.iter().map(|b| py::str_of(&b[1])).collect();
+    if card["kind"] == "question" {
+        let mut out = vec![t!("“回答 #{id} 你的回答”", id = card["id"].clone())];
+        out.extend(acts.iter().filter(|a| *a == "skip").map(|a| t!("“{text}”", text = word_command(card, a))));
+        return out;
+    }
+    acts.iter().map(|a| t!("“{text}”", text = word_command(card, a))).collect()
 }
 
 static WORDS: LazyLock<Vec<(String, &'static str)>> = LazyLock::new(|| {
-    let aliases: [(&str, &[&str]); 6] = [
+    let aliases: [(&str, &[&str]); 10] = [
         ("ok", &["允许一次", "允许", "同意"]),
         ("no", &["拒绝"]),
         ("always", &["总是允许"]),
         ("task", &["本次任务内允许", "本次任务"]),
         ("done", &["处理完了"]),
         ("fail", &["处理不了"]),
+        ("skip", &["不回答"]),
+        ("redo", &["再做一次", "再做"]),
+        ("made", &["已经做成", "已经做成了", "做成了"]),
+        ("stop", &["停下任务", "不做了，停下任务", "停下", "不做了"]),
     ];
     let mut out: Vec<(String, &'static str)> = vec![];
     let mut seen = HashSet::new();
@@ -1104,19 +1333,34 @@ fn word_cmd(text: &str) -> Option<(&'static str, i64)> {
     Some((act, c[2].parse().ok()?))
 }
 
-fn done_text(kind: &str, status: &str) -> &'static str {
+/// “回答 #12 北京”“Answer #12: Beijing” → (确认请求 id, 回答)
+fn answer_cmd(text: &str) -> Option<(i64, String)> {
+    static R: LazyLock<Regex> = LazyLock::new(|| {
+        let alt = i18n::both("回答").iter().map(|w| regex::escape(w)).collect::<Vec<_>>().join("|");
+        Regex::new(&format!(r"(?is)^(?:{alt})\s*[#＃]?\s*(\d+)[\s:：,，]+(\S.*)$")).unwrap()
+    });
+    let c = R.captures(text.trim())?;
+    Some((c[1].parse().ok()?, c[2].trim().to_string()))
+}
+
+fn done_text(kind: &str, status: &str) -> String {
     match (kind, status) {
-        ("help", "approved") => "✓ 已处理完，Bot 继续",
-        ("help", "rejected") => "✕ 没有处理",
-        ("help", "expired") => "已过期",
-        ("help", "cancelled") => "任务已取消",
-        (_, "approved") => "✓ 已允许",
-        (_, "always") => "✓ 已允许，以后自动允许",
-        (_, "task") => "✓ 已允许，这个任务里不再问",
-        (_, "rejected") => "✕ 已拒绝",
-        (_, "expired") => "已过期，按拒绝处理",
-        (_, "cancelled") => "任务已取消",
-        _ => "",
+        ("help", "approved") => t!("✓ 已处理完，Bot 继续"),
+        ("help", "rejected") => t!("✕ 没有处理"),
+        ("help", "expired") => t!("已过期"),
+        ("question", "approved") => t!("✓ 已回答"),
+        ("question", "rejected") => t!("✕ 没有回答"),
+        ("question", "expired") => t!("已过期，没有回答"),
+        ("doubt", "approved") => t!("✓ 再做一次"),
+        ("doubt", "rejected") => t!("✕ 没有再做"),
+        ("doubt", "expired") => t!("已过期，没有再做"),
+        (_, "approved") => t!("✓ 已允许"),
+        (_, "always") => t!("✓ 已允许，以后自动允许"),
+        (_, "task") => t!("✓ 已允许，这个任务里不再问"),
+        (_, "rejected") => t!("✕ 已拒绝"),
+        (_, "expired") => t!("已过期，按拒绝处理"),
+        (_, "cancelled") => t!("任务已取消"),
+        _ => String::new(),
     }
 }
 
