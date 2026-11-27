@@ -35,11 +35,20 @@ export type Task = {
   bot_id: number; chat_id: number; started: number; waiting_approval: number | null; elapsed: number; last_action?: string
   quiet?: boolean   // 定时任务这次没有新内容：对话里不显示
   mac?: string      // 派到你的哪台 Mac 上做（名字）
+} & TaskTurns
+// 任务在等你什么：approval 等你确认、help 请你接手电脑、question 等你回答；没在等是 null
+export type WaitingKind = 'approval' | 'help' | 'question' | null
+// 任务能不能接着说（见 docs/plans/tasks-board.md 的“接口约定 → 任务”）。旧版服务没有这几项
+export type TaskTurns = {
+  waiting_kind?: WaitingKind
+  can_continue?: boolean   // 存着过程：做完以后还能接着说、能重试
+  round?: number           // 第几轮，从 1 开始；做完又接着做就加 1
 }
 // 任务过程的一步。kind：think 思考、text 正在写、say 调工具前说的话、tool 工具调用（detail 参数、body 返回）、
-// answer 写出的结果（Heavy 里研究员的草稿也是）、note 过程提示。worker：Heavy 里的研究员 h0、h1……，汇总是 review
+// answer 写出的结果（Heavy 里研究员的草稿也是）、note 过程提示、user 你发给任务的话（body 是原文）。
+// worker：Heavy 里的研究员 h0、h1……，汇总是 review
 export type TaskStep = {
-  id: number; task_id: number; ts: number; worker: string; kind: 'think' | 'text' | 'say' | 'tool' | 'answer' | 'note'
+  id: number; task_id: number; ts: number; worker: string; kind: 'think' | 'text' | 'say' | 'tool' | 'answer' | 'note' | 'user'
   title: string; body: string; status: string; dur: number; detail: string
 }
 // 任务列表、任务详情里的一项：数据库里的记录，正在跑的盖上实时状态
@@ -49,7 +58,7 @@ export type TaskInfo = {
   started?: number; waiting_approval?: number | null; last_action?: string
   result?: string; finished?: number; cost?: number; tokens?: number; currency?: string
   mac?: string   // 派到你的哪台 Mac 上做（名字）
-}
+} & TaskTurns
 // 正在用电脑的任务：每个占一个浏览器窗口（window：已经开了窗口）
 export type ComputerUser = { key: string; label: string; task_id: number | null; bot_id: number | null; window: boolean }
 export type ComputerState = {
@@ -70,8 +79,9 @@ export type MacState = {
 export type DesktopState = {
   supported: boolean; accessibility?: boolean; screen?: boolean; problem?: string; owner?: string; paused_by?: string
 }
+// kind：approval 确认操作、help 请你接手电脑、question 任务问你的问题（ask_user：question 问题，options 可选的回答）
 export type Approval = {
-  id: number; kind?: 'approval' | 'help'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
+  id: number; kind?: 'approval' | 'help' | 'question'; task_id: number; bot_id: number; chat_id: number; origin_chat_id?: number; tool: string; goal: string
   origin_thread?: number   // 任务是在讨论串里派的：origin_chat_id 是讨论串所在的对话，这个是讨论串
   args: string; ts: number; expires?: number | null; status?: string; always?: boolean
   once?: boolean   // 只能一次一次地允许（新建、修改、删除 Bot，Worker 的 ask_approval），没有“本次任务内允许”“总是允许”
@@ -82,6 +92,10 @@ export type Approval = {
   editable?: string[]   // 能在卡片上直接改的参数（args 里的键），同意时把改过的一起发回去
   edited?: string[]     // 同意时改过的
   mac?: number; mac_name?: string   // 派到你的 Mac 上的任务（请你帮忙时去那台 Mac 上处理）
+  question?: string; options?: string[]
+  // 服务重启时这一步（写操作）正在做、说不准做没做成，Bot 要再做一次：started 那一步开始的时间（秒），checked Bot 查过什么（可能是空的）
+  doubt?: { started: number; tool: string; args: any; checked: string }
+  answer?: string   // 这个页面上你在卡片上选的：问题的回答，说不准的那一步选的 done / stop（服务端的事件里没有，卡片有了结果后显示）
 }
 export type Stream = { sid: string; text: string; thinking: string; started: number; bot_id: number }
 // 模型服务：一个兼容 OpenAI 的接口地址加一个密钥。source：config.yaml 里写的，还是界面上加的

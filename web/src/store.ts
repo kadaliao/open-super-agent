@@ -22,6 +22,7 @@ type State = {
   tasks: Record<number, Task>
   taskSteps: Record<number, TaskStep[]>   // 打开着的任务详情的过程，边做边更新
   openTask: number | null            // 右栏“任务”里打开的是哪个任务
+  taskFocus: number | null           // 打开时要把光标放进输入框的任务（结果卡片上的“接着说”），放好就清掉
   approvals: Record<number, Approval>
   unread: Record<number, number>
   errors: Record<number, string | undefined>
@@ -44,7 +45,7 @@ type State = {
 
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
-  active: null, thread: null, threads: {}, visible: document.visibilityState === 'visible', messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, approvals: {}, unread: {}, errors: {}, computers: {}, macs: null, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
+  active: null, thread: null, threads: {}, visible: document.visibilityState === 'visible', messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, taskFocus: null, approvals: {}, unread: {}, errors: {}, computers: {}, macs: null, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
   view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false, newBuild: false, appUpdate: null,
 }
 const subs = new Set<() => void>()
@@ -328,10 +329,48 @@ export function dropTask(id: number) {
   set(s => { const t = { ...s.taskSteps }; delete t[id]; return { taskSteps: t } })
 }
 
-// 在右栏打开某个任务的过程（任务卡片、结果、定时任务的运行记录里点“过程”）
-export function showTask(id: number | null) {
-  set({ openTask: id })
+// 在右栏打开某个任务的过程（任务卡片、结果、定时任务的运行记录里点“过程”）。
+// focus：把光标放进任务详情底下的输入框（结果卡片上的“接着说”）
+export function showTask(id: number | null, focus = false) {
+  set({ openTask: id, taskFocus: focus ? id : null })
   if (id) window.dispatchEvent(new CustomEvent('osa-open-task'))
+}
+export const taskFocused = () => { if (state.taskFocus !== null) set({ taskFocus: null }) }
+
+// 任务的状态怎么说。在等你的时候按等的是什么：确认、接手电脑、回答问题（旧版服务没有 waiting_kind，按确认算）
+type Waits = { status: string; waiting_approval?: number | null; waiting_kind?: string | null }
+export const taskWaiting = (tk?: Waits) => !!tk && tk.status === 'running' && !!(tk.waiting_kind || tk.waiting_approval)
+export function waitLabel(tk?: Waits) {
+  if (!taskWaiting(tk)) return ''
+  return tk!.waiting_kind === 'question' ? t('等你回答') : tk!.waiting_kind === 'help' ? t('请你接手') : t('等你确认')
+}
+export function taskLabel(tk: Waits) {
+  const status: Record<string, string> = { running: t('进行中'), done: t('已完成'), failed: t('失败'), cancelled: t('已取消'), interrupted: t('已中断') }
+  return waitLabel(tk) || status[tk.status] || tk.status
+}
+// 已经结束的任务（做完、失败、取消、中断）；后三种能重试
+export const taskEnded = (status: string) => ['done', 'failed', 'cancelled', 'interrupted'].includes(status)
+export const canRetry = (status: string) => ['failed', 'cancelled', 'interrupted'].includes(status)
+
+// 给任务发一句话：正在做的在下一步之前交给它，在等你回答的就是回答，做完的带着这句话接着做。
+// 返回任务的最新状态，先盖到 store 里（之后靠 task 事件更新）
+export async function tellTask(id: number, text: string): Promise<TaskInfo> {
+  const r = await api<{ ok: boolean; task: TaskInfo }>(`/api/tasks/${id}/message`, { method: 'POST', body: { text } })
+  liveTask(r.task)
+  return r.task
+}
+
+// 失败、取消、中断的任务从停下的地方接着做（没存过程的从头做）
+export async function retryTask(id: number): Promise<TaskInfo> {
+  const r = await api<{ ok: boolean; task: TaskInfo }>(`/api/tasks/${id}/retry`, { method: 'POST' })
+  liveTask(r.task)
+  return r.task
+}
+
+// 接口返回的任务又跑起来了：放进实时状态，任务卡片和列表马上变成“进行中”，不用等事件
+function liveTask(tk?: TaskInfo) {
+  if (!tk?.id) return
+  set(s => ({ tasks: { ...s.tasks, [tk.id]: { ...s.tasks[tk.id], ...tk } as Task } }))
 }
 
 export function openLibrary(pageId: number | string | null = null) {
@@ -413,6 +452,8 @@ export function send(chatId: number, text: string, attachments: Attachment[] = [
 // edits：在卡片上改过的参数（只认卡片的 editable 里的）
 // scope：同意时管多久（once / task / always，见 approvals.resolve）；prefix：终端命令“总是允许这个前缀”的前缀
 export function approve(id: number, ok: boolean, note = '', always = false, edits?: Record<string, string>, scope?: string, prefix?: string) {
+  // 任务问你的问题、说不准做没做成的那一步：记下你选了什么，卡片有了结果以后显示（服务端的事件里没有）
+  if (state.approvals[id]?.kind === 'question' || state.approvals[id]?.doubt) set(s => ({ approvals: { ...s.approvals, [id]: { ...s.approvals[id], answer: ok || s.approvals[id].doubt ? note : '' } } }))
   ws?.send(JSON.stringify({ type: 'approve', id, ok, note, always, ...(edits ? { edits } : {}), ...(scope ? { scope } : {}), ...(prefix ? { prefix } : {}) }))
 }
 
@@ -447,7 +488,8 @@ function handle(d: any) {
       if (th && state.thread?.id === cid && state.visible) markThreadSeen(cid)   // 正开着这个讨论串
       if (!th && cid === state.active) seeActive()                               // 正开着这个对话
       // 桌面 App 里窗口藏起来时，当前对话的回复也要通知
-      if (m.role !== 'user' && (home !== state.active || (th && state.thread?.id !== cid) || desktop)) notifyOS(home, m, undefined, th && { id: cid, root: th.root })
+      // 你发给任务的话（role 是 task，meta.kind 是 followup）是你自己说的，不通知
+      if (m.role !== 'user' && m.meta?.kind !== 'followup' && (home !== state.active || (th && state.thread?.id !== cid) || desktop)) notifyOS(home, m, undefined, th && { id: cid, root: th.root })
       break
     }
     case 'message_meta':   // 一条消息的状态变了（正在生成的视频：好了、失败了）
