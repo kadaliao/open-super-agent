@@ -45,9 +45,10 @@ export default function ThreadPanel() {
   const members = chat.bot_ids.map(i => bots.find(b => b.id === i)).filter((b): b is Bot => !!b)
   const bot = group ? undefined : members[0]
   if (!group && !bot) return null
-  // 和服务端算“N 条回复”的规则一样：人和 Bot 说的话、任务结果，派任务、交接这类记录不算
+  // 和服务端算“N 条回复”的规则一样：人和 Bot 说的话、任务结果，派任务、交接这类记录不算。
+  // 在任务的消息下面回复的话直接交给任务，存成“给任务的话”（followup），也是你说的
   const count = (list || []).filter(m => m.role === 'user' || (m.role === 'assistant' && m.content) ||
-    ['result', 'dm_reply'].includes(m.meta.kind)).length
+    ['result', 'dm_reply', 'followup'].includes(m.meta.kind)).length
   const onScroll = () => {
     const el = scroller.current!
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80

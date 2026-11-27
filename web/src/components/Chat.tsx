@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, approve, chatById, loadOlder, markThreadSeen, openChat, openChatOrThread, openLibrary, openThread, pinChat, showTask, useStore } from '../store'
+import { api, approve, chatById, loadOlder, markThreadSeen, openChat, openChatOrThread, openLibrary, openThread, pinChat, showTask, taskLabel, taskWaiting, useStore } from '../store'
 import type { Approval, Bot, Chat as ChatT, Message, Task, ThreadInfo } from '../types'
 import { plain } from '../plain'
+import { isEnter } from '../keys'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
 import Markdown from './Markdown'
@@ -295,19 +296,21 @@ function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: T
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (status !== 'running') return
+    setNow(Date.now())   // 做完的任务又接着做：从现在算起，不用卡片最早挂上时的时间
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [status])
   const goal = m.content.replace(/^\[任务已派发\]\s*/, '')   // i18n-ignore：存在消息里的标记
-  const label: Record<string, string> = { running: task?.waiting_approval ? t('等你确认') : t('进行中'), done: t('已完成'), failed: t('失败'), cancelled: t('已取消'), interrupted: t('已中断') }
+  const waiting = taskWaiting(task)
+  const round = task?.round || 1
   const heavy = m.meta.mode === 'heavy'
   const name = owner ? (heavy ? t('{name} 的Heavy 任务', { name: owner.name }) : t('{name} 的后台任务', { name: owner.name })) : heavy ? t('Heavy 任务') : t('后台任务')
   return (
-    <div className={`task-card ${status}${task?.waiting_approval ? ' waiting' : ''}`}>
+    <div className={`task-card ${status}${waiting ? ' waiting' : ''}`}>
       <div className="task-top">
         <span className="dot" />
         <b>{name} #{m.id}</b>
-        <span className="muted">{label[status] || status}{status === 'running' && task ? ` · ${secs((now / 1000) - task.started)}` : ''}{task?.steps ? ` · ${t('{n} 步', { n: task.steps })}` : ''}</span>
+        <span className="muted">{taskLabel({ ...task, status })}{round > 1 ? ' · ' + t('第 {n} 轮', { n: round }) : ''}{status === 'running' && task ? ` · ${secs(Math.max(0, now / 1000 - task.started))}` : ''}{task?.steps ? ` · ${t('{n} 步', { n: task.steps })}` : ''}</span>
         <button className="ghost-btn" title={t('看这个任务每一步做了什么')} onClick={() => showTask(m.id)}>{t('过程')}</button>
         {status === 'running' && <button className="ghost-btn" onClick={() => api(`/api/tasks/${m.id}/cancel`, { method: 'POST' })}>{t('停止')}</button>}
       </div>
@@ -341,13 +344,16 @@ function ResultMessage({ bot, m, goal, showName, reply }: { bot?: Bot; m: Messag
   const text = m.content.replace(/^\[任务 #\d+ 结果\]\n?/, '')   // i18n-ignore：存在消息里的标记
   const [open, setOpen] = useState(text.length < 1800)
   const status = m.meta.status || 'done'
+  const taskId = taskKind(m).taskId
+  const round: number = m.meta.round || 1   // 做完以后又接着做出来的：第几轮
+  const can = useStore(s => (taskId ? s.tasks[taskId]?.can_continue : undefined))   // 明确不能接着说的不给“接着说”
   return (
     <div className="msg bot">
       {bot && <BotAvatar avatar={bot.avatar} size={28} />}
       <div className="msg-body">
         <Speaker bot={bot} show={showName} />
         <div className={`result-head ${status}`}>
-          {status === 'failed' ? t('任务失败') : t('任务完成')} · #{taskKind(m).taskId}{m.meta.elapsed ? ` · ${t('用时 {time}', { time: secs(m.meta.elapsed) })}` : ''}
+          {status === 'failed' ? t('任务失败') : t('任务完成')} · #{taskId}{round > 1 ? ' · ' + t('第 {n} 轮', { n: round }) : ''}{m.meta.elapsed ? ` · ${t('用时 {time}', { time: secs(m.meta.elapsed) })}` : ''}
         </div>
         <div className={open ? '' : 'clamp'}><Markdown text={text} embeds /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
@@ -355,9 +361,28 @@ function ResultMessage({ bot, m, goal, showName, reply }: { bot?: Bot; m: Messag
         {(m.meta.apps as AppView[] | undefined)?.map((v, i) => <McpAppView key={i} view={v} botId={m.bot_id} />)}
         <ThreadLink m={m} reply={reply} />
         <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={text} />
-          {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskKind(m).taskId} />}
-          {taskKind(m).taskId && <button className="ghost-btn" onClick={() => showTask(taskKind(m).taskId!)}>{t('查看过程')}</button>}
+          {status === 'done' && <SavePageBtn bot={bot} text={text} goal={goal} taskId={taskId} />}
+          {taskId && can !== false && <button className="ghost-btn" title={t('给这个任务再说一句，它会带着这句话接着做')} onClick={() => showTask(taskId, true)}>{t('接着说')}</button>}
+          {taskId && <button className="ghost-btn" onClick={() => showTask(taskId)}>{t('查看过程')}</button>}
           <ReplyBtn m={m} reply={reply} /></div>
+      </div>
+    </div>
+  )
+}
+
+// 你发给某个任务的话（role 是 task，meta.kind 是 followup）：显示成你发的气泡，旁边标着给哪个任务，点了打开那个任务
+function FollowupMessage({ m, reply }: { m: Message; reply?: Reply }) {
+  const text = m.content.replace(/^\[给任务 #\d+ 的话\]\n?/, '')   // i18n-ignore：存在消息里的标记
+  const id: number | undefined = m.meta.task_id
+  return (
+    <div className="msg user followup">
+      <div className="user-col">
+        <div className="user-line">
+          {id && <button className="via to-task" title={t('打开这个任务')} onClick={() => showTask(id)}>{t('给任务 #{id}', { id })}</button>}
+          <div className="bubble"><Linkify text={text} /></div>
+        </div>
+        <ThreadLink m={m} reply={reply} />
+        {reply && <div className="msg-actions"><span>{stamp(m.ts)}</span><CopyBtn text={text} /></div>}
       </div>
     </div>
   )
@@ -549,7 +574,76 @@ function DesktopCard({ a }: { a: Approval }) {
   )
 }
 
+// 任务问你的问题（Worker 的 ask_user）：问题、可选的回答、自己写的回答。回答走确认卡片的通道（note 就是回答），
+// “不回答”是不同意。inTask：放在任务详情里，不用再写来自哪个任务
+export function QuestionCard({ a, inTask }: { a: Approval; inTask?: boolean }) {
+  const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
+  const [text, setText] = useState('')
+  let question = a.question, options = a.options
+  if (question === undefined) {   // 没单独给出问题的：从参数里取
+    try { const d = JSON.parse(a.args); question = d.question; options = d.options } catch { /* 显示原文 */ }
+  }
+  options = (options || []).filter(Boolean)
+  if (a.status && a.status !== 'pending') {
+    const done = a.status === 'approved' ? '✓ ' + (a.answer ? t('你回答了：{answer}', { answer: a.answer }) : t('已回答'))
+      : a.status === 'expired' ? '✕ ' + t('超时没回答，任务不再等') : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没回答')
+    return <div className="sys-line q-done">{done}{inTask ? '' : t('（任务 #{id}）', { id: a.task_id })}</div>
+  }
+  const answer = (s: string) => { if (s.trim()) approve(a.id, true, s.trim()) }
+  return (
+    <div className="approval-card question">
+      <div className="approval-title">💬 {t('{name} 有个问题要问你', { name: bot?.name || 'Bot' })}{!inTask && <Origin a={a} />}</div>
+      {!inTask && <div className="muted small">
+        {tn('来自任务 {id}：{goal}', { id: <button className="link-btn" onClick={() => showTask(a.task_id)}>#{a.task_id}</button>, goal: a.goal })}</div>}
+      <div className="q-text">{question || a.args}</div>
+      {options.length > 0 && <div className="q-opts">
+        {options.map(o => <button key={o} className="btn" onClick={() => answer(o)}>{o}</button>)}
+      </div>}
+      {a.expires ? <div className="muted small">{t('后台任务，{time} 前没回答就不再等', { time: new Date(a.expires * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) })}</div> : null}
+      <div className="approval-actions">
+        <input value={text} onChange={e => setText(e.target.value)} placeholder={options.length ? t('或者自己写回答') : t('写下你的回答')}
+          onKeyDown={e => { if (isEnter(e)) answer(text) }} aria-label={t('你的回答')} />
+        <button className="btn" onClick={() => approve(a.id, false)} title={t('不回答，让它自己拿主意')}>{t('不回答')}</button>
+        <button className="btn primary" disabled={!text.trim()} onClick={() => answer(text)}>{t('回答')}</button>
+      </div>
+    </div>
+  )
+}
+
+// 服务重启时正在做的一步写操作（发邮件、执行命令……），说不准做没做成，Bot 要再做一次：问你怎么办。
+// 再做一次是同意；已经做成了、不做了是不同意，note 分别是 done、stop。没有“总是允许”。inTask：放在任务详情里
+export function DoubtCard({ a, inTask }: { a: Approval; inTask?: boolean }) {
+  const d = a.doubt!
+  const args = d.args === undefined || d.args === null ? a.args : typeof d.args === 'string' ? d.args : JSON.stringify(d.args, null, 1)
+  const tool = d.tool || a.tool
+  if (a.status && a.status !== 'pending') {
+    const done = a.status === 'approved' ? '✓ ' + t('让它把这一步再做一次')
+      : a.answer === 'done' ? '✓ ' + t('你说这一步已经做成了，不再做') : a.answer === 'stop' ? '✕ ' + t('不做了，任务停下')
+      : a.status === 'expired' ? '✕ ' + t('超时未确认，按拒绝处理') : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没再做这一步')
+    return <div className="sys-line q-done">{done} <code>{tool}</code>{inTask ? '' : t('（任务 #{id}）', { id: a.task_id })}</div>
+  }
+  const at = new Date(d.started * 1000)
+  const when = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+    : at.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return (
+    <div className="approval-card doubt">
+      <div className="doubt-head">⚠ {t('这一步在服务重启时正在做（{time} 开始的），不确定有没有做成', { time: when })}</div>
+      <div className="approval-title">{t('要不要再做一次？')} <code>{tool}</code>{!inTask && <Origin a={a} />}</div>
+      {!inTask && <div className="muted small">{tn('来自任务 {id}：{goal}', { id: <button className="link-btn" onClick={() => showTask(a.task_id)}>#{a.task_id}</button>, goal: a.goal })}</div>}
+      <pre className="approval-args">{args}</pre>
+      <div className="doubt-checked">{d.checked?.trim() ? t('Bot 查过：{what}', { what: d.checked.trim() }) : t('Bot 没查出来')}</div>
+      <div className="approval-actions doubt-actions">
+        <button className="btn danger" onClick={() => approve(a.id, false, 'stop')}>{t('不做了，停下任务')}</button>{/* i18n-ignore：发给服务端的约定值 */}
+        <button className="btn" onClick={() => approve(a.id, false, 'done')}>{t('已经做成了，不用再做')}</button>{/* i18n-ignore：发给服务端的约定值 */}
+        <button className="btn primary" onClick={() => approve(a.id, true)}>{t('再做一次')}</button>
+      </div>
+    </div>
+  )
+}
+
 function ApprovalCard({ a }: { a: Approval }) {
+  if (a.doubt) return <DoubtCard a={a} />
+  if (a.kind === 'question') return <QuestionCard a={a} />
   if (a.kind === 'help') return <HelpCard a={a} />
   if (a.tool === 'generate_image') return <DrawCard a={a} />
   if (a.tool in BOT_DONE) return <BotAdminCard a={a} />
@@ -730,6 +824,7 @@ export function MessageList({ chat, list, reply, since }: { chat: ChatT; list: M
 // ---------- 内置的几种消息卡片 ----------
 // 没有新内容的定时任务（跑完才知道）不显示，运行记录在右栏“定时”里
 registerCard('dispatch', ({ m, attached, tasks, task }) => attached.has(m.id) || m.meta.quiet || tasks[m.id]?.quiet ? null : task(m.id))
+registerCard('followup', ({ m, reply }) => <FollowupMessage m={m} reply={reply} />)
 registerCard('result', ({ m, bot, group, reply, taskId, byId }) => <ResultMessage bot={bot} m={m} showName={group} reply={reply}
   goal={(taskId && byId.get(taskId)?.content.replace(/^\[任务已派发\]\s*/, '')) || ''} />)   // i18n-ignore：存在消息里的标记
 registerCard('image', ({ m, bot, chat, group, reply }) => <ImageMessage bot={bot} m={m} chat={chat} showName={group} reply={reply} />)
@@ -785,6 +880,8 @@ export function PendingApprovals({ here, from }: { here: (a: Approval) => boolea
       return (
         <div key={a.id} className="elsewhere">
           <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
+            : a.kind === 'question' ? t('{name} 的任务 #{id} 有个问题要问你，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
+            : a.doubt ? t('{name} 的任务 #{id} 有一步说不准做没做成，等你决定，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.tool === 'generate_image' ? t('{name} 想画一张图，等你确认，卡片在它的私聊里', { name: b?.name || '' })
             : a.tool === 'use_mac' ? t('{name} 想把任务 #{id} 派到你的 Mac 上做，等你确认，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.tool === 'create_bot' ? t('{name} 想新建一个 Bot，等你确认，卡片在它的私聊里', { name: b?.name || '' })
@@ -825,7 +922,7 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
     const last = messages?.length ? messages[messages.length - 1].id : 0
     const before = lastSeen.current
     if (before.chat === active && before.id && last > before.id && !stick.current) {
-      const n = messages!.filter(m => m.id > before.id && m.role !== 'user').length
+      const n = messages!.filter(m => m.id > before.id && m.role !== 'user' && m.meta.kind !== 'followup').length
       if (n) setBelow(b => b + n)
     }
     lastSeen.current = { chat: active, id: last }

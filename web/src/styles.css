@@ -96,6 +96,8 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 @media (max-width: 760px) { [data-bubbles] .msg.bot .msg-body .md:not(.md .md) { max-width: 100%; } }
 .msg-actions { display: flex; gap: 10px; align-items: center; color: var(--fg3); font-size: 12px; opacity: 0; transition: opacity .15s; margin-top: 2px; }
 .msg:hover .msg-actions { opacity: 1; }
+/* 任务结果下面按钮多（复制、存为页面、接着说、查看过程、回复）：窄屏放不下就换行，每个按钮自己不折行 */
+.msg-actions { flex-wrap: wrap; row-gap: 2px; } .msg-actions > * { white-space: nowrap; }
 .ghost-btn { color: var(--fg3); font-size: 12px; padding: 2px 6px; border-radius: 6px; } .ghost-btn:hover { color: var(--fg); background: var(--bg3); }
 .thinking { margin-bottom: 6px; }
 .thinking > button { color: var(--fg3); font-size: 13.5px; display: inline-flex; gap: 6px; align-items: center; }
@@ -931,6 +933,37 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .step-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .step-filter button { font-size: 12.5px; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--line); color: var(--fg2); }
 .step-filter button.on { background: var(--acc); color: var(--acc-fg); border-color: var(--acc); }
+
+/* 任务能接着说：详情底下的输入框、重试、第几轮；过程里你说的话 */
+.td-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.td-btns { display: flex; gap: 6px; }
+.td-head.waiting .dot { background: var(--warn); }
+.td-round { font-size: 11.5px; line-height: 18px; padding: 0 7px; border-radius: 9px; background: var(--bg3); color: var(--fg2); flex: none; }
+.td-input { flex: none; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.td-input .composer { padding: 5px 5px 5px 14px; border-radius: 20px; }
+.td-input .composer textarea { padding: 6px 0; font-size: 14px; }
+.td-input .send { width: 32px; height: 32px; font-size: 16px; }
+.td-input .composer-hint { margin-top: 4px; }
+.td-input.off { font-size: 12.5px; color: var(--fg3); padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); line-height: 1.5; }
+.step-user { display: flex; flex-direction: column; align-items: flex-end; margin: 8px 0 8px 30px; }
+.step-user-who { font-size: 11px; color: var(--fg3); margin: 0 6px 2px; }
+.step-user-text { background: var(--bg3); padding: 6px 12px; border-radius: 14px 14px 4px 14px; font-size: 13.5px; white-space: pre-wrap; word-break: break-word; max-width: 100%; }
+.task-detail .approval-card { margin: 8px 0; }
+.task-detail .sys-line { margin: 8px 0; }
+/* 任务问你的问题：和请你帮忙一样用蓝色，和要你确认的操作分开 */
+.approval-card.question { border-color: var(--link); background: color-mix(in srgb, var(--link) 7%, var(--bg)); }
+.q-text { margin: 6px 0 8px; font-size: 15px; white-space: pre-wrap; word-break: break-word; }
+.q-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.q-opts .btn { white-space: normal; text-align: left; border-color: color-mix(in srgb, var(--link) 45%, var(--line)); background: var(--bg); }
+.sys-line.q-done { white-space: normal; }
+/* 重启后说不准做没做成的那一步：开头一句醒目的说明，三个按钮 */
+.doubt-head { font-weight: 600; color: var(--warn); margin-bottom: 6px; line-height: 1.45; }
+.doubt-checked { font-size: 13px; color: var(--fg2); margin: 6px 0 10px; white-space: pre-wrap; word-break: break-word; }
+.doubt-actions { flex-wrap: wrap; justify-content: flex-end; }
+@container (max-width: 520px) { .doubt-actions { flex-direction: column-reverse; } .doubt-actions .btn { width: 100%; } }   /* 窄的时候三个长按钮各占一行，“再做一次”在最上面 */
+/* 对话里你发给任务的话：气泡旁边的小标记，点了打开那个任务 */
+.msg.user .via.to-task { color: var(--link); border: 1px solid color-mix(in srgb, var(--link) 35%, transparent); border-radius: 10px; padding: 0 7px; line-height: 18px; margin-bottom: 6px; }
+.msg.user .via.to-task:hover { background: color-mix(in srgb, var(--link) 10%, transparent); }
 
 /* 讨论串：消息下面的“N 条回复”、右边的讨论串面板 */
 .msg.user .user-col { display: flex; flex-direction: column; align-items: flex-end; max-width: 78%; min-width: 0; }
