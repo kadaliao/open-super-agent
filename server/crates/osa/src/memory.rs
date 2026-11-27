@@ -315,6 +315,9 @@ pub fn context(chat_id: i64, viewer: Option<i64>, me: Option<i64>, images: usize
             let whose = if others && b.is_some() { format!("{} 的", name(*b)) } else { String::new() };
             let note = if kind == "result" {
                 format!("（系统通知，非用户发言；这是{whose}任务结果，已作为卡片直接展示给用户，不用复述，除非用户问起）")
+            } else if kind == "followup" {
+                // 用户直接对任务说的话（任务详情里、讨论串里、tell_task 转的）：是用户说的，但已经交给任务了
+                format!("（系统通知：下面是用户对{whose}任务说的话，已经交给那个任务了，不用你再转）")
             } else {
                 format!("（系统通知，非用户发言{}）", if whose.is_empty() { String::new() } else { format!("；{whose}任务") })
             };

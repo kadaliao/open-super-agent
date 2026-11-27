@@ -292,12 +292,14 @@ pub fn thread(parent: i64, root: i64) -> Result<Value, String> {
 }
 
 const REPLY: &str = "(m.role = 'user' or (m.role = 'assistant' and m.content != '') \
-    or json_extract(m.meta, '$.kind') in ('result', 'dm_reply', 'image'))";
+    or json_extract(m.meta, '$.kind') in ('result', 'dm_reply', 'image', 'followup'))";
+/// 不是用户自己说的：用户发的消息、用户发给任务的话（followup，role 是 task）都不算
+const THEIRS: &str = "(m.role != 'user' and coalesce(json_extract(m.meta, '$.kind'), '') != 'followup')";
 
 pub fn unread(chat_id: i64) -> i64 {
     db::scalar_i64(
         &format!(
-            "select count(*) from messages m where m.chat_id=? and m.role != 'user' and {REPLY} \
+            "select count(*) from messages m where m.chat_id=? and {THEIRS} and {REPLY} \
              and m.id > (select coalesce(seen, 0) from chats where id=?)"
         ),
         params![chat_id, chat_id],
@@ -314,8 +316,8 @@ pub fn thread_summaries(parent: i64, roots: &[i64]) -> HashMap<i64, Value> {
     db::rows(
         &format!(
             "select c.id, c.root, count(m.id), max(m.ts),
-        group_concat(distinct case when m.role != 'user' then m.bot_id end),
-        sum(case when m.role != 'user' and m.id > coalesce(c.seen, 0) then 1 else 0 end)
+        group_concat(distinct case when {THEIRS} then m.bot_id end),
+        sum(case when {THEIRS} and m.id > coalesce(c.seen, 0) then 1 else 0 end)
         from chats c left join messages m on m.chat_id = c.id and {REPLY}
         where c.kind = 'thread' and c.parent = ? and c.root in ({marks}) group by c.id"
         ),

@@ -110,9 +110,8 @@ pub async fn watcher() {
 // ---------- 任务 ----------
 
 /// 任务在等你什么：`approval`（确认）、`help`（接手电脑）、`question`（回答），没在等是 None。
-/// task-core 的 `waiting_kind` 还没合进来，现在只按 `waiting_approval` 算；收拢时换成任务自己的字段。
-fn waiting_kind(t: &Task) -> Option<&'static str> {
-    t.st.lock().waiting_approval.map(|_| "approval")
+fn waiting_kind(t: &Task) -> Option<String> {
+    if t.status() == "running" { t.waiting_kind() } else { None }
 }
 
 /// 卡片上的一个任务：{id, bot_id, chat_id, status, waiting_kind, goal, last_action, elapsed}。消息被删了的是 None
