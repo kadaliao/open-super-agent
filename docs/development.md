@@ -36,6 +36,34 @@ uv run uvicorn osa.server:app --reload --port 8765
 
 ## 自动化测试
 
+有三套，CI（`.github/workflows/ci.yml`）每次提交、每个 PR 都跑：
+
+| 测什么 | 怎么跑 | CI 里的任务 |
+|---|---|---|
+| Rust 版服务（`server/`）的接口：只通过 HTTP、WebSocket 和数据库文件和服务打交道 | `(cd server && cargo build) && OSA_IMPL=rust uv run pytest contract -q` | `docker`（在测试镜像里跑） |
+| Rust 版的单元测试（写在各个模块里的 `#[cfg(test)]`） | `(cd server && cargo test)` | `server` |
+| Python 版（`osa/*.py`）的进程内测试 | `uv run pytest -q` | `backend` |
+
+**新功能只做在 Rust 版里，所以改了功能就要在 `contract/` 里加或改测试**，写法见下面“接口测试”。Python 版不再加功能，`tests/` 只保证它没被改坏。
+
+### 接口测试（contract/）
+
+- 每个测试文件起一个服务进程：空闲端口、临时数据目录、临时 `config.yaml`，电脑关着，模型指向假模型（`contract/fakellm_http.py`，一个真的 HTTP 服务，
+  按剧本流式返回文字或工具调用，按系统提示词认角色），应用里接一个假的 stdio 应用（`contract/fake_mcp.py`）。几个人同时跑也互不干扰。
+- 默认测的是 `server/target/debug/osa-server`，先 `cargo build`；`OSA_RUST_BIN` 可以换成别的程序。不带 `OSA_IMPL=rust` 测的是 Python 版，只有 Rust 版有的功能会跳过。
+- 只有 Rust 版有的功能，测试文件开头写 `pytestmark = pytest.mark.skipif(conftest.IMPL != "rust", reason="…")`（照 `contract/test_docs.py`）。
+- 要外部东西的测试，没有就自己跳过：`test_computer.py` 要 Docker 和 `osa-computer:2` 镜像，`test_docs.py` 要 `open-agent-docs` 程序，`test_mac.py` 里本机电脑那几项要 Chrome。
+- 在 Linux 上跑（CI 跑的就是这两句，本机有 Docker 就能照着跑一遍）：
+
+  ```bash
+  docker build -f Dockerfile.rust --target test -t osa-rust-test .
+  docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined osa-rust-test
+  ```
+
+  `run_code` 的沙箱要建用户命名空间，Docker 默认不让，所以要那两个 `--security-opt`；不带的话沙箱那几项会挂。
+
+### Python 版的测试（tests/）
+
 ```bash
 uv run pytest -q
 ```
@@ -50,7 +78,7 @@ uv run pytest -q
 - `until(lambda: …)` 等到条件成立；`settle()` 等后台的轮次和任务都跑完；`find(chat_id, kind=…, text=…)` 查对话里的消息。
 - 所有测试共用一个事件循环（Router、群聊的锁是常驻的）。
 
-改了 Router、群聊、私信、确认、电脑分配这些有约定的地方，加一个测试把约定写下来（见 `tests/test_smoke.py`）。
+改了 Router、群聊、私信、确认、电脑分配这些有约定的地方，加一个测试把约定写下来（Rust 版加在 `contract/`，见 `contract/test_smoke.py`、`contract/test_core.py`）。
 
 ## 加一个工具
 

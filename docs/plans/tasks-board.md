@@ -173,7 +173,9 @@
 
 1. 按 task-core → memory → board-core → task-ui → board-ui 的顺序合进来，冲突当场解决（预计在 `lib.rs`、`routes.rs`、`schemas.json`、两个 `en.json`）。
 2. `cargo build`、`npm run build`、`python -m osa.i18n`、`python -m osa.catalog`、`python -m osa.templates`。
-3. 整套测试，一次一套：`OSA_IMPL=rust uv run pytest contract`，再 `uv run pytest -q`（Python 版没改，应该和之前一样）。和合并前的基线比，不能多出失败。
+3. 整套测试，一次一套：`cargo test`、`OSA_IMPL=rust uv run pytest contract`，再 `uv run pytest -q`（Python 版没改，应该和之前一样）。和合并前的基线比，不能多出失败。
+   再照 CI 的办法在 Linux 上跑一遍（`docker build -f Dockerfile.rust --target test …` 和 `docker run …`，见 [开发 → 接口测试](../development.md#接口测试contract)）：
+   CI 以前不跑 Rust 版的测试，这次加上了（`server` 任务跑单元测试，`docker` 任务在测试镜像里跑 `contract/`），新功能的测试要在那里也过。
 4. 用真模型在数据副本上走一遍（8790 端口，办法见 [开发 → 不要用真实数据测试](../development.md#不要用真实数据测试)），Playwright 截图：
    - 派一个任务，中途补一句，任务照新的做；任务问一个问题，回答后接着做；做完后回一句，接着做出第二条结果；
    - 任务做到一半杀掉服务再起来，任务接着做完；
@@ -208,4 +210,6 @@
 
 ## 进度
 
-- 2026-11-27：计划写好；主目录的基线：见收拢记录。
+- 2026-11-27：计划写好。开工前的基线（本机 macOS）：`OSA_IMPL=rust uv run pytest contract` 108 过、6 跳过；`cargo test` 21 过。
+- 2026-11-27：CI 加上 Rust 版的测试（`.github/workflows/ci.yml` 的 `server` 任务和 `docker` 任务里的接口测试），`Dockerfile.rust` 的测试镜像改成只跑 Rust 版、
+  退出码就是测试结果、带上文档服务的程序。还没验证：要等第一波收拢后在本机 Docker 里跑一遍；GitHub 上的那一遍要 push 以后才看得到。

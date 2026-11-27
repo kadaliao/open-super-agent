@@ -23,6 +23,21 @@ jobs:
       - name: Tests
         run: uv run pytest -q
 
+  # 服务端（Rust 版，server/）：编译和单元测试。接口测试（contract/）在下面 docker 那个任务里跑，
+  # 用的是镜像里编好的那份程序，不在这里再编一遍
+  server:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: server } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: server }
+      - name: Build
+        run: cargo build --locked
+      - name: Unit tests
+        run: cargo test --locked
+
   frontend:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
@@ -52,3 +67,11 @@ jobs:
           curl -sf http://127.0.0.1:8765/api/v1/me | grep -q '"workspaces"'
           # 服务的镜像里不该有 docker 命令：电脑经 unix socket 找 compose 里的 computer 容器，服务不碰 Docker
           docker exec osa sh -c '! command -v docker'
+      # 接口测试（contract/）：现在的功能都在 Rust 版里，它们的测试只有这一套。用上面刚编好的程序（构建缓存还在，不会再编一遍）
+      - name: Build test image
+        run: docker build -f Dockerfile.rust --target test -t osa-rust-test .
+      - name: Contract tests (Rust server)
+        run: |
+          # run_code 的沙箱要建用户命名空间：Docker 默认的 seccomp 不让，Ubuntu 24.04 的 AppArmor 也不让没有特权的进程建
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined osa-rust-test

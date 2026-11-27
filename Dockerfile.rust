@@ -3,7 +3,9 @@
 # 镜像里还留着 Python：run_code 的沙箱、uvx 装的应用、电脑里的浏览器控制脚本要用它；服务本身不靠它。
 #
 #   docker build -f Dockerfile.rust -t open-super-agent:rust .
-#   docker build -f Dockerfile.rust --target test -t osa-rust-test . && docker run --rm osa-rust-test   # 在 Linux 上把接口测试（两个版本）跑一遍
+#   # 在 Linux 上把接口测试（contract/）跑一遍，CI 里跑的就是这两句：
+#   docker build -f Dockerfile.rust --target test -t osa-rust-test .
+#   docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined osa-rust-test
 #
 # 国内网络可以加 --build-arg NPM_REGISTRY=https://registry.npmmirror.com --build-arg PYPI_INDEX=https://mirrors.ustc.edu.cn/pypi/simple
 # （Rust 依赖走 crates.io；要镜像的话加 --build-arg CARGO_MIRROR=sparse+https://rsproxy.cn/index/）
@@ -53,7 +55,8 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && if [ -n "$PYPI_INDEX" ]; then mkdir -p /etc/uv && printf '[[index]]\nurl = "%s"\ndefault = true\n' "$PYPI_INDEX" > /etc/uv/uv.toml; fi
 WORKDIR /app
 
-# ---------- 在 Linux 上跑接口测试：Python 版和 Rust 版各一遍 ----------
+# ---------- 在 Linux 上跑接口测试（Rust 版）----------
+# 新功能只做在 Rust 版里，接口测试也只跑它；Python 版由 tests/ 测（CI 的 backend 任务）
 FROM base AS test
 RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
@@ -64,10 +67,12 @@ COPY tests/ tests/
 COPY contract/ contract/
 COPY --from=web /src/osa/static/dist osa/static/dist
 COPY --from=build /out/ server/target/debug/
-# 测试在 docker run 里跑，不在构建时跑：构建的环境里建不了沙箱要的命名空间，run_code 那几项会全挂（两个版本都一样）
-CMD uv run pytest contract -q -p no:cacheprovider --ignore=contract/test_parity.py \
- ; OSA_IMPL=rust uv run pytest contract -q -p no:cacheprovider --ignore=contract/test_parity.py \
- ; uv run pytest contract/test_parity.py -q -p no:cacheprovider
+# 文档的测试（contract/test_docs.py）要这个程序，没有就整个文件跳过
+COPY --from=oad /usr/local/bin/open-agent-docs /usr/local/bin/
+ENV OSA_IMPL=rust
+# 测试在 docker run 里跑，不在构建时跑：构建的环境里建不了沙箱要的命名空间，run_code 那几项会全挂。
+# 写成一条命令：退出码就是测试的结果，CI 靠它判断过没过
+CMD ["uv", "run", "pytest", "contract", "-q", "-p", "no:cacheprovider"]
 
 # ---------- 运行的镜像 ----------
 FROM base
