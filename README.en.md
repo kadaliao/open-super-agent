@@ -17,13 +17,14 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
 
 <sub>Feature tour (silent, sped up; Chinese UI): link cards · threads · background tasks · the Bot's computer · ask first · groups · Bot DMs · drawing · schedules · apps · skills · memory · costs · <a href="docs/images/promo.mp4">full 2-minute promo (Chinese voice-over)</a></sub>
 
-<sub>Recorded on 2026-11-08 (v0.7.0). Added since: events, the Insights page, video generation, searching posts on X, Reddit and Xiaohongshu, and sending tasks to your Mac. <a href="#a-look-around">New screenshots below</a>. Get the latest version from the <a href="https://github.com/kadaliao/open-super-agent/releases/latest">releases page</a>; see the <a href="CHANGELOG.md">changelog</a> (Chinese) for every release.</sub>
+<sub>Recorded on 2026-11-08 (v0.7.0). Added since: events, the Insights page, video generation, searching posts on X, Reddit and Xiaohongshu, sending tasks to your Mac, the Requests board, and tasks you can keep talking to. <a href="#a-look-around">New screenshots below</a>. Get the latest version from the <a href="https://github.com/kadaliao/open-super-agent/releases/latest">releases page</a>; see the <a href="CHANGELOG.md">changelog</a> (Chinese) for every release.</sub>
 
 </div>
 
 ## Highlights
 
-- **Chats and delegates**: each Bot has its own persona, memory and conversation. Long jobs run as background tasks while you keep chatting, and you can see every step; put several Bots in a group, and one hands its research to another to write up.
+- **Chats and delegates**: each Bot has its own persona, memory and conversation. Long jobs run as background tasks while you keep chatting, and you can see every step; add a word halfway through, get asked when it's unsure, reply to a finished task to keep it going, and it carries on after a server restart. Put several Bots in a group, and one hands its research to another to write up.
+- **Everything you asked for, in one place**: each request is a card on the Requests board, in To do, In progress, Needs you or Done, decided by the tasks behind it; cards belong to numbered projects (`OPC-12`), and what you ask for in chat becomes a card on its own. Memory tidies itself up every night: expired notes stop being used, duplicates are merged, and you can undo it.
 - **A computer you can watch and take over**: Bots browse, fill in forms and download files on the computer while you watch live; for captchas and logins, they ask you to step in. Several tasks run at once, each in its own browser window, without queueing.
   The computer can be the Bots' own, or simply your Mac: once you grant the permissions, they use the mouse and keyboard in apps like WeChat, Finder and Notes, and stop as soon as you move the mouse.
 - **Finds what's new**: web search and page reading use free services by default, with no API key needed. They can also rotate across providers (DeepSeek, Exa, Tavily…), moving to the next when one fails, and say whose account pays when a paid one is in use; Bots can also search posts on X, Reddit and Xiaohongshu, with like and comment counts.
@@ -34,8 +35,7 @@ An open-source alternative to [Grok Bot](https://x.ai/bot). Bring your own model
   Image drawing, editing from reference images and video generation are wired to providers through config.
 - **Show it once, run it on time**: with Teach a task, do the job yourself on the computer and the Bot turns it into a [skill](docs/skills.md) you run again with `/name`. Skills can carry scripts and reference files, come ready-made from the skill market, or be imported from Claude's SKILL.md.
   Say "every day at 9, ..." to set up a routine, or "tell me when this page changes" to set up an [event](docs/events.md).
-- **Works in mainland China**: talk to your Bots in Feishu, DingTalk or WeCom; the default setup needs no paid foreign service; the UI comes in Chinese and English.
-- **Your data stays yours**: it runs on your own machine, and all data, secrets included, exports as one encrypted file you can carry to another machine.
+- **Works in mainland China, your data stays yours**: talk to your Bots in Feishu, DingTalk or WeCom; the default setup needs no paid foreign service; the UI comes in Chinese and English. It runs on your own machine, and all data, secrets included, exports as one encrypted file you can carry to another machine.
 
 See [Features](docs/features.en.md) for the full list.
 
@@ -47,6 +47,10 @@ See [Features](docs/features.en.md) for the full list.
 <td width="50%"><img src="docs/images/task-steps.webp" alt="Radar's finished background task, with each step listed on the right: web search, Reddit, Xiaohongshu, X, reading pages, and how long each took"><br><sub><b>Background task</b>: two weeks of discussion about note apps, with every step on the right (web search, X / Reddit / Xiaohongshu, reading pages)</sub></td>
 </tr>
 <tr>
+<td width="50%"><img src="docs/images/board.webp" alt="The Requests board: To do, In progress, Needs you and Done, cards numbered by project, the two that need you marked as waiting for your answer"><br><sub><b>Requests board</b>: one card per request, its column decided by the tasks behind it</sub></td>
+<td width="50%"><img src="docs/images/task-talk.webp" alt="A task writing the announcement: a message added to task #10, the task stopping to ask which tone to use, and the task details on the right"><br><sub><b>Tasks you can talk to</b>: add a word halfway, and it stops to ask which tone you want</sub></td>
+</tr>
+<tr>
 <td width="50%"><img src="docs/images/applet.webp" alt="An applet in the chat, a launch countdown: 3 days 15 hours to go, with the unfinished tasks below as checkboxes"><br><sub><b>Applet</b>: a launch countdown Nova built from one sentence</sub></td>
 <td width="50%"><img src="docs/images/events.webp" alt="The Events tab: “Obsidian new release” (a feed, checked every 3 hours) and “flomo pricing page changed” (a web page, checked every 12 hours), each with test, check now, pause, edit and history"><br><sub><b>Events</b>: Radar watching for a new release and a pricing page change, set up from one sentence</sub></td>
 </tr>
@@ -56,7 +60,7 @@ See [Features](docs/features.en.md) for the full list.
 </tr>
 </table>
 
-<sub>Screenshots taken on 2026-11-16 (the v0.24.0 web UI, in Chinese) with demo data: an indie developer launching “Tidal Notes 2.0”. The three Bots and everything on the pages were produced by a real model (DeepSeek).</sub>
+<sub>Screenshots taken on 2026-11-16 (the v0.24.0 web UI, in Chinese) with demo data: an indie developer launching “Tidal Notes 2.0”. The three Bots and everything on the pages were produced by a real model (DeepSeek). The Requests board and task screenshots were taken on 2026-11-28 with a scripted demo conversation.</sub>
 
 ## Where you use it
 
@@ -134,7 +138,7 @@ uv run uvicorn osa.server:app --port 8765   # open http://127.0.0.1:8765
 [Features](docs/features.en.md) and [the comparison](docs/comparison.en.md) are in English; the other docs are in Chinese for now:
 
 - [Deploy with Docker Compose](docs/docker.md)
-- [Configuration](docs/configuration.md): models, drawing and video generation, web search and reading, limits and prices, the computer, apps, approvals and the vault, routines, push, remote access
+- [Configuration](docs/configuration.md): models, drawing and video generation, web search and reading, limits and prices, task retries and shutdown, the computer, apps, approvals and the vault, routines, push, memory tidy-up, the Requests board and projects, remote access
 - [Events](docs/events.md): have a Bot act when something happens: webhooks, GitHub, feeds, page changes, mail, calendar, weather, earthquakes, prices, public IP…; addresses and security, writing a new source
 - [Desktop app](docs/desktop.md): running on your computer or connecting to your server, and sending the server's tasks to this Mac
 - [iPhone app (TestFlight)](docs/mobile.md): QR pairing, how pushes reach the phone, what the push relay can see, development

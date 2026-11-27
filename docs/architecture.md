@@ -23,16 +23,30 @@
 
 一条消息的处理过程：
 
-1. 浏览器通过 WebSocket 发送 `{type: "send", chat_id, text}`。
-2. 对应 Bot 的 Router 把这条消息写入数据库，组装上下文（人设 + 能力说明 + 长期记忆 + 当前任务 + 最近的消息），然后流式调用模型。
+1. 浏览器通过 WebSocket 发送 `{type: "send", chat_id, text}`。聊天软件收到的消息走同一个入口。
+   Rust 版里有两种消息不叫醒 Bot，直接交给任务（存成一条 `meta.kind=followup` 的消息）：在任务的派发或结果消息下面开讨论串回复的；
+   开头是卡片编号（`OPC-12 …`）、那张卡正好有一个任务在做的。
+2. 对应 Bot 的 Router 把这条消息写入数据库，组装上下文（人设 + 能力说明 + 长期记忆 + 当前任务 + 最近的消息；Rust 版还有看板上进行中的卡），然后流式调用模型。
    “最近的消息”从最后一次“新话题”之后算起。
 3. 模型要么直接回答，要么调用工具：
-   - `dispatch`：创建一个 Task，在后台运行 Worker，Router 马上回复。
+   - `dispatch`：创建一个 Task，在后台运行 Worker，Router 马上回复。Rust 版里，用户的消息引起的这一轮派的任务归到看板的一张卡上（`need_id` 指定，没有就新建一张），
+     项目的简介和目录接在任务交代后面。
+   - `tell_task`（Rust 版）：用户接着说某个任务的事（补充、纠正、追问结果），把话转给那个任务，不新派；任务已经结束的，带着这句话接着做一轮。
+   - `update_need`（Rust 版）：改卡（改标题、合并、取消、完成、换项目）。
    - `browser_*` / `computer_*` / `look_at_screen`：Router 自己做一步电脑操作，看页面文字或截图后回答。
 4. Worker 流式调用模型，每走一步都推送一个 `task` 事件，前端的任务卡片随之更新；同时把这一步记进任务过程（`tasklog.py`）：
    思考、调工具前说的话、每次工具调用的参数和返回、写出的结果，以 `task_step` 事件推给前端（流式文字最多每 0.3 秒一段，带起始位置 `at` 去重）。
    右栏“任务”列出 Bot 做过的任务，点开实时看过程，做完也能回看。结束时写入一条 `kind=result` 的消息，以结果卡片显示。
-5. Watchdog 每隔 `watchdog_interval_s` 秒巡检一次，取消超时、没有进展、死循环或超预算的任务。
+   Rust 版另外（`taskstore.rs`）：
+   - 每一步之前看收件箱，用户发给任务的话接进对话（过程里记一步 `kind=user`）；
+   - Worker 能用 `ask_user` 问用户，问题走确认卡片的通道（`kind: "question"`），回答是 `approve` 的 `note`；
+   - 发给模型的消息和每个工具结果都存进 `task_runs`，做完、失败以后能接着做（`round` 加 1）、能重试，服务重启后接着做；
+   - 模型服务临时出错按 `limits.task_retry_s` 等几秒重试；
+   - 任务状态一变就调 `board::task_changed`，重新算卡在哪一列、推 `board` 事件、让等它的卡开始。
+5. Watchdog 每隔 `watchdog_interval_s` 秒巡检一次，取消超时、死循环或超预算的任务。Rust 版里 `limits.task_stall_s` 秒没动静的，先取消当前这一步、从上一步重试一次，再卡住才取消任务。
+6. Rust 版停服务（SIGTERM）时不再让任务开始新的一步，等正在执行的那一步做完、存好再退出（最多 `limits.shutdown_wait_s`）。重启、卡住、停下时正在执行、
+   没有结果的写操作记成“说不准”（存在 `task_runs.doubts`），不重做：模型拿到“不知道有没有做成”的工具结果，要它先用只读的办法查；
+   同一个工具再被调用时一律弹带 `doubt` 的确认卡片，不按“总是允许”放行。只读的（不用确认的）在重启恢复、卡住重试时直接重做；点重试、接着做时不自动重做，交给模型重新决定。
 
 ## 代码目录
 
@@ -119,6 +133,14 @@ compose.yaml        Docker Compose 部署：服务、常驻的 computer 容器�
 deploy/             项目自己的服务器（osa.cclsp.top）的部署：lsp/ 现在用的 compose；osa.service、demo/、relay/（推送中转 osa/relay.py）是以前不用 Docker 时的 systemd 和 Caddy 配置
 desktop/            macOS 桌面 App（Tauri 2）：外壳、自带的 Python 运行环境、打包脚本，见 docs/desktop.md
 mobile/             iPhone App（Tauri 2）：Rust 外壳、Swift 插件、通知扩展、推送解密（WebPushCrypto），见 docs/mobile.md
+server/             Rust 版服务（osa-server），Docker 镜像（Dockerfile.rust）和桌面 App 用的都是它。crates/osa/src/ 下的模块和上面 osa/ 的文件大多同名、做同样的事；
+                    界面文字（osa/locales/en.json）、画图和搜索的配方、应用清单仍然放在 osa/ 下面，编译时编进去。下面这些只有 Rust 版有：
+  crates/osa/src/
+    taskstore.rs   任务的过程存下来（task_runs）：接着做、重试、重启后接着做；收件箱和讨论串里给任务的话、ask_user、停服务时等这一步做完、说不准的那一步（doubt）
+    board.rs       需求看板和项目：needs、projects、need_tasks 表，卡在哪一列由任务算出来；派任务时归卡、update_need、消息开头的卡片编号、项目记忆的接口
+    consolidate.rs 记忆整理：每天 memory.consolidate_at 一次（也能立即跑），删过期的、按组让 filter 模型合并改写、每日摘要，整理前存底（memories_history）、撤销
+    docs.rs        文档：交给 Open Agent Docs，先过本服务的登录再转发 /api/v1/* 和分享页，见 docs/configuration.md 的“文档”
+    prompts/       提示词（router.txt、state.txt、consolidate.txt……）
 web/public/         PWA：manifest.json、sw.js（推送和离线提示页）、图标
 web/src/
   store.ts         全局状态、REST 封装、WebSocket 事件处理
@@ -141,7 +163,10 @@ web/src/
 | `llm_calls` | 每次模型调用：token 数、费用、哪个 Bot 在哪个对话或任务里调的（`bot_id`、`chat_id`、`task_id`）、服务商、整次用时 `ms`、第一个字多久出来 `ttft`（毫秒）；失败的也记一行，`err` 是原因、token 和费用是 0。画图记 `role=image`、0 token，费用按 `pricing.images` 的每张价格；生成视频记 `role=video`（`pricing.videos`）；收钱的搜索和读网页记 `role=web`（配方里的单价）。费用、每日预算和观测页都从这里算 |
 | `llm_usage` | 旧版本的调用记录，原样留着不加列（旧版本按位置插 8 个值，加列后退回旧版本会出错）。启动时把新出现的行搬进 `llm_calls`，搬到哪儿记在 `settings` 的 `llm_usage_moved` |
 | `task_steps` | 后台任务的过程：每一步的类型（思考 / 工具 / 结果……）、Heavy 里是哪个研究员、标题、内容、状态、用时。`task_id` 是“任务已派发”那条消息的 id；工具那一步的工具名在 `name`（标题会被进度说明盖掉）；只留最近 `memory.task_log_days` 天 |
-| `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事” |
+| `memories` | 长期记忆。`bot_id` 为空的是共享的用户事实；`kind=work` 是自动记的“做过的事”，`kind=digest` 是每日摘要（共享）。`until` 是截止日（那一天结束的时刻，空的不过期），`pinned` 是置顶；`project_id` 不为空的是项目记忆（`bot_id` 也为空，不算共享的） |
+| `memories_history` | 记忆整理前的原样（整行 JSON），按 `run` 留最近 7 次，撤销时放回去 |
+| `task_runs` | 任务的过程（Rust 版）：发给模型的消息和工具结果、第几轮（`round`）、派发时的参数、停下时还开着的步（`open_steps`）、说不准的写操作（`doubts`） |
+| `projects`、`needs`、`need_tasks` | 需求看板（Rust 版）：项目（编号前缀 `key`、下一个编号）、卡片（标题、描述、你的原话、手动标的状态、交给谁、`after`、归档）、卡片和任务的对应 |
 | `pages`、`file_pins` | 资料库的页面（`share_token` 不为空表示已分享）和置顶的文件路径 |
 | `computer_links` | 连进来的 Mac：名字、令牌的 SHA-256、终端开没开（`shell`）、那台 Mac 的编号（`device`，同一台只留一行） |
 | `push_subs` | 开启了推送的设备（推送服务地址和密钥）；VAPID 私钥存在 `settings` 的 `vapid` 里 |
@@ -419,6 +444,8 @@ web/src/
   其余都记在 Bot 自己名下，所以 B 不会知道你对 A 提的要求。
 - Worker 的系统提示词带上用户事实和这个 Bot 的记忆（不含做过的事），这样派出去的任务也按偏好做。
 - “做过的事”只在对话里派的任务完成时记一笔（取任务描述第一行，不调模型）；定时任务有自己的运行记录，不重复记。
+- 记忆整理（Rust 版的 `consolidate.rs`）是唯一会让模型改记忆的地方：模型只返回操作列表（keep / rewrite / merge / delete，带编号），服务端照着做；置顶的不交给模型，没提到的一律保留，要删的超过一半当作答坏了、这一组不动。改写的内容和 `remember` 一样过 `memories.clean`（挡掉像密钥的）。
+- 过了截止日的记忆不进提示词、不进 `related`、按意思查也查不到；系统提示词只在到期那一刻变一次，前缀缓存只在那时失效。每日摘要放在每轮的状态里（`STATE_PROMPT`），不进系统提示词。
 - 页面的链接写成 `/library/pages/<id>`，对话里点击会在资料库里打开；分享链接是 `/s/<token>`，前端只渲染这一页。
 - **HTML 页面只能通过 `/raw` 地址显示**，响应头带 CSP：`sandbox`（来源变成 null）、`connect-src 'none'`（不能请求接口或开 WebSocket）。
   WebSocket 另外拒绝来源为 `null` 的连接。不要把 HTML 页面内容直接塞进应用的 DOM。

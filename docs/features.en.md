@@ -28,15 +28,60 @@ The README lists the highlights; this is the full list. For setup see [Configura
   Other Bots can edit themselves; to create, delete or edit another Bot they ask the main Bot, and you still confirm.
 - **Background tasks**: workers run long jobs while you keep chatting. The Tasks tab on the right shows every step and how long it took, live while it runs.
   **Heavy mode** has several workers do the same job, then cross-review and merge.
+- **Talk to a task, pick it back up**:
+  - Task details have a message box. A running task gets your message before its next step; a finished, failed or canceled task picks the job back up
+    with your message and posts another result ("Round 2"). **Follow up** on a result card opens that box. What you said shows up as "You" in the steps,
+    and as a "To task #N" message in the chat.
+  - Reply in a thread under a task's message and it goes straight to the task without waking the Bot. Keep talking about a task in the chat
+    and the Bot passes your words on to that task instead of starting a new one.
+  - A task can stop and ask you: the card shows the question and options; pick one, type your own answer, or **Skip**.
+    The task list tells "Waiting for your answer", "Needs you to take over" and "Needs your approval" apart.
+  - **Try again** on a failed, canceled or interrupted task continues from where it stopped, without redoing finished steps.
+    Heavy-mode tasks and tasks from before the update can't be continued.
+- **Tasks survive restarts and errors**:
+  - After the server restarts, tasks that were running carry on. A normal shutdown first lets the step in progress finish and get saved.
+  - Temporary model errors are retried after 15, 30 and 60 seconds; a task that stalls is retried once from its last step.
+  - A write that was running during a restart, a stall or a stop (sending mail, submitting a form) may or may not have gone through. The Bot doesn't redo it;
+    it checks first with read-only tools. If it can't tell and wants to run it again, you get a card showing which step, when it started and what the Bot checked,
+    with **Do it again**, **It went through, don't redo it** and **Don't, stop the task**. This asks even if you chose "Always allow" before.
 - **Memory**:
-  - Each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots.
-  - Just say "remember ...", or view, edit, delete and import (for example from ChatGPT) in the side panel.
+  - Each Bot remembers your preferences and the work it has done; basic facts about you (name, time zone) are shared by all Bots; things that only concern one project are kept under that project (see "Requests board" below).
+  - Just say "remember ...", or view, edit, delete and import (for example from ChatGPT) in the side panel. Anything that looks like a password or key isn't stored; you're pointed to the vault instead.
+  - Things with a date (an event, a deadline, a quote's validity) get an expiry date and stop being sent to the model after that day. Pin the ones that should stay.
+  - **Tidied up every night**: expired notes are removed, duplicates merged, outdated ones rewritten, and the day's work is written up as a daily digest.
+    The memory panel has **Tidy up now**, and **Undo** if you don't like the result.
   - Start a **new topic** to drop old messages from the context while keeping memories.
   - Memories and the library are searchable by meaning, and Bots look up past notes and pages on their own.
 
 ![The group chat “2.0 launch team”: Nova assigns the work, Radar picks three pricing differences from the competitor research and hands them to Quill, and Quill saves the opening of the announcement to the library](images/chat-group.webp)
 
 ![Radar's finished background task, with each step listed on the right: web search, Reddit, Xiaohongshu, X, reading pages, and how long each took](images/task-steps.webp)
+
+![Nova’s task writing the announcement: in the chat, a message to task #10 and the question the task asked; on the right, the task details with the “You” step, the step asking you, and the same question card](images/task-talk.webp)
+
+![The Memory tab: the last tidy-up changed 3 notes, with Undo and Tidy up now; a pinned note, an expired one struck through, one expiring on 12/03, and the merged note about sync being three times faster](images/memory-tidy.webp)
+
+## Requests board
+
+- **Requests** in the sidebar: one card for each thing you asked for, in four columns (To do, In progress, Needs you, Done), with canceled cards folded below.
+  The tasks behind a card decide its column: a running task means In progress; a task waiting for your answer or approval, or one that failed or was interrupted, means Needs you.
+  The number in the sidebar counts cards that need you.
+- **Projects**: cards belong to projects and are numbered by project (`OPC-12`). A project has a name, a brief, a folder and a GitHub repo; the brief and folder are passed to every task working on its cards.
+- **Make your own cards**: a title and description, a project, which Bot it goes to, then **Add to To do** or **Start now**. **Start after** picks other cards;
+  once they're all done this one starts by itself, with their results attached. If any of them was canceled or failed, it doesn't start.
+- **Drag to act**: drag from To do to In progress to start, or onto Done to mark it done (if tasks are still running you're asked first). On a phone you see one column at a time and use the buttons on the card.
+- Filter by project and creation date, search numbers, titles and descriptions; archive finished cards and bring them back from the archive.
+- **Card page**: description, what you said, questions waiting for you, results, and the tasks behind it. Title, description, project, assignee and "Start after" can all be changed.
+- **Wired into the chat**:
+  - When a Bot starts a task for something you asked in chat, it makes a card titled with what you'll get; tasks from the same turn share one card.
+  - Start a message with a card number ("OPC-12 add the UK too") and, if exactly one task is running on that card, the message goes straight to it.
+  - Say "merge these two", "drop OPC-12" or "move it to the website project" and the Bot updates the cards.
+  - The task list, task details and task cards in the chat show which card a task belongs to and open it on click; from a card you can open a task and come back.
+- **Project memory**: Board → Projects → Memory, for the project's conventions, accounts to use or delivery format. Only tasks of that project read it; in chat, a Bot sees the memory of projects whose cards are in progress.
+
+![The Requests board: To do, In progress, Needs you and Done, cards numbered by project (TIDE-6, WEB-1), the two cards that need you marked “Waiting for your answer”](images/board.webp)
+
+<img src="images/need-card.webp" width="640" alt="The card page for TIDE-3, “Write the 2.0 release notes (Chinese and English)”: project, assigned to Quill, Start after, the question the task is waiting on with its options, then the description and the task behind it">
 
 ## The computer
 
@@ -150,8 +195,9 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - **iPhone app** (TestFlight): connect by scanning a QR code on your computer with the Camera; pushes go through an encrypted relay, arrive even when the app is closed, show their content on the lock screen, and open the right conversation when tapped. See [iPhone app](mobile.md) (Chinese).
 - **Chat apps**: talk to your Bots from Telegram, Feishu/Lark, DingTalk, WeCom or Discord, in the same conversation as the web UI.
   - Approval requests arrive as buttons, and you can send files (and voice messages on DingTalk and WeCom).
+  - When a task asks you something, the options are buttons and a plain reply counts as the answer; a step that may or may not have gone through gets **Do it again**, **It went through** and **Stop the task**.
   - No public address needed ([setup guide](channels.md), Chinese).
-- **Push notifications**: when no page is open, approvals and finished tasks are pushed to your phone or computer.
+- **Push notifications**: when no page is open, approvals, questions from tasks and finished tasks are pushed to your phone or computer.
 
 ## Models, languages and data
 
