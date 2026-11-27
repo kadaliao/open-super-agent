@@ -9,7 +9,6 @@ use regex::Regex;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::oneshot;
 
@@ -17,7 +16,18 @@ pub fn migrate() {
     db::batch("create table if not exists rules(id integer primary key, pattern text, action text, note text default '', created real)");
 }
 
-static IDS: AtomicI64 = AtomicI64::new(1);
+/// 卡片的编号。存在 settings 里（approval_seq），重启后接着往下数：聊天软件里还留着重启前的旧卡片，钉钉是打字回“允许一次 #编号”，
+/// 编号要是从 1 重新数，点旧卡片就可能批准到重启后另一件同号的事（重启后任务会接着做、重新弹卡片）。
+fn next_id() -> i64 {
+    static LOCK: Mutex<i64> = Mutex::new(0);
+    let mut last = LOCK.lock();
+    if *last == 0 {
+        *last = memory::setting_raw("approval_seq").and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0).max(0);
+    }
+    *last += 1;
+    memory::set_setting_raw("approval_seq", &last.to_string());
+    *last
+}
 
 pub struct Pending {
     pub item: Value,
@@ -321,7 +331,7 @@ pub async fn request_with(task: &Arc<Task>, tool: &str, args: &Value, req: Req<'
             scopes.push("always");
         }
     }
-    let aid = IDS.fetch_add(1, Ordering::Relaxed);
+    let aid = next_id();
     let (tx, rx) = oneshot::channel();
     let timeout = if task.background { Some(config::get_i64("limits.approval_timeout_s", 1800)) } else { None };
     let chat_id = if task.approval_chat_id != 0 { task.approval_chat_id } else { task.chat_id };

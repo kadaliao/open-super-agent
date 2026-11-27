@@ -635,3 +635,28 @@ def test_many_tasks_ending_together_do_not_hang(tsrv, tws, fake):
         fake.reset()
     done = [m for m in tsrv.find(bot["chat_id"], kind="dispatch") if m["meta"]["status"] in ("done", "failed")]
     assert len(done) == n * rounds, f"{len(done)} / {n * rounds} 个任务有结果"
+
+
+def test_card_numbers_continue_after_restart(llm, fake):
+    """确认卡片的编号重启后接着往下数，不从 1 重来：重启前的旧卡片（聊天软件里还留着，钉钉是打字回编号）不能对上重启后另一张同号的卡片。"""
+    srv = Server(llm, config={"limits": limits(shutdown_wait_s=1)})
+    ws = Socket(srv)
+    try:
+        fake.script("worker", Call("ask_user", {"question": "要哪个城市？"}), "按回答做好了")
+        bot, tid = start_task(srv, ws, fake, "Numbered", "问一下再做")
+        pending = lambda: [a for a in srv.get("/api/bootstrap")["approvals"] if a["task_id"] == tid]
+        old = until(pending, what="提问卡片")[0]["id"]
+        ws.close()
+        srv.restart(kill=True)
+        ws = Socket(srv)
+        new = until(pending, 30, "重启后任务接着做，重新问")[0]["id"]
+        assert new > old, f"重启后的卡片 #{new} 和重启前的 #{old} 撞号了"
+        ws.send({"type": "approve", "id": old, "ok": True, "note": "答在旧卡片上"})   # 旧编号：不该算数
+        time.sleep(0.6)
+        assert [a["id"] for a in pending()] == [new] and not results(srv, bot["chat_id"], tid)
+        ws.send({"type": "approve", "id": new, "ok": True, "note": "上海"})
+        until(lambda: results(srv, bot["chat_id"], tid), 30, "结果")
+        assert "用户回答：上海" in tool_text(fake.bodies("worker")[-1]) and "答在旧卡片上" not in tool_text(fake.bodies("worker")[-1])
+    finally:
+        ws.close()
+        srv.stop()
