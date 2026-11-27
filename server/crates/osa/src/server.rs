@@ -126,6 +126,10 @@ async fn ws_run(sock: WebSocket) {
                 let chat = py::to_int(&data["chat_id"]).and_then(bots::chat);
                 let atts = media::clean_attachments(&data["attachments"]);
                 if let Some(chat) = chat.filter(|_| !text.is_empty() || !atts.is_empty()) {
+                    // 任务消息下面的讨论串：交给那个任务，不叫醒 Bot（taskstore.rs）
+                    if crate::taskstore::thread_send(&chat, &media::with_marks(&text, &atts)) {
+                        continue;
+                    }
                     tokio::spawn(safe_handle(chat, text, String::new(), atts));
                 }
             }
@@ -569,6 +573,7 @@ pub static SHUTDOWN: LazyLock<(tokio::sync::watch::Sender<bool>, tokio::sync::wa
     LazyLock::new(|| tokio::sync::watch::channel(false));
 
 pub async fn shutdown() {
+    crate::taskstore::stop_tasks().await; // 等正在执行的那一步做完、存好（最多 limits.shutdown_wait_s）
     crate::channels::stop().await;
     mcp_hub::stop().await;
     crate::docs::stop().await;

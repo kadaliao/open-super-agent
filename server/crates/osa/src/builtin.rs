@@ -120,6 +120,7 @@ pub fn load() {
         reg("delete_routine", |c| Box::pin(crate::routines::tool_delete(c)), None, None);
         reg("run_code", |c| Box::pin(crate::sandbox::tool_run(c)), Some(crate::sandbox::progress), Some(sandbox_any));
         reg("quick_code", |c| Box::pin(crate::sandbox::tool_quick(c)), None, Some(sandbox_quick));
+        crate::taskstore::register(&CTX); // ask_user：任务问用户一个问题（schema 在 taskstore.rs）
         crate::sources::register(&CTX);
     });
 }

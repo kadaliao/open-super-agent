@@ -57,6 +57,7 @@ async fn run() -> anyhow::Result<()> {
             {
                 let _ = tokio::signal::ctrl_c().await;
             }
+            osa::taskstore::begin_stop(); // 任务不再开始新的一步（shutdown() 里等正在执行的做完）
         })
         .await?;
     osa::server::shutdown().await;

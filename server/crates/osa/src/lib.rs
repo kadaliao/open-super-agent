@@ -57,6 +57,7 @@ pub mod skills;
 pub mod sources;
 pub mod task;
 pub mod tasklog;
+pub mod taskstore;
 pub mod teach;
 pub mod templates;
 pub mod tools;
@@ -83,6 +84,7 @@ pub fn modules_migrate() {
     channels::migrate();
     push::migrate();
     media::migrate();
+    taskstore::migrate();
 }
 
 /// 后台循环（清理、刷新价格……）
@@ -92,4 +94,5 @@ pub fn background() {
     tokio::spawn(prices::price_loop());
     tokio::spawn(search::startup());
     videos::resume();
+    tokio::spawn(taskstore::resume()); // 重启前在做的任务接着做
 }

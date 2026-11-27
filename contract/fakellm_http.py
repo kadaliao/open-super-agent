@@ -62,6 +62,7 @@ class FakeLLM:
         self.requests: list[tuple[str, str, dict]] = []
         self.scripts: dict[str, list] = {}
         self.failures: list[int] = []
+        self.failures_now: list[int] = []   # fail_now：带 x-should-retry: false，客户端不自己重试
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.port = self.httpd.server_address[1]
         self.url = f"http://127.0.0.1:{self.port}/v1"
@@ -72,6 +73,7 @@ class FakeLLM:
             self.requests.clear()
             self.scripts.clear()
             self.failures.clear()
+            self.failures_now.clear()
 
     def script(self, who: str, *replies):
         with self.lock:
@@ -80,6 +82,11 @@ class FakeLLM:
     def fail(self, *codes: int):
         with self.lock:
             self.failures.extend(codes)
+
+    def fail_now(self, *codes: int):
+        """接下来几次请求按顺序返回这些状态码，并告诉客户端别自己重试（测任务自己的重试）。"""
+        with self.lock:
+            self.failures_now.extend(codes)
 
     def bodies(self, role: str, name: str = "") -> list[dict]:
         with self.lock:
@@ -101,8 +108,10 @@ class FakeLLM:
             def log_message(self, *a):
                 pass
 
-            def _send(self, code: int, body: bytes, ctype: str):
+            def _send(self, code: int, body: bytes, ctype: str, headers: dict | None = None):
                 self.send_response(code)
+                for k, v in (headers or {}).items():
+                    self.send_header(k, v)
                 self.send_header("content-type", ctype)
                 self.send_header("content-length", str(len(body)))
                 self.end_headers()
@@ -122,6 +131,11 @@ class FakeLLM:
                     self._send(404, b'{"error":{"message":"not found"}}', "application/json")
                     return
                 with fake.lock:
+                    if fake.failures_now:
+                        code = fake.failures_now.pop(0)
+                        self._send(code, json.dumps({"error": {"message": "Service Unavailable (fake)", "type": "server_error"}}).encode(),
+                                   "application/json", {"x-should-retry": "false"})
+                        return
                     if fake.failures:
                         code = fake.failures.pop(0)
                         self._send(code, json.dumps({"error": {"message": "Internal Server Error (request_id: fake-0000)",
