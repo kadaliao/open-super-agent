@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../store'
 import { lang, locale, t, tc } from '../i18n'
-import type { Bot, Memory } from '../types'
+import type { Bot, Memory, MemoryList } from '../types'
 import { useSearch } from './Library'
 import '../memories.css'
 
-// 截止日（until，秒，那一天结束的时刻；null 是不过期）、置顶；kind=digest 是整理时写的每日摘要
-type Mem = Omit<Memory, 'kind'> & { kind: 'note' | 'work' | 'digest'; until?: number | null; pinned?: boolean }
-type MemList = { shared: Mem[]; own: Mem[]; work: Mem[]; digest?: Mem[] }
 type LastRun = { run: number; ts: number; changed: number; undone: boolean } | null
 type RunStatus = { running: boolean; done?: number; total?: number; last: LastRun }
 
@@ -19,13 +16,13 @@ const untilDay = (until: number) => {
   const d = new Date((until - 1) * 1000)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-const expired = (m: Mem) => !m.pinned && m.until != null && m.until * 1000 <= Date.now()
+const expired = (m: Memory) => !m.pinned && m.until != null && m.until * 1000 <= Date.now()
 const SOURCE: Record<string, string> = { chat: t('对话里记下'), manual: t('手动添加'), import: tc('source', '导入'), task: t('自动') }
 // 让用户发给别的助手的话：英文界面给英文版
 const EXPORT_PROMPT = t('请把你记得的关于我的所有信息列出来，每条一行：我的基本情况、偏好、习惯、正在做的事。只列内容，不要解释。')
 
 export function MemoryPanel({ bot }: { bot: Bot }) {
-  const [list, setList] = useState<MemList | null>(null)
+  const [list, setList] = useState<MemoryList | null>(null)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
   const [showWork, setShowWork] = useState(false)
@@ -127,7 +124,7 @@ function Consolidate({ onChange }: { onChange: () => void }) {
   )
 }
 
-function DigestItem({ m, onChange }: { m: Mem; onChange: () => void }) {
+function DigestItem({ m, onChange }: { m: Memory; onChange: () => void }) {
   const del = async () => { await api(`/api/memories/${m.id}`, { method: 'DELETE' }); onChange() }
   return (
     <div className="mem-item static mem-digest" title={day(m.created)}>
@@ -137,7 +134,8 @@ function DigestItem({ m, onChange }: { m: Mem; onChange: () => void }) {
   )
 }
 
-function MemoryItem({ m, bot, onChange }: { m: Mem; bot: Bot; onChange: () => void }) {
+// 一条记忆：点了就地修改。bot：在某个 Bot 的记忆面板里（能改共享）；不给是项目记忆（看板 → 项目），没有共享这一说
+export function MemoryItem({ m, bot, onChange }: { m: Memory; bot?: Bot; onChange: () => void }) {
   const [edit, setEdit] = useState(false)
   const [text, setText] = useState(m.text)
   const [shared, setShared] = useState(m.shared)
@@ -146,7 +144,7 @@ function MemoryItem({ m, bot, onChange }: { m: Mem; bot: Bot; onChange: () => vo
   const [err, setErr] = useState('')
   const save = async () => {
     try {
-      const body: Record<string, unknown> = { text, shared, bot_id: bot.id }
+      const body: Record<string, unknown> = bot ? { text, shared, bot_id: bot.id } : { text }
       if (m.kind === 'note') Object.assign(body, { until: until || null, pinned })
       await api(`/api/memories/${m.id}`, { method: 'PATCH', body })
       setEdit(false); onChange()
@@ -164,7 +162,7 @@ function MemoryItem({ m, bot, onChange }: { m: Mem; bot: Bot; onChange: () => vo
   if (edit) return (
     <div className="mem-item editing">
       <textarea rows={3} value={text} maxLength={500} autoFocus onChange={e => setText(e.target.value)} />
-      {m.kind === 'note' && <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> {tc('check', '所有 Bot 共享')}</label>}
+      {m.kind === 'note' && bot && <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> {tc('check', '所有 Bot 共享')}</label>}
       {shared && !m.shared && <div className="muted small">{t('共享后其他 Bot 也会知道这一条。')}</div>}
       {m.kind === 'note' && <div className="mem-until">
         <label>{t('截止日')} <input type="date" value={until} onChange={e => setUntil(e.target.value)} /></label>

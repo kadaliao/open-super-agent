@@ -34,6 +34,8 @@ type State = {
   oauthCallback: string              // 登录授权的回调地址：自己建 OAuth 客户端时要填到对方那里
   skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
   view: 'chat' | 'library' | 'apps' | 'observe' | 'board'  // 主区显示对话、资料库、应用市场、观测页还是需求看板
+  needOpen: number | null            // 打开着的卡片页（看板、对话、任务详情里点了卡都打开它，盖在当前页面上）
+  backTo: { task: number; need: number; view: State['view'] } | null   // 从卡片页点进了这个任务（view：当时在哪个页面）：任务详情里给一个“回到卡片”
   libraryPage: number | string | null   // 资料库里打开的：数字是网页，字符串是文档
   teach: Teach | null                // 正在“演示一遍”的录制
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
@@ -46,7 +48,7 @@ type State = {
 let state: State = {
   ready: false, connected: false, bots: [], chats: [], settings: null, shapes: [], colors: [],
   active: null, thread: null, threads: {}, visible: document.visibilityState === 'visible', messages: {}, hasMore: {}, streams: {}, tasks: {}, taskSteps: {}, openTask: null, taskFocus: null, approvals: {}, unread: {}, errors: {}, computers: {}, macs: null, apps: [], catalog: [], categories: [], oauthCallback: '', skills: {},
-  view: 'chat', libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false, newBuild: false, appUpdate: null,
+  view: 'chat', needOpen: null, backTo: null, libraryPage: null, teach: null, teachDraft: null, auth: false, onboarding: false, newBuild: false, appUpdate: null,
 }
 const subs = new Set<() => void>()
 const set = (patch: Partial<State> | ((s: State) => Partial<State>)) => {
@@ -383,6 +385,16 @@ export function openObserve() {
 
 export function openBoard() {
   set({ view: 'board' })
+}
+
+// 打开一张卡的卡片页（不换页面，盖在上面）；null 是关掉
+export function openNeed(id: number | null) {
+  set({ needOpen: id })
+}
+
+// 从卡片页去看它的一个任务：记下从哪张卡来的，任务详情里能回去
+export function setBackTo(b: State['backTo']) {
+  set({ backTo: b })
 }
 
 export function openApps() {

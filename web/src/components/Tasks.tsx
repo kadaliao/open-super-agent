@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, canRetry, dropTask, fetchTask, loadTask, retryTask, showTask, taskEnded, taskFocused, taskLabel, taskWaiting, tellTask, useStore, waitLabel } from '../store'
+import { api, canRetry, openBoard, openNeed, dropTask, fetchTask, loadTask, retryTask, showTask, taskEnded, taskFocused, taskLabel, taskWaiting, tellTask, useStore, waitLabel } from '../store'
 import { lang, locale, t, tc } from '../i18n'
 import type { Task, TaskInfo, TaskStep } from '../types'
 import { isEnter } from '../keys'
@@ -7,6 +7,7 @@ import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { DoubtCard, QuestionCard } from './Chat'
 import { notice } from './Dialog'
+import NeedTag from './NeedTag'
 
 // 右栏“任务”：Bot 做过的后台任务。正在做的实时更新，做完的点开回看每一步
 
@@ -49,7 +50,8 @@ function withLive(tk: TaskInfo, live?: Task): TaskInfo {
   return { ...tk, status: live.status, steps: live.steps, started: live.started, waiting_approval: live.waiting_approval,
     last_action: live.last_action, elapsed: live.status === 'running' ? tk.elapsed : live.elapsed,
     waiting_kind: live.waiting_kind !== undefined ? live.waiting_kind : tk.waiting_kind,
-    can_continue: live.can_continue ?? tk.can_continue, round: live.round ?? tk.round }
+    can_continue: live.can_continue ?? tk.can_continue, round: live.round ?? tk.round,
+    need: live.need !== undefined ? live.need : tk.need }
 }
 
 // botId：这个 Bot 做的任务（含在群里做的）；chatId：这个群里派的任务
@@ -101,6 +103,7 @@ function TaskList({ botId, chatId }: { botId?: number; chatId?: number }) {
                   {[hm(tk.ts), taskLabel(tk), (tk.round || 1) > 1 ? t('第 {n} 轮', { n: tk.round! }) : '', duration(tk, now), tk.steps ? t('{n} 步', { n: tk.steps }) : '', tk.mode === 'heavy' ? 'Heavy' : ''].filter(Boolean).join(' · ')}
                 </span>
                 {running && tk.last_action && <span className="task-action">→ {tk.last_action}</span>}
+                {tk.need && <span className="task-row-need"><NeedTag need={tk.need} /></span>}
               </span>
             </button>
           </Fragment>
@@ -161,7 +164,18 @@ function TaskDetail({ id, group }: { id: number; group: boolean }) {
     try { resumed(await retryTask(id)) } catch (e: any) { notice(e.message) } finally { setRetrying(false) }
   }
 
-  const back = <button className="link-btn" onClick={() => showTask(null)}>← {t('所有任务')}</button>
+  // 从卡片页点进来的：回到那张卡（原来在看板上就回看板；手机上右栏占满屏幕，先关掉）
+  const backTo = useStore(s => s.backTo?.task === id ? s.backTo : null)
+  const toNeed = () => {
+    if (!backTo) return
+    if (backTo.view === 'board') openBoard()
+    else if (matchMedia('(max-width: 760px)').matches) window.dispatchEvent(new CustomEvent('osa-close-panel'))
+    openNeed(backTo.need)
+  }
+  const all = <button className="link-btn" onClick={() => showTask(null)}>{backTo ? '' : '← '}{t('所有任务')}</button>
+  const back = backTo
+    ? <span className="td-back"><button className="link-btn" onClick={toNeed}>← {t('回到卡片')}</button><span className="muted">·</span>{all}</span>
+    : all
   if (err) return <div className="panel-body">{back}<div className="error-line">{err}</div></div>
   if (!tk || !steps) return <div className="panel-body">{back}<div className="muted small">{t('加载中…')}</div></div>
   const heavy = tk.mode === 'heavy'
@@ -190,6 +204,7 @@ function TaskDetail({ id, group }: { id: number; group: boolean }) {
           {[group && owner?.name, t('{day} {time}', { day: day(tk.ts), time: hm(tk.ts) }), duration(tk, now), tk.steps ? t('{n} 步', { n: tk.steps }) : '',
             tk.cost ? t('花费 {cost}', { cost: (tk.currency || '') + tk.cost.toFixed(tk.cost < 1 ? 3 : 2) }) : ''].filter(Boolean).join(' · ')}
         </div>
+        {tk.need && <div className="td-need"><NeedTag need={tk.need} /></div>}
         <Goal text={tk.goal} />
         {!steps.length && !running ? <>
           <div className="muted small">{t('这个任务是在更新之前做的，没有记下过程。')}</div>

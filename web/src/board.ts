@@ -1,8 +1,8 @@
 // 需求看板：类型、请求和侧栏上“等你处理”的数字。接口见 docs/plans/tasks-board.md 的“看板和项目”。
 import { useEffect, useSyncExternalStore } from 'react'
-import { api, getState, onEvent, openChat, showTask, useStore } from './store'
+import { api, getState, onEvent, openChat, setBackTo, showTask, useStore } from './store'
 import { t, tc } from './i18n'
-import type { Approval, Bot } from './types'
+import type { Approval, Bot, Memory, NeedRef } from './types'
 
 // todo 还没交出去；doing 有任务在做；waiting 有任务在等你，或者最近一个任务失败、取消、中断了；done、cancelled 是结束的
 export type Column = 'todo' | 'doing' | 'waiting' | 'done' | 'cancelled'
@@ -25,10 +25,10 @@ export type Need = {
   origin: { chat_id: number; message_id: number } | null
 }
 // 卡片页：另带交付的结果和在等你回答的问题（格式和待确认列表里的一样）
-export type NeedDetail = Need & { results: { task_id: number; text: string }[]; questions: Question[] }
-export type Question = Omit<Approval, 'kind'> & { kind?: 'approval' | 'help' | 'question'; question?: string; options?: string[] }
+export type NeedDetail = Need & { results: { task_id: number; text: string }[]; questions: Approval[] }
 export type Project = { id: number; key: string; name: string; brief: string; dir: string; repo: string; count: number; created: number }
-export type Board = { columns: Record<Column, Need[]>; projects: Project[]; more: boolean }
+// counts：每一列的总数，不受分页影响（旧版服务没有）
+export type Board = { columns: Record<Column, Need[]>; projects: Project[]; more: boolean; counts?: Record<Column, number> }
 
 // 看板顶上的筛选。project：项目 id，'none' 是不属于项目的，null 是全部；from / to：创建时间（秒）
 export type Filter = { project: number | 'none' | null; q: string; from: number | null; to: number | null; archived: boolean }
@@ -62,6 +62,11 @@ export const createProject = (body: ProjectInput) => api<Project>('/api/projects
 export const patchProject = (id: number, body: Partial<ProjectInput>) => api<Project>(`/api/projects/${id}`, { method: 'PATCH', body })
 export const deleteProject = (id: number) => api(`/api/projects/${id}`, { method: 'DELETE' })
 export const KEY_RE = /^[A-Z0-9]{2,8}$/
+
+// 项目记忆：只有这个项目的任务读到。改、删用普通记忆的接口（PATCH / DELETE /api/memories/{id}）
+export const fetchProjectMemories = (id: number) => api<Memory[]>(`/api/projects/${id}/memories`)
+export const addProjectMemory = (id: number, body: { text: string; until?: string | null }) =>
+  api<Memory>(`/api/projects/${id}/memories`, { method: 'POST', body })
 
 // 这张卡下面有任务在跑（标记完成、不用做了会停掉它们，先问一句）
 export const running = (n: Need) => n.tasks.some(x => x.status === 'running')
@@ -98,12 +103,36 @@ export function waitReason(n: Need): string {
 
 export const assignee = (bots: Bot[], id: number | null) => id == null ? bots.find(b => b.is_primary) : bots.find(b => b.id === id)
 
-// 去看一个任务：打开它所在的对话，右栏“任务”里打开它的过程
-export async function openTask(taskId: number, botId?: number | null, chatId?: number | null) {
+// 去看一个任务：打开它所在的对话，右栏“任务”里打开它的过程。fromNeed：从这张卡的卡片页点过来的，任务详情里能回到卡片
+export async function openTask(taskId: number, botId?: number | null, chatId?: number | null, fromNeed?: number) {
   const s = getState()
   const chat = chatId ?? s.tasks[taskId]?.chat_id ?? s.bots.find(b => b.id === botId)?.chat_id
+  setBackTo(fromNeed ? { task: taskId, need: fromNeed, view: s.view } : null)
   if (chat) await openChat(chat)
   showTask(taskId)
+}
+
+// ---------- 一张卡的简称（编号、标题）：对话里只知道 need_id 的地方用，取一次记下来，卡变了再取 ----------
+const refs = new Map<number, NeedRef | null>()   // null：取过，没有这张卡
+const loading = new Set<number>()
+const refSubs = new Set<() => void>()
+let refVer = 0
+function loadRef(id: number) {
+  if (loading.has(id)) return
+  loading.add(id)
+  api<Need>(`/api/needs/${id}`).then(n => refs.set(id, { id, key: n.key, title: n.title })).catch(() => refs.set(id, null))
+    .finally(() => { loading.delete(id); refVer++; refSubs.forEach(f => f()) })
+}
+let refWatch = false
+export function useNeedRef(id: number | null | undefined, known?: NeedRef | null): NeedRef | null {
+  if (!refWatch) {
+    refWatch = true
+    onBoard(nid => { if (nid !== null && refs.has(nid)) loadRef(nid) })
+  }
+  useSyncExternalStore(f => { refSubs.add(f); return () => { refSubs.delete(f) } }, () => refVer)
+  useEffect(() => { if (id && !known && !refs.has(id)) loadRef(id) }, [id, known])
+  if (known) return known
+  return id ? refs.get(id) ?? null : null
 }
 
 // 卡片有变化（服务端发 {"type":"board","need_id":N}）。几张卡一起变时只回调一次
@@ -125,12 +154,16 @@ export function onBoard(f: (needId: number | null) => void) {
 // ---------- 侧栏上的数字：在“等你处理”的卡有几张 ----------
 let waiting = 0
 let started = false
+let hasCounts = false   // 服务端给 counts：只要数字，一张卡都不用取
 const subs = new Set<() => void>()
 
 export async function refreshWaiting() {
   try {
-    const b = await fetchBoard({ project: null, q: '', from: null, to: null, archived: false })
-    const n = b.columns.waiting?.length || 0
+    const f: Filter = { project: null, q: '', from: null, to: null, archived: false }
+    const b = await api<Board>(hasCounts ? boardUrl(f).replace(`limit=${LIMIT}`, 'limit=1') : boardUrl(f))
+    hasCounts = !!b.counts
+    // 旧版服务没有 counts：数第一页里 waiting 那一列
+    const n = b.counts ? b.counts.waiting || 0 : b.columns.waiting?.length || 0
     if (n !== waiting) { waiting = n; subs.forEach(f => f()) }
   } catch { /* 服务端还没有看板（旧版）：不显示 */ }
 }

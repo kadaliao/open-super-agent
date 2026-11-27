@@ -36,11 +36,14 @@ export type Task = {
   quiet?: boolean   // 定时任务这次没有新内容：对话里不显示
   mac?: string      // 派到你的哪台 Mac 上做（名字）
 } & TaskTurns
+// 一张卡（需求）的简称：编号（不属于项目的是 null）和标题。完整的卡见 board.ts
+export type NeedRef = { id: number; key: string | null; title: string }
 // 任务在等你什么：approval 等你确认、help 请你接手电脑、question 等你回答；没在等是 null
 export type WaitingKind = 'approval' | 'help' | 'question' | null
 // 任务能不能接着说（见 docs/plans/tasks-board.md 的“接口约定 → 任务”）。旧版服务没有这几项
 export type TaskTurns = {
   waiting_kind?: WaitingKind
+  need?: NeedRef | null    // 归在看板的哪张卡上；没有是 null，旧版服务没有这一项
   can_continue?: boolean   // 存着过程：做完以后还能接着说、能重试
   round?: number           // 第几轮，从 1 开始；做完又接着做就加 1
 }
@@ -212,10 +215,13 @@ export type EventSource = {
   fields: SourceField[]; every: number; min_every: number; setup: string; unavailable: string
   scenarios: Scenario[]
 }
+// kind：note 记下的事、work 做过的事（自动记录）、digest 整理时写的每日摘要。
+// until：截止日（秒，那一天结束的时刻；null 是不过期）；pinned：置顶（不过期，整理时不动）；project_id：项目记忆属于哪个项目（null 是普通记忆）
 export type Memory = {
-  id: number; bot_id: number | null; shared: boolean; kind: 'note' | 'work'; text: string; source: string; created: number; updated: number
+  id: number; bot_id: number | null; shared: boolean; kind: 'note' | 'work' | 'digest'; text: string; source: string; created: number; updated: number
+  until?: number | null; pinned?: boolean; project_id?: number | null
 }
-export type MemoryList = { shared: Memory[]; own: Memory[]; work: Memory[] }
+export type MemoryList = { shared: Memory[]; own: Memory[]; work: Memory[]; digest?: Memory[] }
 export type Page = {
   id: number; bot_id: number | null; title: string; format: 'markdown' | 'html'; share_token: string | null; pinned: boolean
   task_id: number | null; created: number; updated: number; size: number; content?: string
