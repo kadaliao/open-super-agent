@@ -23,6 +23,7 @@ pub mod builtin;
 pub mod catalog;
 pub mod channels;
 pub mod computer;
+pub mod consolidate;
 pub mod dm;
 pub mod docs;
 pub mod dsml;
@@ -83,6 +84,7 @@ pub fn modules_migrate() {
     channels::migrate();
     push::migrate();
     media::migrate();
+    consolidate::migrate();
 }
 
 /// 后台循环（清理、刷新价格……）
@@ -91,5 +93,6 @@ pub fn background() {
     tokio::spawn(media::gc_loop());
     tokio::spawn(prices::price_loop());
     tokio::spawn(search::startup());
+    tokio::spawn(consolidate::schedule_loop());
     videos::resume();
 }

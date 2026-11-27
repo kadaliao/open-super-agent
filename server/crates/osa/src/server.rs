@@ -366,9 +366,16 @@ async fn update_memory(Path(mid): Path<i64>, Body(d): Body) -> Res {
             return Err(ApiError::bad(t!("改成只给某个 Bot 时要说明是哪个 Bot")));
         }
     }
+    let until = memories::parse_until(d.get("until"))?;
     let r = memories::update(mid, d["text"].as_str(), Some(owner))?;
+    if let Some(u) = until {
+        memories::set_until(mid, u);
+    }
+    if let Some(p) = d.get("pinned").filter(|p| !p.is_null()) {
+        memories::set_pinned(mid, py::truthy(p));
+    }
     broadcast(json!({"type": "memories_changed"}));
-    ok(r)
+    ok(if until.is_some() || d.get("pinned").is_some() { memories::get(mid).unwrap_or(r) } else { r })
 }
 
 async fn delete_memory(Path(mid): Path<i64>) -> Res {

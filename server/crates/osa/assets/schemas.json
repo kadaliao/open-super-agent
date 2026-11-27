@@ -1210,6 +1210,10 @@
       "replace_id": {
        "type": "integer",
        "description": "可选：用这条替换已有的那条记忆"
+      },
+      "until": {
+       "type": "string",
+       "description": "可选：截止日 YYYY-MM-DD。有日期的事（活动、截止日、报价有效期）写上，过了这天就不再记得"
       }
      },
      "required": [
