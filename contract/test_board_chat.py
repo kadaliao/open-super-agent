@@ -317,6 +317,12 @@ def test_project_memories(srv, fake, ws):
     lst = srv.get(f"/api/bots/{a['id']}/memories")
     texts = [x["text"] for x in lst["shared"] + lst["own"]]
     assert "这个项目的代码用 Rust 写" not in texts and "发布前要跑 cargo test" not in texts
+    # 按意思查记忆（search_memory、/api/search）也查不到项目记忆和过了截止日的：别的 Bot、别的项目不该看到
+    own = srv.post(f"/api/bots/{a['id']}/memories", {"text": "代码评审要两个人看过"})
+    hits = lambda q: [h["snippet"] for h in srv.get("/api/search", params={"q": q, "kind": "memory"})["hits"]]
+    assert any("两个人看过" in h for h in hits("代码评审"))
+    assert not any("Rust 写" in h for h in hits("代码用 Rust 写")) and not any("旧的约定" in h for h in hits("旧的约定已经过期"))
+    srv.delete(f"/api/memories/{own['id']}")
     # 改、删用现成的接口
     srv.patch(f"/api/memories/{m['id']}", {"text": "这个项目的代码用 Rust 2024 写", "pinned": True})
     got = {x["id"]: x for x in srv.get(f"/api/projects/{pj['id']}/memories")}

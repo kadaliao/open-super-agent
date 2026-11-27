@@ -153,7 +153,9 @@ pub fn sync() -> usize {
         e.1.push(r.i(3));
     }
     let mut src: IndexMap<(String, i64), Value> = IndexMap::new();
-    for r in db::rows("select id, updated from memories", []) {
+    // 项目记忆只给那个项目的任务看、过了截止日的不再用：都不进索引（已经在索引里的，下面会当成“源没了”清掉）
+    let live = "select id, updated from memories where project_id is null and (pinned = 1 or until is null or until > ?)";
+    for r in db::rows(live, rusqlite::params![py::now()]) {
         src.insert(("memory".into(), r.i(0)), r[1].clone());
     }
     for r in db::rows("select id, updated from pages", []) {
