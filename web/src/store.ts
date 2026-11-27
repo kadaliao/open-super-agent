@@ -32,7 +32,7 @@ type State = {
   categories: [string, string][]     // 应用市场的分类：[键, 名字]，按显示顺序
   oauthCallback: string              // 登录授权的回调地址：自己建 OAuth 客户端时要填到对方那里
   skills: Record<number, Skill[]>    // 每个 Bot 能用的技能（含共用的）
-  view: 'chat' | 'library' | 'apps' | 'observe'  // 主区显示对话、资料库、应用市场还是观测页
+  view: 'chat' | 'library' | 'apps' | 'observe' | 'board'  // 主区显示对话、资料库、应用市场、观测页还是需求看板
   libraryPage: number | string | null   // 资料库里打开的：数字是网页，字符串是文档
   teach: Teach | null                // 正在“演示一遍”的录制
   teachDraft: TeachDraft | null      // 录完生成的技能草稿，等你在技能面板里审核
@@ -342,6 +342,10 @@ export function openObserve() {
   set({ view: 'observe' })
 }
 
+export function openBoard() {
+  set({ view: 'board' })
+}
+
 export function openApps() {
   set({ view: 'apps' })
   refreshApps()
@@ -416,7 +420,12 @@ export function approve(id: number, ok: boolean, note = '', always = false, edit
   ws?.send(JSON.stringify({ type: 'approve', id, ok, note, always, ...(edits ? { edits } : {}), ...(scope ? { scope } : {}), ...(prefix ? { prefix } : {}) }))
 }
 
+// 别的模块（需求看板）直接看收到的 WebSocket 事件；返回取消订阅的函数
+const eventSubs = new Set<(d: any) => void>()
+export function onEvent(f: (d: any) => void) { eventSubs.add(f); return () => { eventSubs.delete(f) } }
+
 function handle(d: any) {
+  eventSubs.forEach(f => f(d))
   const cid: number = d.chat_id
   switch (d.type) {
     case 'message': {
