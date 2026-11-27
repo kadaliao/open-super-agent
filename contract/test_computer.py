@@ -329,6 +329,7 @@ def test_docker_look_and_vnc(pcsrv, fake):
         v.close()
 
 
+@pytest.mark.skip(reason="停用：新功能只做在 Rust 版，两个版本的提示词和工具不再一样，见 contract/test_parity.py 开头")
 def test_docker_parity(box):
     """开着电脑时两个版本发给模型的请求也逐字一样（Worker 的电脑说明、Router 的能力清单、电脑工具的 schema）。"""
     import test_parity
