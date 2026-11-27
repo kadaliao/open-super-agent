@@ -153,7 +153,7 @@ class Server:
         return r.json()
 
     def db(self) -> sqlite3.Connection:
-        c = sqlite3.connect(f"file:{self.data / 'osa.db'}?mode=ro", uri=True, timeout=5)
+        c = sqlite3.connect(f"file:{self.data / 'osa.db'}?mode=ro", uri=True, timeout=20)   # 机器忙的时候服务写得慢，5 秒不够（CI 的容器里撞到过 database is locked）
         return c
 
     def messages(self, chat_id: int) -> list[dict]:
