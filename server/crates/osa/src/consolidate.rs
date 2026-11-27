@@ -114,12 +114,21 @@ impl Run {
 }
 
 /// 把一行放回去。原来的编号已经被别的记忆占了（created 不一样），就换个新编号放
+/// 两个时间戳是不是同一个：差不到一微秒就算。存成 JSON 再读回来的小数可能差最后一位，不能用 == 比
+fn same_time(a: Option<f64>, b: Option<f64>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => (a - b).abs() < 1e-6,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 fn put_back(row: &Value) {
     let Some(obj) = row.as_object() else { return };
     let cols: Vec<String> = columns().into_iter().filter(|c| obj.contains_key(c)).collect();
     let mid = obj.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
     let now_created = db::scalar("select created from memories where id=?", params![mid]);
-    let same = now_created.is_null() || now_created.as_f64() == obj.get("created").and_then(|v| v.as_f64());
+    let same = now_created.is_null() || same_time(now_created.as_f64(), obj.get("created").and_then(|v| v.as_f64()));
     let cols: Vec<&String> = cols.iter().filter(|c| same || c.as_str() != "id").collect();
     if same {
         memories::delete(mid);
@@ -147,7 +156,7 @@ pub async fn undo() -> Result<(i64, usize), String> {
         let mid = r.i(0);
         if r[1].is_null() {
             let c = db::scalar("select created from memories where id=?", params![mid]);
-            if !c.is_null() && c.as_f64() == r[2].as_f64() {
+            if !c.is_null() && same_time(c.as_f64(), r[2].as_f64()) {
                 memories::delete(mid);
             }
         } else if let Ok(v) = serde_json::from_str::<Value>(&r.s(1)) {
@@ -539,6 +548,17 @@ pub fn routes() -> axum::Router {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn float_survives_json() {
+        // 不开 serde_json 的 float_roundtrip 时，这几个里有读回来差最后一位的
+        for x in [1795799683.8431165_f64, 1795799608.553136, 1795799592.6013713, 1795799665.3906877, 0.1 + 0.2] {
+            let text = serde_json::to_string(&serde_json::json!({"created": x})).unwrap();
+            let back: serde_json::Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(back["created"].as_f64(), Some(x), "{text}");
+        }
+        assert!(same_time(Some(1795799683.8431165), Some(1795799683.8431163)) && !same_time(Some(1.0), Some(1.001)) && !same_time(Some(1.0), None));
+    }
+
     use super::*;
 
     #[test]

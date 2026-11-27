@@ -499,6 +499,24 @@ fn compressible() -> impl tower_http::compression::Predicate {
     )
 }
 
+/// 小的请求体先整个读进来，再交给处理函数。有的接口不看请求体（撤销整理、取消任务、标记已读……），而请求体没读完的话，
+/// hyper 回完这次的话就把连接关掉，客户端紧接着在同一条连接上发的下一个请求会落空（“服务端没回应就断开”，接口测试在 Linux 上撞到过）。
+/// 大的（上传文件）、不知道多长的照旧边收边处理。
+async fn read_small_body(req: Request, next: axum::middleware::Next) -> Response {
+    const MAX: usize = 256 * 1024;
+    let len = req.headers().get(header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok());
+    match len {
+        Some(n) if n > 0 && n <= MAX => {
+            let (parts, body) = req.into_parts();
+            match axum::body::to_bytes(body, MAX).await {
+                Ok(bytes) => next.run(Request::from_parts(parts, axum::body::Body::from(bytes))).await,
+                Err(_) => StatusCode::BAD_REQUEST.into_response(),
+            }
+        }
+        _ => next.run(req).await,
+    }
+}
+
 pub fn app() -> Router {
     use tower_http::compression::CompressionLayer;
     Router::new()
@@ -533,6 +551,7 @@ pub fn app() -> Router {
         .merge(crate::routes::extra())
         .fallback(fallback)
         .layer(axum::middleware::from_fn(auth::middleware))
+        .layer(axum::middleware::from_fn(read_small_body))
         .layer(CompressionLayer::new().br(true).gzip(true).compress_when(compressible()))
 }
 

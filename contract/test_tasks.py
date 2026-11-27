@@ -633,8 +633,9 @@ def test_many_tasks_ending_together_do_not_hang(tsrv, tws, fake):
             pass   # 卡死的话下面的请求会超时，报错更清楚
         assert tsrv.http.get("/api/bootstrap", timeout=5).status_code == 200, "服务不回了：任务同时结束时卡死"
         fake.reset()
-    done = [m for m in tsrv.find(bot["chat_id"], kind="dispatch") if m["meta"]["status"] in ("done", "failed")]
-    assert len(done) == n * rounds, f"{len(done)} / {n * rounds} 个任务有结果"
+    # 剧本是几个任务共用的一个队列，有的任务会连着拿到几次“调工具”，被 Watchdog 当成死循环取消：这也算结束了，这里只查没有卡着不动的
+    ended = [m for m in tsrv.find(bot["chat_id"], kind="dispatch") if m["meta"]["status"] in ("done", "failed", "cancelled")]
+    assert len(ended) == n * rounds, f"{len(ended)} / {n * rounds} 个任务结束了"
 
 
 def test_card_numbers_continue_after_restart(llm, fake):
