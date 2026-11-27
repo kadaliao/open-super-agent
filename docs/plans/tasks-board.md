@@ -199,14 +199,41 @@
 
 ## 第二波：把看板接进对话
 
-- `dispatch` 多 `need`（用你的语言写一句你会得到什么，不写谁去做）、`need_id`（归到已有的卡）、`project`；不写时标题取你的原话。
-  Router 的状态里加项目列表和进行中的卡（`board::state_block`）；新工具 `update_need`（改标题、合并、取消、标记完成、归到项目）。
-  只有你提的事算卡：Bot 之间的私信、定时任务和事件开出的任务不算。
-- 消息以卡片编号开头（`OPC-12 加上英国`）而且那张卡有任务在做：直接交给那个任务。
-- 卡片等别的卡：前面的都完成了自动开始，带上它们的结果；有取消或失败的不开始，看板上标出来。
-- 项目的简介和目录接在任务交代后面；项目记忆（`memories` 加 `project_id`，只有这个项目的任务读到）。
-- 界面：任务详情和卡片互相能点过去；对话里卡片的消息显示成卡片。
-- 聊天软件里回复任务的结果，交给那个任务。
+三条线，规矩和第一波一样（各用各的工作区和端口，只跑自己的测试，整套测试收拢时跑）。
+
+| 线 | 分支 | 端口 | 归它的文件 |
+|---|---|---|---|
+| wire | `feat/w2-wire` | 8791 换成 8796（8791 被别的东西占着） | `server/…/router.rs`、`board.rs`、`taskstore.rs`、`worker.rs`、`task.rs`、`tasklog.rs`、`memories.rs`、`consolidate.rs`、`server.rs`、`prompts/`、`assets/schemas.json`、`contract/test_board.py`、`test_tasks.py`、`test_memories.py`、新的 `contract/test_board_chat.py` |
+| channels | `feat/w2-channels` | 8797 | `server/…/channels/`、`push.rs`、`contract/test_channels.py` |
+| ui | `feat/w2-ui` | 8798 / 5198 | `web/src/` 全部 |
+
+### 接口约定（wire 提供，ui 用）
+
+- `dispatch` 多三个可选参数：`need`（用用户的语言写一句用户会得到什么，不写谁去做）、`need_id`（归到已有的卡，数字或 `"OPC-12"`）、`project`（项目编号）。
+  用户在私聊或群里提的事才归卡：这一轮是用户的消息引起的（不是别的 Bot 的私信、交接，不是定时任务和事件）。都不写时新建一张卡，标题取用户的原话，`auto_title` 为真。
+  同一轮里派的几个任务归同一张卡。任务的派发消息 `meta` 里多 `need_id`。
+- 从看板开始一张交给主 Bot 的卡：替你发的那条消息 `meta` 里带 `need_id`，这一轮派的任务都归这张卡（换掉第一波“这一轮之后派的都算”的办法）。
+- Router 的状态里加一段项目列表和进行中的卡（`board::state_block`）。新工具 `update_need(id, action, …)`：`id` 是数字或编号；
+  `action` 是 `rename`（`title`）、`merge`（`into`，把这张并进另一张，任务跟过去）、`cancel`、`done`、`move`（`project`，空着是移出项目）。
+- 任务的公开字段多 `need`：`{id, key, title}`，没有是 `null`（WebSocket 的 `task` 事件、任务列表、任务详情都带）。
+- 消息以卡片编号开头（`OPC-12 加上英国`）、那张卡正好有一个任务在做：这句话直接交给那个任务（和讨论串里回复任务一样，存成 followup，Bot 不被叫醒）。
+  网页和聊天软件走同一个入口（`server::safe_handle`），所以两边都生效。有几个任务在做、或者没有任务在做时，照常交给 Bot，它在状态里能看到这张卡。
+- 任务状态变了（开始、做完、接着做、开始等你、不等了）调 `board::task_changed`：重新算列、发 `board` 事件、让等它的卡开始（带上前面卡的结果；有取消或失败的不开始）。
+- 项目的简介和目录接在任务交代后面（`board::notes_for`）。
+- 项目记忆：`memories` 加 `project_id`（`null` 是原来的记忆）。只有这个项目的任务的 Worker 读到，Router 在状态里看到当前对话里进行中的卡所属项目的记忆。
+  `remember` 多可选参数 `project`（项目编号）。接口：`GET /api/projects/{id}/memories` → 记忆数组，`POST /api/projects/{id}/memories`（`{text, until?}`），
+  改和删用现成的 `PATCH`、`DELETE /api/memories/{id}`。夜里整理时每个项目的记忆单独一组。删项目时它的记忆一起删。
+- `GET /api/board` 的返回多 `counts`：`{todo, doing, waiting, done, cancelled}`，是不受分页影响的总数（侧栏的数字用它）。
+
+### 各线要做的
+
+- **wire**：上面“接口约定”全部；给任务的话（followup）不算卡片的新任务；接着做的任务让卡片回到进行中。
+- **channels**：聊天软件（Telegram、飞书、钉钉、企业微信、Discord）和推送里，
+  提问卡片（`kind: "question"`）显示问题，选项做成按钮，另有“不回答”；这个对话里正好有一个问题在等时，你直接回的一句话就是回答。
+  说不准那一步的卡片（带 `doubt`）显示那一步是什么、几点开始的，三个按钮：再做一次、已经做成了、不做了停下任务（对应 `ok:true`、`ok:false, note:"done"`、`ok:false, note:"stop"`）。
+  钉钉没有按钮，照它现在“回复 允许一次 #编号”的办法给出三种回复的写法。推送的文字跟着换（等你回答、有一步要你定）。
+- **ui**：卡片页能改“交给谁”和“在这之后开始”；任务详情和任务卡片上显示所属的卡，点了打开卡片页；对话里从看板来的那条消息标出是哪张卡；
+  记忆面板里看和改项目记忆；侧栏数字改用 `counts`；`Memory`、提问卡片的类型挪进 `types.ts`，去掉各处本地的重复定义。
 
 ## 第三波：团队（动手前要定）
 
@@ -223,5 +250,8 @@
 ## 进度
 
 - 2026-11-27：计划写好。开工前的基线（本机 macOS）：`OSA_IMPL=rust uv run pytest contract` 108 过、6 跳过；`cargo test` 21 过。
+- 2026-11-27：第一波五条线做完并合进 `feat/tasks-board`。合并后本机（macOS）：`cargo test` 27 过；`OSA_IMPL=rust uv run pytest contract` 138 过、8 跳过；`uv run pytest -q` 618 过、2 跳过；翻译检查缺 0。
+  收拢时改的：看板用任务自己的等待类型；给任务的话在 Router 的上下文里写明是用户说的；讨论串的回复数算上给任务的话、未读不算；侧栏预览按任务在等什么来写。
+  记忆那条线多做了一件约定里没有的事：看起来像密码或密钥的内容不再记进记忆（提示放进保险库）。
 - 2026-11-27：CI 加上 Rust 版的测试（`.github/workflows/ci.yml` 的 `server` 任务和 `docker` 任务里的接口测试），`Dockerfile.rust` 的测试镜像改成只跑 Rust 版、
   退出码就是测试结果、带上文档服务的程序。还没验证：要等第一波收拢后在本机 Docker 里跑一遍；GitHub 上的那一遍要 push 以后才看得到。
