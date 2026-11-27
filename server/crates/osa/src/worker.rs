@@ -243,8 +243,9 @@ async fn call_tool(
             _ => "skip",
         };
         if let Some(x) = task.doubts.lock().get_mut(i) {
-            x.settled = Some(how);
+            x.settled = Some(how.to_string());
         }
+        taskstore::save_doubts(task);
         match how {
             "redo" => {
                 return run_tool(task, log, step, name, after, env, shots, &progress, true).await;
@@ -645,11 +646,14 @@ async fn resume_tail(task: &Arc<Task>, log: &Log, msgs: &mut Vec<Value>, steps: 
             let s = step.unwrap();
             let args = py::head(&raw, 1000);
             doubts.insert(id, taskstore::doubt_text(&name, &args, s.ts));
-            task.doubts.lock().push(taskstore::Doubt { tool: name.clone(), args, started: s.ts, settled: None });
+            task.doubts.lock().push(taskstore::Doubt { tool: name.clone(), args, started: s.ts, settled: None, noted: false });
             log.note(&t!("服务重启时 {tool} 这一步正在执行，说不准有没有做成：先让 Bot 查一下，要再做会先问你", tool = name), "done");
         } else {
             rerun.push(c.clone());
         }
+    }
+    if !doubts.is_empty() {
+        taskstore::save_doubts(task); // 新记下的和重启前没了结的并在一起存
     }
     let results = if rerun.is_empty() { vec![] } else { run_calls(task, log, &rerun, env).await };
     let mut redone: HashMap<String, String> = HashMap::new();

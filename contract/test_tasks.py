@@ -426,3 +426,107 @@ def test_killed_mid_write_asks_before_redo(llm):
             ws.close()
         srv.stop()
         llm.reset()
+
+
+@pytest.mark.parametrize("second", ["kill", "term"])
+def test_restart_twice_still_asks(llm, second):
+    """强杀在写操作当中 → 起来，模型收到“不知道有没有做成” → 它再调这个工具之前又重启一次（这时没有开着的步，清单只能从存下的来）
+    → 起来后再调同一个工具，照样弹带 doubt 的卡片 → 选“已经做成了”，写操作总共只执行了一次。"""
+    llm.reset()
+    # 正常停最多等 2 秒：第二次重启时模型那一步卡着不回来
+    srv = Server(llm, config={"limits": limits(shutdown_wait_s=2), "mcp_servers": SLOW_APP})
+    evt = threading.Event()
+    ws = None
+    try:
+        wait_app(srv)
+        srv.post("/api/rules", {"pattern": "slow__slow_append", "action": "allow"})
+        log = srv.tmp / "slow.log"
+        bot = srv.make_bot("Twice")
+        llm.script("router:Twice", Call("dispatch", {"goal": "追加一行记录"}), "派了")
+        llm.script("worker",
+                   Call("slow__slow_append", {"text": "w-1", "seconds": 10, "log": str(log)}),
+                   released(evt, Call("slow__slow_append", {"text": "lost", "seconds": 0.1, "log": str(log)})),  # 第二次重启时丢掉
+                   Call("slow__slow_append", {"text": "w-2", "seconds": 0.1, "log": str(log)}),
+                   "收尾了")
+        ws = Socket(srv)
+        ws.say(bot["chat_id"], "追加一行记录")
+        tid = until(lambda: srv.find(bot["chat_id"], kind="dispatch"), what="派发")[0]["id"]
+        until(lambda: "append-start w-1" in lines(log), what="写操作开始执行")
+        ws.close()
+        ws = None
+        srv.restart(kill=True)
+        until(lambda: len(llm.bodies("worker")) >= 2, timeout=20, what="重启后模型收到说不准的结果")
+        assert "不知道有没有做成" in tool_text(llm.bodies("worker")[1])
+        with srv.db() as c:
+            saved = c.execute("select doubts from task_runs where task_id=?", (tid,)).fetchone()[0]
+        assert "slow__slow_append" in saved and '"settled": null' in saved
+        took = srv.restart(kill=second == "kill")   # 模型还没回来（它下一步本来要再调这个工具）
+        if second == "term":
+            assert took < 10, took
+        wait_app(srv)
+        card = until(lambda: [a for a in srv.get("/api/bootstrap")["approvals"] if a["task_id"] == tid],
+                     timeout=20, what="再调同一个工具时照样弹卡片")[0]
+        assert card["tool"] == "slow__slow_append" and card["scopes"] == ["once"] and "w-2" in card["args"]
+        assert "w-1" in card["doubt"]["args"] and card["doubt"]["tool"] == "slow__slow_append"
+        body = llm.bodies("worker")[2]   # 第二次重启后：说不准的结果还在存下的过程里
+        assert "不知道有没有做成" in tool_text(body)
+        ws = Socket(srv)
+        ws.send({"type": "approve", "id": card["id"], "ok": False, "note": "done"})
+        res = until(lambda: results(srv, bot["chat_id"], tid), timeout=20, what="结果")
+        assert "收尾了" in res[0]["content"] and "之前已经做成" in res[0]["content"]
+        assert res[0]["content"].count("说不准") == 1
+        assert "用户确认这一步之前已经做成" in tool_text(llm.bodies("worker")[-1])
+        starts = [x for x in lines(log) if x.startswith("append-start")]
+        assert starts == ["append-start w-1"], starts   # 写操作总共只执行了一次
+        idle(srv)
+        # 了结并注明过的不再带到下一轮
+        llm.script("worker", "第二轮做完了")
+        srv.post(f"/api/tasks/{tid}/message", {"text": "再看一眼"})
+        res = until(lambda: len(results(srv, bot["chat_id"], tid)) >= 2 and results(srv, bot["chat_id"], tid), what="第二轮结果")
+        assert "说不准" not in res[1]["content"]
+    finally:
+        evt.set()
+        if ws:
+            ws.close()
+        srv.stop()
+        llm.reset()
+
+
+def test_unsettled_doubt_carried_to_next_round(llm):
+    """说不准的那一步没了结就做完了这一轮：接着做的下一轮再调同一个工具，照样先问"""
+    llm.reset()
+    srv = Server(llm, config={"limits": limits(), "mcp_servers": SLOW_APP})
+    ws = None
+    try:
+        wait_app(srv)
+        srv.post("/api/rules", {"pattern": "slow__slow_append", "action": "allow"})
+        log = srv.tmp / "slow.log"
+        bot = srv.make_bot("Carry")
+        llm.script("router:Carry", Call("dispatch", {"goal": "追加一行记录"}), "派了")
+        llm.script("worker", Call("slow__slow_append", {"text": "c-1", "seconds": 10, "log": str(log)}),
+                   "不确定有没有写进去，先停在这",
+                   Call("slow__slow_append", {"text": "c-2", "seconds": 0.1, "log": str(log)}), "第二轮收尾")
+        ws = Socket(srv)
+        ws.say(bot["chat_id"], "追加一行记录")
+        tid = until(lambda: srv.find(bot["chat_id"], kind="dispatch"), what="派发")[0]["id"]
+        until(lambda: "append-start c-1" in lines(log), what="写操作开始执行")
+        ws.close()
+        ws = None
+        srv.restart(kill=True)   # 起来后不等应用连上：恢复的任务自己等应用连好再接着做
+        res = until(lambda: results(srv, bot["chat_id"], tid), timeout=20, what="第一轮结果")
+        assert "之后没有再做这一步" in res[0]["content"]
+        idle(srv)
+        srv.post(f"/api/tasks/{tid}/message", {"text": "再写一次试试"})
+        card = until(lambda: [a for a in srv.get("/api/bootstrap")["approvals"] if a["task_id"] == tid],
+                     timeout=20, what="下一轮再调时照样先问")[0]
+        assert "c-1" in card["doubt"]["args"] and card["scopes"] == ["once"]
+        ws = Socket(srv)
+        ws.send({"type": "approve", "id": card["id"], "ok": True})
+        res = until(lambda: len(results(srv, bot["chat_id"], tid)) >= 2 and results(srv, bot["chat_id"], tid), timeout=20,
+                    what="第二轮结果")
+        assert "又做了一次" in res[1]["content"] and "append-done c-2" in lines(log)
+    finally:
+        if ws:
+            ws.close()
+        srv.stop()
+        llm.reset()

@@ -1006,6 +1006,7 @@ impl Router {
                     tokio::spawn(dm::after_task(task.clone()));
                 }
                 taskstore::finished(&task, "cancelled");
+                let _ = taskstore::doubt_note(&task); // 取消了没有结果可注明：了结的标成注明过，没了结的接着带
                 self.done(&task).await;
                 taskstore::after_round(&task);
                 return;

@@ -30,6 +30,8 @@ pub fn migrate() {
         "create table if not exists task_runs(task_id integer primary key, bot_id integer, chat_id integer, status text,
             round integer default 1, msgs text, args text, updated real)",
     );
+    // 重启时说不准有没有做成的写操作（Doubt 的 JSON 数组）：再重启一次、接着做、重试都还在
+    db::add_column("task_runs", "doubts", "text");
 }
 
 // ---------- 存、取 ----------
@@ -61,8 +63,11 @@ pub fn create(task: &Task, mac: Option<&Value>) {
     let args = json!({"goal": task.goal, "mode": task.mode, "notes": task.notes, "background": task.background,
         "approval_chat_id": task.approval_chat_id, "depth": task.depth, "mac": mac.cloned().unwrap_or(Value::Null),
         "handoff": handoff, "reply": reply});
+    // 重试从头做时也走这里：说不准的写操作（doubts）留着
     db::exec(
-        "insert or replace into task_runs(task_id, bot_id, chat_id, status, round, msgs, args, updated) values(?,?,?,'running',?,NULL,?,?)",
+        "insert into task_runs(task_id, bot_id, chat_id, status, round, msgs, args, updated) values(?,?,?,'running',?,NULL,?,?)
+        on conflict(task_id) do update set bot_id=excluded.bot_id, chat_id=excluded.chat_id, status='running', round=excluded.round,
+            msgs=NULL, args=excluded.args, updated=excluded.updated",
         params![task.id, task.bot_id, task.chat_id, task.round, py::dumps_u(&args), py::now()],
     );
 }
@@ -202,6 +207,8 @@ fn continue_round(
         crate::groups::expect(task.chat_id, h.to);
     }
     *task.resume_steps.lock() = resume;
+    // 上一轮（或重启前）还没了结的说不准的写操作带过来：那一步到底做没做成仍然没人确认过
+    *task.doubts.lock() = load_doubts(task_id);
     task.inbox.lock().extend(notes);
     db::exec(
         "update task_runs set round=?, status='running', updated=?, args=json_set(coalesce(args, '{}'), '$.result_chat', ?) where task_id=?",
@@ -230,6 +237,7 @@ fn fresh(task_id: i64, d: &Dispatched) -> Result<Arc<Task>, ApiError> {
         ..Default::default()
     });
     create(&task, None);
+    *task.doubts.lock() = load_doubts(task_id);
     memory::update_meta(task_id, &json!({"status": "running"}));
     router::runtime(d.bot_id).start(task.clone());
     Ok(task)
@@ -463,6 +471,10 @@ pub fn hold(ids: Vec<i64>) {
 
 /// 应用、聊天软件都起好以后（lib.rs 的 background）把挑出来的任务接着做
 pub async fn resume() {
+    if HELD.lock().is_empty() {
+        return;
+    }
+    wait_apps().await;
     let held: Vec<(i64, Vec<StepInfo>)> = {
         let h = HELD.lock();
         let mut v: Vec<_> = h.iter().map(|(k, s)| (*k, s.clone())).collect();
@@ -489,18 +501,65 @@ pub async fn resume() {
     }
 }
 
+/// 应用是后台连的：等启用了的都连上（或者连不上），最多 20 秒，不然恢复的任务一上来调应用的工具就是“未知工具”
+async fn wait_apps() {
+    let end = py::now() + 20.0;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    while py::now() < end {
+        let busy = crate::mcp_hub::public().iter().any(|a| a["enabled"] == true && a["state"] == "connecting");
+        if !busy {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+}
+
 fn finished_id(task_id: i64, status: &str) {
     db::exec("update task_runs set status=?, updated=? where task_id=?", params![status, py::now(), task_id]);
 }
 
-/// 重启时说不准有没有做成的一次写操作
+/// 重启时说不准有没有做成的一次写操作。存在 task_runs.doubts 里，每次变化都存
 #[derive(Clone, Debug)]
 pub struct Doubt {
     pub tool: String,
     pub args: String,
     pub started: f64,
     /// 怎么了结的：redo（再做了一次）、done（之前已经做成）、stop（任务停下）、skip（不做了）；None 还没了结
-    pub settled: Option<&'static str>,
+    pub settled: Option<String>,
+    /// 了结以后已经在某一轮的结果里注明过（之后不再带）
+    pub noted: bool,
+}
+
+impl Doubt {
+    fn to_json(&self) -> Value {
+        json!({"tool": self.tool, "args": self.args, "started": self.started, "settled": self.settled, "noted": self.noted})
+    }
+
+    fn of(v: &Value) -> Option<Doubt> {
+        Some(Doubt {
+            tool: v["tool"].as_str()?.to_string(),
+            args: v["args"].as_str().unwrap_or("").to_string(),
+            started: v["started"].as_f64().unwrap_or(0.0),
+            settled: v["settled"].as_str().map(String::from),
+            noted: v["noted"] == true,
+        })
+    }
+}
+
+/// 存下任务现在的说不准清单（记下、了结、注明以后都调）
+pub fn save_doubts(task: &Task) {
+    let ds: Vec<Value> = task.doubts.lock().iter().map(Doubt::to_json).collect();
+    db::exec("update task_runs set doubts=? where task_id=?", params![py::dumps_u(&json!(ds)), task.id]);
+}
+
+/// 读回存下的清单：了结并且注明过的不再带
+pub fn load_doubts(task_id: i64) -> Vec<Doubt> {
+    let Some(r) = db::row("select doubts from task_runs where task_id=?", params![task_id]) else { return vec![] };
+    if r[0].is_null() {
+        return vec![];
+    }
+    let v: Value = serde_json::from_str(&r.s(0)).unwrap_or(json!([]));
+    v.as_array().map(|a| a.iter().filter_map(Doubt::of).filter(|d| !d.noted).collect()).unwrap_or_default()
 }
 
 /// 说不准的那一步给模型的工具结果
@@ -514,11 +573,25 @@ pub fn doubt_text(tool: &str, args: &str, started: f64) -> String {
 }
 
 /// 任务结果后面注明：有一步当时说不准，最后是怎么处理的
+/// 已经了结的标成注明过；还没了结的这一轮也注明一句，下一轮（接着做、重试）照样带着
 pub fn doubt_note(task: &Task) -> String {
-    let ds = task.doubts.lock().clone();
+    let ds: Vec<Doubt> = {
+        let mut ds = task.doubts.lock();
+        let out: Vec<Doubt> = ds.iter().filter(|d| !d.noted).cloned().collect();
+        for d in ds.iter_mut() {
+            if d.settled.is_some() {
+                d.noted = true;
+            }
+        }
+        out
+    };
+    if ds.is_empty() {
+        return String::new();
+    }
+    save_doubts(task);
     ds.iter()
         .map(|d| {
-            let how = match d.settled {
+            let how = match d.settled.as_deref() {
                 Some("redo") => t!("用户确认后又做了一次"),
                 Some("done") => t!("用户确认之前已经做成，没有再做"),
                 Some("stop") => t!("用户让任务停下"),
