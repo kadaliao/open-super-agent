@@ -3,13 +3,17 @@
 - 添加连接、配对码、配对成功后在“Telegram”里和 Bot 说话，回复发回 Telegram；
 - 确认请求变成带按钮的消息，点按钮（callback_query）就允许，卡片改成结果；/new；停用、删除；
 - 没有页面正被看着时推送到订阅的设备，内容用测试自己的私钥解得开；404 / 410 的订阅删掉。
+- 只有 Rust 版有的：任务提问卡片、重启时说不准那一步的卡片，在 Telegram、飞书（假的长连接）、钉钉（假的 Stream）里
+  点按钮、直接回一句话、打字回复，以及这两种卡片的推送。
 """
 import base64
 import datetime
 import ipaddress
 import json
 import os
+import re
 import ssl
+import sys
 import tempfile
 import threading
 import time
@@ -24,7 +28,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-from conftest import Server, Socket, idle, until
+import conftest
+from conftest import HERE, Server, Socket, idle, until
 from fakellm_http import Call
 
 TOKEN = "123456789:" + "A" * 35
@@ -87,6 +92,9 @@ class FakeTelegram:
                 if token != TOKEN:
                     return self._json({"ok": False, "error_code": 401, "description": "Unauthorized"})
                 if method == "getUpdates":
+                    if body.get("offset"):   # 和真的一样：offset 之前的算确认过了，不再给（重启以后不会重放旧消息）
+                        with fake.lock:
+                            fake.updates = [u for u in fake.updates if u["update_id"] >= body["offset"]]
                     end = time.time() + 1
                     while time.time() < end:
                         with fake.lock:
@@ -336,3 +344,658 @@ def test_push(srv, fake, pushsvc):
     assert r["results"] == ["ok"]
     assert srv.post("/api/push/unsubscribe", {"endpoint": f"{pushsvc.url}/w/phone"})["count"] == 0
     idle(srv)
+
+
+# ======================================================================
+# 只有 Rust 版有：任务提问卡片、重启时说不准那一步的卡片（docs/plans/tasks-board.md 第二波 channels）
+# ======================================================================
+rust_only = pytest.mark.skipif(conftest.IMPL != "rust", reason="提问卡片、说不准那一步的卡片只有 Rust 版有")
+FS_OWNER, FS_STRANGER = "oc_owner", "oc_stranger"
+DD_OWNER, DD_STRANGER = "staff_owner", "staff_stranger"
+SLOW_APPS = {f"s{c}": {"enabled": True, "command": sys.executable, "args": [str(HERE / "fake_mcp_slow.py")], "confirm": "auto"}
+             for c in "abcdefghi"}
+
+
+# ---------- 飞书长连接的 pbbp2.Frame ----------
+def _varint(n: int) -> bytes:
+    out = bytearray()
+    while True:
+        b, n = n & 0x7F, n >> 7
+        if n:
+            out.append(b | 0x80)
+        else:
+            out.append(b)
+            return bytes(out)
+
+
+def _read_varint(b: bytes, i: int) -> tuple[int, int]:
+    n = shift = 0
+    while True:
+        x = b[i]
+        i += 1
+        n |= (x & 0x7F) << shift
+        shift += 7
+        if not x & 0x80:
+            return n, i
+
+
+def _pb_fields(b: bytes) -> list[tuple[int, object]]:
+    out, i = [], 0
+    while i < len(b):
+        key, i = _read_varint(b, i)
+        num, wt = key >> 3, key & 7
+        if wt == 0:
+            v, i = _read_varint(b, i)
+        elif wt == 2:
+            n, i = _read_varint(b, i)
+            v, i = b[i:i + n], i + n
+        else:
+            raise ValueError(f"wire type {wt}")
+        out.append((num, v))
+    return out
+
+
+def pb_frame(headers: dict[str, str], payload: bytes, service: int = 7) -> bytes:
+    num = lambda f, v: _varint(f << 3) + _varint(v)                       # noqa: E731
+    byt = lambda f, v: _varint(f << 3 | 2) + _varint(len(v)) + v          # noqa: E731
+    out = num(1, 1) + num(2, 0) + num(3, service) + num(4, 1)
+    for k, v in headers.items():
+        out += byt(5, byt(1, k.encode()) + byt(2, v.encode()))
+    return out + byt(8, payload)
+
+
+def pb_parse(b: bytes) -> tuple[dict[str, str], bytes]:
+    hs, payload = {}, b""
+    for num, v in _pb_fields(b):
+        if num == 5:
+            h = dict(_pb_fields(v))
+            hs[h.get(1, b"").decode()] = h.get(2, b"").decode()
+        elif num == 8:
+            payload = v
+    return hs, payload
+
+
+class _Http(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def _json(self, d, code=200):
+        body = json.dumps(d, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _body(self) -> dict:
+        return json.loads(self.rfile.read(int(self.headers.get("content-length") or 0)) or b"{}")
+
+
+class _WsFake:
+    """假的长连接服务：记住最新的一条连接（服务重启后会连上来一条新的）"""
+
+    def _start_ws(self):
+        from websockets.sync.server import serve
+        self.conn = None
+        self.conns = 0
+        self.ws = serve(self._ws, "127.0.0.1", 0)
+        self.ws_port = self.ws.socket.getsockname()[1]
+        threading.Thread(target=self.ws.serve_forever, daemon=True).start()
+
+    def _ws(self, conn):
+        with self.lock:
+            self.conn = conn
+            self.conns += 1
+        try:
+            for msg in conn:
+                self.got(msg)
+        except Exception:
+            pass
+
+    def got(self, msg):
+        pass
+
+    def connected(self, after: int = 0) -> bool:
+        return self.conns > after and self.conn is not None
+
+
+class FakeFeishu(_WsFake):
+    """开放平台接口 + 长连接。发出去的消息记在 sent：(create | patch, message_id, 发给谁, 类型, 内容)；点按钮回给飞书的提示记在 toasts。"""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.sent: list[tuple[str, str, str, str, dict]] = []
+        self.toasts: list[str] = []
+        self.n = 0
+        self._start_ws()
+        fake = self
+
+        class H(_Http):
+            def do_GET(self):
+                if self.path.startswith("/open-apis/bot/v3/info"):
+                    return self._json({"code": 0, "bot": {"app_name": "OSA 飞书", "open_id": "ou_bot"}})
+                self._json({"code": 404, "msg": "not found"}, 404)
+
+            def do_POST(self):
+                path, body = self.path.split("?")[0], self._body()
+                if path == "/open-apis/auth/v3/tenant_access_token/internal":
+                    return self._json({"code": 0, "tenant_access_token": "t-test", "expire": 7200})
+                if path == "/callback/ws/endpoint":
+                    return self._json({"code": 0, "data": {"URL": f"ws://127.0.0.1:{fake.ws_port}/ws?service_id=7",
+                                                           "ClientConfig": {"PingInterval": 120}}})
+                if path == "/open-apis/im/v1/messages":
+                    with fake.lock:
+                        fake.n += 1
+                        mid = f"om_{fake.n}"
+                        fake.sent.append(("create", mid, body["receive_id"], body["msg_type"], json.loads(body["content"])))
+                    return self._json({"code": 0, "data": {"message_id": mid}})
+                if path.endswith("/reactions"):
+                    return self._json({"code": 0, "data": {"reaction_id": "r1"}})
+                self._json({"code": 404, "msg": "not found"}, 404)
+
+            def do_PATCH(self):
+                mid, body = self.path.split("?")[0].rsplit("/", 1)[1], self._body()
+                with fake.lock:
+                    fake.sent.append(("patch", mid, "", "interactive", json.loads(body["content"])))
+                self._json({"code": 0, "data": {}})
+
+            def do_DELETE(self):
+                self._json({"code": 0, "data": {}})
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def got(self, msg):
+        if not isinstance(msg, bytes):
+            return
+        hs, payload = pb_parse(msg)
+        if "biz_rt" not in hs:   # 不是对事件的回应（ping）
+            return
+        d = json.loads(payload or b"{}")
+        if d.get("data"):
+            with self.lock:
+                self.toasts.append(json.loads(base64.b64decode(d["data"]))["toast"]["content"])
+
+    def _event(self, etype: str, ev: dict):
+        with self.lock:
+            self.n += 1
+            n, conn = self.n, self.conn
+        body = json.dumps({"schema": "2.0", "header": {"event_id": f"ev{n}", "event_type": etype}, "event": ev}, ensure_ascii=False)
+        conn.send(pb_frame({"type": "event", "message_id": f"m{n}", "sum": "1", "seq": "0"}, body.encode()))
+
+    def say(self, chat: str, text: str):
+        self._event("im.message.receive_v1", {
+            "message": {"chat_type": "p2p", "chat_id": chat, "message_id": f"om_in_{self.n}", "message_type": "text",
+                        "content": json.dumps({"text": text}, ensure_ascii=False)},
+            "sender": {"sender_type": "user"}})
+
+    def press(self, chat: str, data: str):
+        self._event("card.action.trigger", {"action": {"value": {"osa": data}}, "context": {"open_chat_id": chat}})
+
+    def texts(self, chat: str) -> list[str]:
+        with self.lock:
+            posts = [c for k, _, to, t, c in self.sent if k == "create" and to == chat and t == "post"]
+        return ["\n".join(el["text"] for row in p["zh_cn"]["content"] for el in row) for p in posts]
+
+    def cards(self, needle: str) -> list[tuple[str, dict]]:
+        with self.lock:
+            return [(mid, c) for k, mid, _, t, c in self.sent
+                    if k == "create" and t == "interactive" and needle in json.dumps(c, ensure_ascii=False)]
+
+    def card(self, needle: str) -> tuple[str, dict]:
+        return until(lambda: self.cards(needle), what=f"飞书卡片：{needle}")[0]
+
+    def done(self, mid: str) -> str:
+        with self.lock:
+            ps = [c for k, m, _, _, c in self.sent if k == "patch" and m == mid]
+        return "\n".join(el.get("content", "") for c in ps for el in c["elements"] if el["tag"] == "markdown")
+
+
+def fs_buttons(card: dict) -> list[tuple[str, str]]:
+    return [(a["text"]["content"], a["value"]["osa"]) for el in card["elements"] if el["tag"] == "action"
+            for a in el["actions"] if "value" in a]
+
+
+class FakeDingTalk(_WsFake):
+    """开放平台接口 + Stream 长连接。机器人发出去的 markdown 记在 sent：(发给谁, 标题, 正文)。"""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.sent: list[tuple[str, str, str]] = []
+        self.n = 0
+        self._start_ws()
+        fake = self
+
+        class H(_Http):
+            def do_POST(self):
+                path, body = self.path.split("?")[0], self._body()
+                if path == "/v1.0/oauth2/accessToken":
+                    return self._json({"accessToken": "dt-test", "expireIn": 7200})
+                if path == "/v1.0/gateway/connections/open":
+                    return self._json({"endpoint": f"ws://127.0.0.1:{fake.ws_port}/", "ticket": "tk"})
+                if path == "/v1.0/robot/oToMessages/batchSend":
+                    p = json.loads(body["msgParam"])
+                    with fake.lock:
+                        for u in body["userIds"]:
+                            fake.sent.append((u, p["title"], p["text"]))
+                    return self._json({"processQueryKey": "q"})
+                self._json({"code": "NotFound", "message": "not found"}, 404)
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def say(self, staff: str, text: str):
+        with self.lock:
+            self.n += 1
+            n, conn = self.n, self.conn
+        msg = {"msgId": f"msg{n}", "conversationType": "1", "senderStaffId": staff, "senderNick": "Test User",
+               "msgtype": "text", "text": {"content": text}, "robotCode": "ding_robot"}
+        conn.send(json.dumps({"specVersion": "1.0", "type": "CALLBACK",
+                              "headers": {"topic": "/v1.0/im/bot/messages/get", "messageId": f"dm{n}"},
+                              "data": json.dumps(msg, ensure_ascii=False)}, ensure_ascii=False))
+
+    def texts(self, staff: str) -> list[str]:
+        with self.lock:
+            return [t for u, _, t in self.sent if u == staff]
+
+    def card(self, needle: str) -> str:
+        return until(lambda: [t for t in self.texts(DD_OWNER) if needle in t], what=f"钉钉卡片：{needle}")[0]
+
+
+@pytest.fixture(scope="module")
+def tg2():
+    return FakeTelegram()
+
+
+@pytest.fixture(scope="module")
+def fs():
+    return FakeFeishu()
+
+
+@pytest.fixture(scope="module")
+def dd():
+    return FakeDingTalk()
+
+
+@pytest.fixture(scope="module")
+def xsrv(llm, tg2, fs, dd, pushsvc):
+    s = Server(llm, env={"OSA_TELEGRAM_API": tg2.url, "OSA_FEISHU_API": fs.url, "OSA_DINGTALK_API": dd.url,
+                         "SSL_CERT_FILE": str(pushsvc.ca)},
+               config={"mcp_servers": SLOW_APPS})
+    yield s
+    s.stop()
+
+
+@pytest.fixture(scope="module")
+def chans(xsrv, tg2, fs, dd, pushsvc):
+    """三个配对好的连接：Telegram ↔ Bot「TgAsk」、飞书 ↔「FsAsk」、钉钉 ↔「DdAsk」；再订阅一台手机收推送（没有网页开着）"""
+    bots = {k: xsrv.make_bot(n) for k, n in (("tg", "TgAsk"), ("fs", "FsAsk"), ("dd", "DdAsk"))}
+    tc = xsrv.post("/api/channels", {"kind": "telegram", "fields": {"token": TOKEN}, "chat_id": bots["tg"]["chat_id"]})
+    fc = xsrv.post("/api/channels", {"kind": "feishu", "fields": {"app_id": "cli_test", "app_secret": "sec"},
+                                     "chat_id": bots["fs"]["chat_id"]})
+    dc = xsrv.post("/api/channels", {"kind": "dingtalk", "fields": {"app_key": "dingkey", "app_secret": "sec", "name": "钉钉"},
+                                     "chat_id": bots["dd"]["chat_id"]})
+    until(lambda: len([c for c in xsrv.get("/api/channels")["channels"] if c["state"] == "connected"]) == 3,
+          what="三个连接都连上了")
+    until(lambda: fs.connected() and dd.connected(), what="飞书、钉钉的长连接连上")
+    tg2.say(OWNER, tc["pair_code"])
+    fs.say(FS_OWNER, fc["pair_code"])
+    dd.say(DD_OWNER, dc["pair_code"])
+    until(lambda: any("配对成功" in t for t in tg2.texts(OWNER)), what="Telegram 配对成功")
+    until(lambda: any("配对成功" in t for t in fs.texts(FS_OWNER)), what="飞书配对成功")
+    until(lambda: any("配对成功" in t for t in dd.texts(DD_OWNER)), what="钉钉配对成功")
+    priv, auth = ec.generate_private_key(ec.SECP256R1()), os.urandom(16)
+    keys = {"p256dh": b64u(point(priv)), "auth": b64u(auth)}
+    xsrv.post("/api/push/subscribe", {"subscription": {"endpoint": f"{pushsvc.url}/w/xphone", "keys": keys}})
+    return {"bots": bots, "push": (priv, auth)}
+
+
+def user_text(body: dict) -> str:
+    return "\n".join(m["content"] for m in body["messages"] if m["role"] == "user" and isinstance(m["content"], str))
+
+
+def tool_text(body: dict) -> str:
+    return "\n".join(m["content"] for m in body["messages"] if m["role"] == "tool")
+
+
+def by_goal(plan: dict[str, list]):
+    """Worker 的剧本按任务分：请求里带着哪个任务的标记，就给那个任务的下一条（几个任务同时跑时不会拿错）"""
+    def pick(body):
+        text = user_text(body)
+        for key, replies in plan.items():
+            if key in text:
+                return replies.pop(0) if replies else "完成"
+        return "完成"
+    return pick
+
+
+def worker_saw(fake, key: str, text: str) -> bool:
+    return any(key in user_text(b) and text in tool_text(b) for b in fake.bodies("worker"))
+
+
+def results(srv, chat_id: int, tid: int) -> list[dict]:
+    return [m for m in srv.find(chat_id, kind="result") if m["meta"].get("task_id") == tid]
+
+
+def pending(srv, aid: int) -> bool:
+    return any(a["id"] == aid for a in srv.get("/api/bootstrap")["approvals"])
+
+
+def dispatch(srv, fake, chat_id: int, name: str, goals: list[str], say) -> list[int]:
+    """让 Bot 一轮派出这几个任务（say：在聊天软件里发一句话），返回任务编号"""
+    before = {m["id"] for m in srv.find(chat_id, kind="dispatch")}
+    fake.script(f"router:{name}", [Call("dispatch", {"goal": g}) for g in goals], "派了")
+    say()
+    new = until(lambda: (n := [m for m in srv.find(chat_id, kind="dispatch") if m["id"] not in before]) and len(n) == len(goals) and n,
+                what="派发")
+    return [next(m["id"] for m in new if g in m["content"]) for g in goals]
+
+
+def pushes(pushsvc, priv, auth) -> list[dict]:
+    return [decrypt(g[2], priv, auth) for g in list(pushsvc.got) if g[0] == "/w/xphone"]
+
+
+def tg_card(tg, needle: str) -> dict:
+    return until(lambda: [b for b in tg.of("sendMessage", OWNER) if b.get("reply_markup", {}).get("inline_keyboard")
+                          and needle in b["text"]], what=f"Telegram 卡片：{needle}")[0]
+
+
+def tg_rows(card: dict) -> list[tuple[str, str]]:
+    return [(r[0]["text"], r[0]["callback_data"]) for r in card["reply_markup"]["inline_keyboard"]]
+
+
+def tg_toast(tg, text: str):
+    until(lambda: any(text in (b.get("text") or "") for b in tg.of("answerCallbackQuery")), what=f"按钮的提示：{text}")
+
+
+def tg_done(tg, text: str):
+    until(lambda: any(text in b["text"] for b in tg.of("editMessageText", OWNER)), what=f"卡片改成：{text}")
+
+
+@rust_only
+def test_question_telegram(xsrv, fake, tg2, chans, pushsvc):
+    bot = chans["bots"]["tg"]
+    chat = bot["chat_id"]
+    plan = {"[tq1]": [Call("ask_user", {"question": "要哪个城市？", "options": ["北京", "上海"]}), "按上海查好了"],
+            "[tq2]": [Call("ask_user", {"question": "要几天的？"}), "查了三天"],
+            "[tq3]": [Call("ask_user", {"question": "要不要发？", "options": ["发"]}), "没发"]}
+    fake.script("worker", *[by_goal(plan)] * 20)
+
+    # 点选项：选项一个一行，另有“不回答”；别人点、别人回话都不算
+    tid, = dispatch(xsrv, fake, chat, "TgAsk", ["[tq1] 查天气"], lambda: tg2.say(OWNER, "帮我查天气"))
+    card = tg_card(tg2, "要哪个城市？")
+    assert "有个问题要你回答" in card["text"] and f"任务 #{tid}" in card["text"]
+    rows = tg_rows(card)
+    assert [r[0] for r in rows] == ["北京", "上海", "不回答"]
+    assert rows[1][1].endswith(":a1") and rows[2][1].endswith(":skip")
+    aid = int(rows[1][1].split(":")[1])
+    tg2.press(STRANGER, rows[1][1])
+    tg_toast(tg2, "没有权限")
+    tg2.say(STRANGER, "北京")
+    time.sleep(0.5)
+    assert pending(xsrv, aid)
+    tg2.press(OWNER, rows[1][1])
+    tg_toast(tg2, "已回答：上海")
+    tg_done(tg2, "已回答：上海")
+    res = until(lambda: results(xsrv, chat, tid), what="结果")
+    assert "按上海查好了" in res[0]["content"]
+    assert worker_saw(fake, "[tq1]", "用户回答：上海")
+    # 推送：等你回答，正文是问题
+    priv, auth = chans["push"]
+    hit = until(lambda: [p for p in pushes(pushsvc, priv, auth) if p["tag"] == f"approval-{aid}"], what="提问的推送")[0]
+    assert hit["title"] == "TgAsk 等你回答" and hit["body"] == "要哪个城市？"
+
+    # 正好一个问题在等：直接回的话就是回答，不交给 Bot
+    tid, = dispatch(xsrv, fake, chat, "TgAsk", ["[tq2] 查天气预报"], lambda: tg2.say(OWNER, "帮我查天气预报"))
+    card = tg_card(tg2, "要几天的？")
+    assert [r[0] for r in tg_rows(card)] == ["不回答"]
+    n_router = len(fake.bodies("router", "TgAsk"))
+    tg2.say(OWNER, "三天")
+    tg_done(tg2, "已回答：三天")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[tq2]", "用户回答：三天")
+    assert not xsrv.find(chat, role="user", text="三天")
+    assert [f for f in xsrv.find(chat, kind="followup") if f["meta"]["task_id"] == tid]   # 对话里留一条“给任务的话”
+    assert not any("三天" in user_text(b) for b in fake.bodies("router", "TgAsk")[n_router:])
+
+    # 不回答
+    tid, = dispatch(xsrv, fake, chat, "TgAsk", ["[tq3] 看情况发消息"], lambda: tg2.say(OWNER, "看情况发消息"))
+    rows = tg_rows(tg_card(tg2, "要不要发？"))
+    assert [r[0] for r in rows] == ["发", "不回答"]
+    tg2.press(OWNER, rows[-1][1])
+    tg_done(tg2, "没有回答")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[tq3]", "用户没有回答")
+    idle(xsrv)
+
+
+@rust_only
+def test_two_questions_telegram(xsrv, fake, tg2, chans):
+    """两个问题同时在等：直接回的话照常交给 Bot；用“回答 #编号 内容”（中英文都行）回答指定的那个"""
+    bot = chans["bots"]["tg"]
+    chat = bot["chat_id"]
+    opts = [f"选项{i}" for i in range(6)]
+    plan = {"[tw1]": [Call("ask_user", {"question": "先查哪个？", "options": opts}), "好了一"],
+            "[tw2]": [Call("ask_user", {"question": "再查哪个？"}), "好了二"]}
+    fake.script("worker", *[by_goal(plan)] * 20)
+    t1, t2 = dispatch(xsrv, fake, chat, "TgAsk", ["[tw1] 查一", "[tw2] 查二"], lambda: tg2.say(OWNER, "查两样"))
+    c1, c2 = tg_card(tg2, "先查哪个？"), tg_card(tg2, "再查哪个？")
+    # 选项太多：按钮只放前 4 个，其余写在正文里
+    assert [r[0] for r in tg_rows(c1)] == opts[:4] + ["不回答"]
+    assert "选项4、选项5" in c1["text"]
+    a1, a2 = (int(tg_rows(c)[0][1].split(":")[1]) for c in (c1, c2))
+    fake.script("router:TgAsk", "收到你的话")
+    tg2.say(OWNER, "随便聊聊")
+    until(lambda: any("收到你的话" in t for t in tg2.texts(OWNER)), what="交给了 Bot")
+    assert xsrv.find(chat, role="user", text="随便聊聊")
+    assert pending(xsrv, a1) and pending(xsrv, a2)
+    # 一个做完再回答下一个：两个任务同时结束会撞上 tasklog.rs 的死锁（见报告）
+    tg2.say(OWNER, f"回答 #{a1} 选项5")
+    until(lambda: results(xsrv, chat, t1), what="第一个结果")
+    tg2.say(OWNER, f"answer #{a2}: 乙")
+    until(lambda: results(xsrv, chat, t2), what="第二个结果")
+    assert worker_saw(fake, "[tw1]", "用户回答：选项5") and worker_saw(fake, "[tw2]", "用户回答：乙")
+    tg_done(tg2, "已回答：选项5")
+    tg_done(tg2, "已回答：乙")
+    idle(xsrv)
+
+
+@rust_only
+def test_question_feishu(xsrv, fake, fs, chans):
+    bot = chans["bots"]["fs"]
+    chat = bot["chat_id"]
+    plan = {"[fq1]": [Call("ask_user", {"question": "飞书要哪个城市？", "options": ["北京", "上海"]}), "按北京查好了"],
+            "[fq2]": [Call("ask_user", {"question": "飞书要几天的？"}), "查了五天"],
+            "[fq3]": [Call("ask_user", {"question": "飞书要不要发？"}), "没发"]}
+    fake.script("worker", *[by_goal(plan)] * 20)
+
+    tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq1] 查天气"], lambda: fs.say(FS_OWNER, "帮我查天气"))
+    mid, card = fs.card("飞书要哪个城市？")
+    assert "有个问题要你回答" in card["header"]["title"]["content"]
+    btns = fs_buttons(card)
+    assert [b[0] for b in btns] == ["北京", "上海", "不回答"]
+    aid = int(btns[0][1].split(":")[1])
+    fs.press(FS_STRANGER, btns[0][1])
+    until(lambda: "没有权限" in fs.toasts, what="别人点按钮没用")
+    fs.say(FS_STRANGER, "上海")
+    time.sleep(0.5)
+    assert pending(xsrv, aid)
+    fs.press(FS_OWNER, btns[0][1])
+    until(lambda: "已回答：北京" in fs.toasts, what="点选项的提示")
+    until(lambda: "已回答：北京" in fs.done(mid), what="卡片改成已回答")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[fq1]", "用户回答：北京")
+
+    tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq2] 查天气预报"], lambda: fs.say(FS_OWNER, "帮我查天气预报"))
+    mid, card = fs.card("飞书要几天的？")
+    fs.say(FS_OWNER, "五天")
+    until(lambda: "已回答：五天" in fs.done(mid), what="直接回话算回答")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[fq2]", "用户回答：五天") and not xsrv.find(chat, role="user", text="五天")
+
+    tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq3] 看情况发消息"], lambda: fs.say(FS_OWNER, "看情况发消息"))
+    mid, card = fs.card("飞书要不要发？")
+    btns = fs_buttons(card)
+    assert [b[0] for b in btns] == ["不回答"]
+    fs.press(FS_OWNER, btns[0][1])
+    until(lambda: "没有回答" in fs.done(mid), what="卡片改成没有回答")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[fq3]", "用户没有回答")
+    idle(xsrv)
+
+
+@rust_only
+def test_question_dingtalk(xsrv, fake, dd, chans):
+    """钉钉没有按钮：“按钮”是替用户发出“回答 #12 上海”的链接；也能打字回复、直接回一句话"""
+    from urllib.parse import quote
+    bot = chans["bots"]["dd"]
+    chat = bot["chat_id"]
+    plan = {"[dq1]": [Call("ask_user", {"question": "钉钉要哪个城市？", "options": ["北京", "上海"]}), "按上海查好了"],
+            "[dq2]": [Call("ask_user", {"question": "钉钉要几天的？"}), "查了七天"],
+            "[dq3]": [Call("ask_user", {"question": "钉钉要不要发？"}), "没发"]}
+    fake.script("worker", *[by_goal(plan)] * 20)
+
+    tid, = dispatch(xsrv, fake, chat, "DdAsk", ["[dq1] 查天气"], lambda: dd.say(DD_OWNER, "帮我查天气"))
+    text = dd.card("钉钉要哪个城市？")
+    aid = int(re.search(r"回答 #(\d+) 你的回答", text)[1])
+    assert "有个问题要你回答" in text and f"“不回答 #{aid}”" in text
+    assert "dtmd://dingtalkclient/sendMessage?content=" + quote(f"回答 #{aid} 上海", safe="") in text
+    assert "dtmd://dingtalkclient/sendMessage?content=" + quote(f"不回答 #{aid}", safe="") in text
+    dd.say(DD_STRANGER, f"回答 #{aid} 北京")
+    time.sleep(0.5)
+    assert pending(xsrv, aid)
+    dd.say(DD_OWNER, f"回答 #{aid} 上海")   # 点“上海”的链接替用户发的就是这句
+    until(lambda: any("已回答：上海" in t for t in dd.texts(DD_OWNER)), what="回答以后的通知")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[dq1]", "用户回答：上海")
+
+    tid, = dispatch(xsrv, fake, chat, "DdAsk", ["[dq2] 查天气预报"], lambda: dd.say(DD_OWNER, "帮我查天气预报"))
+    dd.card("钉钉要几天的？")
+    dd.say(DD_OWNER, "七天")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[dq2]", "用户回答：七天") and not xsrv.find(chat, role="user", text="七天")
+
+    tid, = dispatch(xsrv, fake, chat, "DdAsk", ["[dq3] 看情况发消息"], lambda: dd.say(DD_OWNER, "看情况发消息"))
+    text = dd.card("钉钉要不要发？")
+    aid = int(re.search(r"回答 #(\d+) 你的回答", text)[1])
+    dd.say(DD_OWNER, f"Skip #{aid}")
+    until(lambda: any("没有回答" in t and f"#{aid}" in t for t in dd.texts(DD_OWNER)), what="不回答以后的通知")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[dq3]", "用户没有回答")
+    idle(xsrv)
+
+
+def lines(path) -> list[str]:
+    return path.read_text().splitlines() if path.exists() else []
+
+
+def apps_up(srv):
+    def up():
+        apps = [a for a in srv.get("/api/apps")["apps"] if a["name"] in SLOW_APPS]
+        return len(apps) == len(SLOW_APPS) and all(a.get("state") == "connected" for a in apps)
+    until(up, timeout=60, what="假应用都连上")
+
+
+@rust_only
+def test_doubt_cards(xsrv, fake, tg2, fs, dd, chans, pushsvc):
+    """强杀服务时九个任务的写操作做了一半：重启后各弹一张“有一步要你定”的卡片，
+    Telegram、飞书点三个按钮，钉钉打字回复三种写法（中英文），别人点、别人回都不算。"""
+    apps_up(xsrv)
+    for app in SLOW_APPS:
+        xsrv.post("/api/rules", {"pattern": f"{app}__slow_append", "action": "allow"})   # 平常不用确认
+    log = xsrv.tmp / "slow.log"
+    apps = iter(SLOW_APPS)
+    cases = [(k, c, next(apps)) for k in ("tg", "fs", "dd") for c in ("redo", "made", "stop")]
+    plan = {f"[d-{k}-{c}]": [Call(f"{app}__slow_append", {"text": f"{k}-{c}-1", "seconds": 15, "log": str(log)}),
+                             Call(f"{app}__slow_append", {"text": f"{k}-{c}-2", "seconds": 0.1, "log": str(log)}),
+                             f"收尾了 {k}-{c}"] for k, c, app in cases}
+    fake.script("worker", *[by_goal(plan)] * 60)
+    bots = chans["bots"]
+    sayers = {"tg": lambda t: tg2.say(OWNER, t), "fs": lambda t: fs.say(FS_OWNER, t), "dd": lambda t: dd.say(DD_OWNER, t)}
+    tids = {}
+    for k, c, _ in cases:
+        goal = f"[d-{k}-{c}] 追加一行记录"
+        tids[k, c], = dispatch(xsrv, fake, bots[k]["chat_id"], bots[k]["name"], [goal], lambda: sayers[k]("帮我追加一行记录"))
+        until(lambda: f"append-start {k}-{c}-1" in lines(log), what=f"{k}-{c} 的写操作开始执行")
+    fs_n, dd_n = fs.conns, dd.conns
+    priv, auth = chans["push"]
+    seen = len(pushes(pushsvc, priv, auth))   # 重启以后确认请求的编号从 1 重新数，只看重启后的推送
+    xsrv.restart(kill=True)   # 强杀：九个写操作都做了一半
+    until(lambda: fs.connected(fs_n) and dd.connected(dd_n), timeout=20, what="飞书、钉钉重新连上")
+    cards = until(lambda: (a := [a for a in xsrv.get("/api/bootstrap")["approvals"] if a.get("doubt")]) and len(a) == len(cases) and a,
+                  timeout=30, what="九张说不准的卡片")
+    aid = {(k, c): next(a["id"] for a in cards if a["task_id"] == tids[k, c]) for k, c, _ in cases}
+    apps_up(xsrv)   # 再做一次要等应用重新连上
+
+    # 一个任务了结了再处理下一个：两个任务同时结束（tasklog::close）和别的任务的一步正好结束（Log::finish）撞在一起
+    # 会死锁，整个服务卡住。那是 tasklog.rs 的问题（见报告），这里避开
+    tcards = {c: tg_card(tg2, f"tg-{c}-1") for c in ("redo", "made", "stop")}
+    fcards = {c: fs.card(f"fs-{c}-1") for c in ("redo", "made", "stop")}
+    dtexts = {c: dd.card(f"dd-{c}-1") for c in ("redo", "made", "stop")}
+
+    # Telegram：三个按钮，一个一行，没有“总是允许”；写明是重启时正在做的、几点开始的、参数、Bot 查过什么
+    t = tcards["redo"]["text"]
+    assert "有一步要你定" in t and "服务重启时这一步正在执行" in t and "开始）" in t and "slow_append" in t and "Bot 查过" in t
+    assert "再做一次的话用这些参数" in t and "tg-redo-2" in t
+    for c in tcards:
+        rows = tg_rows(tcards[c])
+        assert [r[0] for r in rows] == ["再做一次", "已经做成了", "不做了，停下任务"]
+        assert [r[1].rsplit(":", 1)[1] for r in rows] == ["redo", "made", "stop"]
+    tg2.press(STRANGER, tg_rows(tcards["redo"])[0][1])
+    tg_toast(tg2, "没有权限")
+    # 飞书：三个按钮
+    for c, (mid, card) in fcards.items():
+        assert "有一步要你定" in card["header"]["title"]["content"]
+        assert [b[0] for b in fs_buttons(card)] == ["再做一次", "已经做成了", "不做了，停下任务"]
+    n = fs.toasts.count("没有权限")
+    fs.press(FS_STRANGER, fs_buttons(fcards["made"][1])[1][1])
+    until(lambda: fs.toasts.count("没有权限") > n, what="别人点按钮没用")
+    # 钉钉：回复的写法写在卡片里；中英文都认，别人回的不算
+    a = aid["dd", "redo"]
+    assert f"“再做一次 #{a}”、“已经做成 #{a}”、“停下任务 #{a}”" in dtexts["redo"]
+    dd.say(DD_STRANGER, f"已经做成 #{aid['dd', 'made']}")
+    time.sleep(0.5)
+    assert all(pending(xsrv, x) for x in aid.values())
+
+    def press(k: str, c: str):
+        if k == "tg":
+            tg2.press(OWNER, tg_rows(tcards[c])[["redo", "made", "stop"].index(c)][1])
+        elif k == "fs":
+            fs.press(FS_OWNER, fs_buttons(fcards[c][1])[["redo", "made", "stop"].index(c)][1])
+        else:
+            dd.say(DD_OWNER, {"redo": f"再做一次 #{aid[k, c]}", "made": f"already done #{aid[k, c]}",
+                              "stop": f"Stop task #{aid[k, c]}"}[c])
+
+    for k in ("tg", "fs", "dd"):
+        chat = bots[k]["chat_id"]
+        # 再做一次的做了第二次
+        press(k, "redo")
+        res = until(lambda: results(xsrv, chat, tids[k, "redo"]), timeout=20, what=f"{k} 再做一次的结果")
+        assert f"收尾了 {k}-redo" in res[0]["content"] and "又做了一次" in res[0]["content"]
+        assert f"append-done {k}-redo-2" in lines(log)
+        # 已经做成的没再做
+        press(k, "made")
+        res = until(lambda: results(xsrv, chat, tids[k, "made"]), timeout=20, what=f"{k} 已经做成的结果")
+        assert "之前已经做成" in res[0]["content"] and f"append-start {k}-made-2" not in lines(log)
+        # 停下任务
+        press(k, "stop")
+        until(lambda: [m for m in xsrv.find(chat, kind="cancel") if m["meta"]["task_id"] == tids[k, "stop"]], what=f"{k} 任务停下")
+        assert xsrv.get(f"/api/tasks/{tids[k, 'stop']}")["task"]["status"] == "cancelled"
+        assert f"append-start {k}-stop-2" not in lines(log)
+    # 卡片改成结果
+    tg_done(tg2, "再做一次")
+    tg_done(tg2, "已经做成了，不再做")
+    tg_done(tg2, "不做了，任务停下")
+    for c, done in (("redo", "再做一次"), ("made", "已经做成了，不再做"), ("stop", "不做了，任务停下")):
+        until(lambda: done in fs.done(fcards[c][0]), what=f"飞书 {c} 卡片改成结果")
+        until(lambda: any(done in t and f"#{aid['dd', c]}" in t for t in dd.texts(DD_OWNER)), what=f"钉钉 {c} 的结果通知")
+
+    # 推送：有一步要你定，写明是哪一步
+    hit = until(lambda: [p for p in pushes(pushsvc, priv, auth)[seen:] if p["tag"] == f"approval-{aid['tg', 'redo']}"],
+                what="推送")[0]
+    assert hit["title"] == "TgAsk 有一步要你定" and "sa__slow_append" in hit["body"]
+    idle(xsrv, timeout=20)

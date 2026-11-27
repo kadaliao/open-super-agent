@@ -267,6 +267,20 @@ pub fn message_for(ev: &Value) -> Option<Value> {
         if ev["kind"] == "help" {
             return out(t!("{who} 需要你帮忙", who = who), t!("任务暂停了，等你接手电脑处理"), url, tag);
         }
+        // 任务问你一个问题：正文是问题原文
+        if ev["kind"] == "question" {
+            return out(t!("{who} 等你回答", who = who), py::head(&plain(ev["question"].as_str().unwrap_or("")), 120), url, tag);
+        }
+        // 服务重启时说不准做没做成的那一步：是哪一步
+        if ev["doubt"].is_object() {
+            let tool = ev["doubt"]["tool"].as_str().filter(|s| !s.is_empty()).or(ev["tool"].as_str()).unwrap_or("").to_string();
+            return out(
+                t!("{who} 有一步要你定", who = who),
+                t!("服务重启时 {tool} 这一步正在做，说不准有没有做成：再做一次，还是算已经做成？", tool = tool),
+                url,
+                tag,
+            );
+        }
         let tool = ev["tool"].as_str().unwrap_or("");
         if ["create_bot", "update_bot", "delete_bot"].contains(&tool) {
             let d: Value = serde_json::from_str(ev["args"].as_str().filter(|s| !s.is_empty()).unwrap_or("{}")).unwrap_or(json!({}));

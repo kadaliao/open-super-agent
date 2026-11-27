@@ -1,7 +1,7 @@
 //! 企业微信：智能机器人的长连接（API 模式选“长连接”）。对应 osa/channels/wecom.py（协议说明见那里）。
 //! OSA_WECOM_WS 可以换成假的服务器（测试用）。
 
-use super::{Card, Chan, Platform, fmt, word_command};
+use super::{Card, Chan, Platform, fmt, reply_hints};
 use crate::i18n::Later;
 use crate::{i18n, py};
 use async_trait::async_trait;
@@ -462,12 +462,7 @@ impl Platform for WeCom {
             Err(e) if e.downcast_ref::<WecomError>().is_some() => eprintln!("[聊天软件 {} 企业微信] 卡片发送失败，改发文字：{e}", ch.id),
             Err(e) => return Err(e),
         }
-        let btns = card["buttons"].as_array().cloned().unwrap_or_default();
-        let say = btns
-            .iter()
-            .map(|b| t!("“{text}”", text = word_command(b[1].as_str().unwrap_or(""), &card["id"])))
-            .collect::<Vec<_>>()
-            .join(&t!("、"));
+        let say = reply_hints(card).join(&t!("、"));
         let link = card["link"].as_array().map(|l| format!("\n\n[{}]({})", py::str_of(&l[0]), py::str_of(&l[1]))).unwrap_or_default();
         self.send_text(ch, peer, &format!("**{}**\n\n{body}{link}\n\n{}", py::str_of(&card["title"]), t!("回复{say}。", say = say)))
             .await?;
