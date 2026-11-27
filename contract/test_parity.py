@@ -1,4 +1,7 @@
-"""两个版本发给模型的请求逐字一样：同一个剧本在 Python 版和 Rust 版上各跑一遍，比对每次请求的 messages、tools 和参数。
+"""【停用】2026-11-27 起整个文件跳过：任务、看板这一批新功能只做在 Rust 版（见 docs/plans/tasks-board.md“两个先定下来的事”），
+Rust 版的提示词和工具（tell_task、ask_user、状态里的“当前任务”）和 Python 版不再一样，逐字比对没有意义了。文件留着备查。
+
+两个版本发给模型的请求逐字一样：同一个剧本在 Python 版和 Rust 版上各跑一遍，比对每次请求的 messages、tools 和参数。
 
 提示词、工具 schema、上下文的拼法差一个字，模型服务的前缀缓存就不命中，Bot 的行为也可能变。只在 Rust 版构建好时跑。
 比之前把会变的东西（编号、时间、流式 id）换成占位符。
@@ -12,7 +15,10 @@ import pytest
 from conftest import RUST_BIN, Server, Socket, idle, until
 from fakellm_http import Call, FakeLLM
 
-pytestmark = pytest.mark.skipif(not Path(RUST_BIN).exists(), reason="没有构建 Rust 版")
+pytestmark = [
+    pytest.mark.skip(reason="停用：新功能只做在 Rust 版，两个版本的提示词和工具不再一样（docs/plans/tasks-board.md）"),
+    pytest.mark.skipif(not Path(RUST_BIN).exists(), reason="没有构建 Rust 版"),
+]
 
 
 # Rust 版有意改过说明的工具（文档只有 Rust 版有，见 docs/plans/oad.md）：只比名字
