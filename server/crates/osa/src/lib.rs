@@ -17,6 +17,7 @@ pub mod apps;
 pub mod auth;
 pub mod avatars;
 pub mod backup;
+pub mod board;
 pub mod botadmin;
 pub mod bots;
 pub mod builtin;
@@ -83,6 +84,7 @@ pub fn modules_migrate() {
     channels::migrate();
     push::migrate();
     media::migrate();
+    board::migrate();
 }
 
 /// 后台循环（清理、刷新价格……）
@@ -92,4 +94,5 @@ pub fn background() {
     tokio::spawn(prices::price_loop());
     tokio::spawn(search::startup());
     videos::resume();
+    tokio::spawn(board::watcher());
 }
