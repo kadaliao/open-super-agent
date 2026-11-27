@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+## [0.28.0] - 2026-11-28
+
 ### 新增
 - **任务能对话、能接着做**：派出去的任务不再是一次性的。
   - 任务详情底下有输入框：正在做的，这句话在它下一步之前交给它（“改成只看英国”）；做完、失败、取消了的，它带着这句话接着做，做完再出一条结果，标“第 2 轮”。
@@ -808,7 +810,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.27.3...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/kadaliao/open-super-agent/compare/v0.27.3...v0.28.0
 [0.27.3]: https://github.com/kadaliao/open-super-agent/compare/v0.27.2...v0.27.3
 [0.27.2]: https://github.com/kadaliao/open-super-agent/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/kadaliao/open-super-agent/compare/v0.27.0...v0.27.1
