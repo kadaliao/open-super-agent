@@ -384,7 +384,7 @@ impl Chan {
             let status = ev["status"].as_str().unwrap_or("");
             if status == "pending" && (mine || ev["origin_chat_id"] == chat_id) {
                 self.carding.lock().insert(aid);
-                self.send_card(peer, card_for(ev));
+                self.send_card(peer, card_for(ev, quotes(&self.kind)));
             } else if status != "pending" && self.carding.lock().contains(&aid) {
                 let st = if py::truthy(&ev["always"]) {
                     "always"
@@ -435,8 +435,8 @@ impl Chan {
         }
     }
 
-    /// 收到一条私聊消息。files：[(文件名, 平台取文件用的引用)]
-    pub async fn inbound(self: &Arc<Self>, peer: &str, who: &str, text: &str, files: Vec<(String, Value)>) {
+    /// 收到一条私聊消息。files：[(文件名, 平台取文件用的引用)]；quoted：这条消息引用回复的平台消息 id（没有引用是空的）
+    pub async fn inbound(self: &Arc<Self>, peer: &str, who: &str, text: &str, files: Vec<(String, Value)>, quoted: &[String]) {
         let Some(r) = row(self.id) else { return };
         *self.row.lock() = r.clone();
         let text = text.trim().to_string();
@@ -496,11 +496,12 @@ impl Chan {
                 None,
             );
         }
-        // 这个对话里正好有一个问题在等：直接回的这句话就是回答，不交给 Bot（有几个在等、或者带了文件时照常交给 Bot）
+        // 引用提问卡片回复的：就是在回答那个问题，直接交给任务，不经过 Bot。
+        // 别的话（包括引用说不准、普通确认卡片的）一律交给 Bot，它看状态里待确认的卡片，判断是不是在回答（resolve_approval）
         if files.is_empty()
             && !text.is_empty()
             && !text.starts_with('/')
-            && let [aid] = self.questions()[..]
+            && let Some(aid) = self.quoted_question(quoted)
         {
             let (okd, toast) = self.answer(aid, &text);
             if !okd {
@@ -648,15 +649,19 @@ impl Chan {
         (true, toast)
     }
 
-    /// 这个连接上还在等回答的问题（卡片发到了这边的）
-    fn questions(&self) -> Vec<i64> {
-        let mine: HashSet<i64> = self.carding.lock().clone();
-        approvals::PENDING
-            .lock()
-            .iter()
-            .filter(|(id, p)| mine.contains(id) && p.tx.is_some() && p.item["kind"] == "question")
-            .map(|(id, _)| *id)
-            .collect()
+    /// 引用回复的是这边发出去的哪张提问卡片（还在等回答的）。说不准、普通确认的卡片不算
+    fn quoted_question(&self, quoted: &[String]) -> Option<i64> {
+        let aid = {
+            let cards = self.cards.lock();
+            quoted.iter().filter(|q| !q.is_empty()).find_map(|q| {
+                cards.iter().find(|(_, (mid, c))| mid == q && c["kind"] == "question").map(|(id, _)| *id)
+            })?
+        };
+        if !self.carding.lock().contains(&aid) {
+            return None;
+        }
+        let waiting = approvals::PENDING.lock().get(&aid).is_some_and(|p| p.tx.is_some() && card_kind(&p.item) == "question");
+        waiting.then_some(aid)
     }
 
     /// 用一句话回答一个问题：和网页上回复任务一样交给任务（对话里留一条“给任务的话”），交不过去的直接了结卡片
@@ -1055,7 +1060,13 @@ fn btn(label: String, act: &str, style: &str) -> Value {
 }
 
 /// 确认请求 → 卡片
-pub fn card_for(ev: &Value) -> Card {
+/// 能不能引用一条消息回复（Telegram、飞书、Discord 能；钉钉、企业微信不能）
+fn quotes(kind: &str) -> bool {
+    matches!(kind, "telegram" | "feishu" | "discord")
+}
+
+/// quote：这个聊天软件能引用回复（提问卡片上的提示跟着写）
+pub fn card_for(ev: &Value, quote: bool) -> Card {
     static WS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
     let who = bot_name(&ev["bot_id"]);
     let mut origin = String::new();
@@ -1083,7 +1094,7 @@ pub fn card_for(ev: &Value) -> Card {
     let goal = WS.replace_all(ev["goal"].as_str().unwrap_or(""), " ").into_owned();
     let task_head = t!("任务 #{id}：{goal}", id = ev["task_id"].clone(), goal = goal.clone()) + &origin;
     if ev["kind"] == "question" {
-        return question_card(ev, &who, &task_head);
+        return question_card(ev, &who, &task_head, quote);
     }
     if ev["doubt"].is_object() {
         return doubt_card(ev, &who, &task_head);
@@ -1162,8 +1173,8 @@ fn tool_head(tool: &str) -> String {
     }
 }
 
-/// 任务问用户一个问题（kind: question）：选项是按钮，另有“不回答”；也可以直接回一句话
-fn question_card(ev: &Value, who: &str, task_head: &str) -> Card {
+/// 任务问用户一个问题（kind: question）：选项是按钮，另有“不回答”；也可以引用卡片回复、“回答 #编号 内容”，或者直接说（Bot 判断是不是在回答）
+fn question_card(ev: &Value, who: &str, task_head: &str, quote: bool) -> Card {
     let question = ev["question"].as_str().unwrap_or("").trim().to_string();
     let options: Vec<String> =
         ev["options"].as_array().map(|a| a.iter().map(py::str_of).filter(|s| !s.trim().is_empty()).collect()).unwrap_or_default();
@@ -1178,10 +1189,12 @@ fn question_card(ev: &Value, who: &str, task_head: &str) -> Card {
     if let Some(e) = ev["expires"].as_f64() {
         body += &format!("\n{}", t!("后台任务，{time} 前没回答就不等了。", time = py::strftime_at(e, "%H:%M")));
     }
-    body += &format!(
-        "\n\n{}",
-        t!("点一个选项，或者直接回一句话作答；同时有几个问题在等时，回复“回答 #{id} 你的回答”。", id = ev["id"].clone())
-    );
+    let hint = if quote {
+        t!("点一个选项，或者引用这条消息回复；直接说也行，Bot 会看是不是在回答。也可以回复“回答 #{id} 你的回答”。", id = ev["id"].clone())
+    } else {
+        t!("点一个选项，或者直接说，Bot 会看是不是在回答；也可以回复“回答 #{id} 你的回答”。", id = ev["id"].clone())
+    };
+    body += &format!("\n\n{hint}");
     json!({"id": ev["id"], "kind": "question", "title": t!("❓ {name} 有个问题要你回答", name = who), "body": body,
            "buttons": buttons, "options": options, "link": null, "done": ""})
 }

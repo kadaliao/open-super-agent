@@ -277,7 +277,7 @@ impl DingTalk {
             }
         }
         let files: Vec<(String, Value)> = files.into_iter().filter(|f| py::truthy(&f.1)).collect();
-        ch.inbound(&peer, m["senderNick"].as_str().unwrap_or(""), &text, files).await;
+        ch.inbound(&peer, m["senderNick"].as_str().unwrap_or(""), &text, files, &[]).await;
     }
 
     async fn markdown(&self, ch: &Chan, peer: &str, title: &str, text: &str) -> anyhow::Result<()> {

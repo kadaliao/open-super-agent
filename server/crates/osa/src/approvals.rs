@@ -512,13 +512,24 @@ pub fn summary(bot_id: Option<i64>) -> String {
         .filter(|p| bot_id.is_none() || p.item["bot_id"].as_i64() == bot_id)
         .map(|p| {
             let a = &p.item;
-            format!(
-                "#{}（任务 #{}）{} 参数：{}",
-                py::str_of(&a["id"]),
-                py::str_of(&a["task_id"]),
-                py::str_of(&a["tool"]),
-                py::head(a["args"].as_str().unwrap_or(""), 200)
-            )
+            let (id, task) = (py::str_of(&a["id"]), py::str_of(&a["task_id"]));
+            let args = py::head(a["args"].as_str().unwrap_or(""), 200);
+            // 按卡片的种类写，Bot 才看得出用户的话是不是在回答它
+            if a["kind"] == "question" {
+                let opts: Vec<String> = a["options"].as_array().map(|o| o.iter().map(py::str_of).collect()).unwrap_or_default();
+                let mut s = format!("#{id}（任务 #{task}）在问用户：{}", py::head(a["question"].as_str().unwrap_or("").trim(), 300));
+                if !opts.is_empty() {
+                    s += &format!("；选项：{}", opts.join(" / "));
+                }
+                return s;
+            }
+            if a["doubt"].is_object() {
+                let d = &a["doubt"];
+                let tool = d["tool"].as_str().filter(|t| !t.is_empty()).or(a["tool"].as_str()).unwrap_or("");
+                let before = d["args"].as_str().filter(|t| !t.trim().is_empty()).map(|t| py::head(t, 200)).unwrap_or(args);
+                return format!("#{id}（任务 #{task}）有一步说不准做没做成，要不要再做：{tool} 参数：{before}");
+            }
+            format!("#{id}（任务 #{task}）{} 参数：{args}", py::str_of(&a["tool"]))
         })
         .collect();
     if s.is_empty() { "无".into() } else { s.join("\n") }

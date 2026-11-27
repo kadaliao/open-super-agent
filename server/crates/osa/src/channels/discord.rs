@@ -268,7 +268,9 @@ impl Discord {
             }
             return;
         }
-        ch.inbound(&peer, &who, &text, files).await;
+        // 引用回复的那条消息（引用提问卡片回复就是在回答它）
+        let quoted: Vec<String> = m["message_reference"]["message_id"].as_str().map(String::from).into_iter().collect();
+        ch.inbound(&peer, &who, &text, files, &quoted).await;
     }
 
     async fn on_interaction(&self, ch: &Arc<Chan>, d: &Value) -> anyhow::Result<()> {

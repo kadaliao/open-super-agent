@@ -138,7 +138,9 @@ impl Telegram {
             }
             return Ok(());
         }
-        ch.inbound(&peer, &who, &text, files).await;
+        // 引用回复的那条消息（引用提问卡片回复就是在回答它）
+        let quoted: Vec<String> = Some(&m["reply_to_message"]["message_id"]).filter(|v| !v.is_null()).map(py::str_of).into_iter().collect();
+        ch.inbound(&peer, &who, &text, files, &quoted).await;
         Ok(())
     }
 

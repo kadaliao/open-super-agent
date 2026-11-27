@@ -1301,7 +1301,7 @@
       },
       "note": {
        "type": "string",
-       "description": "用户附带的意见，例如修改要求"
+       "description": "用户附带的意见，例如修改要求；回答任务的问题时写用户的原话"
       },
       "always": {
        "type": "boolean",

@@ -326,7 +326,7 @@ impl WeCom {
                 return;
             }
         }
-        ch.inbound(&peer, "", &text, files).await;
+        ch.inbound(&peer, "", &text, files, &[]).await;
     }
 
     async fn on_card(&self, ch: &Arc<Chan>, rid: &str, b: &Value, ev: &Value) {

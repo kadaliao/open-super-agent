@@ -4,7 +4,7 @@
 - 确认请求变成带按钮的消息，点按钮（callback_query）就允许，卡片改成结果；/new；停用、删除；
 - 没有页面正被看着时推送到订阅的设备，内容用测试自己的私钥解得开；404 / 410 的订阅删掉。
 - 只有 Rust 版有的：任务提问卡片、重启时说不准那一步的卡片，在 Telegram、飞书（假的长连接）、钉钉（假的 Stream）里
-  点按钮、直接回一句话、打字回复，以及这两种卡片的推送。
+  点按钮、引用卡片回复、打字回复、直接说（交给 Bot 判断是不是在回答），以及这两种卡片的推送。
 """
 import base64
 import datetime
@@ -45,6 +45,7 @@ class FakeTelegram:
         self.sent: list[tuple[str, dict]] = []
         self.next_update = 1
         self.next_msg = 100
+        self.mids: dict[int, int] = {}   # 发出去的消息（sent 里那个 dict 的 id()）→ message_id
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -55,9 +56,18 @@ class FakeTelegram:
             self.next_update += 1
             self.updates.append(u)
 
-    def say(self, chat: int, text: str):
-        self.push(message={"message_id": self.next_update, "chat": {"id": chat, "type": "private"},
-                           "from": {"id": chat, "first_name": "Test", "last_name": "User"}, "text": text})
+    def say(self, chat: int, text: str, reply_to: int | None = None):
+        """reply_to：引用回复哪条消息（message_id）"""
+        m = {"message_id": self.next_update, "chat": {"id": chat, "type": "private"},
+             "from": {"id": chat, "first_name": "Test", "last_name": "User"}, "text": text}
+        if reply_to is not None:
+            m["reply_to_message"] = {"message_id": reply_to, "chat": {"id": chat, "type": "private"}, "text": "…"}
+        self.push(message=m)
+
+    def mid(self, body: dict) -> int:
+        """发出去的这条消息的 message_id"""
+        with self.lock:
+            return self.mids[id(body)]
 
     def press(self, chat: int, data: str):
         self.push(callback_query={"id": f"cq{self.next_update}", "data": data, "message": {"chat": {"id": chat}}})
@@ -111,6 +121,7 @@ class FakeTelegram:
                     with fake.lock:
                         fake.next_msg += 1
                         n = fake.next_msg
+                        fake.mids[id(body)] = n
                     return self._json({"ok": True, "result": {"message_id": n}})
                 return self._json({"ok": True, "result": True})
 
@@ -526,11 +537,13 @@ class FakeFeishu(_WsFake):
         body = json.dumps({"schema": "2.0", "header": {"event_id": f"ev{n}", "event_type": etype}, "event": ev}, ensure_ascii=False)
         conn.send(pb_frame({"type": "event", "message_id": f"m{n}", "sum": "1", "seq": "0"}, body.encode()))
 
-    def say(self, chat: str, text: str):
-        self._event("im.message.receive_v1", {
-            "message": {"chat_type": "p2p", "chat_id": chat, "message_id": f"om_in_{self.n}", "message_type": "text",
-                        "content": json.dumps({"text": text}, ensure_ascii=False)},
-            "sender": {"sender_type": "user"}})
+    def say(self, chat: str, text: str, parent_id: str | None = None):
+        """parent_id：引用回复哪条消息（飞书的引用回复带 parent_id 和 root_id）"""
+        msg = {"chat_type": "p2p", "chat_id": chat, "message_id": f"om_in_{self.n}", "message_type": "text",
+               "content": json.dumps({"text": text}, ensure_ascii=False)}
+        if parent_id:
+            msg["parent_id"] = msg["root_id"] = parent_id
+        self._event("im.message.receive_v1", {"message": msg, "sender": {"sender_type": "user"}})
 
     def press(self, chat: str, data: str):
         self._event("card.action.trigger", {"action": {"value": {"osa": data}}, "context": {"open_chat_id": chat}})
@@ -749,18 +762,21 @@ def test_question_telegram(xsrv, fake, tg2, chans, pushsvc):
     hit = until(lambda: [p for p in pushes(pushsvc, priv, auth) if p["tag"] == f"approval-{aid}"], what="提问的推送")[0]
     assert hit["title"] == "TgAsk 等你回答" and hit["body"] == "要哪个城市？"
 
-    # 正好一个问题在等：直接回的话就是回答，不交给 Bot
+    # 直接说的话交给 Bot：它在状态里看到任务在问什么，判断是在回答，用 resolve_approval 把原话交给任务
     tid, = dispatch(xsrv, fake, chat, "TgAsk", ["[tq2] 查天气预报"], lambda: tg2.say(OWNER, "帮我查天气预报"))
     card = tg_card(tg2, "要几天的？")
     assert [r[0] for r in tg_rows(card)] == ["不回答"]
+    assert "引用这条消息回复" in card["text"] and "Bot 会看是不是在回答" in card["text"]
+    aid = int(tg_rows(card)[0][1].split(":")[1])
     n_router = len(fake.bodies("router", "TgAsk"))
+    fake.script("router:TgAsk", Call("resolve_approval", {"id": aid, "approve": True, "note": "三天"}), "好的，告诉它了")
     tg2.say(OWNER, "三天")
     tg_done(tg2, "已回答：三天")
     until(lambda: results(xsrv, chat, tid), what="结果")
     assert worker_saw(fake, "[tq2]", "用户回答：三天")
-    assert not xsrv.find(chat, role="user", text="三天")
-    assert [f for f in xsrv.find(chat, kind="followup") if f["meta"]["task_id"] == tid]   # 对话里留一条“给任务的话”
-    assert not any("三天" in user_text(b) for b in fake.bodies("router", "TgAsk")[n_router:])
+    assert xsrv.find(chat, role="user", text="三天")
+    seen = [b for b in fake.bodies("router", "TgAsk")[n_router:] if "三天" in user_text(b)]
+    assert seen and f"#{aid}（任务 #{tid}）在问用户：要几天的？" in user_text(seen[0])
 
     # 不回答
     tid, = dispatch(xsrv, fake, chat, "TgAsk", ["[tq3] 看情况发消息"], lambda: tg2.say(OWNER, "看情况发消息"))
@@ -805,12 +821,67 @@ def test_two_questions_telegram(xsrv, fake, tg2, chans):
 
 
 @rust_only
+def test_question_other_words_telegram(xsrv, fake, tg2, chans):
+    """一个问题在等时：说别的事照常交给 Bot、问题接着等；以卡片编号开头的话交给那张卡的任务，问题也接着等；
+    引用提问卡片回复就是回答，不经过 Bot"""
+    bot = chans["bots"]["tg"]
+    chat = bot["chat_id"]
+    xsrv.post("/api/projects", {"key": "TGQ", "name": "提问项目"})
+    evt = threading.Event()
+    plan = {"[tn1]": [Call("ask_user", {"question": "要查哪一天？"}), "查好了那天"],
+            "[tn2]": [lambda body: (evt.wait(15), Call("search_memory", {"query": "欧洲"}))[1], "报告含英国"]}
+    pick = by_goal(plan)
+    fake.script("worker", *[lambda body: (r(body) if callable(r := pick(body)) else r)] * 20)
+    # 两张卡：[tn2] 在做（卡在第一步），[tn1] 在问问题
+    before = {m["id"] for m in xsrv.find(chat, kind="dispatch")}
+    fake.script("router:TgAsk", Call("dispatch", {"goal": "[tn2] 查欧洲市场", "need": "欧洲市场报告", "project": "TGQ"}), "派了")
+    tg2.say(OWNER, "查一下欧洲市场")
+    d2 = until(lambda: [m for m in xsrv.find(chat, kind="dispatch") if m["id"] not in before], what="派发")[0]
+    t2 = d2["id"]
+    key = xsrv.get(f"/api/needs/{d2['meta']['need_id']}")["key"]
+    until(lambda: any("[tn2]" in user_text(b) for b in fake.bodies("worker")), what="[tn2] 开始")
+    t1, = dispatch(xsrv, fake, chat, "TgAsk", ["[tn1] 查天气"], lambda: tg2.say(OWNER, "再查个天气"))
+    card = tg_card(tg2, "要查哪一天？")
+    aid = int(tg_rows(card)[0][1].split(":")[1])
+
+    # 说别的事：Bot 直接答话、不调 resolve_approval，问题接着等，任务没拿到这句话
+    n = len(fake.bodies("router", "TgAsk"))
+    fake.script("router:TgAsk", "明天晴，适合出门")
+    tg2.say(OWNER, "顺便查下明天天气")
+    until(lambda: any("明天晴" in t for t in tg2.texts(OWNER)), what="Bot 照常回话")
+    asked = [b for b in fake.bodies("router", "TgAsk")[n:] if "顺便查下明天天气" in user_text(b)]
+    assert asked and f"#{aid}（任务 #{t1}）在问用户：要查哪一天？" in user_text(asked[0])
+    assert pending(xsrv, aid) and xsrv.find(chat, role="user", text="顺便查下明天天气")
+    assert not any("顺便查下" in user_text(b) + tool_text(b) for b in fake.bodies("worker") if "[tn1]" in user_text(b))
+
+    # 以卡片编号开头：交给那张卡的任务，Bot 不被叫醒，问题接着等
+    n = len(fake.bodies("router", "TgAsk"))
+    tg2.say(OWNER, f"{key} 加上英国")
+    until(lambda: [f for f in xsrv.find(chat, kind="followup") if f["meta"]["task_id"] == t2], what="给 [tn2] 的话")
+    assert pending(xsrv, aid) and len(fake.bodies("router", "TgAsk")) == n
+    evt.set()
+    until(lambda: results(xsrv, chat, t2), what="[tn2] 的结果")
+    assert any("[tn2]" in user_text(b) and f"{key} 加上英国" in user_text(b) for b in fake.bodies("worker"))
+    assert pending(xsrv, aid)
+
+    # 引用提问卡片回复：就是回答，直接交给任务，Bot 没有新请求
+    tg2.say(OWNER, "后天", reply_to=tg2.mid(card))
+    tg_done(tg2, "已回答：后天")
+    until(lambda: results(xsrv, chat, t1), what="[tn1] 的结果")
+    assert worker_saw(fake, "[tn1]", "用户回答：后天")
+    assert len(fake.bodies("router", "TgAsk")) == n and not xsrv.find(chat, role="user", text="后天")
+    assert [f for f in xsrv.find(chat, kind="followup") if f["meta"]["task_id"] == t1]   # 对话里留一条“给任务的话”
+    idle(xsrv)
+
+
+@rust_only
 def test_question_feishu(xsrv, fake, fs, chans):
     bot = chans["bots"]["fs"]
     chat = bot["chat_id"]
     plan = {"[fq1]": [Call("ask_user", {"question": "飞书要哪个城市？", "options": ["北京", "上海"]}), "按北京查好了"],
             "[fq2]": [Call("ask_user", {"question": "飞书要几天的？"}), "查了五天"],
-            "[fq3]": [Call("ask_user", {"question": "飞书要不要发？"}), "没发"]}
+            "[fq3]": [Call("ask_user", {"question": "飞书要不要发？"}), "没发"],
+            "[fq4]": [Call("ask_user", {"question": "飞书住几晚？"}), "订了两晚"]}
     fake.script("worker", *[by_goal(plan)] * 20)
 
     tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq1] 查天气"], lambda: fs.say(FS_OWNER, "帮我查天气"))
@@ -830,12 +901,26 @@ def test_question_feishu(xsrv, fake, fs, chans):
     until(lambda: results(xsrv, chat, tid), what="结果")
     assert worker_saw(fake, "[fq1]", "用户回答：北京")
 
+    # 直接说：交给 Bot，它用 resolve_approval 交给任务
     tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq2] 查天气预报"], lambda: fs.say(FS_OWNER, "帮我查天气预报"))
     mid, card = fs.card("飞书要几天的？")
+    assert "引用这条消息回复" in json.dumps(card, ensure_ascii=False)
+    aid = int(fs_buttons(card)[0][1].split(":")[1])
+    fake.script("router:FsAsk", Call("resolve_approval", {"id": aid, "approve": True, "note": "五天"}), "好的")
     fs.say(FS_OWNER, "五天")
-    until(lambda: "已回答：五天" in fs.done(mid), what="直接回话算回答")
+    until(lambda: "已回答：五天" in fs.done(mid), what="Bot 判断是回答")
     until(lambda: results(xsrv, chat, tid), what="结果")
-    assert worker_saw(fake, "[fq2]", "用户回答：五天") and not xsrv.find(chat, role="user", text="五天")
+    assert worker_saw(fake, "[fq2]", "用户回答：五天") and xsrv.find(chat, role="user", text="五天")
+
+    # 引用卡片回复：直接交给任务，不经过 Bot
+    tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq4] 查酒店"], lambda: fs.say(FS_OWNER, "帮我查酒店"))
+    mid, card = fs.card("飞书住几晚？")
+    n_router = len(fake.bodies("router", "FsAsk"))
+    fs.say(FS_OWNER, "两晚", parent_id=mid)
+    until(lambda: "已回答：两晚" in fs.done(mid), what="引用回复算回答")
+    until(lambda: results(xsrv, chat, tid), what="结果")
+    assert worker_saw(fake, "[fq4]", "用户回答：两晚")
+    assert len(fake.bodies("router", "FsAsk")) == n_router and not xsrv.find(chat, role="user", text="两晚")
 
     tid, = dispatch(xsrv, fake, chat, "FsAsk", ["[fq3] 看情况发消息"], lambda: fs.say(FS_OWNER, "看情况发消息"))
     mid, card = fs.card("飞书要不要发？")
@@ -850,7 +935,7 @@ def test_question_feishu(xsrv, fake, fs, chans):
 
 @rust_only
 def test_question_dingtalk(xsrv, fake, dd, chans):
-    """钉钉没有按钮：“按钮”是替用户发出“回答 #12 上海”的链接；也能打字回复、直接回一句话"""
+    """钉钉没有按钮：“按钮”是替用户发出“回答 #12 上海”的链接；也能打字回复；直接说的交给 Bot 判断（钉钉没有引用回复）"""
     from urllib.parse import quote
     bot = chans["bots"]["dd"]
     chat = bot["chat_id"]
@@ -874,10 +959,14 @@ def test_question_dingtalk(xsrv, fake, dd, chans):
     assert worker_saw(fake, "[dq1]", "用户回答：上海")
 
     tid, = dispatch(xsrv, fake, chat, "DdAsk", ["[dq2] 查天气预报"], lambda: dd.say(DD_OWNER, "帮我查天气预报"))
-    dd.card("钉钉要几天的？")
+    text = dd.card("钉钉要几天的？")
+    assert "引用" not in text and "Bot 会看是不是在回答" in text
+    aid = int(re.search(r"回答 #(\d+) 你的回答", text)[1])
+    fake.script("router:DdAsk", Call("resolve_approval", {"id": aid, "approve": True, "note": "七天"}), "好的")
     dd.say(DD_OWNER, "七天")
     until(lambda: results(xsrv, chat, tid), what="结果")
-    assert worker_saw(fake, "[dq2]", "用户回答：七天") and not xsrv.find(chat, role="user", text="七天")
+    assert worker_saw(fake, "[dq2]", "用户回答：七天") and xsrv.find(chat, role="user", text="七天")
+    until(lambda: any("已回答：七天" in t and f"#{aid}" in t for t in dd.texts(DD_OWNER)), what="回答以后的通知")
 
     tid, = dispatch(xsrv, fake, chat, "DdAsk", ["[dq3] 看情况发消息"], lambda: dd.say(DD_OWNER, "看情况发消息"))
     text = dd.card("钉钉要不要发？")
@@ -947,6 +1036,14 @@ def test_doubt_cards(xsrv, fake, tg2, fs, dd, chans, pushsvc):
         assert [r[1].rsplit(":", 1)[1] for r in rows] == ["redo", "made", "stop"]
     tg2.press(STRANGER, tg_rows(tcards["redo"])[0][1])
     tg_toast(tg2, "没有权限")
+    # 引用说不准的卡片回复：不算回答，交给 Bot（它在状态里看得到这一步说不准）
+    n = len(fake.bodies("router", "TgAsk"))
+    fake.script("router:TgAsk", "这一步我再看看")
+    tg2.say(OWNER, "这一步怎么说", reply_to=tg2.mid(tcards["redo"]))
+    until(lambda: any("这一步我再看看" in t for t in tg2.texts(OWNER)), what="引用说不准卡片的回复交给了 Bot")
+    asked = [b for b in fake.bodies("router", "TgAsk")[n:] if "这一步怎么说" in user_text(b)]
+    assert asked and f"#{aid['tg', 'redo']}（任务 #{tids['tg', 'redo']}）有一步说不准做没做成，要不要再做：" in user_text(asked[0])
+    assert all(pending(xsrv, x) for x in aid.values())
     # 飞书：三个按钮
     for c, (mid, card) in fcards.items():
         assert "有一步要你定" in card["header"]["title"]["content"]

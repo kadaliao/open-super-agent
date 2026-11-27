@@ -503,8 +503,11 @@ impl Feishu {
                 if peer == ch.peer() {
                     *self.last_msg.lock() = mid;
                 }
+                // 引用回复的那条消息（parent_id；在话题里回复时还有话题的第一条 root_id）：引用提问卡片回复就是在回答它
+                let quoted: Vec<String> =
+                    ["parent_id", "root_id"].iter().filter_map(|k| msg[*k].as_str().filter(|s| !s.is_empty()).map(String::from)).collect();
                 let me = ch.clone();
-                tokio::spawn(async move { me.inbound(&peer, "", &text, files).await });
+                tokio::spawn(async move { me.inbound(&peer, "", &text, files, &quoted).await });
                 None
             }
             "card.action.trigger" => {
