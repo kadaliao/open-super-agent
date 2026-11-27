@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { MouseEvent } from 'react'
-import { openApps, openChat, openLibrary, openObserve, pinChat, useStore } from '../store'
+import { openApps, openBoard, openChat, openLibrary, openObserve, pinChat, useStore } from '../store'
 import { t } from '../i18n'
 import type { Chat } from '../types'
 import BotAvatar from './BotAvatar'
 import { GroupFace } from './Chat'
 import { Icon } from '../icons'
 import { plain } from '../plain'
+import { BoardIcon } from './Board'
+import { useWaiting } from '../board'
 
 
 export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: { onNewBot: () => void; onNewGroup: () => void; onSettings: () => void; onClose: () => void }) {
@@ -19,6 +21,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
   const approvals = useStore(s => s.approvals)
   const connected = useStore(s => s.connected)
   const view = useStore(s => s.view)
+  const waiting = useWaiting()   // 在“等你处理”的卡
   const [menu, setMenu] = useState(false)
   const [ctx, setCtx] = useState<{ chat: Chat; x: number; y: number } | null>(null)   // 右键菜单
 
@@ -82,6 +85,10 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
           )}
         </div>
       </div>
+      <button className={'side-nav' + (view === 'board' ? ' active' : '')} onClick={() => { openBoard(); onClose() }}>
+        <span className="side-nav-icon"><BoardIcon size={16} /></span>{t('需求')}
+        {waiting > 0 && <span className="badge warn side-nav-badge" title={t('{n} 张卡在等你处理', { n: waiting })}>{waiting}</span>}
+      </button>
       <button className={'side-nav' + (view === 'library' ? ' active' : '')} onClick={() => { openLibrary(); onClose() }}>
         <span className="side-nav-icon">▤</span>{t('资料库')}
       </button>

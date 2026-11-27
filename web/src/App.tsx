@@ -6,6 +6,7 @@ import ThreadPanel from './components/Thread'
 import Library from './components/Library'
 import Market from './components/Market'
 import Observe from './components/Observe'
+import Board from './components/Board'
 import Sidebar from './components/Sidebar'
 import Settings from './components/Settings'
 import Onboarding from './components/Onboarding'
@@ -145,7 +146,7 @@ export default function App() {
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
       <div className="side-mask" onClick={() => setSide(false)} />
       <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings('')} onClose={() => setSide(false)} />
-      {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : view === 'observe' ? <Observe /> : <Chat onToggleDetails={() => { if (thread) { closeThread(); setDetails(true) } else setDetails(!details) }} />}
+      {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : view === 'observe' ? <Observe /> : view === 'board' ? <Board /> : <Chat onToggleDetails={() => { if (thread) { closeThread(); setDetails(true) } else setDetails(!details) }} />}
       {view === 'chat' && thread ? <ThreadPanel /> : details && view === 'chat' && (chat?.kind === 'group'
         ? <GroupPanel chat={chat} onClose={() => setDetails(false)} tab={tab} setTab={setTab} />
         : <BotPanel onClose={() => setDetails(false)} tab={tab} setTab={setTab} />)}
