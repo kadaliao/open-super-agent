@@ -15,6 +15,8 @@ x-image: &image
 services:
   osa:
     <<: *image
+    # 停的时候服务会等任务把正在做的那一步做完再退出（最多 30 秒）；Docker 默认只等 10 秒就强杀，所以放宽
+    stop_grace_period: 40s
     build:
       context: src
     env_file: /opt/osa/env
@@ -63,6 +65,7 @@ services:
   # 不要任何特权，只挂它自己的目录，看不到正式服务的数据、密钥和推送中转
   demo:
     <<: *image
+    stop_grace_period: 40s
     user: "998:996"   # 以前 systemd 里的 osa-demo 用户
     env_file: /opt/osa/demo/env
     environment:

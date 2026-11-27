@@ -15,6 +15,8 @@ services:
     pull_policy: never    # 镜像只在本机构建，不去 Docker Hub 找
     init: true            # 应用（MCP）是子进程，退出后要有人回收
     restart: unless-stopped
+    # 停的时候服务会等任务把正在做的那一步做完再退出（最多 30 秒，limits.shutdown_wait_s）；Docker 默认只等 10 秒就强杀，所以放宽
+    stop_grace_period: 40s
     env_file:
       - path: .env
         required: false

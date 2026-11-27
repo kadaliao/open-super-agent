@@ -29,6 +29,9 @@ pub struct Server {
     running: AtomicBool, // 守护线程还在
 }
 
+/// 停服务时最多等多久：比服务自己等任务的时限（30 秒）多一点
+const STOP_WAIT: Duration = Duration::from_secs(35);
+
 impl Server {
     /// 起服务并一直看着：退出了就按 2、4、8、16 秒退避重启，2 分钟内退出 5 次就放弃，调用 on_fail。
     pub fn start(self: &Arc<Self>, launch: Launch, on_fail: impl Fn(String) + Send + 'static) {
@@ -72,21 +75,22 @@ impl Server {
         self.running.load(SeqCst)
     }
 
-    /// 先 SIGTERM（服务会正常停掉聊天软件和应用），5 秒还没退就 SIGKILL 整个进程组。
+    /// 先只给服务自己发 SIGTERM：它会等任务把正在做的那一步做完、存好（最多 limits.shutdown_wait_s，默认 30 秒），
+    /// 再自己停掉聊天软件和应用。所以这里等 35 秒；不给整个进程组发，免得把那一步正用着的应用、正在跑的代码先杀了。
+    /// 服务退出以后（或者到时间还没退），再收拾进程组里剩下的。没有任务在做时服务马上就退，不会让你等。
     pub fn stop(&self) {
         self.stopping.store(true, SeqCst);
         let pid = self.pid.load(SeqCst);
         if pid > 0 {
             #[cfg(unix)]
             unsafe {
-                libc::kill(-pid, libc::SIGTERM);
+                libc::kill(pid, libc::SIGTERM);
                 let t = Instant::now();
-                while t.elapsed() < Duration::from_secs(5) && libc::kill(pid, 0) == 0 {
+                while t.elapsed() < STOP_WAIT && libc::kill(pid, 0) == 0 {
                     thread::sleep(Duration::from_millis(100));
                 }
-                if libc::kill(pid, 0) == 0 {
-                    libc::kill(-pid, libc::SIGKILL);
-                }
+                // 服务已经正常退出时进程组里一般没人了（kill 返回 ESRCH）；还有残留的子进程就一起结束
+                libc::kill(-pid, if libc::kill(pid, 0) == 0 { libc::SIGKILL } else { libc::SIGTERM });
             }
         }
         // 等守护线程收尾，免得马上再 start 时被当成还在跑
