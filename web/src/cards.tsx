@@ -28,3 +28,11 @@ export function registerCard(kind: string, card: Card) {
 }
 
 export const cardFor = (kind: string) => CARDS.get(kind)
+
+// 任务状态标签（.tag.with-dot）的颜色：进行中蓝色、圆点一闪一闪，做完绿，失败红，等你处理橙，取消、中断不带颜色。
+// 对话里的任务卡片和右栏的任务列表、任务详情共用
+type Tone = { status: string; waiting_kind?: string | null; waiting_approval?: number | null }
+export function taskTone(tk: Tone) {
+  if (tk.status === 'running' && (tk.waiting_kind || tk.waiting_approval)) return 'warn'
+  return ({ running: 'info live', done: 'good', failed: 'bad' } as Record<string, string>)[tk.status] || ''
+}

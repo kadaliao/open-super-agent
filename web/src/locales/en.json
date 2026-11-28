@@ -652,7 +652,7 @@
   "欢迎！先接上一个大模型": "Welcome. First, connect a model",
   "正在上传 {name}…（第一次会先开机）": "Uploading {name}… (the computer starts up the first time)",
   "正在取画面…": "Loading view…",
-  "正在听…说完点 ■ 停止，确认文字后再发送": "Listening… Click ■ when you're done, then check the text and send",
+  "正在听…说完点右边的停止按钮，确认文字后再发送": "Listening… Click the stop button on the right when you're done, then check the text and send",
   "正在录制演示 {time}": "Recording demo {time}",
   "正在录制演示，在右栏“电脑”里操作，做完点“完成”。": "Recording. Work in the \"Computer\" tab on the right, then click \"Finish\" when you're done.",
   "正在思考": "Thinking",

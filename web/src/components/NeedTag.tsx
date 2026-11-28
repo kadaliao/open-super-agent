@@ -2,6 +2,7 @@
 import type { MouseEvent } from 'react'
 import { openNeed } from '../store'
 import { t } from '../i18n'
+import { Icon } from '../icons'
 import { useNeedRef } from '../board'
 import type { NeedRef } from '../types'
 
@@ -13,9 +14,7 @@ export default function NeedTag({ need, id, from }: { need?: NeedRef | null; id?
   const open = (e: MouseEvent) => { e.stopPropagation(); openNeed(nid) }
   return (
     <button className="need-tag" onClick={open} title={from ? t('从看板上的这张卡开始的，点了打开卡片') : t('属于看板上的这张卡，点了打开卡片')}>
-      <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 7v7" /><path d="M12 7v4" /><path d="M16 7v9" />
-      </svg>
+      <Icon name="kanban" size={14} />
       {from && <span className="need-tag-from">{t('来自看板')}</span>}
       {ref?.key && <b>{ref.key}</b>}
       {/* 替你发的那条消息开头就是编号或标题：有编号时不再重复标题 */}
