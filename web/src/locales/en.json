@@ -906,6 +906,7 @@
   "豆包": "Doubao",
   "费用": "Cost",
   "资料库": "Library",
+  "Bot 写的文档、做的网页，还有它那台电脑里的文件，都在这里。": "Docs the bots wrote, pages they built, and the files on their computer, all in one place.",
   "起个名字，在对话里交代它做什么": "Give it a name, then tell it what to do in the chat",
   "超时后 Watchdog 自动取消": "Watchdog cancels the task when time runs out",
   "超时未确认，按拒绝处理": "Not approved in time, so denied",
@@ -1179,6 +1180,7 @@
     "{n} routines, {on} on. A routine that's off won't run on schedule; turn it back on and it picks up at the next scheduled time."
   ],
   "观测": "Insights",
+  "Bot 们花了多少、做了多少、快不快、哪里出了问题。": "What your bots spent, what they got done, how fast they were, and what went wrong.",
   "7 天": "7 days",
   "30 天": "30 days",
   "比昨天": "vs yesterday",
@@ -1630,6 +1632,8 @@
   "到 {day}": "Until {day}",
   "需求": "Requests",
   "已归档的需求": "Archived requests",
+  "你要的每件事一张卡：做到哪一步、在等你什么，一眼就能看到。": "One card per thing you want done: see how far along it is and what it's waiting on.",
+  "做完归档的卡在这里，点开能拿回看板。": "Finished cards you archived. Open one to put it back on the board.",
   "{n} 张卡在等你处理": [
     "{n} card waiting for you",
     "{n} cards waiting for you"
@@ -1656,7 +1660,7 @@
   "本周": "This week",
   "本月": "This month",
   "上月": "Last month",
-  "自定义…": "Custom…",
+  "自定义": "Custom",
   "开始日期": "Start date",
   "结束日期": "End date",
   "搜编号、标题、描述": "Search number, title, description",
@@ -1666,6 +1670,41 @@
   "还没有需求。": "No requests yet.",
   "把要做的事记成一张卡交给 Bot，做到哪一步、在等你什么，这里一眼就能看到。": "Put each thing you want done on a card and hand it to a Bot. You'll see at a glance how far along it is and what it's waiting on from you.",
   "没有符合条件的卡片。": "No cards match these filters.",
+  "共 {n} 张卡": [
+    "{n} card",
+    "{n} cards"
+  ],
+  "今天 {n} 张卡": [
+    "{n} card today",
+    "{n} cards today"
+  ],
+  "本周 {n} 张卡": [
+    "{n} card this week",
+    "{n} cards this week"
+  ],
+  "本月 {n} 张卡": [
+    "{n} card this month",
+    "{n} cards this month"
+  ],
+  "上月 {n} 张卡": [
+    "{n} card last month",
+    "{n} cards last month"
+  ],
+  "这段时间 {n} 张卡": [
+    "{n} card in this period",
+    "{n} cards in this period"
+  ],
+  "完成 {n}": "{n} done",
+  "进行中 {n}": "{n} in progress",
+  "等你 {n}": [
+    "{n} needs you",
+    "{n} need you"
+  ],
+  "没有排着队的事。": "Nothing queued up.",
+  "现在没有在做的。": "Nothing in progress right now.",
+  "没有要你处理的事。": "Nothing needs you.",
+  "还没有做完的。": "Nothing finished yet.",
+  "这一列没有归档的卡。": "No archived cards here.",
   "放到这里开始": "Drop here to start",
   "放到这里标记完成": "Drop here to mark done",
   "{done}/{total} 项": "{done}/{total} steps",

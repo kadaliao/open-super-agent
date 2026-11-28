@@ -11,6 +11,7 @@ import { useBack } from '../swipe'
 import { AppletFrame } from './Applet'
 import { FileLink, fileUrl } from './Media'
 import { PC_NAMES } from './Computer'
+import PageHead from './PageHead'
 
 // 文档（Open Agent Docs 的编辑器）按需加载
 const DocList = lazy(() => import('./Docs').then(m => ({ default: m.DocList })))
@@ -41,14 +42,13 @@ export default function Library() {
   if (pageId) return <main className="chat library" ref={page}><PageView id={pageId} /></main>
   return (
     <main className="chat library">
-      <header className="chat-head">
-        <span className="head-name">{t('资料库')}</span>
-        <div className="panel-tabs">
+      <PageHead className="lib-head" title={t('资料库')} desc={t('Bot 写的文档、做的网页，还有它那台电脑里的文件，都在这里。')}>
+        <div className="panel-tabs lib-tabs">
           {docs && <button className={tab === 'docs' ? 'on' : ''} onClick={() => setTab('docs')}>{tc('tab', '文档')}</button>}
           <button className={tab === 'pages' ? 'on' : ''} onClick={() => setTab('pages')}>{tc('tab', '网页')}</button>
           <button className={tab === 'files' ? 'on' : ''} onClick={() => setTab('files')}>{tc('tab', '文件')}</button>
         </div>
-      </header>
+      </PageHead>
       <div className="scroller"><div className="lib-body">
         {tab === 'docs' ? <Suspense fallback={loading}><DocList /></Suspense> : tab === 'pages' ? <Pages /> : <Files />}
       </div></div>

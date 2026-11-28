@@ -57,16 +57,16 @@ export function Projects({ onClose, onChanged }: { onClose: () => void; onChange
                   </div>}
                 </div>
                 <div className="bd-proj-actions">
-                  <button className={'btn tiny' + (mem === p.id ? ' on' : '')} aria-expanded={mem === p.id} onClick={() => setMem(mem === p.id ? null : p.id)}>
-                    {t('记忆')} <Icon name="chevron" size={12} className={mem === p.id ? '' : 'bd-rot'} /></button>
-                  <button className="btn tiny" onClick={() => setEdit(p)}>{t('修改')}</button>
-                  <button className="btn tiny danger" onClick={() => remove(p)}>{t('删除')}</button>
+                  <button className={'btn small' + (mem === p.id ? ' on' : '')} aria-expanded={mem === p.id} onClick={() => setMem(mem === p.id ? null : p.id)}>
+                    {t('记忆')}<Icon name="chevron" size={14} className={mem === p.id ? '' : 'bd-rot'} /></button>
+                  <button className="btn small" onClick={() => setEdit(p)}>{t('修改')}</button>
+                  <button className="btn small danger" onClick={() => remove(p)}>{t('删除')}</button>
                 </div>
                 {mem === p.id && <ProjectMemories p={p} />}
               </div>
             ))}</div>}
           <div className="modal-actions">
-            <button className="btn primary" onClick={() => setEdit('new')}><Icon name="plus" size={14} /> {t('新建项目')}</button>
+            <button className="btn primary" onClick={() => setEdit('new')}><Icon name="plus" size={16} />{t('新建项目')}</button>
           </div>
         </>}
       </div>
@@ -149,7 +149,7 @@ function ProjectMemories({ p }: { p: Project }) {
           <label>{t('截止日')} <input type="date" value={until} onChange={e => setUntil(e.target.value)} /></label>
           {!until && <span className="muted small">{t('不过期')}</span>}
           <span className="grow" />
-          <button className="btn tiny primary" disabled={busy || !text.trim()} onClick={add}>{t('添加')}</button>
+          <button className="btn small primary" disabled={busy || !text.trim()} onClick={add}>{t('添加')}</button>
         </div>
       </div>
     </div>

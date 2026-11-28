@@ -6,6 +6,7 @@ import BotAvatar from './BotAvatar'
 import { Icon } from '../icons'
 import { describe, STATUS, when } from './Routines'
 import { ROLE_NAMES } from './ModelSettings'
+import PageHead from './PageHead'
 
 // 观测：Bot 们花了多少、做了多少、快不快、哪里出了问题。数据见 osa/observe.py
 type Range = 'today' | '7d' | '30d' | 'all'
@@ -108,18 +109,15 @@ export default function Observe() {
   const empty = data && !k!.calls && !k!.errors && !k!.tasks
   return (
     <main className="chat observe">
-      <header className="chat-head">
-        <span className="head-name">{t('观测')}</span>
-        <button className="icon-btn ob-refresh" title={t('刷新')} disabled={busy} onClick={load}><Icon name="refresh" size={16} /></button>
-        <div className="ob-filters">
-          <div className="seg">{RANGES.map(([v, label]) => <button key={v} className={range === v ? 'on' : ''} onClick={() => setRange(v)}>{label}</button>)}</div>
-          <select className="ob-bot" value={bot ?? ''} onChange={e => setBot(e.target.value === '' ? null : Number(e.target.value))} aria-label={t('看哪个 Bot')}>
-            <option value="">{t('所有 Bot')}</option>
-            {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            {(bot === UNKNOWN || data?.bots.some(r => r.bot_id === UNKNOWN)) && <option value={UNKNOWN}>{t('没记录是哪个 Bot')}</option>}
-          </select>
-        </div>
-      </header>
+      <PageHead title={t('观测')} desc={t('Bot 们花了多少、做了多少、快不快、哪里出了问题。')} actions={<>
+        <div className="seg ob-range">{RANGES.map(([v, label]) => <button key={v} className={range === v ? 'on' : ''} onClick={() => setRange(v)}>{label}</button>)}</div>
+        <select className="ob-bot" value={bot ?? ''} onChange={e => setBot(e.target.value === '' ? null : Number(e.target.value))} aria-label={t('看哪个 Bot')}>
+          <option value="">{t('所有 Bot')}</option>
+          {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          {(bot === UNKNOWN || data?.bots.some(r => r.bot_id === UNKNOWN)) && <option value={UNKNOWN}>{t('没记录是哪个 Bot')}</option>}
+        </select>
+        <button className="btn ob-refresh" title={t('刷新')} aria-label={t('刷新')} disabled={busy} onClick={load}><Icon name="refresh" size={16} /></button>
+      </>} />
       <div className="scroller">
         <div className="ob-body">
           {err && <div className="error-line">{err}</div>}
@@ -197,7 +195,7 @@ function Tiles({ s }: { s: Stats }) {
         <span className="ob-sub">{k.speed != null ? t('之后每秒 {n} token', { n: Math.round(k.speed) }) : t('对话里的回复')}</span>
       </div>
       <div className={'ob-tile' + (problems ? ' warn' : '')}>
-        <span className="ob-label">{problems ? <Icon name="alert" size={13} /> : <Icon name="check" size={13} />}{t('出错')}</span>
+        <span className="ob-label">{problems ? <Icon name="alert" size={14} /> : <Icon name="check" size={14} />}{t('出错')}</span>
         <b className="ob-value">{problems.toLocaleString(locale)}</b>
         <span className="ob-sub">{t('模型 {a} · 任务 {b} · 工具 {c}', { a: k.errors, b: k.failed + k.interrupted, c: k.tool_errors || 0 })}</span>
       </div>
@@ -247,8 +245,8 @@ function Trend({ s, color, name, single }: { s: Stats; color: (id: number | null
       {!single && legend.length > 1 && <div className="ob-legend">{legend.map(l => <span key={l.id}><i style={{ background: l.c }} />{l.label}</span>)}</div>}
       <div className="ob-chart" onPointerLeave={() => setHover(null)}>
         <div className="ob-plot" ref={plot}>
-          {[0, 0.5, 1].map(f => <div key={f} className="ob-gridline" style={{ bottom: `${f * 100}%` }}><span>{fmt(max * f)}</span></div>)}
-          <div className="ob-cols" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }}>
+          {[0, 0.5, 1].map(f => <div key={f} className={'ob-gridline at' + f * 100}><span>{fmt(max * f)}</span></div>)}
+          <div className="ob-cols">
             {s.series.map((p, i) => {
               const v = total(p)
               return (
@@ -269,7 +267,7 @@ function Trend({ s, color, name, single }: { s: Stats; color: (id: number | null
             {metric === 'calls' && h.errors > 0 && <div className="ob-tip-row bad"><span>{t('出错')}</span><span>{h.errors}</span></div>}
           </div>}
         </div>
-        <div className="ob-xaxis" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }}>
+        <div className="ob-xaxis">
           {s.series.map((p, i) => <span key={p.t}>{(n - 1 - i) % step === 0 ? bucketLabel(p.t, s.size) : ''}</span>)}
         </div>
       </div>
@@ -288,7 +286,7 @@ function Problems({ s, name }: { s: Stats; name: (id: number | null) => string }
       <div className="ob-problems">
         {list.map((p, i) => (
           <div key={i} className="ob-problem">
-            <span className={'chip ' + (p.kind === 'task' && p.status === 'interrupted' ? 'warn' : 'bad')}><Icon name="alert" size={12} />{KIND[p.kind]}</span>
+            <span className={'tag ' + (p.kind === 'task' && p.status === 'interrupted' ? 'warn' : 'bad')}><Icon name="alert" size={14} />{KIND[p.kind]}</span>
             <div className="ob-problem-main">
               <b>{p.kind === 'tool' ? toolName(p.title) : p.title}{p.routine && <span className="tag">{t('定时任务 {name}', { name: p.routine })}</span>}
                 {p.kind === 'task' && p.status === 'interrupted' && <span className="tag">{t('服务重启时中断')}</span>}

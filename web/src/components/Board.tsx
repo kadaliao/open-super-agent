@@ -11,6 +11,7 @@ import BotAvatar from './BotAvatar'
 import { Icon } from '../icons'
 import { ask } from './Dialog'
 import { NewNeed } from './BoardNeed'
+import PageHead from './PageHead'
 import { Projects } from './BoardProjects'
 import '../board.css'
 
@@ -43,6 +44,12 @@ function span(r: Range, a: string, b: string): [number | null, number | null] {
   }
   return [null, null]
 }
+
+// 列头的图标、空列的一句话
+const COL_ICON: Record<Column, string> = { todo: 'clock', doing: 'activity', waiting: 'hand', done: 'check', cancelled: 'ban' }
+const emptyText = (c: Column, archived: boolean) => archived ? t('这一列没有归档的卡。') : ({
+  todo: t('没有排着队的事。'), doing: t('现在没有在做的。'), waiting: t('没有要你处理的事。'), done: t('还没有做完的。'), cancelled: '',
+} as Record<Column, string>)[c]
 
 const load = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const save = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* 无痕窗口 */ } }
@@ -153,39 +160,49 @@ export default function Board() {
   const cancelled = cols?.cancelled || []
   const projList = data?.projects || []
 
-  const head = (
-    <header className="chat-head bd-head">
-      <span className="head-name">{archived ? t('已归档的需求') : t('需求')}</span>
-      <div className="bd-head-actions">
-        <button className={'btn tiny' + (archived ? ' on' : '')} onClick={() => setArchived(!archived)} title={archived ? t('回到看板') : t('看已归档的卡片')}>
-          <Icon name="archive" size={14} /><span className="bd-wide">{archived ? t('回到看板') : t('已归档')}</span>
-        </button>
-        <button className="btn tiny" onClick={() => setProjects(true)}>{tc('看板', '项目')}</button>
-        <button className="btn tiny primary" onClick={() => setCreating(true)}><Icon name="plus" size={14} />{t('新建卡片')}</button>
-      </div>
-    </header>
+  // 标题下的一行汇总：当前筛选范围内一共几张、完成、进行中、等你几张（服务端给了每列的总数就用它，不受分页影响）
+  const count = (c: Column) => data?.counts?.[c] ?? cols?.[c]?.length ?? 0
+  const all = [...COLUMNS, 'cancelled' as Column].reduce((s, c) => s + count(c), 0)
+  const SCOPE: Record<Range, string> = {
+    all: t('共 {n} 张卡', { n: all }), today: t('今天 {n} 张卡', { n: all }), week: t('本周 {n} 张卡', { n: all }),
+    month: t('本月 {n} 张卡', { n: all }), last: t('上月 {n} 张卡', { n: all }), custom: t('这段时间 {n} 张卡', { n: all }),
+  }
+  const summary = data && total > 0 && (
+    <p className="bd-sum">
+      <span>{SCOPE[range]}</span>
+      <span>{t('完成 {n}', { n: count('done') })}</span>
+      <span>{t('进行中 {n}', { n: count('doing') })}</span>
+      <span className={count('waiting') ? 'warn' : ''}>{t('等你 {n}', { n: count('waiting') })}</span>
+    </p>
   )
 
+  const actions = <>
+    <button className={'btn' + (archived ? ' on' : '')} onClick={() => setArchived(!archived)} title={archived ? t('回到看板') : t('看已归档的卡片')}>
+      <Icon name="archive" size={16} /><span className="ph-label">{archived ? t('回到看板') : t('已归档')}</span>
+    </button>
+    <button className="btn" onClick={() => setProjects(true)} title={tc('看板', '项目')}>
+      <Icon name="folder" size={16} /><span className="ph-label">{tc('看板', '项目')}</span>
+    </button>
+    <button className="btn primary" onClick={() => setCreating(true)}><Icon name="plus" size={16} />{t('新建卡片')}</button>
+  </>
+
+  const RANGES: [Range, string][] = [['all', t('全部时间')], ['today', t('今天')], ['week', t('本周')], ['month', t('本月')], ['last', t('上月')], ['custom', t('自定义')]]
   const filters = (
     <div className="bd-filters">
-      <div className="bd-projects" role="tablist" aria-label={tc('看板', '项目')}>
-        <button className={project === null ? 'on' : ''} onClick={() => setProject(null)}>{t('全部')}</button>
+      <div className="pills" role="group" aria-label={tc('看板', '项目')}>
+        <button aria-pressed={project === null} className={project === null ? 'on' : ''} onClick={() => setProject(null)}>{t('全部')}</button>
         {projList.map(p => (
-          <button key={p.id} className={project === p.id ? 'on' : ''} title={p.brief || p.name} onClick={() => setProject(p.id)}>
-            <b>{p.key}</b> {p.name}
+          <button key={p.id} aria-pressed={project === p.id} className={project === p.id ? 'on' : ''} title={p.brief || p.name} onClick={() => setProject(p.id)}>
+            <b className="bd-pkey">{p.key}</b>{p.name}
           </button>
         ))}
-        <button className={project === 'none' ? 'on' : ''} onClick={() => setProject('none')}>{t('不属于项目')}</button>
+        <button aria-pressed={project === 'none'} className={project === 'none' ? 'on' : ''} onClick={() => setProject('none')}>{t('不属于项目')}</button>
       </div>
       <div className="bd-filter-row">
-        <select className="bd-range" value={range} onChange={e => setRange(e.target.value as Range)} aria-label={t('创建时间')}>
-          <option value="all">{t('全部时间')}</option>
-          <option value="today">{t('今天')}</option>
-          <option value="week">{t('本周')}</option>
-          <option value="month">{t('本月')}</option>
-          <option value="last">{t('上月')}</option>
-          <option value="custom">{t('自定义…')}</option>
-        </select>
+        <div className="pills bd-range" role="group" aria-label={t('创建时间')}>
+          <span className="pills-label">{t('创建时间')}</span>
+          {RANGES.map(([v, label]) => <button key={v} aria-pressed={range === v} className={range === v ? 'on' : ''} onClick={() => setRange(v)}>{label}</button>)}
+        </div>
         {range === 'custom' && <span className="bd-days">
           <input type="date" value={fromDay} max={toDay || undefined} onChange={e => setFromDay(e.target.value)} aria-label={t('开始日期')} />
           <span className="muted">–</span>
@@ -194,9 +211,9 @@ export default function Board() {
         <label className="bd-search">
           <Icon name="search" size={14} />
           <input value={q} placeholder={t('搜编号、标题、描述')} onChange={e => setQ(e.target.value)} />
-          {q && <button className="bd-search-x" onClick={() => setQ('')} title={t('清空')}><Icon name="x" size={13} /></button>}
+          {q && <button className="bd-search-x" onClick={() => setQ('')} title={t('清空')}><Icon name="x" size={14} /></button>}
         </label>
-        {filtered && <button className="link-btn small" onClick={clear}>{t('清除筛选')}</button>}
+        {filtered && <button className="link-btn small bd-clear" onClick={clear}>{t('清除筛选')}</button>}
         {busy && <span className="muted small bd-busy">{t('加载中…')}</span>}
       </div>
     </div>
@@ -225,9 +242,10 @@ export default function Board() {
     </div>
   )
   else body = <>
-    <div className="bd-tabs seg">
+    {summary}
+    <div className="bd-tabs">
       {COLUMNS.map(c => <button key={c} className={tab === c ? 'on' : ''} onClick={() => setTab(c)}>
-        {columnName(c)}<span className={'bd-count' + (c === 'waiting' && cols![c].length ? ' warn' : '')}>{cols![c].length}</span>
+        {columnName(c)}<span className={'bd-count' + (c === 'waiting' && count(c) ? ' warn' : '')}>{count(c)}</span>
       </button>)}
     </div>
     <div className={'bd-cols' + (dragging ? ' dragging' : '')}>
@@ -237,10 +255,10 @@ export default function Board() {
         return (
           <section key={c} className={`bd-col ${c}` + (tab === c ? ' on' : '') + (dragging ? ok ? ' can-drop' : ' no-drop' : '') + (over === c ? ' over' : '')}
             onDragOver={dragOver(c)} onDragLeave={() => over === c && setOver(null)} onDrop={drop(c)} data-col={c}>
-            <h4 className="bd-col-head">{columnName(c)}<span className={'bd-count' + (c === 'waiting' && list.length ? ' warn' : '')}>{list.length}</span></h4>
+            <h4 className="bd-col-head"><Icon name={COL_ICON[c]} size={14} className="bd-col-icon" />{columnName(c)}<span className={'bd-count' + (c === 'waiting' && count(c) ? ' warn' : '')}>{count(c)}</span></h4>
             <div className="bd-list">
               {list.map(n => card(n, n.column !== 'done'))}
-              {!list.length && <div className="bd-none">{dragging && ok ? (c === 'doing' ? t('放到这里开始') : t('放到这里标记完成')) : '—'}</div>}
+              {!list.length && <div className={'bd-none' + (dragging && ok ? ' drop' : '')}>{dragging && ok ? (c === 'doing' ? t('放到这里开始') : t('放到这里标记完成')) : emptyText(c, archived)}</div>}
               {dragging && ok && list.length > 0 && <div className="bd-drop-hint">{c === 'doing' ? t('放到这里开始') : t('放到这里标记完成')}</div>}
             </div>
           </section>
@@ -258,8 +276,10 @@ export default function Board() {
 
   return (
     <main className="chat board">
-      {head}
-      {filters}
+      <PageHead title={archived ? t('已归档的需求') : t('需求')} actions={actions}
+        desc={archived ? t('做完归档的卡在这里，点开能拿回看板。') : t('你要的每件事一张卡：做到哪一步、在等你什么，一眼就能看到。')}>
+        {filters}
+      </PageHead>
       <div className="scroller">
         <div className="bd-body">
           {err && <div className="error-line">{err}</div>}
@@ -285,7 +305,7 @@ function NeedCard({ n, bots, drag, dragging, onOpen, onDragStart, onDragEnd }: {
       onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} data-need={n.id}>
       {(n.key || reason) && <div className="bd-card-top">
         {n.key && <span className="bd-key">{n.key}</span>}
-        {reason && <span className="bd-reason">{reason}</span>}
+        {reason && <span className="tag warn">{reason}</span>}
       </div>}
       <div className="bd-title">{n.title}</div>
       {n.column === 'doing' && (p && p.total > 0 || n.latest) && <div className="bd-prog">
@@ -299,7 +319,7 @@ function NeedCard({ n, bots, drag, dragging, onOpen, onDragStart, onDragEnd }: {
         {n.blocked_by.map(b => <span key={b.id} className="bd-wait-on" title={b.title}><Icon name="hourglass" size={14} className="lead" />{t('等 {who}', { who: b.key || b.title })}</span>)}
       </div>}
       <div className="bd-card-foot">
-        {bot ? <span className="bd-who" title={t('交给 {name}', { name: bot.name })}><BotAvatar avatar={bot.avatar} size={18} busy={running(n)} /><span>{bot.name}</span></span> : <span />}
+        {bot ? <span className="bd-who" title={t('交给 {name}', { name: bot.name })}><BotAvatar avatar={bot.avatar} size={18} busy={running(n)} /><span>{bot.name}</span></span> : <span className="bd-who" />}
         <span className="bd-date">{new Date(n.updated * 1000).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' })}</span>
       </div>
     </div>
