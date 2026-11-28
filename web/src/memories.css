@@ -1,9 +1,9 @@
 /* 记忆面板：整理、截止日、置顶、每日摘要（Memories.tsx） */
-.mem-tidy { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); }
+.mem-tidy { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--r-md); background: var(--bg2); }
 .mem-tidy-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.mem-tidy-text { flex: 1 1 100%; min-width: 0; font-size: 12.5px; color: var(--fg2); }
+.mem-tidy-text { flex: 1 1 100%; min-width: 0; font-size: var(--fs-2); color: var(--fg2); }
 .mem-tidy-actions { display: flex; gap: 8px; }
-.mem-tidy-bar { height: 3px; margin-top: 8px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.mem-tidy-bar { height: 3px; margin-top: 8px; border-radius: var(--r-xs); background: var(--line); overflow: hidden; }
 .mem-tidy-bar span { display: block; height: 100%; background: var(--fg2); transition: width .3s ease-out; }
 @media (prefers-reduced-motion: reduce) { .mem-tidy-bar span { transition: none; } }
 
@@ -17,8 +17,8 @@
 .mem-item > .error-line { flex-basis: 100%; }
 @media (hover: none) { .mem-item .mem-pin:not(.on) { display: none; } }
 
-.mem-until { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.mem-until { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--fs-3); }
 .mem-until label { display: flex; align-items: center; gap: 6px; }
-.mem-until input[type=date] { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.mem-until input[type=date] { font: inherit; padding: 3px 6px; border: 1px solid var(--line2); border-radius: var(--r-md); background: var(--field); color: var(--fg); }
 
-.mem-item.mem-digest .mem-text { white-space: pre-wrap; font-size: 13px; color: var(--fg2); }
+.mem-item.mem-digest .mem-text { white-space: pre-wrap; font-size: var(--fs-3); color: var(--fg2); }

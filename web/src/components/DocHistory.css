@@ -17,7 +17,7 @@
 }
 .hist-head h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--fs-5);
   font-weight: 650;
 }
 .hist-name {
@@ -37,12 +37,12 @@
   min-width: 0;
   height: 28px;
   padding: 0 8px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--oad-accent);
   box-shadow: 0 0 0 3px var(--oad-accent-soft);
   background: var(--oad-bg);
   color: var(--oad-fg);
-  font: 13px var(--oad-font);
+  font: var(--fs-3) var(--oad-font);
   outline: 0;
 }
 .hist-list {
@@ -57,7 +57,7 @@
   display: flex;
   gap: 10px;
   padding: 9px 10px 9px 12px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   text-align: left;
   color: var(--oad-fg);
 }
@@ -111,7 +111,7 @@
   gap: 3px;
 }
 .hist-when {
-  font-size: 13.5px;
+  font-size: var(--fs-3);
   font-weight: 550;
 }
 .hist-when b {
@@ -120,7 +120,7 @@
 .hist-meta {
   display: flex;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--fs-2);
   color: var(--oad-fg-3);
 }
 .hist-kind.is-agent {
@@ -134,13 +134,13 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--fs-2);
   color: var(--oad-fg-2);
 }
 .hist-people .hist-av {
   width: 18px;
   height: 18px;
-  font-size: 9px;
+  font-size: 9px;   /* 18px 的小圆头像里的字母，跟着圆走，不进字号档位 */
   border-radius: 50%;
   display: inline-grid;
   place-items: center;
@@ -160,7 +160,7 @@
 }
 .hist-note {
   padding: 16px 12px;
-  font-size: 13px;
+  font-size: var(--fs-3);
   color: var(--oad-fg-3);
   line-height: 1.6;
 }
@@ -189,12 +189,12 @@
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: 14px;
+  font-size: var(--fs-4);
   overflow: hidden;
   white-space: nowrap;
 }
 .hv-title .muted {
-  font-size: 13px;
+  font-size: var(--fs-3);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -202,7 +202,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--fs-3);
   color: var(--oad-fg-2);
   white-space: nowrap;
 }
@@ -221,7 +221,7 @@
   position: relative;
   margin: 0 -14px;
   padding: 2px 14px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border-left: 3px solid transparent;
 }
 .hd.is-added {
@@ -245,7 +245,7 @@
   position: absolute;
   right: 8px;
   top: 4px;
-  font-size: 11px;
+  font-size: var(--fs-1);
   font-weight: 600;
   color: var(--oad-fg-3);
 }
@@ -261,15 +261,15 @@
 .hd ins {
   text-decoration: none;
   background: color-mix(in srgb, var(--good) 26%, transparent);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
 }
 .hd del {
   color: var(--bad);
   background: color-mix(in srgb, var(--bad) 16%, transparent);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
 }
 .hb {
-  font-size: 16px;
+  font-size: var(--fs-6);
   line-height: 1.65;
   padding: 3px 0;
   word-break: break-word;
@@ -279,7 +279,7 @@
   font-family: var(--oad-mono);
   font-size: 0.88em;
   padding: 0.15em 0.35em;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   background: var(--oad-code-bg);
   color: var(--oad-code-fg);
 }
@@ -331,7 +331,7 @@
   width: 0.9em;
   height: 0.9em;
   border: 1.5px solid var(--oad-fg-3);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
 }
 .hb-todo.is-done::before {
   background: var(--oad-accent);
@@ -346,9 +346,9 @@
   padding-left: 14px;
 }
 .hb-code {
-  font: 13.5px/1.55 var(--oad-mono);
+  font: var(--fs-3)/1.55 var(--oad-mono);
   background: var(--oad-bg-2);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 12px 14px;
   margin: 4px 0;
 }

@@ -21,7 +21,7 @@ function apply() {
   const pref = canSetTheme ? themePref() : 'system'
   const theme = pref === 'system' ? (system.matches ? 'dark' : 'light') : pref
   const root = document.documentElement
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0d0d0e' : '#fbfbfa')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#111113' : '#ffffff')
   if (root.dataset.theme === theme) return
   root.dataset.theme = theme
   window.dispatchEvent(new CustomEvent('osa-theme'))
