@@ -9,6 +9,7 @@ import { Icon, Logo } from '../icons'
 import { Preview, plain } from '../plain'
 import { BoardIcon } from './Board'
 import { useWaiting } from '../board'
+import { StatusDot, chatStatus, statusLine, useReplying } from './BotStatus'
 
 
 export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: { onNewBot: () => void; onNewGroup: () => void; onSettings: () => void; onClose: () => void }) {
@@ -44,27 +45,23 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
     }
   }, [ctx])
 
+  const replying = useReplying()   // 只在开始、结束回话时变；侧栏不显示秒数，不用每秒重画
   // 一个对话在侧栏里要显示的东西；Bot 已经没了的私聊不显示
   const info = (c: Chat) => {
     const group = c.kind === 'group'
     const members = c.bot_ids.map(i => bots.find(b => b.id === i)).filter((b): b is NonNullable<typeof b> => !!b)
     const bot = group ? undefined : members[0]
     if (!group && !bot) return null
-    return {
-      group, members, bot, name: group ? c.title : bot!.name,
-      isActive: c.id === active && view === 'chat',
-      busy: Object.values(tasks).some(t => t.chat_id === c.id && t.status === 'running'),
-      needs: Object.values(approvals).some(a => a.chat_id === c.id && a.status === 'pending'),
-      wait: Object.values(approvals).find(a => a.chat_id === c.id && a.status === 'pending')?.kind,
-      away: group && Object.values(approvals).some(a => a.origin_chat_id === c.id && a.status === 'pending'),
-    }
+    const st = chatStatus(c, tasks, approvals, replying.has(c.id))
+    return { group, members, bot, name: group ? c.title : bot!.name, isActive: c.id === active && view === 'chat', st }
   }
   const open = (c: Chat) => { openChat(c.id); onClose() }
   const onMenu = (c: Chat) => (e: MouseEvent) => { e.preventDefault(); setCtx({ chat: c, x: e.clientX, y: e.clientY }) }
   // 讨论串里的新回复也算在对话上：看过那个讨论串才去掉（只打开对话不算）
   const news = (c: Chat) => Object.values(threads).filter(x => x.parent === c.id && x.unread > 0)
   const count = (c: Chat) => (unread[c.id] || 0) + news(c).reduce((n, x) => n + x.unread, 0)
-  const badge = (c: Chat, needs: boolean) => needs ? <span className="badge warn">!</span> : count(c) ? <span className="badge">{count(c)}</span> : null
+  // 未读数；等你处理的不再另挂一个“!”，头像角上的点和第二行已经说了
+  const badge = (c: Chat) => count(c) ? <span className="badge">{count(c)}</span> : null
   // 预览显示最新的动静：讨论串里的新回复比主对话的最后一条还新时，显示那条回复
   const preview = (c: Chat) => {
     const th = news(c).sort((a, b) => (b.last || 0) - (a.last || 0))[0]
@@ -77,11 +74,11 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
       <div className="side-top">
         <span className="logo" title="Open Super Agent"><Logo size={18} /></span>
         <div className="plus-wrap">
-          <button className="icon-btn round" title={t('新建')} onClick={() => setMenu(!menu)}><Icon name="plus" size={18} /></button>
+          <button className="icon-btn round" title={t('新建')} onClick={() => setMenu(!menu)}><Icon name="plus" size={16} /></button>
           {menu && (
             <div className="menu" onMouseLeave={() => setMenu(false)}>
-              <button onClick={() => { setMenu(false); onNewBot() }}>{t('新建 Bot')}</button>
-              <button onClick={() => { setMenu(false); onNewGroup() }}>{t('新建群聊')}</button>
+              <button onClick={() => { setMenu(false); onNewBot() }}><Icon name="bot" size={16} className="lead" />{t('新建 Bot')}</button>
+              <button onClick={() => { setMenu(false); onNewGroup() }}><Icon name="users" size={16} className="lead" />{t('新建群聊')}</button>
             </div>
           )}
         </div>
@@ -107,8 +104,9 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
             return (
               <button key={c.id} className={'pin-item' + (x.isActive ? ' active' : '')} title={x.name} onClick={() => open(c)} onContextMenu={onMenu(c)}>
                 <span className="pin-av">
-                  {x.group ? <GroupFace image={c.image} bots={x.members} size={34} stack={24} /> : <BotAvatar avatar={x.bot!.avatar} size={34} busy={x.busy} />}
-                  {badge(c, x.needs)}
+                  {x.group ? <GroupFace image={c.image} bots={x.members} size={32} stack={22} /> : <BotAvatar avatar={x.bot!.avatar} size={32} />}
+                  <StatusDot s={x.st} />
+                  {badge(c)}
                 </span>
                 <span className="pin-name">{x.name}</span>
               </button>
@@ -123,12 +121,15 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
           const { group, members, bot } = x
           return (
             <button key={c.id} className={'chat-item' + (x.isActive ? ' active' : '')} onClick={() => open(c)} onContextMenu={onMenu(c)}>
-              {group ? <span className="ci-group"><GroupFace image={c.image} bots={members} size={34} stack={24} /></span> : <BotAvatar avatar={bot!.avatar} size={34} busy={x.busy} />}
+              <span className={group ? 'ci-av ci-group' : 'ci-av'}>
+                {group ? <GroupFace image={c.image} bots={members} size={32} stack={22} /> : <BotAvatar avatar={bot!.avatar} size={32} />}
+                <StatusDot s={x.st} />
+              </span>
               <div className="ci-text">
-                <div className="ci-name">{x.name}{bot?.is_primary && <span className="star" title={t('主 Bot')}><Icon name="star" size={14} className="solid" /></span>}{group && <span className="ci-count">{members.length}</span>}</div>
-                <div className="ci-preview">{x.needs ? <><Icon name="alert" size={14} className="warn" />{x.wait === 'question' ? t('等你回答') : x.wait === 'help' ? t('请你接手') : t('等你确认')}</> : x.away ? <><Icon name="alert" size={14} className="warn" />{t('有 Bot 等你确认（在私聊里）')}</> : preview(c) || (group ? t('新的群聊') : plain(bot!.instructions) || t('新的 Bot'))}</div>
+                <div className="ci-name"><span className="ci-title">{x.name}</span>{bot?.is_primary && <span className="star" title={t('主 Bot')}><Icon name="star" size={14} className="solid" /></span>}{group && <span className="ci-count">{members.length}</span>}</div>
+                <div className="ci-preview">{statusLine(x.st) || preview(c) || (group ? t('新的群聊') : plain(bot!.instructions) || t('新的 Bot'))}</div>
               </div>
-              {badge(c, x.needs)}
+              {badge(c)}
             </button>
           )
         })}
@@ -136,7 +137,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
       {ctx && (
         <div className="menu ctx-menu" style={{ left: Math.min(ctx.x, innerWidth - 180), top: Math.min(ctx.y, innerHeight - 56) }}
              onPointerDown={e => e.stopPropagation()}>
-          <button onClick={() => { pinChat(ctx.chat.id, !ctx.chat.pinned); setCtx(null) }}>{ctx.chat.pinned ? t('取消置顶') : t('置顶')}</button>
+          <button onClick={() => { pinChat(ctx.chat.id, !ctx.chat.pinned); setCtx(null) }}><Icon name="pin" size={16} className="lead" />{ctx.chat.pinned ? t('取消置顶') : t('置顶')}</button>
         </div>
       )}
       <div className="side-bottom">

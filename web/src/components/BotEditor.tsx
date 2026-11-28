@@ -15,6 +15,7 @@ import { ask } from './Dialog'
 import { AvatarImageTools, botPrompt } from './AvatarTools'
 import { useBack } from '../swipe'
 import { isEnter } from '../keys'
+import PanelTabs from './PanelTabs'
 
 // 新建 Bot：从模板装（带好技能和定时任务），或者空白的：只问名字和头像，职责在第一条消息里交代
 export function NewBotDialog({ onClose }: { onClose: () => void }) {
@@ -92,17 +93,9 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
   return (
     <aside className="panel" ref={root}>
       <div className="panel-head">
-        <div className="panel-tabs">
-          <button className={tab === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>{t('电脑')}</button>
-          <button className={tab === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>{tc('tab', '任务')}</button>
-          <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>{t('资料库')}</button>
-          <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>{t('技能')}</button>
-          <button className={tab === 'routines' ? 'on' : ''} onClick={() => setTab('routines')}>{t('定时')}</button>
-          <button className={tab === 'events' ? 'on' : ''} onClick={() => setTab('events')}>{t('事件')}</button>
-          <button className={tab === 'memory' ? 'on' : ''} onClick={() => setTab('memory')}>{t('记忆')}</button>
-          <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}>{tc('tab', '详情')}</button>
-        </div>
-        <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
+        <PanelTabs cur={tab} onPick={setTab} tabs={[['computer', t('电脑')], ['tasks', tc('tab', '任务')], ['library', t('资料库')], ['skills', t('技能')],
+          ['routines', t('定时')], ['events', t('事件')], ['memory', t('记忆')], ['details', tc('tab', '详情')]]} />
+        <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={18} /></button>
       </div>
       {tab === 'computer'
         ? <div className="panel-body"><ComputerPanel key={bot.id} botId={bot.id} /></div>

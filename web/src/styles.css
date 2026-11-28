@@ -1,7 +1,7 @@
 :root {
   --bg: #111113; --bg2: #18181b; --bg3: #222226; --line: #2a2a2f; --fg: #ececec; --fg2: #a8a8ad; --fg3: #6e6e74;
   --acc: #ececec; --acc-fg: #111113; --warn: #f0b049; --bad: #ef6b6b; --good: #5fcf98; --link: #8fb4ff;
-  --r: var(--r-lg); --side: 272px; --panel: 340px;
+  --r: var(--r-lg); --side: 260px; --panel: 380px;
   /* 层次：卡片底、稍重的线（输入框、按钮、卡片悬停）、透明底上的悬停、输入框聚焦的外圈；输入框的底（明亮是白，夜间比底色亮一层） */
   --card: #18181b; --line2: #3a3a40; --field: var(--bg2);
   --hover: color-mix(in srgb, var(--fg) 6%, transparent); --ring: color-mix(in srgb, var(--fg) 16%, transparent);
@@ -74,39 +74,59 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 
 /* ---------- 侧栏 ---------- */
 .sidebar { background: var(--bg2); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.side-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 10px 16px; }
+.side-top { display: flex; align-items: center; justify-content: space-between; height: 60px; flex: none; padding: 0 14px 0 20px; }   /* 和对话头部一样高，标志和头像在一条线上 */
 .side-top .logo { color: var(--fg2); font-size: 17px; line-height: 1; padding-left: 2px; }
-.icon-btn.round { width: 34px; height: 34px; border-radius: 50%; background: var(--bg3); color: var(--fg); }   /* 侧栏顶上的“新建”：圆形按钮 */
-.icon-btn.round:hover { background: var(--line); }
+.icon-btn.round { width: var(--h-md); height: var(--h-md); border-radius: 50%; background: var(--bg3); color: var(--fg); }   /* 侧栏顶上的“新建”：圆形按钮 */
+.icon-btn.round:hover { background: var(--line2); }
 .icon-btn { width: 32px; height: 32px; border-radius: var(--r-md); display: grid; place-items: center; color: var(--fg2); font-size: var(--fs-6); }
 .icon-btn:hover { background: var(--hover); color: var(--fg); }
 .plus-wrap { position: relative; }
 .menu { position: absolute; right: 0; top: 36px; z-index: 20; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 4px; min-width: 170px; box-shadow: var(--shadow-md); animation: pop-in var(--t-med) var(--ease); }
 .menu button { display: flex; justify-content: space-between; width: 100%; text-align: left; padding: 7px 10px; border-radius: var(--r-sm); }
 .menu button:hover:not(:disabled) { background: var(--hover); }
+.plus-wrap > .menu { top: calc(var(--h-md) + 6px); min-width: 180px; }
+.plus-wrap > .menu button, .ctx-menu button { justify-content: flex-start; align-items: center; min-height: var(--h-md); padding: 0 10px; font-size: var(--fs-4); }   /* 侧栏的“新建”菜单、右键菜单：图标加字，一项一个控件高 */
+.plus-wrap > .menu .icon, .ctx-menu .icon { color: var(--fg2); margin-right: 10px; }
 .soon { font-size: var(--fs-1); color: var(--fg3); }
 .chat-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
-.chat-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: var(--r-md); text-align: left; }
-.chat-item:hover { background: var(--bg3); } .chat-item.active { background: var(--line); }
+.chat-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 10px; margin-bottom: 1px; border-radius: var(--r-md); text-align: left; }
+.chat-item:hover { background: var(--hover); } .chat-item.active { background: var(--bg3); }
 .ci-text { flex: 1; min-width: 0; }
-.ci-name { font-weight: 600; font-size: var(--fs-4); display: flex; align-items: center; gap: 4px; }
-.ci-preview { color: var(--fg3); font-size: var(--fs-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ci-name { font-weight: 600; font-size: var(--fs-4); line-height: 1.35; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.ci-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ci-preview { color: var(--fg3); font-size: var(--fs-3); line-height: 1.4; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 头像角上的状态点（BotStatus.tsx）：忙是绿色、一闪一闪，等你是警示色；空闲不画。外圈和侧栏底色一样，压在头像上看得清 */
+.ci-av { position: relative; flex: none; width: 32px; height: 32px; display: grid; place-items: center; }
+.st-dot { position: absolute; right: -2px; bottom: -2px; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 2px var(--bg2); z-index: 4; }
+.st-dot.busy { background: var(--good); animation: pulse 1.4s infinite; } .st-dot.wait { background: var(--warn); }
+.chat-item.active .st-dot, .pin-item.active .st-dot { box-shadow: 0 0 0 2px var(--bg3); }
+/* 第二行的状态：正在做的前面一个一闪一闪的绿点，等你的是警示色的图标和字 */
+.st-line.busy { color: var(--fg2); } .st-line.wait { color: var(--warn); }
+.st-line .icon { margin-right: 4px; vertical-align: -0.2em; }
+.st-pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--good); margin: 0 7px 0 3px; vertical-align: .15em; animation: pulse 1.4s infinite; }
 .star { color: var(--warn); font-size: 12px; }
 .badge { min-width: 18px; height: 18px; border-radius: var(--r-full); background: var(--fg); color: var(--bg); font-size: var(--fs-1); font-weight: 700; display: grid; place-items: center; padding: 0 5px; }
 .badge.warn { background: var(--warn); color: var(--acc-fg); }
 /* 置顶那排：头像加名字，一行排满了换行 */
-.pin-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 2px; margin: 4px 8px 0; padding: 4px 0 8px; border-bottom: 1px solid var(--line); max-height: 40vh; overflow-y: auto; }
-.pin-item { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 7px 2px 6px; border-radius: var(--r-md); }
-.pin-item:hover { background: var(--bg3); } .pin-item.active { background: var(--line); }
-.pin-av { position: relative; height: 34px; display: flex; align-items: center; justify-content: center; }
+.pin-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 2px; margin: 6px 8px 0; padding: 0 0 6px; border-bottom: 1px solid var(--line); max-height: 40vh; overflow-y: auto; }
+.pin-item { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 6px 2px 5px; border-radius: var(--r-md); }
+.pin-item:hover { background: var(--hover); } .pin-item.active { background: var(--bg3); }
+.pin-av { position: relative; height: 32px; display: flex; align-items: center; justify-content: center; }
 .pin-av .badge { position: absolute; top: -5px; right: -9px; box-shadow: 0 0 0 2px var(--bg2); }
 .pin-name { max-width: 100%; font-size: var(--fs-2); color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pin-item.active .pin-name { color: var(--fg); }
 .ctx-menu { position: fixed; right: auto; z-index: 60; min-width: 140px; }
 .head-actions .icon-btn.on { color: var(--fg); } .head-actions .icon-btn.on .icon { fill: currentColor; }   /* 已置顶：实心图钉 */
-.side-bottom { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--line); }
-.side-link { color: var(--fg2); font-size: 14px; } .side-link:hover { color: var(--fg); }
-.conn { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); } .conn.on { background: var(--good); }
+.side-bottom { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.side-link { color: var(--fg2); font-size: var(--fs-4); height: 34px; padding: 0 10px; border-radius: var(--r-md); } .side-link:hover { color: var(--fg); background: var(--hover); }
+.conn { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 12px; } .conn.on { background: var(--good); }
+/* 导航（需求、资料库、应用、观测）：34px 高、16px 图标，当前项灰底。.side-nav 原来的规则在“资料库”段，这里收紧 */
+.sidebar .side-nav { height: 34px; flex: none; gap: 10px; margin: 0 8px 2px; padding: 0 10px; border-radius: var(--r-md); font-size: var(--fs-4); }
+.sidebar .side-nav:hover { background: var(--hover); } .sidebar .side-nav.active { background: var(--bg3); color: var(--fg); font-weight: 500; }
+.sidebar .side-nav-icon { width: 18px; }
+.sidebar .side-nav .side-nav-badge { min-width: 18px; }
+/* 手机、平板上手指点：侧栏里能点的都不小于 44px 高 */
+@media (pointer: coarse) { .sidebar .side-nav, .side-link, .plus-wrap > .menu button, .ctx-menu button { height: 44px; min-height: 44px; } .chat-item { min-height: 56px; } }
 
 /* ---------- 头像 ---------- */
 .bot-avatar { flex: none; display: block; }
@@ -117,9 +137,19 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 
 /* ---------- 对话 ---------- */
 .chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.chat-head { height: 54px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.chat-head { height: 60px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--line); }
 .head-bot { display: flex; align-items: center; gap: 9px; padding: 5px 9px; border-radius: var(--r-md); } .head-bot:hover { background: var(--hover); }
 .head-name { font-weight: 650; font-size: var(--fs-5); }
+/* Bot 的对话头部（私聊、群聊）：36px 头像；名字加标签一行，状态或一句职责一行；按头部自己的宽度收（手机、右栏开着时） */
+.bot-head { gap: 8px; padding: 0 12px 0 10px; container-type: inline-size; }
+.bot-head .head-bot { gap: 10px; min-width: 0; padding: 4px 10px 4px 6px; border-radius: var(--r-lg); text-align: left; }
+.head-text { display: flex; flex-direction: column; min-width: 0; }
+.head-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bot-head .head-name { font-size: var(--fs-6); line-height: 1.3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head-tag { flex: none; }
+.head-sub { font-size: var(--fs-3); line-height: 1.35; color: var(--fg3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 500px) { .head-topic { width: var(--h-md); padding: 0; justify-content: center; } .head-topic span { display: none; } }
+@container (max-width: 440px) { .head-tag.count { display: none; } .head-tag.primary { padding: 0; background: none; } .head-tag.primary span { display: none; } .bot-head .head-bot { padding-right: 4px; } }
 .scroller { flex: 1; overflow-y: auto; overflow-x: hidden; }   /* 哪条消息里冒出一个比正文宽的东西，也不能让整个消息流左右拖着跑（手机上尤其明显）；宽的东西各自在里面横向滑动 */
 .thread { max-width: 780px; margin: 0 auto; padding: 24px 20px 12px; }
 .msg { display: flex; gap: 12px; margin: 18px 0; }
@@ -224,7 +254,17 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 
 /* ---------- 右栏 ---------- */
 .panel { border-left: 1px solid var(--line); background: var(--bg); display: flex; flex-direction: column; min-height: 0; animation: fade-in var(--t-med) ease-out; }
-.panel-head { height: 54px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line); }
+.panel-head { height: 60px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 10px 0 12px; border-bottom: 1px solid var(--line); }
+.panel-head > .icon-btn { flex: none; }   /* 关闭：固定在右边，不跟着标签滑 */
+/* 带下划线的一排标签（PanelTabs.tsx）：当前项深色加粗、底下 2px 线；放不下横着滑，还有没露出来的标签时那一侧渐隐 */
+.panel-tabs.line { --tab-x: 6px; position: relative; align-self: stretch; flex: 0 1 auto; gap: 0; margin-left: calc(-1 * var(--tab-x)); }
+.panel-tabs.line button { position: relative; height: 100%; padding: 0 var(--tab-x); border-radius: 0; background: none; color: var(--fg2); font-size: var(--fs-3); font-weight: 500; white-space: nowrap; }
+.panel-tabs.line button:hover { color: var(--fg); background: none; } .panel-tabs.line button.on { color: var(--fg); font-weight: 600; background: none; }
+.panel-tabs.line button::after { content: ""; position: absolute; left: var(--tab-x); right: var(--tab-x); bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--fg); opacity: 0; transition: opacity var(--t-fast); }
+.panel-tabs.line button.on::after { opacity: 1; }
+.panel-tabs.line.more-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.panel-tabs.line.more-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+.panel-tabs.line.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 .panel-body { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
 .panel-body h4 { margin: 14px 0 0; font-size: var(--fs-2); color: var(--fg3); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
 .panel-avatar { align-self: center; border-radius: var(--r-lg); padding: 6px; } .panel-avatar:hover { background: var(--hover); }
@@ -358,9 +398,9 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 84vw; max-width: 320px; z-index: 40; transform: translateX(-100%); transition: transform var(--t-med) var(--ease); }
   .side-open .sidebar { transform: none; }
   .app.side-open > .side-mask, .app > .side-mask.dragging { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 35; }
-  .app > .mobile-menu { display: grid; position: fixed; top: calc(11px + env(safe-area-inset-top)); left: 8px; z-index: 10; }
+  .app > .mobile-menu { display: grid; position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 8px; z-index: 10; }
   .sidebar, .app.with-panel .panel { padding-top: env(safe-area-inset-top); }
-  .chat-head { padding-left: 46px; }
+  .chat-head { padding-left: 46px; } .bot-head { padding-left: 42px; padding-right: 6px; gap: 2px; } .bot-head .head-bot { padding-left: 4px; }
   .app.with-panel .panel { width: 100vw; }
   /* 手机屏幕窄：头像小一号、离正文近一点、两边少留一点，正文从 42px 起（原来 54px） */
   .thread { padding: 16px 12px 8px; } .th-body { padding: 8px 12px 12px; }
@@ -414,7 +454,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .pc-key .env-row { align-self: stretch; }
 
 /* ---------- 记忆 ---------- */
-.panel-head .panel-tabs { gap: 0; } .panel-head .panel-tabs button { padding: 6px 3px; font-size: var(--fs-3); }   /* 8 个标签在 340px 的右栏里放得下 */
+.panel-head .panel-tabs { gap: 0; }   /* 右栏的标签样式见“右栏”段的 .panel-tabs.line */
 .mem-group { display: flex; gap: 8px; align-items: baseline; margin-top: 14px; font-size: var(--fs-3); font-weight: 600; color: var(--fg2); text-align: left; }
 .link-like:hover { color: var(--fg); }
 .mem-item { display: flex; gap: 6px; align-items: flex-start; padding: 7px 8px 7px 10px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); margin-top: 6px; font-size: var(--fs-3); cursor: pointer; }
@@ -428,8 +468,9 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .export-prompt span { flex: 1; }
 
 /* ---------- 新话题 ---------- */
-.head-actions { display: flex; align-items: center; gap: 4px; }
-.head-actions .ghost-btn { font-size: var(--fs-3); padding: 5px 9px; }
+.head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.head-actions .icon-btn, .head-topic { width: var(--h-md); height: var(--h-md); border-radius: var(--r-md); color: var(--fg2); }
+.head-topic { width: auto; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px 0 8px; font-size: var(--fs-3); font-weight: 500; } .head-topic:hover { background: var(--hover); color: var(--fg); }
 .topic-line { display: flex; align-items: center; gap: 12px; margin: 22px 0; color: var(--fg3); font-size: var(--fs-2); }
 .topic-line::before, .topic-line::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
 /* 消息流里换了一天（Chat.tsx 的 MessageList）：实线，和“新话题”的虚线区分开 */
@@ -929,7 +970,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .app.mid-panel { --panel: 440px; }
 /* 英文的标签比中文长：右栏默认宽一点、标签挤一点，六个标签一行放得下 */
 :root:lang(en) .app:not(.wide-panel):not(.mid-panel) { --panel: 432px; }
-:root:lang(en) .panel-head .panel-tabs button { padding: 6px 4px; font-size: var(--fs-3); }
+:root:lang(en) .panel-tabs.line { --tab-x: 5px; }
 .panel-tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .panel-tabs::-webkit-scrollbar { display: none; }
 .panel-tabs button { flex: none; }
