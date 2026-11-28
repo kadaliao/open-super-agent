@@ -17,9 +17,11 @@ const buildId = (): Plugin => ({
   },
 })
 
-// 构建产物放进 osa/static/dist，由 FastAPI 直接提供；开发时把接口代理到 8765
+// 构建产物放进 osa/static/dist，由服务直接提供；开发时把接口代理到 8765。
+// 服务开在别的端口（比如拿一份演示数据另起一个）时用 OSA_API 指过去：OSA_API=http://127.0.0.1:8793 npx vite --port 5180
+const api = process.env.OSA_API || 'http://127.0.0.1:8765'
 export default defineConfig({
   plugins: [react(), buildId()],
   build: { outDir: '../osa/static/dist', emptyOutDir: true },
-  server: { proxy: { '/api': 'http://127.0.0.1:8765', '/ws': { target: 'ws://127.0.0.1:8765', ws: true } } },
+  server: { proxy: { '/api': api, '/ws': { target: api.replace(/^http/, 'ws'), ws: true } } },
 })

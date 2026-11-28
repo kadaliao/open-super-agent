@@ -10,3 +10,4 @@
 | [资料库页面变成大家一起写的文档](docs.md)（按段编辑、块编辑器、评论叫醒 Bot、子页面、版本历史；[v2](docs-v2.md)：外部 Agent、数据库）。0.25.0 起从 OSA 撤回，拆成 [Open Agent Docs](https://github.com/kadaliao/open-agent-docs)，文中的代码在 git 历史里（`db1352b`） | 2026-11-15 |
 | [文档改用 Open Agent Docs](oad.md)（OSA 起 OAD 子进程、转发、每个 Bot 一个 Agent、评论叫醒） | 进行中 |
 | [把事交出去、看得见做到哪](tasks-board.md)（任务能对话和接着做、需求看板和项目、记忆整理、团队） | 第一、二波（任务、看板、记忆整理、接进对话和聊天软件）2026-11-27；第三波（团队）还没做 |
+| [界面翻新](ui-refresh.md)（图标、底色、字号和圆角的档位、交互反馈；Bot 头部、右栏标签、页面头） | 进行中 |
