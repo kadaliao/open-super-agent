@@ -43,7 +43,7 @@ export default function Library() {
   return (
     <main className="chat library">
       <PageHead className="lib-head" title={t('资料库')} desc={t('Bot 写的文档、做的网页，还有它那台电脑里的文件，都在这里。')}>
-        <div className="panel-tabs lib-tabs">
+        <div className="panel-tabs line lib-tabs">
           {docs && <button className={tab === 'docs' ? 'on' : ''} onClick={() => setTab('docs')}>{tc('tab', '文档')}</button>}
           <button className={tab === 'pages' ? 'on' : ''} onClick={() => setTab('pages')}>{tc('tab', '网页')}</button>
           <button className={tab === 'files' ? 'on' : ''} onClick={() => setTab('files')}>{tc('tab', '文件')}</button>

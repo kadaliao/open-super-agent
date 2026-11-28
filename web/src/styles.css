@@ -214,6 +214,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .approval-card { --tone: var(--warn); --tone-bg: var(--warn-bg); display: flex; flex-direction: column; gap: 8px; margin: 16px 0 16px 40px; padding: 12px 14px 14px;
   border: 1px solid color-mix(in srgb, var(--tone) 22%, transparent); border-radius: var(--r-lg); background: var(--tone-bg); }
 :root:not([data-theme="light"]) .approval-card { --tone-bg: color-mix(in srgb, var(--tone) 9%, var(--card)); }   /* 夜间：淡色混在卡片底上，不发脏 */
+:root[data-theme="light"] .approval-card { --tone-bg: color-mix(in srgb, var(--tone) 7%, var(--card)); }   /* 明亮：整张卡片比小标签再淡一档，几张叠在一起不抢眼 */
 .approval-title { display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-4); font-weight: 600; line-height: 20px; min-width: 0; }
 .approval-title > .icon { flex: none; margin-top: 2px; color: var(--fg2); }
 .approval-title-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -530,6 +531,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .library .lib-list .lib-icon, .library .file-row .lib-icon { width: 32px; height: 32px; border-radius: var(--r-md); background: var(--bg2); }
 .library .lib-row:hover .lib-icon, .library .file-row:hover .lib-icon { background: var(--bg3); }
 .lib-head .panel-tabs { margin-bottom: -12px; }   /* 标签贴着页面头的底线 */
+.lib-head .panel-tabs.line { --tab-x: 8px; align-self: flex-start; height: 34px; } .lib-head .panel-tabs.line button { font-size: var(--fs-4); }
 .lib-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .lib-main b, .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: var(--fs-4); font-weight: 550; }
 .file-name { color: var(--fg); font-weight: 550; }
@@ -570,7 +572,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .group-avatars { position: relative; display: inline-block; height: 26px; flex: none; }
 .group-avatars > span { position: absolute; top: 0; border-radius: 50%; }
 .group-avatars .bot-avatar { filter: drop-shadow(0 0 1.5px var(--bg)); }
-.ci-group { width: 34px; display: flex; align-items: center; justify-content: center; flex: none; }
+.ci-group { width: 32px; display: flex; align-items: center; justify-content: center; flex: none; }
 .ci-group .group-avatars { height: 24px; }
 .ci-count { font-size: var(--fs-1); color: var(--fg3); font-weight: 500; }
 .welcome .group-avatars { height: 56px; margin: 0 auto; display: block; }

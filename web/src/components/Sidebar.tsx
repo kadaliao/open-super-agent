@@ -104,7 +104,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
             return (
               <button key={c.id} className={'pin-item' + (x.isActive ? ' active' : '')} title={x.name} onClick={() => open(c)} onContextMenu={onMenu(c)}>
                 <span className="pin-av">
-                  {x.group ? <GroupFace image={c.image} bots={x.members} size={32} stack={22} /> : <BotAvatar avatar={x.bot!.avatar} size={32} />}
+                  {x.group ? <GroupFace image={c.image} bots={x.members} size={32} stack={20} /> : <BotAvatar avatar={x.bot!.avatar} size={32} />}
                   <StatusDot s={x.st} />
                   {badge(c)}
                 </span>
@@ -122,7 +122,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
           return (
             <button key={c.id} className={'chat-item' + (x.isActive ? ' active' : '')} onClick={() => open(c)} onContextMenu={onMenu(c)}>
               <span className={group ? 'ci-av ci-group' : 'ci-av'}>
-                {group ? <GroupFace image={c.image} bots={members} size={32} stack={22} /> : <BotAvatar avatar={bot!.avatar} size={32} />}
+                {group ? <GroupFace image={c.image} bots={members} size={32} stack={20} /> : <BotAvatar avatar={bot!.avatar} size={32} />}
                 <StatusDot s={x.st} />
               </span>
               <div className="ci-text">
