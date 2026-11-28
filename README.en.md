@@ -43,16 +43,16 @@ See [Features](docs/features.en.md) for the full list.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/chat-group.webp" alt="The group chat “2.0 launch team”: Nova assigns the work, Radar picks three pricing differences from the competitor research and hands them to Quill, and Quill saves the opening of the announcement to the library"><br><sub><b>Group work</b>: Nova assigns, Radar hands its competitor research to Quill, Quill writes the announcement opening into the library</sub></td>
+<td width="50%"><img src="docs/images/chat-group.webp" alt="The group chat “2.0 launch team”: Nova hands the three pricing differences Radar picked to Quill, and Quill writes the opening of the announcement from those numbers and saves it to the library"><br><sub><b>Group work</b>: Nova assigns, Radar picks the competitor numbers, Quill writes the announcement opening into the library</sub></td>
 <td width="50%"><img src="docs/images/task-steps.webp" alt="Radar's finished background task, with each step listed on the right: web search, Reddit, Xiaohongshu, X, reading pages, and how long each took"><br><sub><b>Background task</b>: two weeks of discussion about note apps, with every step on the right (web search, X / Reddit / Xiaohongshu, reading pages)</sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/images/board.webp" alt="The Requests board: To do, In progress, Needs you and Done, cards numbered by project, the two that need you marked as waiting for your answer"><br><sub><b>Requests board</b>: one card per request, its column decided by the tasks behind it</sub></td>
-<td width="50%"><img src="docs/images/task-talk.webp" alt="A task writing the announcement: a message added to task #10, the task stopping to ask which tone to use, and the task details on the right"><br><sub><b>Tasks you can talk to</b>: add a word halfway, and it stops to ask which tone you want</sub></td>
+<td width="50%"><img src="docs/images/task-talk.webp" alt="A task writing the announcement: a message added to task #44, the task stopping to ask which tone to use, and the task details on the right"><br><sub><b>Tasks you can talk to</b>: add a word halfway, and it stops to ask which tone you want</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/images/applet.webp" alt="An applet in the chat, a launch countdown: 3 days 15 hours to go, with the unfinished tasks below as checkboxes"><br><sub><b>Applet</b>: a launch countdown Nova built from one sentence</sub></td>
-<td width="50%"><img src="docs/images/events.webp" alt="The Events tab: “Obsidian new release” (a feed, checked every 3 hours) and “flomo pricing page changed” (a web page, checked every 12 hours), each with test, check now, pause, edit and history"><br><sub><b>Events</b>: Radar watching for a new release and a pricing page change, set up from one sentence</sub></td>
+<td width="50%"><img src="docs/images/applet.webp" alt="An applet in the chat, a launch countdown: 17 days 14 hours to go, with the unfinished cards from the board below as checkboxes"><br><sub><b>Applet</b>: a launch countdown Nova built from one sentence</sub></td>
+<td width="50%"><img src="docs/images/events.webp" alt="The Events tab: the new “Logseq 发新版本” (a feed) and “flomo 定价页变动” (a web page changing), both checked every hour, each with test, check now, pause, edit and history"><br><sub><b>Events</b>: Radar watching for a new release and a pricing page change, set up from one sentence</sub></td>
 </tr>
 <tr>
 <td><img src="docs/images/observe.webp" alt="The Insights page: today's spend, tokens, tasks and time to first reply, hourly spend, and spend per Bot"><br><sub><b>Insights</b>: what you spent, how fast, what went wrong, per Bot if you like</sub></td>
@@ -60,7 +60,7 @@ See [Features](docs/features.en.md) for the full list.
 </tr>
 </table>
 
-<sub>Screenshots taken on 2026-11-16 (the v0.24.0 web UI, in Chinese) with demo data: an indie developer launching “Tidal Notes 2.0”. The three Bots and everything on the pages were produced by a real model (DeepSeek). The Requests board and task screenshots were taken on 2026-11-28 with a scripted demo conversation.</sub>
+<sub>Screenshots taken on 2026-11-28 (the v0.29.0 web UI, in Chinese) with demo data: an indie developer launching “Tidal Notes 2.0”. The user’s messages were written in advance; the Bots’ replies, the tasks and everything on the pages were produced by a real model (DeepSeek).</sub>
 
 ## Where you use it
 

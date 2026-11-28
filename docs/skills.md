@@ -76,9 +76,9 @@ fill-form/
 | `meeting-notes` | /会议纪要 | 把会议记录整理成结论、待办（谁、什么时候）、没定下来的问题 |
 | `recent-buzz` | /近期动态 | 查一个话题最近（默认 30 天）在网页、X、Reddit、小红书上的动态和讨论，写成带来源和互动数的报告，存进资料库 |
 
-<img src="images/report.webp" width="720" alt="/近期动态 的报告页面：一句话结论、主要发现，每条附来源链接、日期和浏览、回复数">
+<img src="images/report.webp" width="720" alt="/近期动态 的报告页面：一句话结论、主要发现，每条附来源链接、日期和点赞、评论数">
 
-<sub>上图：对 Radar 说“/近期动态 双链笔记 App，只看最近两周”，它查完网页、X、Reddit、小红书后存进资料库的报告。</sub>
+<sub>上图：对 Radar 说“/近期动态 双链笔记 App，最近两周”，它查完网页、X、Reddit、小红书后存进资料库的报告。</sub>
 
 想加一个：在 `osa/catalog/skills/<名字>/` 里放 `SKILL.md`（中文界面装的）和 `SKILL.en.md`（英文界面装的，可选，名字和说明都用英文），
 要带的文件放在同一个文件夹里，提 PR。文件夹名只用小写字母、数字和 `-`。`tests/test_skills.py` 会检查每个技能中英文都能读出来。

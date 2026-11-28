@@ -43,16 +43,16 @@
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/chat-group.webp" alt="群聊“2.0 发布小组”：Nova 把活分给 Radar，Radar 挑出三条竞品价格的差异点交给 Quill，Quill 写好发布公告的开头段存进资料库"><br><sub><b>群聊分工</b>：Nova 派活，Radar 查完竞品交给 Quill，Quill 把公告开头写进资料库</sub></td>
+<td width="50%"><img src="docs/images/chat-group.webp" alt="群聊“2.0 发布小组”：Nova 把 Radar 挑出的三条竞品价格差异交给 Quill，Quill 用这三个数字写好发布公告的开头段，存进资料库"><br><sub><b>群聊分工</b>：Nova 派活，Radar 挑出竞品数字，Quill 把公告开头写进资料库</sub></td>
 <td width="50%"><img src="docs/images/task-steps.webp" alt="Radar 的后台任务做完，右栏列着每一步：搜网页、搜 Reddit、搜小红书、搜 X、读网页，各用了几秒"><br><sub><b>后台任务</b>：查“双链笔记”最近两周的讨论，右栏是每一步（搜网页、搜 X / Reddit / 小红书、读网页）</sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/images/board.webp" alt="“需求”看板：待办、进行中、等你处理、已完成四列，卡片带项目编号，等你处理的两张标着“等你回答”"><br><sub><b>需求看板</b>：每件事一张卡，在哪一列由背后的任务决定</sub></td>
-<td width="50%"><img src="docs/images/task-talk.webp" alt="写公告的任务：给任务 #10 补了一句，任务停下来问用哪种语气，右栏是任务详情"><br><sub><b>任务能对话</b>：中途补一句，它停下来问你用哪种语气</sub></td>
+<td width="50%"><img src="docs/images/task-talk.webp" alt="写公告的任务：给任务 #44 补了一句，任务停下来问用哪种语气，右栏是任务详情"><br><sub><b>任务能对话</b>：中途补一句，它停下来问你用哪种语气</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/images/applet.webp" alt="对话里的小应用“发布倒计时”：离上线还有 3 天 15 小时，下面是还没完成的任务，能勾选"><br><sub><b>小应用</b>：一句话让 Nova 做的发布倒计时</sub></td>
-<td width="50%"><img src="docs/images/events.webp" alt="右栏“事件”：“Obsidian 新版本发布”（订阅源，每 3 小时看一次）和“flomo 定价页变化”（网页变了，每 12 小时看一次），各有测试、现在看一次、暂停、编辑、记录"><br><sub><b>事件</b>：一句话让 Radar 盯着新版本发布和定价页变化</sub></td>
+<td width="50%"><img src="docs/images/applet.webp" alt="对话里的小应用“发布倒计时”：离上架还有 17 天 14 小时，下面是看板上还没做完的卡，能勾选"><br><sub><b>小应用</b>：一句话让 Nova 做的发布倒计时</sub></td>
+<td width="50%"><img src="docs/images/events.webp" alt="右栏“事件”：刚建好的“Logseq 发新版本”（订阅源）和“flomo 定价页变动”（网页变了），每小时看一次，各有测试、现在看一次、暂停、编辑、记录"><br><sub><b>事件</b>：一句话让 Radar 盯着新版本发布和定价页变化</sub></td>
 </tr>
 <tr>
 <td><img src="docs/images/observe.webp" alt="观测页：今天的费用、token、任务数、多久开始回复，按小时的费用走势，各个 Bot 的花费"><br><sub><b>观测</b>：花了多少、做得快不快、哪里出了错，能按 Bot 看</sub></td>
@@ -60,7 +60,7 @@
 </tr>
 </table>
 
-<sub>截图录于 2026-11-16（v0.24.0 的网页界面），用的是演示数据：一个独立开发者准备发布“潮汐笔记 2.0”，三个 Bot 和页面里的内容都是真模型（DeepSeek）跑出来的。需求看板、任务能对话两张录于 2026-11-28，对话内容是演示用的剧本。</sub>
+<sub>截图录于 2026-11-28（v0.29.0 的网页界面），用的是演示数据：一个独立开发者准备发布“潮汐笔记 2.0”。你说的话是事先写好的，Bot 的回复、任务和页面里的内容都是真模型（DeepSeek）跑出来的。</sub>
 
 ## 在哪用
 

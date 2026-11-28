@@ -53,13 +53,13 @@ The README lists the highlights; this is the full list. For setup see [Configura
   - Start a **new topic** to drop old messages from the context while keeping memories.
   - Memories and the library are searchable by meaning, and Bots look up past notes and pages on their own.
 
-![The group chat “2.0 launch team”: Nova assigns the work, Radar picks three pricing differences from the competitor research and hands them to Quill, and Quill saves the opening of the announcement to the library](images/chat-group.webp)
+![The group chat “2.0 launch team”: Nova hands the three pricing differences Radar picked to Quill, and Quill writes the opening of the announcement from those numbers and saves it to the library](images/chat-group.webp)
 
 ![Radar's finished background task, with each step listed on the right: web search, Reddit, Xiaohongshu, X, reading pages, and how long each took](images/task-steps.webp)
 
-![Nova’s task writing the announcement: in the chat, a message to task #10 and the question the task asked; on the right, the task details with the “You” step, the step asking you, and the same question card](images/task-talk.webp)
+![Nova’s task writing the announcement: in the chat, the card for task #44 and the question it asked; on the right, the task details with the message you added halfway (the “You” step), the step asking you, and the same question card](images/task-talk.webp)
 
-![The Memory tab: the last tidy-up changed 3 notes, with Undo and Tidy up now; a pinned note, an expired one struck through, one expiring on 12/03, and the merged note about sync being three times faster](images/memory-tidy.webp)
+![The Memory tab: the last tidy-up changed 1 note, with Undo and Tidy up now; a pinned note, one expiring on 12/03, and an expired one struck through](images/memory-tidy.webp)
 
 ## Requests board
 
@@ -79,9 +79,9 @@ The README lists the highlights; this is the full list. For setup see [Configura
   - The task list, task details and task cards in the chat show which card a task belongs to and open it on click; from a card you can open a task and come back.
 - **Project memory**: Board → Projects → Memory, for the project's conventions, accounts to use or delivery format. Only tasks of that project read it; in chat, a Bot sees the memory of projects whose cards are in progress.
 
-![The Requests board: To do, In progress, Needs you and Done, cards numbered by project (TIDE-6, WEB-1), the two cards that need you marked “Waiting for your answer”](images/board.webp)
+![The Requests board: To do, In progress, Needs you and Done, cards numbered by project (TIDE-9, WEB-1), the two cards that need you marked “Waiting for your answer”](images/board.webp)
 
-<img src="images/need-card.webp" width="640" alt="The card page for TIDE-3, “Write the 2.0 release notes (Chinese and English)”: project, assigned to Quill, Start after, the question the task is waiting on with its options, then the description and the task behind it">
+<img src="images/need-card.webp" width="640" alt="The card page for TIDE-8, “Write the upgrade email to 1.x users”: project, assigned to Quill, Start after, the question the task is waiting on with its options, then the description and the task behind it">
 
 ## The computer
 
@@ -143,7 +143,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
   The page can call the Bot's tools (approval cards still appear), keep its own data (which the Bot can read and write too, so "update the board every day at 9" works), and send the Bot messages for you.
   It runs in a sandbox: it can't touch the site's data and can only do what its manifest allows.
 
-<img src="images/applet.webp" width="640" alt="An applet in the chat, a launch countdown: 3 days 15 hours to go, with the unfinished tasks below as checkboxes">
+<img src="images/applet.webp" width="640" alt="An applet in the chat, a launch countdown: 17 days 14 hours to go, with the unfinished cards from the board below as checkboxes">
 
 - **Images and files**:
   - Attach files in chat: images show as thumbnails, other files as cards.
@@ -167,7 +167,7 @@ The README lists the highlights; this is the full list. For setup see [Configura
 - Pause, resume and test them; the last 20 runs are kept. Settings → Automation lists every Bot's routines and events with an on/off switch for each.
 - Create one by saying "every day at 9, ..." or "tell me when this page changes". You can also just ask "what routines do I have", "move the brief to 8:30 on weekdays", "pause the github one" or "delete it", including from a chat app. The main Bot manages every Bot's routines and events ("pause all routines"); other Bots manage only their own.
 
-![One message to Radar set up a routine and two events; its Events tab lists “New Obsidian release” (a feed, checked every 3 hours) and “flomo pricing page changed” (page change, checked every 12 hours)](images/events.webp)
+![One message to Radar set up a routine and two events; its Events tab lists “Logseq 发新版本” (new Logseq release, a feed) and “flomo 定价页变动” (flomo pricing page changed, a page change), both checked every hour](images/events.webp)
 
 ## Safety and cost
 
