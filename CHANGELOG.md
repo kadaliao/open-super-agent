@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+## [0.29.2] - 2026-11-28
+
+### 修复
+- 资料库文档里点指向资料库网页的链接（如 Bot 整理的“历史网页索引”），桌面 App 里会另开一个窗口；现在和点文档链接一样，在当前窗口的资料库里打开
+
 ## [0.29.1] - 2026-11-28
 
 ### 修复
@@ -833,7 +838,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.29.1...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.29.2...HEAD
+[0.29.2]: https://github.com/kadaliao/open-super-agent/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/kadaliao/open-super-agent/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/kadaliao/open-super-agent/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/kadaliao/open-super-agent/compare/v0.27.3...v0.28.0
