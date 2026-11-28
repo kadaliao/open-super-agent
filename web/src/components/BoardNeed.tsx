@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { openBoard, openNeed, useStore } from '../store'
 import { t } from '../i18n'
-import { assignee, columnName, createNeed, fetchBoard, fetchNeed, fetchProjects, needAction, onBoard, openTask, patchNeed, refreshWaiting, running, waitReason } from '../board'
+import { assignee, columnName, columnTag, createNeed, fetchBoard, fetchNeed, fetchProjects, needAction, onBoard, openTask, patchNeed, refreshWaiting, running, waitReason } from '../board'
 import type { Need, NeedDetail, NeedTask, Project } from '../board'
 import type { Approval } from '../types'
 import BotAvatar from './BotAvatar'
@@ -109,9 +109,9 @@ function NeedPage({ id }: { id: number }) {
       <div className="modal medium bd-need" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()}>
         <div className="bd-need-top">
           {n.key && <span className="bd-key">{n.key}</span>}
-          <span className={`bd-col-chip ${n.column}`}>{columnName(n.column)}</span>
-          {reason && <span className="bd-reason">{reason}</span>}
-          {archived && <span className="chip faint">{t('已归档')}</span>}
+          <span className={'tag with-dot ' + columnTag(n.column)}>{columnName(n.column)}</span>
+          {reason && <span className="tag warn">{reason}</span>}
+          {archived && <span className="tag"><Icon name="archive" size={14} />{t('已归档')}</span>}
           {view !== 'board' && <button className="link-btn small bd-to-board" onClick={() => openBoard()}>{t('在看板里看')}</button>}
           <button className="icon-btn bd-close" onClick={onClose} title={t('关闭')}><Icon name="x" size={18} /></button>
         </div>
@@ -121,8 +121,8 @@ function NeedPage({ id }: { id: number }) {
           : <div className="bd-edit">
               <input value={title} maxLength={200} autoFocus onChange={e => setTitle(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) saveTitle(); if (e.key === 'Escape') setTitle(null) }} />
-              <button className="btn tiny primary" disabled={busy || !title.trim()} onClick={saveTitle}>{t('保存')}</button>
-              <button className="btn tiny" onClick={() => setTitle(null)}>{t('取消')}</button>
+              <button className="btn" onClick={() => setTitle(null)}>{t('取消')}</button>
+              <button className="btn primary" disabled={busy || !title.trim()} onClick={saveTitle}>{t('保存')}</button>
             </div>}
 
         <div className="bd-meta">
@@ -152,7 +152,7 @@ function NeedPage({ id }: { id: number }) {
             : n.blocked_by.length > 0
               ? n.blocked_by.map(b => <button key={b.id} className="bd-row" onClick={() => openNeed(b.id)}>
                   {b.key && <span className="bd-key">{b.key}</span>}<span className="bd-row-text">{b.title}</span>
-                  <span className={`bd-col-chip ${b.column}`}>{columnName(b.column)}</span>
+                  <span className={'tag ' + columnTag(b.column)}>{columnName(b.column)}</span>
                 </button>)
               : <p className="muted small">{n.after.length ? t('前面的 {n} 张卡都完成了。', { n: n.after.length }) : t('不用等别的卡。')}</p>}
         </div>}
@@ -169,8 +169,8 @@ function NeedPage({ id }: { id: number }) {
             : <>
                 <textarea rows={6} value={body} autoFocus onChange={e => setBody(e.target.value)} />
                 <div className="bd-edit-actions">
-                  <button className="btn tiny" onClick={() => setBody(null)}>{t('取消')}</button>
-                  <button className="btn tiny primary" disabled={busy} onClick={saveBody}>{t('保存')}</button>
+                  <button className="btn small" onClick={() => setBody(null)}>{t('取消')}</button>
+                  <button className="btn small primary" disabled={busy} onClick={saveBody}>{t('保存')}</button>
                 </div>
               </>}
         </div>
@@ -193,7 +193,7 @@ function NeedPage({ id }: { id: number }) {
           <h4>{t('背后的任务')}</h4>
           {n.tasks.map(x => <button key={x.id} className={`bd-row bd-task ${x.status}` + (x.waiting_kind ? ' waiting' : '')} onClick={() => goTask(x.id, x.bot_id)}>
             <span className="bd-task-id">#{x.id}</span>
-            <span className="bd-row-text">{x.goal}{x.last_action && <span className="bd-task-act">{x.last_action}</span>}</span>
+            <span className="bd-row-text"><span className="bd-task-goal">{x.goal}</span>{x.last_action && <span className="bd-task-act">{x.last_action}</span>}</span>
             <span className="bd-task-st">{taskStatus(x)}{x.elapsed ? ' · ' + dur(x.elapsed) : ''}</span>
           </button>)}
         </div>}
@@ -238,8 +238,8 @@ function AfterPicker({ self, picked, onChange, onCancel, onSave, busy }: {
       </div>}
     <p className="muted small">{t('选了的卡都完成后，这张卡自动开始，并带上它们的结果；其中有取消或失败的就不开始。')}</p>
     <div className="bd-edit-actions">
-      <button className="btn tiny" onClick={onCancel}>{t('取消')}</button>
-      <button className="btn tiny primary" disabled={busy || !list} onClick={onSave}>{t('保存')}</button>
+      <button className="btn small" onClick={onCancel}>{t('取消')}</button>
+      <button className="btn small primary" disabled={busy || !list} onClick={onSave}>{t('保存')}</button>
     </div>
   </>
 }
@@ -251,7 +251,7 @@ function Ask({ a, onGo }: { a: Approval; onGo: () => void }) {
     <button className="bd-row bd-ask" onClick={onGo}>
       <span className="bd-row-text">
         {text}
-        {a.options && a.options.length > 0 && <span className="bd-opts">{a.options.map(o => <span key={o} className="chip">{o}</span>)}</span>}
+        {a.options && a.options.length > 0 && <span className="bd-opts">{a.options.map(o => <span key={o} className="tag">{o}</span>)}</span>}
       </span>
       <span className="link-btn small">{t('去回答')}<Icon name="arrow-right" size={14} className="trail" /></span>
     </button>

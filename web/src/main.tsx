@@ -6,6 +6,7 @@ import { SharedTemplate } from './components/Templates'
 import { handleExternalLinks } from './desktop'
 import { initTheme } from './theme'
 import './styles.css'
+import './page.css'
 import './icons.css'
 import 'highlight.js/styles/github-dark.css'
 

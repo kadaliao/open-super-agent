@@ -87,6 +87,9 @@ export const columnName = (c: Column) => ({
   todo: tc('看板', '待办'), doing: tc('看板', '进行中'), waiting: t('等你处理'), done: tc('看板', '已完成'), cancelled: tc('看板', '已取消'),
 })[c]
 
+// 每一列状态标签（.tag）的颜色：进行中蓝、等你处理橙、已完成绿，待办和已取消是灰的
+export const columnTag = (c: Column) => ({ doing: 'info', waiting: 'warn', done: 'good' } as Record<string, string>)[c] || ''
+
 // 最近的那个任务（id 最大）
 const lastTask = (n: Need): NeedTask | undefined => n.tasks.reduce<NeedTask | undefined>((a, x) => !a || x.id > a.id ? x : a, undefined)
 

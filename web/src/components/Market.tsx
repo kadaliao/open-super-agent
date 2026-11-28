@@ -7,13 +7,15 @@ import { Icon } from '../icons'
 import { ask } from './Dialog'
 import { desktop } from '../desktop'
 import { useBack } from '../swipe'
+import PageHead from './PageHead'
 
 const HOW: Record<string, string> = { oauth: t('登录即用'), token: t('填一个密钥'), none: t('免配置') }
 // 登录授权的应用也可能要先填几项（比如自己建的 OAuth 客户端），填好再登录
 const needsFields = (c: CatalogItem) => c.fields.some(f => !f.optional)
 export const howOf = (c: CatalogItem) => c.how || (c.kind === 'oauth' && needsFields(c) ? t('填好后登录') : HOW[c.kind])
+// 状态标签（.tag）的颜色：已连接绿、连接中和等授权橙（圆点闪）、要重新登录橙、没连上红、停用灰
 const STATE: Record<string, [string, string]> = {
-  connected: [t('已连接'), 'ok'], connecting: [t('连接中…'), 'busy'], login: [t('等你授权…'), 'busy'],
+  connected: [t('已连接'), 'good'], connecting: [t('连接中…'), 'busy'], login: [t('等你授权…'), 'busy'],
   needs_login: [t('需要重新登录'), 'warn'], off: [t('已停用'), ''], error: [t('没连上'), 'bad'],
 }
 const CONFIRM_NAMES: [string, string][] = [['auto', t('写操作先问我')], ['all', t('每次都问')], ['none', t('都不问')]]
@@ -26,7 +28,7 @@ export function AppIcon({ item, name, size = 44 }: { item?: CatalogItem; name?: 
 
 export function StateTag({ app }: { app: App }) {
   const [label, cls] = STATE[app.state] || STATE.error
-  return <span className={'m-state ' + cls}><i />{label}</span>
+  return <span className={'tag with-dot app-state ' + cls}>{label}</span>
 }
 
 // ---------- 连接 ----------
@@ -97,7 +99,7 @@ export default function Market() {
   }
 
   if (custom) return (
-    <main className="chat market" ref={editor}><header className="chat-head"><span className="head-name">{t('应用')}</span></header>
+    <main className="chat market" ref={editor}><PageHead title={t('应用')} />
       <div className="scroller"><div className="m-body"><CustomEditor app={custom.app} onDone={() => setCustom(null)} /></div></div>
     </main>
   )
@@ -105,15 +107,10 @@ export default function Market() {
   const openItem = open ? catalog.find(c => c.id === (openApp?.catalog || open)) : undefined
   return (
     <main className="chat market">
-      <header className="chat-head">
-        <span className="head-name">{t('应用')}</span>
-        <input className="m-search" type="search" placeholder={t('搜索应用')} value={q} onChange={e => setQ(e.target.value)} />
-      </header>
+      <PageHead title={t('应用')} desc={tn('连上以后，Bot 能替你查资料、记笔记、整理文件、发邮件。聊天时输入 {at} 可以指定用哪个。', { at: <code>@</code> })}
+        actions={<label className="m-search"><Icon name="search" size={14} />
+          <input type="search" placeholder={t('搜索应用')} value={q} onChange={e => setQ(e.target.value)} aria-label={t('搜索应用')} /></label>} />
       <div className="scroller"><div className="m-body">
-        <section className="m-hero">
-          <h2>{t('让 Bot 用上你的应用')}</h2>
-          <p className="muted">{tn('连上以后，Bot 能替你查资料、记笔记、整理文件、发邮件。聊天时输入 {at} 可以指定用哪个。', { at: <code>@</code> })}</p>
-        </section>
 
         {apps.length > 0 && <section>
           <h4 className="m-h">{t('我的应用')}</h4>
@@ -126,7 +123,7 @@ export default function Market() {
           </div>
         </section>}
 
-        <div className="m-cats">
+        <div className="pills m-cats">
           {[['all', t('全部')], ...categories].map(([k, v]) => <button key={k} className={cat === k ? 'on' : ''} onClick={() => setCat(k)}>{v}</button>)}
         </div>
         <div className="m-grid">
@@ -202,7 +199,7 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
             <h3>{item?.title || '@' + name}</h3>
             <span className="muted small">{item ? `${catName[item.category] || ''} · ${item.by}` : t('自定义应用')}</span>
           </div>
-          <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
+          <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={18} /></button>
         </div>
         <div className="m-sheet-body">
           {app && <div className="m-status">
