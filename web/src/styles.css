@@ -135,7 +135,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
   padding: 9px 15px; border-radius: var(--r-xs) var(--r-xl) var(--r-xl) var(--r-xl); }
 [data-bubbles] .msg.bot .msg-body .md:not(.md .md) th { background: var(--bg3); }
 @media (max-width: 760px) { [data-bubbles] .msg.bot .msg-body .md:not(.md .md) { max-width: 100%; } }
-.msg-actions { display: flex; gap: 10px; align-items: center; color: var(--fg3); font-size: var(--fs-2); opacity: 0; transition: opacity .15s; margin-top: 2px; }
+.msg-actions { display: flex; gap: 10px; align-items: center; color: var(--fg3); font-size: var(--fs-2); opacity: 0; transition: opacity var(--t-fast); margin-top: 2px; }
 .msg:hover .msg-actions { opacity: 1; }
 /* 任务结果下面按钮多（复制、存为页面、接着说、查看过程、回复）：窄屏放不下就换行，每个按钮自己不折行 */
 .msg-actions { flex-wrap: wrap; row-gap: 2px; } .msg-actions > * { white-space: nowrap; }
@@ -143,7 +143,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .thinking { margin-bottom: 6px; }
 .thinking > button { color: var(--fg3); font-size: var(--fs-3); display: inline-flex; gap: 6px; align-items: center; }
 .thinking > button:hover { color: var(--fg2); }
-.thinking .chev { transition: transform .15s; display: inline-block; } .thinking.open .chev { transform: rotate(90deg); }
+.thinking .chev { transition: transform var(--t-fast); display: inline-block; } .thinking.open .chev { transform: rotate(90deg); }
 .thinking-body { margin: 6px 0 10px; padding: 2px 0 2px 14px; border-left: 2px solid var(--line); color: var(--fg3); font-size: var(--fs-3); white-space: pre-wrap; max-height: 340px; overflow-y: auto; }
 .pulse { animation: pulse 1.4s infinite; } @keyframes pulse { 50% { opacity: .4; } }
 .typing { display: flex; gap: 4px; padding: 10px 0; } .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--fg3); animation: pulse 1s infinite; }
@@ -355,7 +355,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 @media (max-width: 1100px) { .app.with-panel { grid-template-columns: var(--side) 1fr; } .app.with-panel .panel { position: fixed; right: 0; top: 0; bottom: 0; width: var(--panel); z-index: 30; box-shadow: -12px 0 32px rgba(0,0,0,.3); } }
 @media (max-width: 760px) {
   .app, .app.with-panel { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 84vw; max-width: 320px; z-index: 40; transform: translateX(-100%); transition: transform .2s; }
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 84vw; max-width: 320px; z-index: 40; transform: translateX(-100%); transition: transform var(--t-med) var(--ease); }
   .side-open .sidebar { transform: none; }
   .app.side-open > .side-mask, .app > .side-mask.dragging { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 35; }
   .app > .mobile-menu { display: grid; position: fixed; top: calc(11px + env(safe-area-inset-top)); left: 8px; z-index: 10; }
@@ -962,7 +962,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .step-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .step.k-think .step-title { color: var(--fg3); }
 .step-peek { margin-left: 8px; opacity: .75; }
-.step .chev { color: var(--fg3); transition: transform .15s; flex: none; } .step.open .chev { transform: rotate(90deg); }
+.step .chev { color: var(--fg3); transition: transform var(--t-fast); flex: none; } .step.open .chev { transform: rotate(90deg); }
 .step-dur { font-size: var(--fs-2); color: var(--fg3); flex: none; }
 .step-who { font-size: var(--fs-1); line-height: 18px; padding: 0 6px; border-radius: var(--r-sm); background: var(--bg3); color: var(--fg2); flex: none; margin-right: 6px; }
 .step-head .step-who { margin-right: 0; }
@@ -1103,7 +1103,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .att-dl { flex: none; width: 30px; height: 30px; border-radius: var(--r-md); display: grid; place-items: center; color: var(--fg3); text-decoration: none; }
 .att-dl:hover { background: var(--bg3); color: var(--fg); text-decoration: none; }
 .att-img-box { position: relative; max-width: 100%; }
-.att-img-dl { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); color: #fff; opacity: 0; transition: opacity .12s; }
+.att-img-dl { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); color: #fff; opacity: 0; transition: opacity var(--t-fast); }
 .att-img-dl:hover { background: rgba(0,0,0,.75); color: #fff; }
 .att-img-box:hover .att-img-dl, .att-img-dl:focus-visible { opacity: 1; }
 @media (hover: none) { .att-img-dl { display: none; } }   /* 手机上点开大图再下载 */
@@ -1115,7 +1115,7 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .att-video video { display: block; width: 100%; max-height: 420px; background: #000; }
 .att-media:not(.on) .att-video video { aspect-ratio: 16 / 9; }
 .att-play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: transparent; cursor: pointer; }
-.att-play .icon { width: 56px; height: 56px; padding: 15px 13px 15px 17px; border-radius: 50%; background: rgba(0,0,0,.55); transition: background .12s; }
+.att-play .icon { width: 56px; height: 56px; padding: 15px 13px 15px 17px; border-radius: 50%; background: rgba(0,0,0,.55); transition: background var(--t-fast); }
 .att-play .icon polygon { fill: currentColor; }
 .att-play:hover .icon { background: rgba(0,0,0,.75); }
 .att-media-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 2px; }
@@ -1184,7 +1184,7 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 .emb-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .emb-play { position: relative; }
 .emb-play { width: 62px; height: 44px; border-radius: var(--r-lg); background: rgba(20,20,20,.78); color: #fff; font-size: var(--fs-7); display: grid; place-items: center;
-  padding-left: 3px; transition: background .15s, transform .15s; }
+  padding-left: 3px; transition: background var(--t-fast), transform var(--t-fast); }
 .emb-cover:hover .emb-play { background: #e5322d; transform: scale(1.05); }
 .emb-cap { display: block; margin-top: 4px; font-size: var(--fs-2); color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
 .emb-cap:hover { color: var(--link); }
@@ -1339,7 +1339,7 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 .ob-task-nums { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-size: var(--fs-2); font-variant-numeric: tabular-nums; }
 .ob-task-nums .bad { color: var(--bad); }
 .ob-fold { display: inline-flex; align-items: center; gap: 6px; }
-.ob-fold .icon { color: var(--fg3); transition: transform .15s; } .ob-fold .icon.up { transform: rotate(180deg); }
+.ob-fold .icon { color: var(--fg3); transition: transform var(--t-fast); } .ob-fold .icon.up { transform: rotate(180deg); }
 @media (max-width: 760px) {
   .observe .chat-head { height: auto; min-height: 54px; padding-top: 8px; padding-bottom: 8px; flex-wrap: wrap; row-gap: 6px; }
   .ob-refresh { order: 0; margin-left: auto; }
@@ -1361,7 +1361,7 @@ textarea.newbot-role.edit { display: block; width: 100%; max-height: 360px; resi
 .applet-card { margin: 8px 0; max-width: 640px; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: var(--card); }
 .applet-head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg2); font-size: var(--fs-3); }
 .applet-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.applet-frame { display: block; width: 100%; border: 0; background: #fff; transition: height .15s; }
+.applet-frame { display: block; width: 100%; border: 0; background: #fff; transition: height var(--t-fast); }
 .page-card { display: flex; gap: 10px; align-items: center; margin: 8px 0; max-width: min(540px, 100%); padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--card); text-align: left; }   /* 按钮按内容撑宽，标题又不换行：不限到 100% 会把正文顶宽 */
 .page-card:hover { border-color: var(--line2); box-shadow: var(--shadow-sm); }
 .page-card .lib-main b { font-size: var(--fs-4); }
