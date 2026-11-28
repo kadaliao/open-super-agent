@@ -102,13 +102,17 @@ function mediaServices(ws: string, pageId: string): Partial<MediaServices> {
   }
 }
 
-// 正文里的链接：本工作区的文档（/p/<id>）在资料库里打开，别的交给编辑器（新标签页）
+// 正文里的链接：站内的文档（/p/<id>）、资料库网页（/library/pages/<n>）、资料库（/library）在本窗口的资料库里打开，
+// 别的交给编辑器（新标签页）。桌面 App 里新标签页就是另开一个 App 窗口，所以站内地址一定要在这里接住
 function openLink(href: string) {
   let u: URL
   try { u = new URL(href, location.origin) } catch { return false }
-  const id = u.origin === location.origin && u.pathname.startsWith('/p/') ? u.pathname.split('/')[2] : ''
-  if (!id) return false
-  openLibrary(decodeURIComponent(id))
+  if (u.origin !== location.origin) return false
+  const doc = u.pathname.match(/^\/p\/([\w-]+)\/?$/)
+  const lib = u.pathname.match(/^\/library(?:\/pages\/(\d+))?\/?$/)
+  if (doc) openLibrary(decodeURIComponent(doc[1]))
+  else if (lib) openLibrary(lib[1] ? Number(lib[1]) : null)
+  else return false
   return true
 }
 
