@@ -150,9 +150,8 @@ export default function App() {
 
   if (!ready) return <div className="loading"><Logo size={28} /></div>
   const panel = view === 'chat' && (thread || details)
-  const width = thread ? ' mid-panel' : details && tab === 'computer' ? ' wide-panel' : details && tab === 'tasks' ? ' mid-panel' : ''
   return (
-    <div className={'app' + (panel ? ' with-panel' : '') + (panel ? width : '') + (side ? ' side-open' : '')}>
+    <div className={'app' + (panel ? ' with-panel' : '') + (side ? ' side-open' : '')}>
       <button className="mobile-menu icon-btn" onClick={() => setSide(true)} title={t('打开侧栏')} aria-label={t('打开侧栏')}><Icon name="menu" size={18} /></button>
       <div className="side-mask" onClick={() => setSide(false)} />
       <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings('')} onClose={() => setSide(false)} />
