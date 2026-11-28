@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0d0d0e" />
+    <meta name="theme-color" content="#111113" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -13,6 +13,7 @@
     <meta name="apple-mobile-web-app-title" content="Super Agent" />
     <title>Open Super Agent</title>
     <!-- 明亮还是夜间：在页面画出来之前先设好，免得闪一下。之后由 src/theme.ts 接管 -->
+    <style>html{background:#111113;color-scheme:dark}html[data-theme="light"]{background:#ffffff;color-scheme:light}</style>
     <script>try{var p=localStorage.getItem('osa.theme');if(localStorage.getItem('osa.bubbles')==='bubbles')document.documentElement.dataset.bubbles=''}catch(e){}document.documentElement.dataset.theme=p==='light'||p==='dark'?p:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'</script>
   </head>
   <body>
