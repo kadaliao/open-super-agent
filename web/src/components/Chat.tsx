@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, approve, chatById, loadOlder, markThreadSeen, openChat, openChatOrThread, openLibrary, openThread, pinChat, showTask, taskLabel, taskWaiting, useStore } from '../store'
 import type { Approval, Bot, Chat as ChatT, Message, Task, ThreadInfo } from '../types'
-import { plain } from '../plain'
+import { Preview, plain } from '../plain'
 import { isEnter } from '../keys'
 import BotAvatar from './BotAvatar'
 import Composer from './Composer'
@@ -16,6 +16,9 @@ import { LinkEmbed, Linkify, textEmbeds } from './Embeds'
 import { cardFor, registerCard, type CardProps } from '../cards'
 import { McpAppView } from './Applet'
 import type { AppView } from '../mcpapp'
+
+// 已处理的卡片收成的一行：前面一个对勾或叉
+const mark = (ok: boolean) => <Icon name={ok ? 'check' : 'x'} size={14} className="lead" />
 
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 const VIA: Record<string, string> = {
@@ -41,7 +44,7 @@ function Thinking({ text, seconds, live }: { text: string; seconds?: number; liv
     <div className={'thinking' + (open ? ' open' : '')}>
       <button onClick={() => setOpen(!open)}>
         <span className={live ? 'pulse' : ''}>{live ? t('正在思考') : t('思考了 {time}', { time: secs(seconds || 0) })}</span>
-        <span className="chev">›</span>
+        <span className="chev"><Icon name="right" size={14} /></span>
       </button>
       {open && <div className="thinking-body">{text}</div>}
     </div>
@@ -112,7 +115,7 @@ function NewReplies({ chat, onList }: { chat: ChatT; onList: () => void }) {
         <span className="nr-text">
           {one ? tn('{who} 在讨论串里回复了', { who: <b>{speakerName('assistant', one.preview_bot, chat, bots)}</b> })
             : t('{n} 个讨论串有新回复', { n: fresh.length })}
-          {one?.preview && <span className="nr-preview">{plain(one.preview)}</span>}
+          {one?.preview && <span className="nr-preview"><Preview text={one.preview} /></span>}
         </span>
         {n > 1 && <span className="badge">{n}</span>}
         <span className="nr-go">{one ? t('查看') : t('列表')}</span>
@@ -147,7 +150,7 @@ function ThreadsMenu({ chat, open, setOpen }: { chat: ChatT; open: boolean; setO
   return (
     <div className="th-menu-wrap" ref={box}>
       <button className={'icon-btn' + (open ? ' open' : '')} title={t('讨论串')} onClick={() => setOpen(!open)}>
-        <Icon name="threads" size={17} />{n > 0 && <span className="badge dot">{n}</span>}
+        <Icon name="threads" size={18} />{n > 0 && <span className="badge dot">{n}</span>}
       </button>
       {open && (
         <div className="menu th-menu">
@@ -161,8 +164,8 @@ function ThreadsMenu({ chat, open, setOpen }: { chat: ChatT; open: boolean; setO
                 return (
                   <button key={x.id} className={'th-row' + (y.unread ? ' new' : '') + (x.id === current ? ' on' : '')}
                           onClick={() => { setOpen(false); openThread(chat.id, x.root) }}>
-                    <div className="th-row-root"><span className="muted">{speakerName(x.root_role, x.root_bot, chat, bots)}：</span>{plain(x.root_text || '') || '…'}</div>
-                    {y.preview && <div className="th-row-last">{who.length > 0 && <GroupAvatars bots={who} size={16} />}<span>{plain(y.preview)}</span></div>}
+                    <div className="th-row-root"><span className="muted">{speakerName(x.root_role, x.root_bot, chat, bots)}：</span>{plain(x.root_text || '') ? <Preview text={x.root_text!} /> : '…'}</div>
+                    {y.preview && <div className="th-row-last">{who.length > 0 && <GroupAvatars bots={who} size={16} />}<span><Preview text={y.preview} /></span></div>}
                     <div className="th-row-meta">
                       <span>{t('{n} 条回复', { n: y.count })}{y.last ? ' · ' + when(y.last) : ''}</span>
                       {y.unread > 0 && <span className="th-new">{t('{n} 条新回复', { n: y.unread })}</span>}
@@ -227,7 +230,7 @@ function ImageMessage({ bot, m, chat, showName, reply }: { bot?: Bot; m: Message
       <div className="msg-body">
         <Speaker bot={bot} show={showName} />
         <Attachments items={m.meta.attachments} actions={() => actions} />
-        <div className="img-caption" title={m.meta.prompt}>🎨 {m.meta.prompt}</div>
+        <div className="img-caption" title={m.meta.prompt}><Icon name="palette" size={14} className="lead" />{m.meta.prompt}</div>
         <div className="img-meta">{m.meta.model}{m.meta.price !== undefined ? ' · ' + imagePrice(m.meta.price, cur) : ''}
           {!!m.meta.refs?.length && <span title={m.meta.refs.map((r: { name: string }) => r.name).join('\n')}> · {t('参考了 {n} 张图', { n: m.meta.refs.length })}</span>}
           {done && <> · <b>{done}</b></>}</div>
@@ -251,7 +254,7 @@ function VideoMessage({ bot, m, showName, reply }: { bot?: Bot; m: Message; show
       <div className="msg-body">
         <Speaker bot={bot} show={showName} />
         <Attachments items={m.meta.attachments} />
-        <div className="img-caption" title={m.meta.prompt}>🎬 {m.meta.prompt}</div>
+        <div className="img-caption" title={m.meta.prompt}><Icon name="video" size={14} className="lead" />{m.meta.prompt}</div>
         <div className="img-meta">{m.meta.model}{m.meta.seconds ? ' · ' + t('{n} 秒', { n: m.meta.seconds }) : ''}
           {m.meta.price !== undefined ? ' · ' + videoPrice(m.meta.price, cur) : ''}
           {!!refs.length && <span title={refs.map(r => r.name).join('\n')}> · {t('参考了 {n} 个素材', { n: refs.length })}</span>}</div>
@@ -284,7 +287,7 @@ function VideoJob({ bot, m, showName }: { bot?: Bot; m: Message; showName?: bool
         <div className={'video-job' + (running ? '' : ' failed')}>
           <div className="video-job-head">{running ? <><span className="spin" />{t('正在生成视频 · 已等 {time}', { time: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` })}</>
             : t('视频没生成成：{error}', { error: m.meta.error || '' })}</div>
-          <div className="img-caption" title={m.meta.prompt}>🎬 {m.meta.prompt}</div>
+          <div className="img-caption" title={m.meta.prompt}><Icon name="video" size={14} className="lead" />{m.meta.prompt}</div>
           <div className="img-meta">{m.meta.model}{m.meta.seconds ? ' · ' + t('{n} 秒', { n: m.meta.seconds }) : ''}{running ? ' · ' + t('要几分钟，好了会自动显示') : ''}</div>
         </div>
       </div>
@@ -320,7 +323,7 @@ function TaskCard({ m, task, owner, handoffTo, replyTo }: { m: Message; task?: T
       {(m.meta.mac || task?.mac) && <div className="task-action">{t('在你的 Mac「{name}」上做', { name: m.meta.mac || task?.mac })}</div>}
       {handoffTo && <div className="task-action">{t('做完交给 {name}', { name: handoffTo.name })}</div>}
       {replyTo && <div className="task-action">{t('做完把结果回给 {name}', { name: replyTo.name })}</div>}
-      {status === 'running' && task?.last_action && <div className="task-action">→ {task.last_action}</div>}
+      {status === 'running' && task?.last_action && <div className="task-action"><Icon name="arrow-right" size={14} className="lead" />{task.last_action}</div>}
     </div>
   )
 }
@@ -400,10 +403,10 @@ function HelpCard({ a }: { a: Approval }) {
   const done = a.status && a.status !== 'pending'
   let reason = ''
   try { reason = JSON.parse(a.args)['需要你做的事'] } catch { reason = a.args }   // i18n-ignore：工具参数的键
-  if (done) return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('你已处理完，Bot 继续') : '✕ ' + t('没有处理')}{t('（任务 #{id}）', { id: a.task_id })}</div>
+  if (done) return <div className="sys-line">{a.status === 'approved' ? <>{mark(true)}{t('你已处理完，Bot 继续')}</> : <>{mark(false)}{t('没有处理')}</>}{t('（任务 #{id}）', { id: a.task_id })}</div>
   return (
     <div className="approval-card help">
-      <div className="approval-title">🙋 {t('需要你帮忙')}</div>
+      <div className="approval-title"><Icon name="hand" size={16} className="lead" />{t('需要你帮忙')}</div>
       <div className="help-reason">{reason}</div>
       {a.mac ? <div className="muted small">{tn('任务 #{id} 已暂停{origin}。它在你的 Mac「{name}」上做：在那台 Mac 上处理好后点“处理完了”，Bot 会接着做。', { id: a.task_id, origin: <Origin a={a} />, name: a.mac_name || '' })}</div>
         : <div className="muted small">{tn('任务 #{id} 已暂停{origin}。接手电脑处理完后点“交还”，Bot 会接着做。', { id: a.task_id, origin: <Origin a={a} /> })}</div>}
@@ -424,11 +427,11 @@ function DrawCard({ a }: { a: Approval }) {
   let d: Record<string, string> = {}
   try { d = JSON.parse(a.args) } catch { /* 显示原文 */ }
   const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
-  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('已允许画图') + (a.always ? t('，以后不再询问') : '')
-    : a.status === 'cancelled' ? '✕ ' + t('画图已取消') : '✕ ' + t('没画')}</div>
+  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? <>{mark(true)}{t('已允许画图') + (a.always ? t('，以后不再询问') : '')}</>
+    : <>{mark(false)}{a.status === 'cancelled' ? t('画图已取消') : t('没画')}</>}</div>
   return (
     <div className="approval-card draw">
-      <div className="approval-title">🎨 {t('{name} 想画一张图', { name: bot?.name || 'Bot' })}<Origin a={a} /></div>
+      <div className="approval-title"><Icon name="palette" size={16} className="lead" />{t('{name} 想画一张图', { name: bot?.name || 'Bot' })}<Origin a={a} /></div>
       <div className="draw-prompt">{d['描述'] ?? a.args}</div>{/* i18n-ignore：工具参数的键 */}
       <div className="muted small">{t('模型：{model}', { model: d['模型'] || '' })} · {t('价格：{price}', { price: d['价格'] || '' })}</div>{/* i18n-ignore：工具参数的键 */}
       <div className="approval-actions">
@@ -463,7 +466,7 @@ function BotAdminCard({ a }: { a: Approval }) {
   const who = bot?.name || 'Bot'
   if (a.status && a.status !== 'pending') {
     const [yes, no] = BOT_DONE[a.tool]
-    return <div className="sys-line">{a.status === 'approved' ? '✓ ' + yes(name) + (a.edited?.length ? t('（职责按你改的）') : '') : '✕ ' + no(name)}</div>
+    return <div className="sys-line">{a.status === 'approved' ? <>{mark(true)}{yes(name) + (a.edited?.length ? t('（职责按你改的）') : '')}</> : <>{mark(false)}{no(name)}</>}</div>
   }
   const role: string = d['职责'] ?? ''   // i18n-ignore：工具参数的键
   const canEdit = !!a.editable?.includes('职责')   // i18n-ignore：工具参数的键
@@ -473,7 +476,7 @@ function BotAdminCard({ a }: { a: Approval }) {
     <div className="botadmin-label">
       <span className="muted small">{draft !== null ? t('职责（全文，改好后点下面的按钮）') : label}</span><span className="grow" />
       {canEdit && (draft === null
-        ? <button className="link-btn small" onClick={() => setDraft(role)}>✎ {t('编辑')}</button>
+        ? <button className="link-btn small" onClick={() => setDraft(role)}><Icon name="pencil" size={14} className="lead" />{t('编辑')}</button>
         : <button className="link-btn small" onClick={() => setDraft(null)}>{t('还原')}</button>)}
     </div>
   )
@@ -490,9 +493,10 @@ function BotAdminCard({ a }: { a: Approval }) {
   return (
     <div className={'approval-card botadmin' + (a.tool === 'delete_bot' ? ' danger' : '')}>
       <div className="approval-title">
-        {a.tool === 'create_bot' ? '🤖 ' + t('{name} 想新建一个 Bot：{bot}', { name: who, bot: name })
-          : a.tool === 'update_bot' ? '✏️ ' + t('{name} 想修改 Bot「{bot}」', { name: who, bot: name })
-          : '🗑 ' + t('{name} 想删除 Bot「{bot}」', { name: who, bot: name })}<Origin a={a} />
+        <Icon name={a.tool === 'create_bot' ? 'bot' : a.tool === 'update_bot' ? 'pencil' : 'trash'} size={16} className="lead" />
+        {a.tool === 'create_bot' ? t('{name} 想新建一个 Bot：{bot}', { name: who, bot: name })
+          : a.tool === 'update_bot' ? t('{name} 想修改 Bot「{bot}」', { name: who, bot: name })
+          : t('{name} 想删除 Bot「{bot}」', { name: who, bot: name })}<Origin a={a} />
       </div>
       {d['请求方'] && <div className="muted small">{t('{name} 私信请它做的', { name: d['请求方'] })}</div>}{/* i18n-ignore：工具参数的键 */}
       {a.tool === 'create_bot' && <>
@@ -503,9 +507,9 @@ function BotAdminCard({ a }: { a: Approval }) {
         <div className="muted small">{t('建好后可以再让主 Bot 改，也能在它私聊的右栏里改')}</div>
       </>}
       {a.tool === 'update_bot' && <>
-        {d['新名字'] && <div className="botadmin-row"><span className="muted">{t('名字')}</span><span>{name} → <b>{d['新名字']}</b></span></div>}{/* i18n-ignore：工具参数的键 */}
+        {d['新名字'] && <div className="botadmin-row"><span className="muted">{t('名字')}</span><span>{name} <Icon name="arrow-right" size={14} /> <b>{d['新名字']}</b></span></div>}{/* i18n-ignore：工具参数的键 */}
         {d['头像'] && <div className="botadmin-row"><span className="muted">{t('头像')}</span>{/* i18n-ignore：工具参数的键 */}
-          {target && <BotAvatar avatar={target.avatar} size={22} />}→<BotAvatar avatar={d['头像']} size={22} />{/* i18n-ignore：工具参数的键 */}
+          {target && <BotAvatar avatar={target.avatar} size={22} />}<Icon name="arrow-right" size={14} /><BotAvatar avatar={d['头像']} size={22} />{/* i18n-ignore：工具参数的键 */}
           {d['不再用图片头像'] && <span className="muted small">{t('不再用原来的图片')}</span>}</div>}{/* i18n-ignore：工具参数的键 */}
         {d['职责改动'] && <>{/* i18n-ignore：工具参数的键 */}
           {roleHead(t('职责：划掉的是删掉的，标绿的是加上的'))}
@@ -539,11 +543,11 @@ function MacCard({ a }: { a: Approval }) {
   try { d = JSON.parse(a.args) } catch { /* 显示原文 */ }
   const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
   const name = d['电脑'] || a.mac_name || ''   // i18n-ignore：工具参数的键
-  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('已允许在「{name}」上做', { name }) + (a.always ? t('，以后不再询问') : '')
-    : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没让任务在「{name}」上做', { name })}</div>
+  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? <>{mark(true)}{t('已允许在「{name}」上做', { name }) + (a.always ? t('，以后不再询问') : '')}</>
+    : <>{mark(false)}{a.status === 'cancelled' ? t('任务已取消') : t('没让任务在「{name}」上做', { name })}</>}</div>
   return (
     <div className="approval-card desk">
-      <div className="approval-title">💻 {t('{name} 想在你的 Mac「{mac}」上做一个任务', { name: bot?.name || 'Bot', mac: name })}<Origin a={a} /></div>
+      <div className="approval-title"><Icon name="laptop" size={16} className="lead" />{t('{name} 想在你的 Mac「{mac}」上做一个任务', { name: bot?.name || 'Bot', mac: name })}<Origin a={a} /></div>
       <div className="task-goal">{d['任务'] ?? a.goal}</div>{/* i18n-ignore：工具参数的键 */}
       <div className="small">{t('它会用那台 Mac 上 Bot 专用的 Chrome 和工作文件夹，有权限的话还会看屏幕、用鼠标键盘。你动一下鼠标或键盘它就停下；上传、发送、付款这类操作前还会再问你。')}</div>
       <div className="approval-actions">
@@ -559,11 +563,11 @@ function MacCard({ a }: { a: Approval }) {
 // 本机电脑：任务第一次要操作整台电脑（真实的屏幕、鼠标键盘）时问一次，参数是 {任务}
 function DesktopCard({ a }: { a: Approval }) {
   const bot = useStore(s => s.bots.find(b => b.id === a.bot_id))
-  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? '✓ ' + t('已允许操作整台电脑') + (a.always ? t('，以后不再询问') : '')
-    : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没让 Bot 操作整台电脑')}</div>
+  if (a.status && a.status !== 'pending') return <div className="sys-line">{a.status === 'approved' ? <>{mark(true)}{t('已允许操作整台电脑') + (a.always ? t('，以后不再询问') : '')}</>
+    : <>{mark(false)}{a.status === 'cancelled' ? t('任务已取消') : t('没让 Bot 操作整台电脑')}</>}</div>
   return (
     <div className="approval-card desk">
-      <div className="approval-title">🖥 {t('{name} 想操作整台电脑', { name: bot?.name || 'Bot' })}<Origin a={a} /></div>
+      <div className="approval-title"><Icon name="monitor" size={16} className="lead" />{t('{name} 想操作整台电脑', { name: bot?.name || 'Bot' })}<Origin a={a} /></div>
       <div className="muted small">{typeof a.task_id === 'number' ? t('来自任务 #{id}：{goal}', { id: a.task_id, goal: a.goal }) : a.goal}</div>
       <div className="small">{t('它会看你的屏幕，用你的鼠标键盘操作这台电脑上的 App。操作时你动一下鼠标或键盘它就停下；点“发送”“付款”这类按钮前还会再问你。')}</div>
       <div className="approval-actions">
@@ -587,14 +591,14 @@ export function QuestionCard({ a, inTask }: { a: Approval; inTask?: boolean }) {
   }
   options = (options || []).filter(Boolean)
   if (a.status && a.status !== 'pending') {
-    const done = a.status === 'approved' ? '✓ ' + (a.answer ? t('你回答了：{answer}', { answer: a.answer }) : t('已回答'))
-      : a.status === 'expired' ? '✕ ' + t('超时没回答，任务不再等') : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没回答')
+    const done = a.status === 'approved' ? <>{mark(true)}{a.answer ? t('你回答了：{answer}', { answer: a.answer }) : t('已回答')}</>
+      : <>{mark(false)}{a.status === 'expired' ? t('超时没回答，任务不再等') : a.status === 'cancelled' ? t('任务已取消') : t('没回答')}</>
     return <div className="sys-line q-done">{done}{inTask ? '' : t('（任务 #{id}）', { id: a.task_id })}</div>
   }
   const answer = (s: string) => { if (s.trim()) approve(a.id, true, s.trim()) }
   return (
     <div className="approval-card question">
-      <div className="approval-title">💬 {t('{name} 有个问题要问你', { name: bot?.name || 'Bot' })}{!inTask && <Origin a={a} />}</div>
+      <div className="approval-title"><Icon name="message" size={16} className="lead" />{t('{name} 有个问题要问你', { name: bot?.name || 'Bot' })}{!inTask && <Origin a={a} />}</div>
       {!inTask && <div className="muted small">
         {tn('来自任务 {id}：{goal}', { id: <button className="link-btn" onClick={() => showTask(a.task_id)}>#{a.task_id}</button>, goal: a.goal })}</div>}
       <div className="q-text">{question || a.args}</div>
@@ -619,9 +623,9 @@ export function DoubtCard({ a, inTask }: { a: Approval; inTask?: boolean }) {
   const args = d.args === undefined || d.args === null ? a.args : typeof d.args === 'string' ? d.args : JSON.stringify(d.args, null, 1)
   const tool = d.tool || a.tool
   if (a.status && a.status !== 'pending') {
-    const done = a.status === 'approved' ? '✓ ' + t('让它把这一步再做一次')
-      : a.answer === 'done' ? '✓ ' + t('你说这一步已经做成了，不再做') : a.answer === 'stop' ? '✕ ' + t('不做了，任务停下')
-      : a.status === 'expired' ? '✕ ' + t('超时未确认，按拒绝处理') : a.status === 'cancelled' ? '✕ ' + t('任务已取消') : '✕ ' + t('没再做这一步')
+    const done = a.status === 'approved' ? <>{mark(true)}{t('让它把这一步再做一次')}</>
+      : a.answer === 'done' ? <>{mark(true)}{t('你说这一步已经做成了，不再做')}</> : a.answer === 'stop' ? <>{mark(false)}{t('不做了，任务停下')}</>
+      : <>{mark(false)}{a.status === 'expired' ? t('超时未确认，按拒绝处理') : a.status === 'cancelled' ? t('任务已取消') : t('没再做这一步')}</>
     return <div className="sys-line q-done">{done} <code>{tool}</code>{inTask ? '' : t('（任务 #{id}）', { id: a.task_id })}</div>
   }
   const at = new Date(d.started * 1000)
@@ -629,7 +633,7 @@ export function DoubtCard({ a, inTask }: { a: Approval; inTask?: boolean }) {
     : at.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   return (
     <div className="approval-card doubt">
-      <div className="doubt-head">⚠ {d.why === 'stall' ? t('这一步卡住超时、没做完就被打断了（{time} 开始的），不确定有没有做成', { time: when })
+      <div className="doubt-head"><Icon name="alert" size={16} className="lead" />{d.why === 'stall' ? t('这一步卡住超时、没做完就被打断了（{time} 开始的），不确定有没有做成', { time: when })
         : d.why === 'stopped' ? t('任务被停下时这一步正在做（{time} 开始的），不确定有没有做成', { time: when })
         : t('这一步在服务重启时正在做（{time} 开始的），不确定有没有做成', { time: when })}</div>
       <div className="approval-title">{t('要不要再做一次？')} <code>{tool}</code>{!inTask && <Origin a={a} />}</div>
@@ -657,7 +661,7 @@ function ApprovalCard({ a }: { a: Approval }) {
   const [prefix, setPrefix] = useState(a.prefix || '')
   const done = a.status && a.status !== 'pending'
   const label: Record<string, string> = { approved: a.always ? t('已允许，以后自动允许') : a.scope === 'task' ? t('已允许，这个任务里不再询问') : t('已允许'), rejected: t('已拒绝'), expired: t('超时未确认，按拒绝处理'), cancelled: t('任务已取消') }
-  if (done) return <div className="sys-line">{a.status === 'approved' ? '✓' : '✕'} {label[a.status!] || a.status} <code>{a.tool}</code>{t('（任务 #{id}）', { id: a.task_id })}</div>
+  if (done) return <div className="sys-line">{mark(a.status === 'approved')}{label[a.status!] || a.status} <code>{a.tool}</code>{t('（任务 #{id}）', { id: a.task_id })}</div>
   const [app, tool] = a.tool.includes('__') ? a.tool.split('__', 2) : ['', a.tool]
   const scopes = a.scopes ?? (a.once ? ['once'] : ['once', 'always'])   // 旧版服务没有 scopes
   const shell = a.tool === 'computer_shell' && a.prefix !== undefined   // 终端：“总是允许”的是一个命令前缀，可以改
@@ -705,7 +709,7 @@ function DmLine({ m, from, to, here }: { m: Message; from?: Bot; to?: Bot; here:
   const there = m.meta.chat && m.meta.chat !== here ? m.meta.chat : to && to.chat_id !== here ? to.chat_id : null
   return (
     <div className="handoff dm">
-      <span className="dm-icon">✉</span>
+      <span className="dm-icon"><Icon name="mail" size={14} /></span>
       {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || t('已删除的 Bot')}</b>
       <span className="muted">{t('私信')}</span>
       {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || t('已删除的 Bot')}</b>
@@ -725,7 +729,7 @@ function DmReply({ m, bot, to, reply }: { m: Message; bot?: Bot; to?: Bot; reply
       {bot && <BotAvatar avatar={bot.avatar} size={28} />}
       <div className="msg-body">
         <div className="speaker">{bot?.name || t('已删除的 Bot')}</div>
-        <div className={'result-head' + (bad ? ' failed' : '')}>↩ {t('回了 {name} 的私信', { name: to?.name || t('已删除的 Bot') })}{m.meta.task_id ? ' · ' + t('任务 #{id}', { id: m.meta.task_id }) : ''}</div>
+        <div className={'result-head' + (bad ? ' failed' : '')}><Icon name="reply" size={14} className="lead" />{t('回了 {name} 的私信', { name: to?.name || t('已删除的 Bot') })}{m.meta.task_id ? ' · ' + t('任务 #{id}', { id: m.meta.task_id }) : ''}</div>
         <div className={open ? '' : 'clamp'}><Markdown text={m.content} embeds /></div>
         {!open && <button className="expand" onClick={() => setOpen(true)}>{t('展开全文')}</button>}
         <ThreadLink m={m} reply={reply} />
@@ -838,12 +842,12 @@ registerCard('video_job', ({ m, bot, group }) => <VideoJob bot={bot} m={m} showN
 registerCard('handoff', ({ m, botOf }) => <HandoffLine from={botOf(m.bot_id)} to={botOf(m.meta.to)} text={m.meta.note || m.content} />)
 registerCard('dm', ({ m, botOf, chat }) => <DmLine m={m} from={botOf(m.bot_id)} to={botOf(m.meta.to)} here={chat.id} />)
 registerCard('dm_reply', ({ m, botOf, chat, reply }) => m.meta.sent
-  ? <div className="sys-line">↩ {t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
+  ? <div className="sys-line"><Icon name="reply" size={14} className="lead" />{t('已把回信发给 {name}', { name: botOf(m.meta.to)?.name || t('已删除的 Bot') })}
       {m.meta.chat && m.meta.chat !== chat.id && <> · <button className="link-btn" onClick={() => openChatOrThread(m.meta.chat)}>{t('去看')}</button></>}</div>
   : <DmReply m={m} bot={botOf(m.bot_id)} to={botOf(m.meta.to)} reply={reply} />)
 const botAdmin = ({ m, kind, botOf, chat }: CardProps) => {
   const nb = kind !== 'bot_deleted' ? botOf(m.meta.new_bot ?? m.meta.bot) : undefined
-  return <div className="sys-line">🤖 {m.content.replace(/^\[|\]$/g, '')}
+  return <div className="sys-line"><Icon name="bot" size={14} className="lead" />{m.content.replace(/^\[|\]$/g, '')}
     {nb?.chat_id && nb.chat_id !== chat.id && <> · <button className="link-btn" onClick={() => openChat(nb.chat_id)}>
       {kind === 'bot_created' ? t('去和它聊') : t('去看看')}</button></>}</div>
 }
@@ -851,7 +855,7 @@ registerCard('bot_created', botAdmin)
 registerCard('bot_updated', botAdmin)
 registerCard('bot_deleted', botAdmin)
 registerCard('reset', () => <div className="topic-line"><span>{t('新话题 · 之前的对话不再带进上下文，长期记忆还在')}</span></div>)
-registerCard('trigger', ({ m }) => <div className="sys-line">⚡ {m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>)   // i18n-ignore：存在消息里的标记
+registerCard('trigger', ({ m }) => <div className="sys-line"><Icon name="zap" size={14} className="lead" />{m.content.replace(/^\[触发器 ([^\]]+)\]/, (_, name) => t('触发器 {name}：', { name })).slice(0, 160)}</div>)   // i18n-ignore：存在消息里的标记
 
 // 正在流式输出的回复
 export function StreamMessage({ chat, chatId }: { chat: ChatT; chatId: number }) {
@@ -884,7 +888,7 @@ export function PendingApprovals({ here, from }: { here: (a: Approval) => boolea
       const b = bots.find(x => x.id === a.bot_id)
       return (
         <div key={a.id} className="elsewhere">
-          <span>⚠ {a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
+          <span><Icon name="alert" size={14} className="lead warn" />{a.kind === 'help' ? t('{name} 的任务 #{id} 需要你帮忙，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.kind === 'question' ? t('{name} 的任务 #{id} 有个问题要问你，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.doubt ? t('{name} 的任务 #{id} 有一步说不准做没做成，等你决定，卡片在它的私聊里', { name: b?.name || '', id: a.task_id })
             : a.tool === 'generate_image' ? t('{name} 想画一张图，等你确认，卡片在它的私聊里', { name: b?.name || '' })
@@ -961,16 +965,16 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
         <button className="head-bot" onClick={onToggleDetails} title={group ? t('群聊设置') : t('Bot 详情')}>
           {group ? <GroupFace image={chat.image} bots={members} size={26} /> : <BotAvatar avatar={bot!.avatar} size={26} />}
           <span className="head-name">{title}</span>
-          {group ? <span className="muted small">{t('{n} 个 Bot', { n: members.length })}</span> : bot!.is_primary && <span className="star" title={t('主 Bot')}>★</span>}
+          {group ? <span className="muted small">{t('{n} 个 Bot', { n: members.length })}</span> : bot!.is_primary && <span className="star" title={t('主 Bot')}><Icon name="star" size={14} className="solid" /></span>}
         </button>
         <div className="head-actions">
           <button className="ghost-btn" title={t('之前的对话不再带进上下文，省 token；长期记忆还在')} onClick={async () => {
             if (await ask(group ? t('开始新话题？群里的 Bot 不再参考之前的对话（记录还在，长期记忆也还在）。') : t('开始新话题？{name} 不再参考之前的对话（记录还在，长期记忆也还在）。', { name: bot!.name }), { ok: t('新话题') })) api(`/api/chats/${active}/reset`, { method: 'POST' })
           }}>{t('新话题')}</button>
           <button className={'icon-btn' + (chat.pinned ? ' on' : '')} onClick={() => pinChat(chat.id, !chat.pinned)}
-                  title={chat.pinned ? t('取消置顶') : t('置顶到侧栏上方')}><Icon name="pin" size={16} /></button>
+                  title={chat.pinned ? t('取消置顶') : t('置顶到侧栏上方')}><Icon name="pin" size={18} /></button>
           <ThreadsMenu chat={chat} open={threadsOpen} setOpen={setThreadsOpen} />
-          <button className="icon-btn" onClick={onToggleDetails} title={t('详情')}>☰</button>
+          <button className="icon-btn" onClick={onToggleDetails} title={t('详情')} aria-label={t('详情')}><Icon name="panel-right" size={18} /></button>
         </div>
       </header>
       <div className="scroller" ref={scroller} onScroll={onScroll}>
@@ -1016,7 +1020,7 @@ function SetupHint() {
   if (!problem) return null
   return (
     <div className="setup-hint">
-      <span>⚠ {t('{problem}，Bot 现在没法回复。', { problem })}</span>
+      <span><Icon name="alert" size={14} className="lead warn" />{t('{problem}，Bot 现在没法回复。', { problem })}</span>
       <button className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('osa-open-settings', { detail: 'models' }))}>{t('去配置模型')}</button>
     </div>
   )

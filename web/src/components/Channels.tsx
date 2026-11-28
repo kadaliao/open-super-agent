@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, useStore } from '../store'
 import { locale, t, tc, tn } from '../i18n'
+import { Icon } from '../icons'
 import type { Channel, ChannelKind } from '../types'
 import { BrandIcon } from './BrandIcon'
 import { ask } from './Dialog'
@@ -93,8 +94,8 @@ function ChannelCard({ c, onChange }: { c: Channel; onChange: () => void }) {
           <div>{meta.pairHint}</div>
           <div className="ch-code">{c.pair_code}</div>
           <div className="row-actions">
-            {c.setup_link && <a className="btn" href={c.setup_link} target="_blank" rel="noreferrer">{meta.setup} ↗</a>}
-            {c.pair_link && <a className="btn primary" href={c.pair_link} target="_blank" rel="noreferrer">{meta.open} ↗</a>}
+            {c.setup_link && <a className="btn" href={c.setup_link} target="_blank" rel="noreferrer">{meta.setup}<Icon name="external" size={14} className="trail" /></a>}
+            {c.pair_link && <a className="btn primary" href={c.pair_link} target="_blank" rel="noreferrer">{meta.open}<Icon name="external" size={14} className="trail" /></a>}
             <span className="muted small">{t('{time} 前有效，配对后只有你能用', { time: hhmm(c.pair_expires!) })}</span>
           </div>
         </div>
@@ -214,7 +215,7 @@ function AddChannel({ first, onAdded }: { first: boolean; onAdded: () => void })
     } catch (e: any) { setErr(e.message) }
     setBusy(false)
   }
-  if (!open) return <button className="btn" onClick={() => setOpen(true)}>＋ {t('连接聊天软件')}</button>
+  if (!open) return <button className="btn" onClick={() => setOpen(true)}><Icon name="plus" size={16} className="lead" />{t('连接聊天软件')}</button>
   return (
     <form className="ch-add" onSubmit={submit}>
       <h4>{t('连接聊天软件')}</h4>

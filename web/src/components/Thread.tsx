@@ -4,6 +4,7 @@ import type { Bot } from '../types'
 import Composer from './Composer'
 import { MessageList, PendingApprovals, StreamMessage } from './Chat'
 import { t } from '../i18n'
+import { Icon } from '../icons'
 import { useBack } from '../swipe'
 
 // 右边的讨论串：上面是被回复的那条消息，下面是针对它的回复。Bot 在这里回答，主对话不受影响
@@ -60,7 +61,7 @@ export default function ThreadPanel() {
     <aside className="panel th-panel" ref={root}>
       <div className="panel-head">
         <div className="th-title"><b>{t('讨论串')}</b><span className="muted small">{group ? chat.title : bot!.name}</span></div>
-        <button className="icon-btn" onClick={closeThread} title={t('关闭')}>✕</button>
+        <button className="icon-btn" onClick={closeThread} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
       </div>
       <div className="scroller" ref={scroller} onScroll={onScroll}>
         <div className="th-body">

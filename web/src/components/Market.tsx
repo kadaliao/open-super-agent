@@ -3,6 +3,7 @@ import { api, refreshApps, useStore } from '../store'
 import type { App, CatalogItem } from '../types'
 import { BrandIcon } from './BrandIcon'
 import { t, tc, tn } from '../i18n'
+import { Icon } from '../icons'
 import { ask } from './Dialog'
 import { desktop } from '../desktop'
 import { useBack } from '../swipe'
@@ -201,7 +202,7 @@ export function Sheet({ item, app, initErr, onClose, onEdit }: { item?: CatalogI
             <h3>{item?.title || '@' + name}</h3>
             <span className="muted small">{item ? `${catName[item.category] || ''} · ${item.by}` : t('自定义应用')}</span>
           </div>
-          <button className="icon-btn" onClick={onClose}>✕</button>
+          <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
         </div>
         <div className="m-sheet-body">
           {app && <div className="m-status">
@@ -272,7 +273,7 @@ function ConnectForm({ item, busy, rekey, values, setValues, onLogin, onSubmit }
   return (
     <form className="m-connect" onSubmit={e => { e.preventDefault(); ready && (oauth ? onLogin(values) : onSubmit(values)) }}>
       {item.steps.length > 0 && <ol className="m-steps">{item.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>}
-      {item.link && <a className="btn m-link" href={item.link} target="_blank" rel="noreferrer">{item.link_label || t('打开 {title} 设置', { title: item.title })} ↗</a>}
+      {item.link && <a className="btn m-link" href={item.link} target="_blank" rel="noreferrer">{item.link_label || t('打开 {title} 设置', { title: item.title })}<Icon name="external" size={14} className="trail" /></a>}
       {item.copy && <CopyBox label={item.copy.label} text={item.copy.text} rows={8} />}
       {item.client && <Callback />}
       {item.fields.map((f, i) => (
@@ -390,7 +391,7 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
   }
   return (
     <div className="app-editor">
-      <button className="ghost-btn back" onClick={onDone}>← {t('返回应用市场')}</button>
+      <button className="ghost-btn back" onClick={onDone}><Icon name="arrow-left" size={14} className="lead" />{t('返回应用市场')}</button>
       <h3>{isNew ? t('添加自定义应用') : `@${app.name}`}</h3>
       <p className="muted small">{t('应用就是 MCP server。远程的填地址，本机的填启动命令。')}{app?.status && <><br />{t('状态：{status}', { status: app.status })}</>}</p>
       <label className="field">{t('名字（聊天里用 @{name} 指定）', { name: name || tc('placeholder', '名字') })}
@@ -423,9 +424,9 @@ function CustomEditor({ app, onDone }: { app?: App; onDone: () => void }) {
             <div className="env-row" key={i}>
               <input value={k} disabled={locked} placeholder={t('变量名')} onChange={e => setEnv(env.map((x, j) => j === i ? [e.target.value, x[1]] : x))} />
               <input value={v} disabled={locked} placeholder={t('值')} onChange={e => setEnv(env.map((x, j) => j === i ? [x[0], e.target.value] : x))} />
-              {!locked && <button className="icon-btn" onClick={() => setEnv(env.filter((_, j) => j !== i))}>✕</button>}
+              {!locked && <button className="icon-btn" onClick={() => setEnv(env.filter((_, j) => j !== i))} title={t('删除')} aria-label={t('删除')}><Icon name="x" size={16} /></button>}
             </div>))}
-          {!locked && <button className="btn small-btn" onClick={() => setEnv([...env, ['', '']])}>+ {t('添加变量')}</button>}
+          {!locked && <button className="btn small-btn" onClick={() => setEnv([...env, ['', '']])}><Icon name="plus" size={16} className="lead" />{t('添加变量')}</button>}
         </div>
       </>}
       {err && <div className="error-line">{err}</div>}

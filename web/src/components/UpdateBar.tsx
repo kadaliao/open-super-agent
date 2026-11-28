@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { t } from '../i18n'
+import { Icon } from '../icons'
 import { desktop } from '../desktop'
 import { reloadForUpdate, useStore } from '../store'
 
@@ -15,7 +16,7 @@ export default function UpdateBar() {
     <div className="update-bar" role="status">
       <span className="update-text">{app ? t('新版本 {version} 已经装好', { version: app }) : t('有新版本了')}</span>
       <button className="btn primary" onClick={() => app ? desktop?.update?.restart() : reloadForUpdate()}>{app ? t('重启更新') : t('更新')}</button>
-      <button className="update-x" aria-label={t('稍后')} title={t('稍后')} onClick={() => setDismissed(key)}>×</button>
+      <button className="update-x" aria-label={t('稍后')} title={t('稍后')} onClick={() => setDismissed(key)}><Icon name="x" size={16} /></button>
     </div>
   )
 }

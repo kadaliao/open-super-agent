@@ -166,7 +166,7 @@ function Tiles({ s }: { s: Stats }) {
     if (!p || before === undefined || before === 0 || now === before) return null
     const r = (now - before) / before
     const up = r > 0
-    return <span className={'ob-delta' + (upIsBad ? (up ? ' bad' : ' good') : '')}>{up ? '↑' : '↓'} {pct(Math.abs(r))} {PREV[s.range]}</span>
+    return <span className={'ob-delta' + (upIsBad ? (up ? ' bad' : ' good') : '')}><Icon name={up ? 'arrow-up' : 'arrow-down'} size={14} />{pct(Math.abs(r))} {PREV[s.range]}</span>
   }
   const problems = k.errors + k.failed + k.interrupted + (k.tool_errors || 0)
   return (

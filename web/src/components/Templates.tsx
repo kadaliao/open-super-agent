@@ -4,6 +4,7 @@ import type { Avatar, Bot } from '../types'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { t, tn } from '../i18n'
+import { Icon, Logo } from '../icons'
 import { isEnter } from '../keys'
 
 // Bot 模板：新建 Bot 时从模板装；Bot 详情里导出、分享；/template/<token> 是分享出去的公开页
@@ -37,7 +38,7 @@ export function TemplatePicker({ onPreview, onBlank, compact }: { onPreview: (p:
     <div className="tpl-pick">
       <div className="tpl-grid">
         {!compact && <button className="tpl-card blank" onClick={onBlank}>
-          <div className="tpl-plus">＋</div><b>{t('空白 Bot')}</b><div className="muted small">{t('起个名字，在对话里交代它做什么')}</div>
+          <div className="tpl-plus"><Icon name="plus" size={18} /></div><b>{t('空白 Bot')}</b><div className="muted small">{t('起个名字，在对话里交代它做什么')}</div>
         </button>}
         {(list || []).map(tp => (
           <button key={tp.id} className="tpl-card" disabled={!!busy} onClick={() => open({ id: tp.id }, tp.id)}>
@@ -67,7 +68,7 @@ function Contents({ p, full = false }: { p: TemplatePreview; full?: boolean }) {
   const [skill, setSkill] = useState<string | null>(null)
   return <>
     {p.instructions && !full && <div className="tpl-sec">
-      <button className="ghost-btn" onClick={() => setShowInstr(!showInstr)}>{t('人设和工作方式')} {showInstr ? '▾' : '▸'}</button>
+      <button className="ghost-btn" onClick={() => setShowInstr(!showInstr)}>{t('人设和工作方式')}<Icon name={showInstr ? 'chevron' : 'right'} size={14} className="trail" /></button>
       {showInstr && <pre className="tpl-pre">{p.instructions}</pre>}
     </div>}
     {p.apps.length > 0 && <div className="tpl-sec"><b className="small">{t('要用的应用')}</b>
@@ -77,7 +78,7 @@ function Contents({ p, full = false }: { p: TemplatePreview; full?: boolean }) {
     </div>}
     {p.skills.length > 0 && <div className="tpl-sec"><b className="small">{t('技能')}</b>
       {p.skills.map(s => <div key={s.name} className="tpl-item">
-        <button className="ghost-btn" onClick={() => setSkill(skill === s.name ? null : s.name)}>/{s.name} {skill === s.name ? '▾' : '▸'}</button>
+        <button className="ghost-btn" onClick={() => setSkill(skill === s.name ? null : s.name)}>/{s.name}<Icon name={skill === s.name ? 'chevron' : 'right'} size={14} className="trail" /></button>
         <span className="muted small">{s.description}</span>
         {skill === s.name && <pre className="tpl-pre">{s.body}</pre>}
       </div>)}
@@ -151,7 +152,7 @@ export function SharedTemplate({ token }: { token: string }) {
   const [copied, setCopied] = useState(false)
   useEffect(() => { api(`/api/shared/templates/${token}`).then(x => { setP(x); document.title = t('Bot 模板：{name}', { name: x.name }) }).catch((e: any) => setErr(e.message)) }, [token])
   if (err) return <div className="shared"><div className="shared-empty">{err}</div></div>
-  if (!p) return <div className="loading">◆</div>
+  if (!p) return <div className="loading"><Logo size={28} /></div>
   const copy = async () => { await navigator.clipboard.writeText(location.href); setCopied(true); setTimeout(() => setCopied(false), 1500) }
   return (
     <div className="shared">

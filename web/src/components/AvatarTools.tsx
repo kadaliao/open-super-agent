@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../store'
 import { t } from '../i18n'
+import { Icon } from '../icons'
 import type { Avatar } from '../types'
 
 // 能画图的模型（GET /api/avatars/models）。price：每张多少钱（config.yaml 的 pricing.images），不知道是 null；
@@ -59,7 +60,7 @@ export function AvatarImageTools({ prompt, onImage }: { prompt: string; onImage:
     <div className="avatar-tools">
       <div className="avatar-tool-row">
         <button className="btn" disabled={uploading} onClick={() => file.current?.click()}>{uploading ? t('上传中…') : t('上传图片')}</button>
-        <button className={'btn' + (ai ? ' on' : '')} onClick={() => setAi(!ai)}>✦ {t('AI 生成')}</button>
+        <button className={'btn' + (ai ? ' on' : '')} onClick={() => setAi(!ai)}><Icon name="sparkles" size={16} className="lead" />{t('AI 生成')}</button>
         <input ref={file} type="file" accept="image/*" hidden onChange={e => { pick(e.target.files?.[0]); e.target.value = '' }} />
       </div>
       {ai && <AiAvatar prompt={prompt} onImage={onImage} />}

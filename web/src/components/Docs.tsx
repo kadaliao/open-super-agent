@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HistoryPanel, VersionView, type Version } from './DocHistory'
 import { openLibrary } from '../store'
 import { lang, locale, t } from '../i18n'
+import { Icon } from '../icons'
 import { ask } from './Dialog'
 
 const client = createClient({ baseUrl: '', locale: lang })
@@ -74,11 +75,11 @@ export function DocList() {
   return (
     <div className="lib-list">
       <p className="lib-intro muted small">{t('文档是你和 Bot 一起写的：直接在里面编辑，选中一段写评论、@ 某个 Bot，它就会来改、来回复。可以分享给别人看。')}</p>
-      <div className="doc-new"><button className="btn primary" onClick={create}>+ {t('新建文档')}</button></div>
+      <div className="doc-new"><button className="btn primary" onClick={create}><Icon name="plus" size={16} className="lead" />{t('新建文档')}</button></div>
       {!rows.length && <div className="lib-empty"><p className="muted small">{t('还没有文档。新建一篇，或者让 Bot 把结果写成文档。')}</p></div>}
       {rows.map(({ p, depth }) => (
         <button key={p.id} className="lib-row" style={{ paddingLeft: 10 + depth * 18 }} onClick={() => openLibrary(p.id)}>
-          <span className="lib-icon">{p.icon || (p.kind === 'database' ? '▦' : '▤')}</span>
+          <span className="lib-icon">{p.icon || <Icon name={p.kind === 'database' ? 'table' : 'file-text'} size={16} />}</span>
           <span className="lib-main">
             <b>{p.title || t('无标题')}</b>
             <span className="lib-meta">{when(p.updated_at)}</span>
@@ -130,7 +131,7 @@ export function DocView({ id }: { id: string }) {
   return (
     <OadProvider client={client}>
       <header className="chat-head page-head">
-        <button className="ghost-btn back" onClick={() => openLibrary()}>← {t('资料库')}</button>
+        <button className="ghost-btn back" onClick={() => openLibrary()}><Icon name="arrow-left" size={14} className="lead" />{t('资料库')}</button>
         <span className="head-name page-title">{page ? page.title || t('无标题') : ''}</span>
         <span className="grow" />
         {page && <div className="page-actions">

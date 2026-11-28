@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, loadSkills, openApps, setTeachDraft, showTask, useStore } from '../store'
 import type { Avatar, Bot, MarketSkill, Routine, RoutineRun, Skill, SkillDraft, Trigger } from '../types'
 import { lang, locale, t, tc, tn } from '../i18n'
+import { Icon, Logo } from '../icons'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { ask } from './Dialog'
@@ -68,7 +69,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
           <button className="btn" disabled={!!teach} title={t('在电脑上做一遍，Bot 整理成技能')} onClick={() => setTeaching(!teaching)}>{t('演示一遍')}</button>
           <button className="btn" title={t('随 open-super-agent 发布的现成技能')} onClick={() => { setMarket(!market); setImporting(false) }}>{t('技能市场')}</button>
           <button className="btn" title={t('从文件或分享链接装一个技能')} onClick={() => { setImporting(!importing); setMarket(false) }}>{t('导入')}</button>
-          <button className="btn" onClick={() => setEdit({})}>＋ {t('新建')}</button>
+          <button className="btn" onClick={() => setEdit({})}><Icon name="plus" size={16} className="lead" />{t('新建')}</button>
         </div>
       </div>
       {teaching && (
@@ -84,7 +85,7 @@ export function SkillsPanel({ bot }: { bot: Bot }) {
       {importing && <ImportSkill bot={bot} onDraft={d => { setImporting(false); setEdit({ name: d.name, description: d.description, body: d.body, source: 'import', draft: d }) }}
         onCancel={() => setImporting(false)} />}
       {market && <SkillMarket bot={bot} onClose={() => setMarket(false)} />}
-      {teach && <div className="muted small">● {t('正在录制演示，在右栏“电脑”里操作，做完点“完成”。')}</div>}
+      {teach && <div className="muted small"><Icon name="circle-small" size={14} className="lead solid" />{t('正在录制演示，在右栏“电脑”里操作，做完点“完成”。')}</div>}
       <p className="muted small">{t('在对话里输入 /名字 调用。也可以让 {name} “把刚才的做法存成技能”，或者点“演示一遍”做给它看。', { name: bot.name })}</p>
       {!skills ? <div className="muted">{t('加载中…')}</div> : skills.length ? skills.map(k => (
         <button key={k.id} className="list-item" onClick={() => setEdit({ ...k, shared: k.bot_id === null })}>
@@ -168,7 +169,7 @@ function SkillMarket({ bot, onClose }: { bot: Bot; onClose: () => void }) {
       {!list ? <div className="muted small">{t('加载中…')}</div> : list.map(m => (
         <div key={m.id} className="tpl-item skill-market-item">
           <div className="section-head">
-            <button className="ghost-btn" onClick={() => setOpen(open === m.id ? null : m.id)}><b>/{m.name}</b> {open === m.id ? '▾' : '▸'}</button>
+            <button className="ghost-btn" onClick={() => setOpen(open === m.id ? null : m.id)}><b>/{m.name}</b><Icon name={open === m.id ? 'chevron' : 'right'} size={14} className="trail" /></button>
             <button className="btn" disabled={!!busy} onClick={() => install(m)}>{busy === m.id ? t('安装中…') : m.installed ? t('重新安装') : t('安装')}</button>
           </div>
           <div className="muted small">{m.description}</div>
@@ -188,9 +189,9 @@ function SkillFiles({ files, onRemove }: { files: Record<string, string>; onRemo
   return (
     <div className="tpl-sec"><b className="small">{t('带的文件（{n} 个）', { n: paths.length })}</b>
       {paths.map(p => <div key={p} className="tpl-item">
-        <button className="ghost-btn" onClick={() => setOpen(open === p ? null : p)}><code>{p}</code> {open === p ? '▾' : '▸'}</button>
+        <button className="ghost-btn" onClick={() => setOpen(open === p ? null : p)}><code>{p}</code><Icon name={open === p ? 'chevron' : 'right'} size={14} className="trail" /></button>
         <span className="muted small">{t('{n} 个字', { n: files[p].length })}</span>
-        {onRemove && <button className="ghost-btn" title={t('不带这个文件')} onClick={() => onRemove(p)}>✕</button>}
+        {onRemove && <button className="ghost-btn" title={t('不带这个文件')} aria-label={t('不带这个文件')} onClick={() => onRemove(p)}><Icon name="x" size={14} /></button>}
         {open === p && <pre className="tpl-pre">{files[p]}</pre>}
       </div>)}
       <p className="muted small">{t('Bot 用 use_skill 取这些文件；脚本在电脑的工作文件夹里运行。')}</p>
@@ -253,13 +254,13 @@ function SkillEditor({ bot, skill: initial, steps, onDone }: { bot: Bot; skill: 
         {draft.exists && name.trim() === draft.name && <p className="small warn">{t('已经有 /{name} 了，保存会替换掉原来的。想留着原来的就改个名字。', { name })}</p>}
         {draft.apps.length > 0 && <p className="small">{t('用到的应用：')}{draft.apps.map(a => <span key={a.name} className={'tag' + (a.connected ? '' : ' warn')}>
           {a.connected ? a.title : a.in_market ? t('{title}（还没连接）', { title: a.title }) : t('{title}（应用市场里没有）', { title: a.title })}</span>)}
-          {draft.apps.some(a => !a.connected && a.in_market) && <> <button className="ghost-btn" onClick={openApps}>{t('去连接')} →</button></>}</p>}
+          {draft.apps.some(a => !a.connected && a.in_market) && <> <button className="ghost-btn" onClick={openApps}>{t('去连接')}<Icon name="arrow-right" size={14} className="trail" /></button></>}</p>}
         {draft.warning && <p className="small warn">{draft.warning}</p>}
         {draft.skipped.length > 0 && <p className="small">{t('这些不是文字文件，没有导入：')}{draft.skipped.map(p => <code key={p} className="tag">{p}</code>)}</p>}
         {Object.keys(draft.files).length > 0 && <p className="small">{t('带了脚本的技能会让 {name} 在电脑里运行它们，先点开下面的文件看一遍。', { name: bot.name })}</p>}
       </div>}
       {steps && steps.length > 0 && <>
-        <button className="ghost-btn" onClick={() => setShowSteps(!showSteps)}>{t('录到的操作（{n} 步）', { n: steps.length })}{showSteps ? '▾' : '▸'}</button>
+        <button className="ghost-btn" onClick={() => setShowSteps(!showSteps)}>{t('录到的操作（{n} 步）', { n: steps.length })}<Icon name={showSteps ? 'chevron' : 'right'} size={14} className="trail" /></button>
         {showSteps && <pre className="teach-steps">{steps.join('\n')}</pre>}
       </>}
       <label className="field">{t('名字（/ 后面的部分）')}<input value={name} maxLength={40} placeholder={t('例如：日报')} onChange={e => setName(e.target.value)} /></label>
@@ -285,7 +286,7 @@ export function SharedSkill({ token }: { token: string }) {
   const [copied, setCopied] = useState(false)
   useEffect(() => { api(`/api/shared/skills/${token}`).then(x => { setS(x); document.title = t('技能 /{name}', { name: x.name }) }).catch((e: any) => setErr(e.message)) }, [token])
   if (err) return <div className="shared"><div className="shared-empty">{err}</div></div>
-  if (!s) return <div className="loading">◆</div>
+  if (!s) return <div className="loading"><Logo size={28} /></div>
   const copy = async () => { await navigator.clipboard.writeText(location.href); setCopied(true); setTimeout(() => setCopied(false), 1500) }
   return (
     <div className="shared">
@@ -333,7 +334,7 @@ export function RoutinesPanel({ bot }: { bot: Bot }) {
   if (edit) return <RoutineEditor bot={bot} routine={edit} onDone={() => { setEdit(null); load() }} />
   return (
     <div>
-      <div className="section-head"><h4>{t('定时任务')}</h4><button className="btn" onClick={() => setEdit({})}>＋ {t('新建')}</button></div>
+      <div className="section-head"><h4>{t('定时任务')}</h4><button className="btn" onClick={() => setEdit({})}><Icon name="plus" size={16} className="lead" />{t('新建')}</button></div>
       <p className="muted small">{t('到点时，{name} 会在后台做一次，结果发到对话里。也可以直接在对话里说“每天 9 点帮我……”“明天下午 3 点提醒我……”。某件事发生时才做的，放在“事件”里。', { name: bot.name })}</p>
       {err && <div className="error-line">{err}</div>}
       {!list ? <div className="muted">{t('加载中…')}</div> : list.length ? list.map(r => (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, loadSkills, useStore } from '../store'
 import type { Bot, EventSource, EventTrigger, Routine, Scenario, SourceField } from '../types'
 import { t } from '../i18n'
+import { Icon } from '../icons'
 import { ask } from './Dialog'
 import { Runs, STATUS, describe, when } from './Routines'
 
@@ -52,7 +53,7 @@ export function EventsPanel({ bot }: { bot: Bot }) {
   if (edit) return <EventEditor bot={bot} routine={edit} sources={sources} onDone={() => { setEdit(null); load() }} />
   return (
     <div>
-      <div className="section-head"><h4>{t('事件')}</h4><button className="btn" onClick={() => setEdit({})}>＋ {t('新建')}</button></div>
+      <div className="section-head"><h4>{t('事件')}</h4><button className="btn" onClick={() => setEdit({})}><Icon name="plus" size={16} className="lead" />{t('新建')}</button></div>
       <p className="muted small">{t('某件事发生时（收到 webhook、订阅源有新文章、网页变了、收到邮件、价格到了……），{name} 会在后台处理一次，结果发到对话里。也可以直接在对话里说“这个网页有变化就告诉我”。', { name: bot.name })}</p>
       {err && <div className="error-line">{err}</div>}
       {!list ? <div className="muted">{t('加载中…')}</div> : list.length ? list.map(r => {
@@ -60,7 +61,7 @@ export function EventsPanel({ bot }: { bot: Bot }) {
         return (
           <div key={r.id} className={'routine' + (r.enabled ? '' : ' off')}>
             <div className="routine-head" onClick={() => setOpen(open === r.id ? null : r.id)}>
-              <b><span className="ev-icon">{s?.icon || '⚡'}</span>{r.name}</b>
+              <b><span className="ev-icon">{s?.icon || <Icon name="zap" size={14} />}</span>{r.name}</b>
               <span className="muted small">{!r.enabled ? t('已暂停') : r.running ? t('运行中') : ''}</span>
             </div>
             <div className="muted small">{describe(r.trigger, r.describe)}{r.skill && <> · {t('技能 /{name}', { name: r.skill })}</>}</div>
@@ -123,7 +124,7 @@ function Picker({ sources, onPick, onCancel }: { sources: EventSource[]; onPick:
           return (
             <button key={p.source.id + (p.scenario?.title || '')} className={'ev-card' + (p.scenario ? '' : ' blank')} disabled={!!off}
               title={off || undefined} onClick={() => onPick(p)}>
-              <span className="ev-card-icon">{p.source.icon || '⚡'}</span>
+              <span className="ev-card-icon">{p.source.icon || <Icon name="zap" size={18} />}</span>
               <b>{p.scenario?.title || t('自己设置：{title}', { title: p.source.title })}</b>
               <span className="muted small">{off || p.scenario?.description || p.source.description}</span>
               {p.scenario && <span className="tag">{p.source.title}</span>}
@@ -227,7 +228,7 @@ function EventEditor({ bot, routine, sources, onDone }: { bot: Bot; routine: Par
     <div className="ev-form">
       <h4>{cur.id ? t('编辑事件') : t('新建事件')}</h4>
       <div className="ev-src">
-        <span className="ev-card-icon">{src.icon || '⚡'}</span>
+        <span className="ev-card-icon">{src.icon || <Icon name="zap" size={18} />}</span>
         <div><b>{src.title}</b><div className="muted small">{src.description}</div></div>
         {!cur.id && <button className="link-btn" onClick={() => { setSrc(null); setErr('') }}>{t('换一个')}</button>}
       </div>
@@ -252,7 +253,7 @@ function EventEditor({ bot, routine, sources, onDone }: { bot: Bot; routine: Par
           {(skills || []).map(k => <option key={k.id} value={k.name}>/{k.name}</option>)}
         </select>
       </label>
-      <button className="ghost-btn" onClick={() => setShowFilter(!showFilter)}>{t('过滤（可选）')}{showFilter ? '▾' : '▸'}</button>
+      <button className="ghost-btn" onClick={() => setShowFilter(!showFilter)}>{t('过滤（可选）')}<Icon name={showFilter ? 'chevron' : 'right'} size={14} className="trail" /></button>
       {showFilter && <>
         <p className="muted small">{t('先按关键词逐条筛，剩下的再让模型判断要不要处理。被筛掉的不会派任务，记录里看得到。')}</p>
         <label className="field">{t('至少包含其中一个词')}<input value={include} placeholder="issue, bug" onChange={e => setInclude(e.target.value)} /></label>

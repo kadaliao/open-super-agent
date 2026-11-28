@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, openLibrary, useStore } from '../store'
 import type { Page } from '../types'
 import { t } from '../i18n'
+import { Icon } from '../icons'
 import { attachApplet } from '../applet'
 import { attachMcpApp, type AppView } from '../mcpapp'
 
@@ -43,7 +44,7 @@ export function PageEmbed({ href, fallback }: { href: string; fallback: ReactNod
   if (p.app) return (
     <div className="applet-card">
       <div className="applet-head">
-        <span className="applet-title">▣ {p.title}</span>
+        <span className="applet-title"><Icon name="app-window" size={14} className="lead" />{p.title}</span>
         <span className="grow" />
         {bot && <span className="muted small">{bot.name}</span>}
         <button className="ghost-btn" onClick={open}>{t('打开')}</button>
@@ -53,7 +54,7 @@ export function PageEmbed({ href, fallback }: { href: string; fallback: ReactNod
   )
   return (
     <button className="page-card" onClick={open}>
-      <span className="lib-icon">{p.format === 'html' ? '◧' : '▤'}</span>
+      <span className="lib-icon"><Icon name={p.format === 'html' ? 'file-code' : 'file-text'} size={16} /></span>
       <span className="lib-main"><b>{p.title}</b><span className="lib-meta">{t('资料库里的页面')}{bot ? ` · ${bot.name}` : ''}</span></span>
     </button>
   )
@@ -71,7 +72,7 @@ export function McpAppView({ view, botId }: { view: AppView; botId: number | nul
   return (
     <div className="applet-card">
       <div className="applet-head">
-        <span className="applet-title">▣ @{view.app}</span>
+        <span className="applet-title"><Icon name="app-window" size={14} className="lead" />@{view.app}</span>
         <span className="muted small">{view.tool}</span>
       </div>
       <iframe ref={ref} className="applet-frame" src={src} title={`@${view.app}`}

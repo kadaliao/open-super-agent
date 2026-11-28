@@ -138,7 +138,7 @@ function NeedPage({ id }: { id: number }) {
             <select value={bot?.id ?? ''} disabled={busy || archived}
               onChange={e => { const v = Number(e.target.value); run(() => patchNeed(id, { assignee_bot_id: v === primary?.id ? null : v })) }}>
               {!bot && <option value="">{t('已删除的 Bot')}</option>}
-              {bots.map(b => <option key={b.id} value={b.id}>{b.name}{b.is_primary ? ' ★' : ''}</option>)}
+              {bots.map(b => <option key={b.id} value={b.id}>{b.name}{b.is_primary ? ' · ' + t('主 Bot') : ''}</option>)}
             </select>
           </label>
           {n.progress && n.progress.total > 0 && <span className="bd-meta-item">{t('完成了')}<b>{t('{done}/{total} 项', { done: n.progress.done, total: n.progress.total })}</b></span>}
@@ -253,7 +253,7 @@ function Ask({ a, onGo }: { a: Approval; onGo: () => void }) {
         {text}
         {a.options && a.options.length > 0 && <span className="bd-opts">{a.options.map(o => <span key={o} className="chip">{o}</span>)}</span>}
       </span>
-      <span className="link-btn small">{t('去回答')} →</span>
+      <span className="link-btn small">{t('去回答')}<Icon name="arrow-right" size={14} className="trail" /></span>
     </button>
   )
 }
@@ -302,7 +302,7 @@ export function NewNeed({ projects, project, open, onClose, onCreated }: {
           </label>
           <label className="field">{t('交给谁')}
             <select value={who ?? ''} onChange={e => setWho(Number(e.target.value))}>
-              {bots.map(b => <option key={b.id} value={b.id}>{b.name}{b.is_primary ? ' ★' : ''}</option>)}
+              {bots.map(b => <option key={b.id} value={b.id}>{b.name}{b.is_primary ? ' · ' + t('主 Bot') : ''}</option>)}
             </select>
           </label>
         </div>

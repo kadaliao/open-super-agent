@@ -296,7 +296,7 @@ function NeedCard({ n, bots, drag, dragging, onOpen, onDragStart, onDragEnd }: {
         {n.latest && <span className="bd-latest">{n.latest}</span>}
       </div>}
       {n.blocked_by.length > 0 && <div className="bd-blocked">
-        {n.blocked_by.map(b => <span key={b.id} className="bd-wait-on" title={b.title}>⏳ {t('等 {who}', { who: b.key || b.title })}</span>)}
+        {n.blocked_by.map(b => <span key={b.id} className="bd-wait-on" title={b.title}><Icon name="hourglass" size={14} className="lead" />{t('等 {who}', { who: b.key || b.title })}</span>)}
       </div>}
       <div className="bd-card-foot">
         {bot ? <span className="bd-who" title={t('交给 {name}', { name: bot.name })}><BotAvatar avatar={bot.avatar} size={18} busy={running(n)} /><span>{bot.name}</span></span> : <span />}

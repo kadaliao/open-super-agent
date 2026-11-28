@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { api, openChat, refreshLists, useStore } from '../store'
 import type { Bot, Chat } from '../types'
 import { lang, t, tc } from '../i18n'
+import { Icon } from '../icons'
 import BotAvatar from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { TasksPanel } from './Tasks'
@@ -22,7 +23,7 @@ function BotPicker({ bots, picked, onChange }: { bots: Bot[]; picked: number[]; 
         return (
           <button key={b.id} className={on ? 'on' : ''} disabled={!on && picked.length >= MAX}
             onClick={() => onChange(on ? picked.filter(x => x !== b.id) : [...picked, b.id])}>
-            <BotAvatar avatar={b.avatar} size={26} /><span>{b.name}</span>{on && <span className="check-mark">✓</span>}
+            <BotAvatar avatar={b.avatar} size={26} /><span>{b.name}</span>{on && <span className="check-mark"><Icon name="check" size={16} /></span>}
           </button>
         )
       })}
@@ -83,7 +84,7 @@ export function GroupPanel({ chat, onClose, tab, setTab }: { chat: Chat; onClose
           <button className={cur === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>{tc('tab', '任务')}</button>
           <button className={cur === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>{t('电脑')}</button>
         </div>
-        <button className="icon-btn" onClick={onClose}>✕</button>
+        <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
       </div>
       {cur === 'tasks' ? <TasksPanel key={chat.id} chatId={chat.id} /> : <div className="panel-body">
         {cur === 'computer' ? <ComputerPanel key={chat.id} botId={chat.lead ?? chat.bot_ids[0]} /> : <GroupSettings key={chat.id} chat={chat} onClose={onClose} />}
@@ -122,7 +123,7 @@ function GroupSettings({ chat, onClose }: { chat: Chat; onClose: () => void }) {
       <label className="field">{t('群名')}<input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}
         onBlur={() => title !== chat.title && patch({ title })} onKeyDown={e => isEnter(e) && (e.target as HTMLInputElement).blur()} /></label>
       <div className="section-head"><h4>{t('成员（{n}/{max}）', { n: members.length, max: MAX })}</h4>
-        {members.length < MAX && others.length > 0 && <button className="btn" onClick={() => setAdding(!adding)}>{adding ? tc('add', '收起') : '＋ ' + t('添加')}</button>}
+        {members.length < MAX && others.length > 0 && <button className="btn" onClick={() => setAdding(!adding)}>{adding ? tc('add', '收起') : <><Icon name="plus" size={16} className="lead" />{t('添加')}</>}</button>}
       </div>
       {adding && <div className="bot-picker compact">
         {others.map(b => <button key={b.id} onClick={() => { patch({ bot_ids: [...chat.bot_ids, b.id] }); setAdding(false) }}>

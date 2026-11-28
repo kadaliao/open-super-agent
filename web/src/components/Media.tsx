@@ -133,15 +133,20 @@ export function ImageViewer() {
 // ---------- 附件 ----------
 const EXT_ICON: [RegExp, string][] = [
   [/\.(pdf)$/i, 'PDF'], [/\.(docx?|odt|rtf|pages)$/i, 'DOC'], [/\.(xlsx?|csv|tsv|numbers|ods)$/i, 'XLS'],
-  [/\.(pptx?|key|odp)$/i, 'PPT'], [/\.(zip|rar|7z|tar|gz|tgz|bz2|xz)$/i, 'ZIP'], [/\.(mp3|m4a|wav|ogg|aac|flac)$/i, '♪'],
-  [/\.(mp4|webm|mov|m4v|mkv|avi)$/i, '▶'], [/\.(png|jpe?g|gif|webp|svg|heic|bmp)$/i, 'IMG'], [/\.(md|txt|log|json|ya?ml|html?)$/i, 'TXT'],
+  [/\.(pptx?|key|odp)$/i, 'PPT'], [/\.(zip|rar|7z|tar|gz|tgz|bz2|xz)$/i, 'ZIP'], [/\.(mp3|m4a|wav|ogg|aac|flac)$/i, 'music'],
+  [/\.(mp4|webm|mov|m4v|mkv|avi)$/i, 'video'], [/\.(png|jpe?g|gif|webp|svg|heic|bmp)$/i, 'IMG'], [/\.(md|txt|log|json|ya?ml|html?)$/i, 'TXT'],
 ]
 export const extLabel = (name: string) => EXT_ICON.find(([re]) => re.test(name))?.[1] || (name.split('.').pop() || '').slice(0, 4).toUpperCase() || 'FILE'
+// 文件卡片左边那块：大多是扩展名的缩写，音频、视频是图标（extLabel 给的是小写的图标名）
+export const ExtMark = ({ name }: { name: string }) => {
+  const l = extLabel(name)
+  return l === 'music' || l === 'video' ? <Icon name={l} size={16} /> : <>{l}</>
+}
 
 // 文件卡片：点了打开或下载（见 FileLink），浏览器能直接看的旁边另有下载按钮
 export function FileCard({ a }: { a: Attachment }) {
   const body = <>
-    <span className="file-ext">{extLabel(a.name)}</span>
+    <span className="file-ext"><ExtMark name={a.name} /></span>
     <span className="file-main"><span className="file-name" title={a.path || a.name}>{a.name}</span>
       <span className="file-sub">{a.size != null ? fmtSize(a.size) : t('电脑里的文件')}</span></span>
   </>

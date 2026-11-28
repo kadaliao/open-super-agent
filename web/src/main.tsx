@@ -6,6 +6,7 @@ import { SharedTemplate } from './components/Templates'
 import { handleExternalLinks } from './desktop'
 import { initTheme } from './theme'
 import './styles.css'
+import './icons.css'
 import 'highlight.js/styles/github-dark.css'
 
 // /s/<token> 是分享出去的页面，/skill/<token> 是技能，/template/<token> 是 Bot 模板：只显示它本身，不加载应用

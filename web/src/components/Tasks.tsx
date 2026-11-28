@@ -8,6 +8,7 @@ import Markdown from './Markdown'
 import { DoubtCard, QuestionCard } from './Chat'
 import { notice } from './Dialog'
 import NeedTag from './NeedTag'
+import { Icon } from '../icons'
 
 // 右栏“任务”：Bot 做过的后台任务。正在做的实时更新，做完的点开回看每一步
 
@@ -102,7 +103,7 @@ function TaskList({ botId, chatId }: { botId?: number; chatId?: number }) {
                 <span className="task-row-meta">
                   {[hm(tk.ts), taskLabel(tk), (tk.round || 1) > 1 ? t('第 {n} 轮', { n: tk.round! }) : '', duration(tk, now), tk.steps ? t('{n} 步', { n: tk.steps }) : '', tk.mode === 'heavy' ? 'Heavy' : ''].filter(Boolean).join(' · ')}
                 </span>
-                {running && tk.last_action && <span className="task-action">→ {tk.last_action}</span>}
+                {running && tk.last_action && <span className="task-action"><Icon name="arrow-right" size={14} className="lead" />{tk.last_action}</span>}
                 {tk.need && <span className="task-row-need"><NeedTag need={tk.need} /></span>}
               </span>
             </button>
@@ -172,9 +173,9 @@ function TaskDetail({ id, group }: { id: number; group: boolean }) {
     else if (matchMedia('(max-width: 760px)').matches) window.dispatchEvent(new CustomEvent('osa-close-panel'))
     openNeed(backTo.need)
   }
-  const all = <button className="link-btn" onClick={() => showTask(null)}>{backTo ? '' : '← '}{t('所有任务')}</button>
+  const all = <button className="link-btn" onClick={() => showTask(null)}>{!backTo && <Icon name="arrow-left" size={14} className="lead" />}{t('所有任务')}</button>
   const back = backTo
-    ? <span className="td-back"><button className="link-btn" onClick={toNeed}>← {t('回到卡片')}</button><span className="muted">·</span>{all}</span>
+    ? <span className="td-back"><button className="link-btn" onClick={toNeed}><Icon name="arrow-left" size={14} className="lead" />{t('回到卡片')}</button><span className="muted">·</span>{all}</span>
     : all
   if (err) return <div className="panel-body">{back}<div className="error-line">{err}</div></div>
   if (!tk || !steps) return <div className="panel-body">{back}<div className="muted small">{t('加载中…')}</div></div>
@@ -265,7 +266,7 @@ function TaskInput({ tk, asking, onSent }: { tk: TaskInfo; asking: boolean; onSe
         <textarea ref={ref} rows={1} value={text} maxLength={8000} onChange={e => setText(e.target.value)}
           placeholder={asking ? t('直接回答它的问题') : t('给这个任务发一句话')} aria-label={t('给这个任务发一句话')}
           onKeyDown={e => { if (isEnter(e) && !e.shiftKey) { e.preventDefault(); submit() } }} />
-        <button className={'send' + (text.trim() && !sending ? ' on' : '')} onClick={submit} disabled={sending} title={t('发送（Enter）')} aria-label={t('发送')}>↑</button>
+        <button className={'send' + (text.trim() && !sending ? ' on' : '')} onClick={submit} disabled={sending} title={t('发送（Enter）')} aria-label={t('发送')}><Icon name="arrow-up" size={18} /></button>
       </div>
       <div className={'composer-hint' + (err ? ' bad' : '')}>{err || (asking ? t('这句话就是给它的回答') : ended ? t('它会带着这句话接着做，做完再出一条结果')
         : t('在它下一步之前交给它'))}</div>
@@ -284,7 +285,7 @@ function Goal({ text }: { text: string }) {
   )
 }
 
-const ICON: Record<string, string> = { done: '✓', error: '✕', rejected: '⊘', cancelled: '–', interrupted: '–' }
+const ICON: Record<string, string> = { done: 'check', error: 'x', rejected: 'ban', cancelled: 'minus', interrupted: 'minus' }
 
 function pretty(raw: string) {
   if (!raw || raw === '{}') return ''
@@ -317,13 +318,13 @@ function Step({ s, waiting }: { s: TaskStep; waiting: string }) {
   return (
     <div className={`step k-${s.kind} s-${s.status}${open ? ' open' : ''}`}>
       <button className="step-head" onClick={() => setOpen(!open)}>
-        <span className="step-icon">{live ? <span className="spin" /> : ICON[s.status] || '✓'}</span>
+        <span className="step-icon">{live ? <span className="spin" /> : <Icon name={ICON[s.status] || 'check'} size={14} />}</span>
         <span className={'step-title' + (live && s.kind === 'think' ? ' pulse' : '')}>{title}</span>
         {tag}
         {(waiting || s.status === 'waiting') && <span className="step-state">{waiting || t('等你确认')}</span>}
         {s.status === 'rejected' && <span className="step-state bad">{t('被拒绝')}</span>}
         <span className="step-dur">{dur}</span>
-        <span className="chev">›</span>
+        <span className="chev"><Icon name="right" size={14} /></span>
       </button>
       {open && (s.kind === 'think' ? <div className="step-body step-think">{s.body || '…'}</div>
         : s.kind === 'answer' ? <div className="step-body"><Markdown text={s.body} /></div>

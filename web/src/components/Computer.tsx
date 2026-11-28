@@ -52,7 +52,7 @@ function TypeBar({ botId }: { botId: number }) {
         onKeyDown={e => { if (isEnter(e) && text) { send({ text }); setText('') } }} />
       <button className="btn" disabled={!text} onClick={() => { send({ text }); setText('') }}>{t('发送')}</button>
       <button className="btn" onClick={() => send({ key: 'Return' })}>{t('回车')}</button>
-      <button className="btn" onClick={() => send({ key: 'BackSpace' })}>⌫</button>
+      <button className="btn" onClick={() => send({ key: 'BackSpace' })} title={t('退格')} aria-label={t('退格')}><Icon name="backspace" size={16} /></button>
     </div>
   )
 }
@@ -498,7 +498,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
         <span className="pc-name">{PC_NAMES[st.backend] || t('Bot 电脑')}</span>
         {!host && <span className="muted small">{STATE[st.state] || st.state}</span>}
         <span className="grow" />
-        {live && <button className="ghost-btn" onClick={() => setBig(true)} title={t('放大')}>⤢ {t('放大')}</button>}
+        {live && <button className="ghost-btn" onClick={() => setBig(true)} title={t('放大')}><Icon name="maximize" size={14} className="lead" />{t('放大')}</button>}
         {!settings?.security?.demo && <button className="ghost-btn" onClick={openPcSettings} title={t('在设置里换用哪台电脑')}>{t('换电脑')}</button>}
       </div>
       {live && <Users st={st} />}
@@ -540,7 +540,7 @@ export function ComputerPanel({ botId }: { botId: number }) {
               <span className="muted small">{'· ' + (human ? t('你正在操作') : t('Bot 控制中'))}</span><span className="grow" />
               {teach ? null : human ? <button className="btn primary" onClick={() => act('handback')}>{t('交还给 Bot')}</button>
                 : <button className="btn" onClick={() => act('takeover')}>{t('接手')}</button>}
-              <button className="icon-btn" onClick={() => setBig(false)}>✕</button>
+              <button className="icon-btn" onClick={() => setBig(false)} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
             </div>
             {teach && <TeachBar teach={teach} />}
             <Users st={st} />

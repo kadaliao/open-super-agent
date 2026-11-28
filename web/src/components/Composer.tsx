@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { loadSkills, send, useStore } from '../store'
 import type { Attachment, Bot } from '../types'
 import { locale, t, tc } from '../i18n'
+import { Icon } from '../icons'
 import { desktop } from '../desktop'
 import { shrinkImage, uploadMedia } from './Media'
 import { isEnter } from '../keys'
@@ -195,12 +196,12 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
             <div key={a.key} className={'c-att' + (a.preview ? ' img' : '') + (a.busy ? ' busy' : '')} title={a.path || a.name}>
               {a.preview ? <img src={a.preview} alt="" /> : <span className="c-att-name">{a.name}</span>}
               {a.busy && <span className="spin" />}
-              <button className="c-att-x" onClick={() => drop(a.key)} title={t('移除')} aria-label={t('移除')}>✕</button>
+              <button className="c-att-x" onClick={() => drop(a.key)} title={t('移除')} aria-label={t('移除')}><Icon name="x" size={14} /></button>
             </div>))}
         </div>
       )}
       <div className="composer">
-        <button className="attach" title={t('上传附件（存到电脑的 uploads 目录）')} onClick={() => fileInput.current?.click()}>＋</button>
+        <button className="attach" title={t('上传附件（存到电脑的 uploads 目录）')} onClick={() => fileInput.current?.click()}><Icon name="plus" size={18} /></button>
         <input ref={fileInput} type="file" multiple hidden onChange={e => { attach(e.target.files); e.target.value = '' }} />
         <textarea ref={ref} rows={1} value={text} placeholder={inThread ? t('回复…') : group ? t('发到群里，@ 指定 Bot') : t('给 {name} 发消息', { name: bot!.name })}
           onChange={e => setText(e.target.value)}
@@ -217,8 +218,8 @@ export default function Composer({ chatId, bot, members, busy, onSend, inThread 
             if (isEnter(e) && !e.shiftKey && !composing.current) { e.preventDefault(); submit() }
           }} />
         {Speech && <button className={'mic' + (listening ? ' on' : '')} onClick={toggleMic} title={listening ? t('停止语音输入') : t('语音输入')}
-          aria-label={t('语音输入')}>{listening ? '■' : '🎙'}</button>}
-        <button className={'send' + (ready ? ' on' : '')} onClick={submit} title={t('发送（Enter）')} aria-label={t('发送')}>↑</button>
+          aria-label={t('语音输入')}>{listening ? <Icon name="square" size={14} className="solid" /> : <Icon name="mic" size={18} />}</button>}
+        <button className={'send' + (ready ? ' on' : '')} onClick={submit} title={t('发送（Enter）')} aria-label={t('发送')}><Icon name="arrow-up" size={18} /></button>
       </div>
       {listening && <div className="composer-hint">{t('正在听…说完点 ■ 停止，确认文字后再发送')}</div>}
       {(uploading || upErr) && <div className={'composer-hint' + (upErr ? ' bad' : '')}>{upErr || t('正在上传 {name}…（第一次会先开机）', { name: uploading!.name })}</div>}

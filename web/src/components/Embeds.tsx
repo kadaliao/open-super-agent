@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '../store'
 import { lang, t } from '../i18n'
+import { Icon } from '../icons'
 import { isDark } from '../theme'
 
 // 链接卡片和嵌入（像 Notion、Slack）：YouTube、B 站显示封面，点了才加载播放器；X 的推文用官方的嵌入页；
@@ -134,7 +135,7 @@ function Player({ cover, src, title, tall, caption, href }: { cover?: string; sr
           : <button className="emb-cover" onClick={() => setPlay(true)} aria-label={t('播放')} title={t('播放')}>
               {/* 不带 Referer：B 站的图片有防盗链 */}
               {cover && <img src={cover} alt="" referrerPolicy="no-referrer" onError={hide} />}
-              <span className="emb-play">▶</span>
+              <span className="emb-play"><Icon name="play" size={18} className="solid" /></span>
             </button>}
       </div>
       <a className="emb-cap" href={href} target="_blank" rel="noreferrer">{caption}</a>

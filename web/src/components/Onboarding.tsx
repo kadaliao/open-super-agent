@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { api, openApps, openChat, refreshLists, setSettings, useStore } from '../store'
-import { Icon } from '../icons'
+import { Icon, Logo } from '../icons'
 import { lang, syncLang, t, tc, tn } from '../i18n'
 import { BRANDS } from '../brandIcons'
 import type { Bot, CatalogItem, Preset, Settings as S } from '../types'
@@ -41,7 +41,7 @@ export default function Onboarding({ onClose }: { onClose: () => void }) {
       <div className="modal onb">
         <ToastHost>
           <header className="onb-head">
-            <span className="onb-logo">◆</span>
+            <span className="onb-logo"><Logo size={18} /></span>
             <ol className="onb-steps">
               {STEPS.map((name, i) => (
                 <li key={name} className={i === step ? 'on' : i < step ? 'done' : ''}>

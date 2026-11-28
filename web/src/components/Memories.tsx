@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../store'
 import { lang, locale, t, tc } from '../i18n'
+import { Icon } from '../icons'
 import type { Bot, Memory, MemoryList } from '../types'
 import { useSearch } from './Library'
 import '../memories.css'
@@ -40,7 +41,7 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
   if (importing) return <ImportMemories bot={bot} onDone={() => { setImporting(false); load() }} />
   return (
     <div>
-      <div className="section-head"><h4>{t('记忆')}</h4><button className="btn" onClick={() => setAdding(true)}>＋ {t('添加')}</button></div>
+      <div className="section-head"><h4>{t('记忆')}</h4><button className="btn" onClick={() => setAdding(true)}><Icon name="plus" size={16} className="lead" />{t('添加')}</button></div>
       <p className="muted small">{t('{name} 每次对话都带着这些。在对话里说“记住……”也能添加；点一条可以修改。', { name: bot.name })}</p>
       {err && <div className="error-line">{err}</div>}
       <Consolidate onChange={load} />
@@ -57,13 +58,13 @@ export function MemoryPanel({ bot }: { bot: Bot }) {
           : <div className="muted small">{t('还没有。比如你对它做事方式的要求。')}</div>}
         {list.work.length > 0 && <>
           <button className="mem-group link-like" onClick={() => setShowWork(!showWork)}>
-            {t('最近做过的事')} <span className="muted small">{t('自动记录，{n} 条', { n: list.work.length })} {showWork ? '▾' : '▸'}</span>
+            {t('最近做过的事')} <span className="muted small">{t('自动记录，{n} 条', { n: list.work.length })}<Icon name={showWork ? 'chevron' : 'right'} size={14} className="trail" /></span>
           </button>
           {showWork && list.work.map(m => <MemoryItem key={m.id} m={m} bot={bot} onChange={load} />)}
         </>}
         {!!list.digest?.length && <>
           <button className="mem-group link-like" onClick={() => setShowDigest(!showDigest)}>
-            {t('每日摘要')} <span className="muted small">{t('整理时自动写，所有 Bot 共享，{n} 条', { n: list.digest.length })} {showDigest ? '▾' : '▸'}</span>
+            {t('每日摘要')} <span className="muted small">{t('整理时自动写，所有 Bot 共享，{n} 条', { n: list.digest.length })}<Icon name={showDigest ? 'chevron' : 'right'} size={14} className="trail" /></span>
           </button>
           {showDigest && list.digest.map(m => <DigestItem key={m.id} m={m} onChange={load} />)}
         </>}
@@ -129,7 +130,7 @@ function DigestItem({ m, onChange }: { m: Memory; onChange: () => void }) {
   return (
     <div className="mem-item static mem-digest" title={day(m.created)}>
       <span className="mem-text">{m.text}</span>
-      <button className="ghost-btn" title={t('删除')} onClick={del}>✕</button>
+      <button className="ghost-btn" title={t('删除')} aria-label={t('删除')} onClick={del}><Icon name="x" size={14} /></button>
     </div>
   )
 }
@@ -188,9 +189,9 @@ export function MemoryItem({ m, bot, onChange }: { m: Memory; bot?: Bot; onChang
           : m.until && !m.pinned ? <span className="tag">{t('到 {day}', { day: day(m.until - 1) })}</span> : null}
       </span>
       {m.kind === 'note' && <button className={`ghost-btn mem-pin${m.pinned ? ' on' : ''}`} title={m.pinned ? t('取消置顶') : t('置顶（不过期，整理时不动）')} onClick={pin}>
-        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M9.8 1.5 14.5 6.2l-1.4.6-2.4 2.4-.3 3.1-1.3 1.3-2.5-2.5-3.4 3.4-.7-.7 3.4-3.4L3.4 7.9l1.3-1.3 3.1-.3 2.4-2.4z" fill="currentColor" /></svg>
+        <Icon name="pin" size={14} className={m.pinned ? 'solid' : ''} />
       </button>}
-      <button className="ghost-btn" title={t('删除')} onClick={del}>✕</button>
+      <button className="ghost-btn" title={t('删除')} aria-label={t('删除')} onClick={del}><Icon name="x" size={14} /></button>
       {err && <div className="error-line">{err}</div>}
     </div>
   )

@@ -5,8 +5,8 @@ import { t } from '../i18n'
 import type { Chat } from '../types'
 import BotAvatar from './BotAvatar'
 import { GroupFace } from './Chat'
-import { Icon } from '../icons'
-import { plain } from '../plain'
+import { Icon, Logo } from '../icons'
+import { Preview, plain } from '../plain'
 import { BoardIcon } from './Board'
 import { useWaiting } from '../board'
 
@@ -68,14 +68,14 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
   // 预览显示最新的动静：讨论串里的新回复比主对话的最后一条还新时，显示那条回复
   const preview = (c: Chat) => {
     const th = news(c).sort((a, b) => (b.last || 0) - (a.last || 0))[0]
-    return th?.preview && (th.last || 0) >= c.updated ? '💬 ' + plain(th.preview) : plain(c.preview)
+    return th?.preview && (th.last || 0) >= c.updated ? <><Icon name="threads" size={14} /><Preview text={th.preview} /></> : plain(c.preview) && <Preview text={c.preview} />
   }
   const pins = chats.filter(c => c.pinned).sort((a, b) => a.pinned - b.pinned)
 
   return (
     <aside className="sidebar">
       <div className="side-top">
-        <span className="logo" title="Open Super Agent">◆</span>
+        <span className="logo" title="Open Super Agent"><Logo size={18} /></span>
         <div className="plus-wrap">
           <button className="icon-btn round" title={t('新建')} onClick={() => setMenu(!menu)}><Icon name="plus" size={18} /></button>
           {menu && (
@@ -91,10 +91,10 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
         {waiting > 0 && <span className="badge warn side-nav-badge" title={t('{n} 张卡在等你处理', { n: waiting })}>{waiting}</span>}
       </button>
       <button className={'side-nav' + (view === 'library' ? ' active' : '')} onClick={() => { openLibrary(); onClose() }}>
-        <span className="side-nav-icon">▤</span>{t('资料库')}
+        <span className="side-nav-icon"><Icon name="library" size={16} /></span>{t('资料库')}
       </button>
       <button className={'side-nav' + (view === 'apps' ? ' active' : '')} onClick={() => { openApps(); onClose() }}>
-        <span className="side-nav-icon">⊞</span>{t('应用')}
+        <span className="side-nav-icon"><Icon name="grid" size={16} /></span>{t('应用')}
       </button>
       <button className={'side-nav' + (view === 'observe' ? ' active' : '')} onClick={() => { openObserve(); onClose() }}>
         <span className="side-nav-icon"><Icon name="activity" size={16} /></span>{t('观测')}
@@ -125,8 +125,8 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
             <button key={c.id} className={'chat-item' + (x.isActive ? ' active' : '')} onClick={() => open(c)} onContextMenu={onMenu(c)}>
               {group ? <span className="ci-group"><GroupFace image={c.image} bots={members} size={34} stack={24} /></span> : <BotAvatar avatar={bot!.avatar} size={34} busy={x.busy} />}
               <div className="ci-text">
-                <div className="ci-name">{x.name}{bot?.is_primary && <span className="star">★</span>}{group && <span className="ci-count">{members.length}</span>}</div>
-                <div className="ci-preview">{x.needs ? '⚠ ' + (x.wait === 'question' ? t('等你回答') : x.wait === 'help' ? t('请你接手') : t('等你确认')) : x.away ? '⚠ ' + t('有 Bot 等你确认（在私聊里）') : preview(c) || (group ? t('新的群聊') : plain(bot!.instructions) || t('新的 Bot'))}</div>
+                <div className="ci-name">{x.name}{bot?.is_primary && <span className="star" title={t('主 Bot')}><Icon name="star" size={14} className="solid" /></span>}{group && <span className="ci-count">{members.length}</span>}</div>
+                <div className="ci-preview">{x.needs ? <><Icon name="alert" size={14} className="warn" />{x.wait === 'question' ? t('等你回答') : x.wait === 'help' ? t('请你接手') : t('等你确认')}</> : x.away ? <><Icon name="alert" size={14} className="warn" />{t('有 Bot 等你确认（在私聊里）')}</> : preview(c) || (group ? t('新的群聊') : plain(bot!.instructions) || t('新的 Bot'))}</div>
               </div>
               {badge(c, x.needs)}
             </button>
@@ -140,7 +140,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
         </div>
       )}
       <div className="side-bottom">
-        <button className="side-link" onClick={onSettings}>⚙ {t('设置')}</button>
+        <button className="side-link" onClick={onSettings}><Icon name="settings" size={16} />{t('设置')}</button>
         <span className={'conn' + (connected ? ' on' : '')} title={connected ? t('已连接') : t('连接中断，正在重连')} />
       </div>
     </aside>

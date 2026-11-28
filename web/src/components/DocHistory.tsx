@@ -3,6 +3,7 @@
 import type { createClient } from '@open-agent-docs/client'
 import { useEffect, useMemo, useState } from 'react'
 import { locale, t } from '../i18n'
+import { Icon } from '../icons'
 import { ask } from './Dialog'
 import './DocHistory.css'
 
@@ -24,7 +25,7 @@ function People({ people }: { people?: Person[] }) {
     <span className="hist-people">
       {people.slice(0, 4).map(p => (
         <span key={p.kind + p.id} className="hist-av" style={{ background: colorOf(p.id) }} title={p.name}>
-          {p.kind === 'agent' ? '✦' : (p.name || '?').slice(0, 1)}
+          {p.kind === 'agent' ? <Icon name="sparkles" size={14} /> : (p.name || '?').slice(0, 1)}
         </span>
       ))}
       <span className="hist-names">{people.map(p => p.name).join('、')}</span>
@@ -53,7 +54,7 @@ export function HistoryPanel({ client, pageId, selected, onSelect, onClose }: {
     <aside className="hist" aria-label={t('历史版本')}>
       <div className="hist-head">
         <h2>{t('历史版本')}</h2>
-        <button className="icon-btn" onClick={onClose} aria-label={t('关闭')}>×</button>
+        <button className="icon-btn" onClick={onClose} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
       </div>
       <div className="hist-name">
         {naming
@@ -62,7 +63,7 @@ export function HistoryPanel({ client, pageId, selected, onSelect, onClose }: {
                 onChange={e => setLabel(e.target.value)} onKeyDown={e => e.key === 'Escape' && setNaming(false)} />
               <button className="btn btn-sm btn-primary" disabled={!label.trim()}>{t('存一版')}</button>
             </form>
-          : <button className="btn btn-sm hist-name-btn" onClick={() => setNaming(true)}>＋ {t('给现在存一版')}</button>}
+          : <button className="btn btn-sm hist-name-btn" onClick={() => setNaming(true)}><Icon name="plus" size={16} className="lead" />{t('给现在存一版')}</button>}
       </div>
       <div className="hist-list" role="listbox" aria-label={t('历史版本')}>
         <button className={'hist-item is-current' + (!selected ? ' is-on' : '')} role="option" aria-selected={!selected} onClick={() => onSelect(null)}>
@@ -215,7 +216,7 @@ export function VersionView({ client, pageId, version, onClose, onRestored }: {
         </div>
         <label className="hv-only"><input type="checkbox" checked={only} onChange={e => setOnly(e.target.checked)} />{t('只看改动')}</label>
         <button className="btn btn-sm btn-primary" disabled={busy} onClick={restore}>{t('恢复这一版')}</button>
-        <button className="icon-btn" onClick={onClose} aria-label={t('关闭')}>×</button>
+        <button className="icon-btn" onClick={onClose} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
       </div>
       <article className="hv-doc">
         {error && <div className="error-line">{error}</div>}

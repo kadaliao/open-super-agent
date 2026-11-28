@@ -1,0 +1,42 @@
+/* 线条图标（icons.tsx）的通用规则：和文字垂直居中、间距一致、颜色跟文字走。
+   尺寸只有三档：14（标签、行内、系统行）、16（导航、按钮）、18（头部的图标按钮、发送）。 */
+
+.icon { flex: none; vertical-align: -0.15em; }
+.icon.lead { margin-right: 6px; }    /* 写在文字前面的图标 */
+.icon.trail { margin-left: 4px; }    /* 写在文字后面的（箭头、展开） */
+.icon.solid { fill: currentColor; }  /* 实心：主 Bot 的星、停止的方块、播放 */
+
+/* 标志：侧栏顶上、加载页、引导页 */
+.side-top .logo { display: inline-grid; place-items: center; }
+.loading .logo-mark { display: block; }
+.onb-logo { display: inline-grid; place-items: center; }
+
+/* 侧栏 */
+.side-nav-icon { display: grid; place-items: center; }
+.side-link { display: inline-flex; align-items: center; gap: 8px; }
+.ci-name .star { display: inline-grid; place-items: center; margin-left: 4px; }
+.ci-preview .icon { margin-right: 4px; vertical-align: -0.2em; }
+.ci-preview .icon.warn { color: var(--warn); }
+
+/* 对话输入框：附件、语音、发送都是图标按钮 */
+.composer .attach, .mic, .send { display: grid; place-items: center; }
+.mic.on .icon { fill: currentColor; }
+
+/* 状态色 */
+.star .icon, .icon.star { color: var(--warn); }
+.icon.warn { color: var(--warn); }
+.icon.good { color: var(--good); }
+.icon.bad { color: var(--bad); }
+
+/* 原来就是方块、圆片里放一个符号的：图标放中间 */
+.lib-icon, .blib-icon, .tpl-plus, .ev-card-icon, .ev-icon, .step-icon, .dm-icon, .emb-play, .file-ext { place-items: center; }
+.lib-icon { display: inline-grid; }
+.ev-icon, .dm-icon { display: inline-grid; vertical-align: -0.15em; }
+.emb-play .icon { margin-left: 2px; }
+.check-mark { display: inline-grid; place-items: center; }
+.pin-mark .icon { color: var(--fg3); margin-right: 4px; }
+
+.ob-delta .icon { margin-right: 2px; }   /* 观测：比上期涨跌的箭头 */
+
+/* 展开、收起的小箭头 */
+.chev { display: inline-grid; place-items: center; }

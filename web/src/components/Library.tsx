@@ -4,6 +4,7 @@ import type { SearchHit, Avatar, FileEntry, FileListing, Page } from '../types'
 import BotAvatar from './BotAvatar'
 import Markdown from './Markdown'
 import { locale, t, tc } from '../i18n'
+import { Icon, Logo } from '../icons'
 import { ask } from './Dialog'
 import { isEnter } from '../keys'
 import { useBack } from '../swipe'
@@ -97,15 +98,15 @@ function Pages() {
       <input className="lib-search" value={q} placeholder={t('按意思找网页，比如“上次做的竞品对比”')} onChange={e => setQ(e.target.value)} />
       {hits && (hits.length ? hits.map(h => (
         <button key={h.ref} className="lib-row" onClick={() => openLibrary(h.ref)}>
-          <span className="lib-icon">▤</span>
+          <span className="lib-icon"><Icon name="file-text" size={16} /></span>
           <span className="lib-main"><b>{h.title}</b><span className="lib-meta">{h.snippet}</span></span>
         </button>
       )) : <div className="muted small">{t('没找到相关的页面')}</div>)}
       {!hits && list.map(p => (
         <button key={p.id} className="lib-row" onClick={() => openLibrary(p.id)}>
-          <span className="lib-icon">{p.app ? '▣' : p.format === 'html' ? '◧' : '▤'}</span>
+          <span className="lib-icon"><Icon name={p.app ? 'app-window' : p.format === 'html' ? 'file-code' : 'file-text'} size={16} /></span>
           <span className="lib-main">
-            <b>{p.pinned && <span className="pin-mark">📌 </span>}{p.title}</b>
+            <b>{p.pinned && <span className="pin-mark"><Icon name="pin" size={14} className="solid" /></span>}{p.title}</b>
             <span className="lib-meta"><BotTag id={p.bot_id} /> · {when(p.updated)}{p.app && <span className="tag">{t('小应用')}</span>}{p.share_token && <span className="tag">{t('已分享')}</span>}</span>
           </span>
         </button>
@@ -140,7 +141,7 @@ function PageView({ id }: { id: number }) {
   return (
     <>
       <header className="chat-head page-head">
-        <button className="ghost-btn back" onClick={() => openLibrary()}>← {t('资料库')}</button>
+        <button className="ghost-btn back" onClick={() => openLibrary()}><Icon name="arrow-left" size={14} className="lead" />{t('资料库')}</button>
         {p && (rename !== null
           ? <input className="page-title-input" autoFocus value={rename} onChange={e => setRename(e.target.value)}
               onBlur={() => { patch({ title: rename }); setRename(null) }}
@@ -174,7 +175,7 @@ export function SharedPage({ token }: { token: string }) {
   const [err, setErr] = useState('')
   useEffect(() => { api(`/api/shared/${token}`).then(x => { setP(x); document.title = x.title }).catch((e: any) => setErr(e.message)) }, [token])
   if (err) return <div className="shared"><div className="shared-empty">{err}</div></div>
-  if (!p) return <div className="loading">◆</div>
+  if (!p) return <div className="loading"><Logo size={28} /></div>
   return (
     <div className={'shared' + (p.format === 'html' ? ' html' : '')}>
       <header className="shared-head">
@@ -263,7 +264,7 @@ function FileRow({ e, pinned, onOpen, onPin, onDelete, showPath }: {
 }) {
   return (
     <div className={'file-row' + (e.missing ? ' missing' : '')}>
-      <span className="lib-icon">{e.dir ? '📁' : '📄'}</span>
+      <span className="lib-icon"><Icon name={e.dir ? 'folder' : 'file'} size={16} /></span>
       <span className="lib-main">
         {e.missing ? <span>{e.name}</span>
           : e.dir ? <button className="file-name" onClick={() => onOpen(e.path)}>{e.name}</button>

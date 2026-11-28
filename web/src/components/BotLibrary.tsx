@@ -3,7 +3,7 @@ import { api, openLibrary, showTask, useStore } from '../store'
 import type { Bot } from '../types'
 import { lang, locale, t, tc } from '../i18n'
 import { Icon } from '../icons'
-import { DownloadBtn, FileLink, extLabel, fileUrl, fmtSize, mediaUrl, openImage } from './Media'
+import { DownloadBtn, ExtMark, FileLink, fileUrl, fmtSize, mediaUrl, openImage } from './Media'
 import { fetchCard } from './Embeds'
 
 // 右栏“资料库”：这个 Bot 交给你的页面、文件、图片和链接，按时间倒序、按天分组（接口见 osa/outputs.py）
@@ -134,8 +134,8 @@ function Row({ o }: { o: Output }) {
   const linkName = useLinkName(o)
   const name = o.kind === 'link' ? linkText(o, linkName) : title(o)
   const icon = o.kind === 'image' ? <img className="blib-thumb" src={mediaUrl(o.media!)} alt="" loading="lazy" />
-    : o.kind === 'file' ? <span className="file-ext blib-ext">{extLabel(name)}</span>
-    : o.kind === 'page' ? <span className="blib-icon">{o.format === 'html' ? '◧' : '▤'}</span>
+    : o.kind === 'file' ? <span className="file-ext blib-ext"><ExtMark name={name} /></span>
+    : o.kind === 'page' ? <span className="blib-icon"><Icon name={o.format === 'html' ? 'file-code' : 'file-text'} size={16} /></span>
     : <span className="blib-icon"><Icon name="external" size={15} /></span>
   const meta = [hm(o.ts),
     o.kind === 'link' ? o.host?.replace(/^www\./, '') : '',

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api, bootstrap, chatById, closeThread, connect, getState, openApps, openChat, openFromUrl, openLibrary, openChatOrThread, setSettings, useStore } from './store'
 import { desktop } from './desktop'
+import { Icon, Logo } from './icons'
+import { t } from './i18n'
 import Chat from './components/Chat'
 import ThreadPanel from './components/Thread'
 import Library from './components/Library'
@@ -146,12 +148,12 @@ export default function App() {
   }, [])
   useEffect(() => localStorage.setItem('osa.details', details ? '1' : '0'), [details])
 
-  if (!ready) return <div className="loading">◆</div>
+  if (!ready) return <div className="loading"><Logo size={28} /></div>
   const panel = view === 'chat' && (thread || details)
   const width = thread ? ' mid-panel' : details && tab === 'computer' ? ' wide-panel' : details && tab === 'tasks' ? ' mid-panel' : ''
   return (
     <div className={'app' + (panel ? ' with-panel' : '') + (panel ? width : '') + (side ? ' side-open' : '')}>
-      <button className="mobile-menu icon-btn" onClick={() => setSide(true)}>☰</button>
+      <button className="mobile-menu icon-btn" onClick={() => setSide(true)} title={t('打开侧栏')} aria-label={t('打开侧栏')}><Icon name="menu" size={18} /></button>
       <div className="side-mask" onClick={() => setSide(false)} />
       <Sidebar onNewBot={() => setNewBot(true)} onNewGroup={() => setNewGroup(true)} onSettings={() => setSettings('')} onClose={() => setSide(false)} />
       {view === 'library' ? <Library /> : view === 'apps' ? <Market /> : view === 'observe' ? <Observe /> : view === 'board' ? <Board /> : <Chat onToggleDetails={() => { if (thread) { closeThread(); setDetails(true) } else setDetails(!details) }} />}

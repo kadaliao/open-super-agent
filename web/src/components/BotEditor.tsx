@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { api, openChat, refreshLists, showTask, useStore } from '../store'
 import type { Avatar, Bot } from '../types'
 import { t, tc } from '../i18n'
+import { Icon } from '../icons'
 import BotAvatar, { SHAPE_NAMES } from './BotAvatar'
 import { ComputerPanel } from './Computer'
 import { RoutinesPanel, SkillsPanel } from './Routines'
@@ -51,7 +52,7 @@ export function NewBotDialog({ onClose }: { onClose: () => void }) {
               onChange={e => setName(e.target.value)} onKeyDown={e => isEnter(e) && create()} /></label>
             <p className="muted small">{t('建好之后，在第一条消息里告诉它要做什么工作。')}</p>
             {err && <div className="error-line">{err}</div>}
-            <div className="modal-actions"><button className="btn" onClick={() => setMode('pick')}>← {t('从模板选')}</button>
+            <div className="modal-actions"><button className="btn" onClick={() => setMode('pick')}><Icon name="arrow-left" size={16} className="lead" />{t('从模板选')}</button>
               <span className="grow" /><button className="btn" onClick={onClose}>{t('取消')}</button><button className="btn primary" onClick={create}>{t('创建')}</button></div>
           </>}
       </div>
@@ -101,7 +102,7 @@ export function BotPanel({ onClose, tab, setTab }: { onClose: () => void; tab: s
           <button className={tab === 'memory' ? 'on' : ''} onClick={() => setTab('memory')}>{t('记忆')}</button>
           <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}>{tc('tab', '详情')}</button>
         </div>
-        <button className="icon-btn" onClick={onClose}>✕</button>
+        <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
       </div>
       {tab === 'computer'
         ? <div className="panel-body"><ComputerPanel key={bot.id} botId={bot.id} /></div>
@@ -154,8 +155,8 @@ function BotPanelInner({ bot, tasks, onClose }: { bot: Bot; tasks: any[]; onClos
 
         <h4>{t('管理')}</h4>
         {!bot.is_primary
-          ? <button className="btn" onClick={() => api(`/api/bots/${bot.id}/primary`, { method: 'POST' })}>★ {t('设为主 Bot')}</button>
-          : <div className="muted small">★ {t('这是主 Bot。')}</div>}
+          ? <button className="btn" onClick={() => api(`/api/bots/${bot.id}/primary`, { method: 'POST' })}><Icon name="star" size={16} className="lead solid star" />{t('设为主 Bot')}</button>
+          : <div className="muted small"><Icon name="star" size={14} className="lead solid star" />{t('这是主 Bot。')}</div>}
         {!bot.is_primary && <button className="btn danger" onClick={del}>{t('删除这个 Bot')}</button>}
         <ShareTemplate bot={bot} />
       </div>
