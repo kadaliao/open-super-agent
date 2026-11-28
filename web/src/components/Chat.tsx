@@ -15,6 +15,7 @@ import { imagePrice, setAsAvatar } from './AvatarTools'
 import { LinkEmbed, Linkify, textEmbeds } from './Embeds'
 import { cardFor, registerCard, taskTone, type CardProps } from '../cards'
 import { McpAppView } from './Applet'
+import { HeadStatus, names, role } from './BotStatus'
 import type { AppView } from '../mcpapp'
 
 // 已处理的卡片收成的一行：前面一个对勾或叉
@@ -980,20 +981,26 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
 
   return (
     <main className="chat">
-      <header className="chat-head">
+      <header className="chat-head bot-head">
         <button className="head-bot" onClick={onToggleDetails} title={group ? t('群聊设置') : t('Bot 详情')}>
-          {group ? <GroupFace image={chat.image} bots={members} size={26} /> : <BotAvatar avatar={bot!.avatar} size={26} />}
-          <span className="head-name">{title}</span>
-          {group ? <span className="muted small">{t('{n} 个 Bot', { n: members.length })}</span> : bot!.is_primary && <span className="star" title={t('主 Bot')}><Icon name="star" size={14} className="solid" /></span>}
+          {group ? <GroupFace image={chat.image} bots={members} size={36} stack={26} /> : <BotAvatar avatar={bot!.avatar} size={36} />}
+          <span className="head-text">
+            <span className="head-title">
+              <span className="head-name">{title}</span>
+              {group ? <span className="tag head-tag count">{t('{n} 个 Bot', { n: members.length })}</span>
+                : bot!.is_primary && <span className="tag head-tag primary" title={t('主 Bot')}><Icon name="star" size={14} className="solid star" /><span>{t('主 Bot')}</span></span>}
+            </span>
+            <HeadStatus chat={chat} sub={group ? names(members) : role(bot!.instructions)} />
+          </span>
         </button>
         <div className="head-actions">
-          <button className="ghost-btn" title={t('之前的对话不再带进上下文，省 token；长期记忆还在')} onClick={async () => {
+          <button className="head-topic" title={t('之前的对话不再带进上下文，省 token；长期记忆还在')} onClick={async () => {
             if (await ask(group ? t('开始新话题？群里的 Bot 不再参考之前的对话（记录还在，长期记忆也还在）。') : t('开始新话题？{name} 不再参考之前的对话（记录还在，长期记忆也还在）。', { name: bot!.name }), { ok: t('新话题') })) api(`/api/chats/${active}/reset`, { method: 'POST' })
-          }}>{t('新话题')}</button>
+          }}><Icon name="message-plus" size={18} /><span>{t('新话题')}</span></button>
           <button className={'icon-btn' + (chat.pinned ? ' on' : '')} onClick={() => pinChat(chat.id, !chat.pinned)}
-                  title={chat.pinned ? t('取消置顶') : t('置顶到侧栏上方')}><Icon name="pin" size={18} /></button>
+                  title={chat.pinned ? t('取消置顶') : t('置顶到侧栏上方')} aria-label={chat.pinned ? t('取消置顶') : t('置顶到侧栏上方')}><Icon name="pin" size={18} /></button>
           <ThreadsMenu chat={chat} open={threadsOpen} setOpen={setThreadsOpen} />
-          <button className="icon-btn" onClick={onToggleDetails} title={t('详情')} aria-label={t('详情')}><Icon name="panel-right" size={18} /></button>
+          <button className="icon-btn" onClick={onToggleDetails} title={t('侧边面板')} aria-label={t('侧边面板')}><Icon name="panel-right" size={18} /></button>
         </div>
       </header>
       <div className="scroller" ref={scroller} onScroll={onScroll}>

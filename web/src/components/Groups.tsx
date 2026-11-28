@@ -11,6 +11,7 @@ import { GroupFace } from './Chat'
 import { AvatarImageTools, groupPrompt } from './AvatarTools'
 import { useBack } from '../swipe'
 import { isEnter } from '../keys'
+import PanelTabs from './PanelTabs'
 
 const MIN = 2, MAX = 6
 const SEP = lang === 'en' ? ', ' : '、'
@@ -79,12 +80,8 @@ export function GroupPanel({ chat, onClose, tab, setTab }: { chat: Chat; onClose
   return (
     <aside className="panel" ref={root}>
       <div className="panel-head">
-        <div className="panel-tabs">
-          <button className={cur === 'group' ? 'on' : ''} onClick={() => setTab('group')}>{tc('tab', '群聊')}</button>
-          <button className={cur === 'tasks' ? 'on' : ''} onClick={() => setTab('tasks')}>{tc('tab', '任务')}</button>
-          <button className={cur === 'computer' ? 'on' : ''} onClick={() => setTab('computer')}>{t('电脑')}</button>
-        </div>
-        <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={16} /></button>
+        <PanelTabs cur={cur} onPick={setTab} tabs={[['group', tc('tab', '群聊')], ['tasks', tc('tab', '任务')], ['computer', t('电脑')]]} />
+        <button className="icon-btn" onClick={onClose} title={t('关闭')} aria-label={t('关闭')}><Icon name="x" size={18} /></button>
       </div>
       {cur === 'tasks' ? <TasksPanel key={chat.id} chatId={chat.id} /> : <div className="panel-body">
         {cur === 'computer' ? <ComputerPanel key={chat.id} botId={chat.lead ?? chat.bot_ids[0]} /> : <GroupSettings key={chat.id} chat={chat} onClose={onClose} />}
