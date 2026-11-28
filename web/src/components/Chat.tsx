@@ -711,13 +711,17 @@ function ApprovalCard({ a }: { a: Approval }) {
   )
 }
 
+// 交代的话是 Bot 写给 Bot 的，常常是一长段带编号的要求：保留换行，长的先露三行，点开看全
 function HandoffLine({ from, to, text }: { from?: Bot; to?: Bot; text: string }) {
+  const long = text.length > 140 || text.split('\n').length > 3
+  const [open, setOpen] = useState(false)
   return (
     <div className="handoff">
       {from && <BotAvatar avatar={from.avatar} size={18} />}<b>{from?.name || t('已删除的 Bot')}</b>
       <span className="muted">{t('交给')}</span>
       {to && <BotAvatar avatar={to.avatar} size={18} />}<b>{to?.name || t('已删除的 Bot')}</b>
-      <span className="handoff-text">{text}</span>
+      <span className={'handoff-text' + (long && !open ? ' clamp3' : '')}>{text.trim()}</span>
+      {long && <button className="expand" onClick={() => setOpen(!open)}>{open ? t('收起') : t('展开')}</button>}
     </div>
   )
 }
@@ -990,7 +994,7 @@ export default function Chat({ onToggleDetails }: { onToggleDetails: () => void 
               {group ? <span className="tag head-tag count">{t('{n} 个 Bot', { n: members.length })}</span>
                 : bot!.is_primary && <span className="tag head-tag primary" title={t('主 Bot')}><Icon name="star" size={14} className="solid star" /><span>{t('主 Bot')}</span></span>}
             </span>
-            <HeadStatus chat={chat} sub={group ? names(members) : role(bot!.instructions)} />
+            <HeadStatus chat={chat} sub={group ? names(members) : role(bot!.instructions, bot!.name)} />
           </span>
         </button>
         <div className="head-actions">

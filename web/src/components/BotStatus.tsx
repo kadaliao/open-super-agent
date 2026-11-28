@@ -58,7 +58,22 @@ export function statusLine(s: ChatStatus) {
 }
 
 // 对话头部的第二行：等你处理的、正在做的（和侧栏同一套说法），都没有时是一句职责（私聊）或成员（群聊）
-export const role = (s: string) => plain(s).split(/(?<=[。！？!?；;])\s*|\.\s+/)[0] || ''
+// 设定是写给模型的，多半以“你是 Radar，负责……”“你是我的邮件管家，……”开头：原样显示像把提示词露出来了。
+// 取第一行的第一句，去掉开头对模型的称呼，剩下的才是给人看的职责；认不出这种开头就原样显示
+const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+export const role = (s: string, name = '') => {
+  const first = plain(s.split('\n').find(l => l.trim()) || '').split(/(?<=[。！？!?；;])\s*|\.\s+/)[0] || ''   // i18n-ignore
+  const n = name.trim() && reEsc(name.trim())
+  const cuts = [
+    n && new RegExp(`^(?:你是|你叫|你的名字是|我是)\\s*${n}\\s*[，,、：:；;—-]+\\s*`),   // i18n-ignore
+    n && new RegExp(`^you(?:'re|\\s+are)\\s+${n}\\s*[,:;—-]+\\s*`, 'i'),
+    /^你是(?:我的|一个|一位|一名|个)?\s*/, /^你(?:帮我|替我)\s*/, /^你(?=负责)/,   // i18n-ignore
+    /^you(?:'re|\s+are)\s+(?:(?:my|an?|the)\s+)?/i, /^you\s+help\s+me\s+(?:to\s+)?/i,
+  ].filter((r): r is RegExp => !!r)
+  const hit = cuts.find(r => r.test(first))
+  const out = (hit ? first.replace(hit, '') : first).replace(/[。.；;，,：:\s]+$/, '')   // i18n-ignore
+  return out.charAt(0).toUpperCase() + out.slice(1)
+}
 export const names = (bots: Bot[]) => bots.map(b => b.name).join(lang === 'en' ? ', ' : '、')
 export function HeadStatus({ chat, sub }: { chat: Chat; sub: string }) {
   const tasks = useStore(s => s.tasks)

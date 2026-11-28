@@ -9,7 +9,7 @@ import { Icon, Logo } from '../icons'
 import { Preview, plain } from '../plain'
 import { BoardIcon } from './Board'
 import { useWaiting } from '../board'
-import { StatusDot, chatStatus, statusLine, useReplying } from './BotStatus'
+import { StatusDot, chatStatus, role, statusLine, useReplying } from './BotStatus'
 
 
 export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: { onNewBot: () => void; onNewGroup: () => void; onSettings: () => void; onClose: () => void }) {
@@ -127,7 +127,7 @@ export default function Sidebar({ onNewBot, onNewGroup, onSettings, onClose }: {
               </span>
               <div className="ci-text">
                 <div className="ci-name"><span className="ci-title">{x.name}</span>{bot?.is_primary && <span className="star" title={t('主 Bot')}><Icon name="star" size={14} className="solid" /></span>}{group && <span className="ci-count">{members.length}</span>}</div>
-                <div className="ci-preview">{statusLine(x.st) || preview(c) || (group ? t('新的群聊') : plain(bot!.instructions) || t('新的 Bot'))}</div>
+                <div className="ci-preview">{statusLine(x.st) || preview(c) || (group ? t('新的群聊') : role(bot!.instructions, bot!.name) || t('新的 Bot'))}</div>
               </div>
               {badge(c)}
             </button>

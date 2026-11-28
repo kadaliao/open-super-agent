@@ -83,6 +83,15 @@ def test_save_page_markdown_goes_to_docs_and_share(dsrv, fake, dws):
     out = [m for m in fake.bodies("router", "Writer")[-1]["messages"] if m["role"] == "tool"][0]["content"]
     assert out.startswith(f"《猫的报告》/p/{doc}") and "橘猫特别能吃" in out
 
+    # 正文开头的一级标题和文档标题是同一句：文档页最上面已经显示标题，这一行不再存进正文
+    fake.script("router:Writer", Call("save_page", {"title": "狗的报告", "content": "# 狗的报告\n\n柴犬爱散步。"}), "存了")
+    dws.say(b["chat_id"], "再写一篇")
+    until(lambda: dsrv.find(b["chat_id"], role="assistant", text="存了"), what="回复")
+    out = [m for m in fake.bodies("router", "Writer")[-1]["messages"] if m["role"] == "tool"][0]["content"]
+    dog = v1(dsrv, "GET", f"/pages/{out.split('page_id=\"')[1].split('\"')[0]}/content").json()["markdown"]
+    assert "柴犬爱散步" in dog and "狗的报告" not in dog
+    assert "# 猫" in v1(dsrv, "GET", f"/pages/{doc}/content").json()["markdown"]   # 不一样的标题留着
+
     # 分享：不用登录的 /s/<token> 转给 OAD
     share = v1(dsrv, "POST", f"/pages/{doc}/share", json={}).json()
     r = dsrv.http.get(f"/s/{share['token']}")

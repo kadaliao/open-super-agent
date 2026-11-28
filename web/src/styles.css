@@ -578,11 +578,11 @@ a { color: var(--link); text-decoration: none; } a:hover { text-decoration: unde
 .speaker { font-size: var(--fs-2); font-weight: 600; color: var(--fg2); margin-bottom: 2px; }
 .handoff { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 14px 0 14px 40px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: var(--r-lg); font-size: var(--fs-3); }
 .handoff b { font-weight: 600; }
-.handoff-text { flex-basis: 100%; color: var(--fg2); }
+.handoff-text { flex-basis: 100%; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .handoff.dm { border-style: solid; background: var(--card); }
 .handoff.dm .handoff-text { white-space: pre-wrap; }
 .handoff.dm .link-btn { margin-left: auto; font-size: var(--fs-2); }
-.handoff.dm .expand { padding: 0; }
+.handoff .expand { padding: 0; font-size: var(--fs-2); }
 .dm-icon { color: var(--fg3); }
 .elsewhere { display: flex; align-items: center; gap: 10px; margin: 12px 0 12px 40px; padding: 8px 8px 8px 12px; border: 1px solid color-mix(in srgb, var(--warn) 22%, transparent); border-radius: var(--r-lg); background: var(--warn-bg); font-size: var(--fs-3); }
 :root:not([data-theme="light"]) .elsewhere { background: color-mix(in srgb, var(--warn) 9%, var(--card)); }

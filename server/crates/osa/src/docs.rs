@@ -884,6 +884,20 @@ pub fn is_doc_id(v: &Value) -> bool {
     v.as_str().is_some_and(|s| !s.is_empty() && s.parse::<i64>().is_err())
 }
 
+/// 正文开头的一级标题就是文档的标题（或者是它的前半截）时去掉这一行：文档页最上面已经用大字显示标题，
+/// 正文里紧接着再来一遍，看着像写重了。一级标题比文档标题多出内容的（“周报：第 48 周”对“周报”）不动
+fn drop_title_heading<'a>(title: &str, content: &'a str) -> &'a str {
+    let Some(rest) = content.trim_start().strip_prefix("# ") else { return content };
+    let (line, after) = rest.split_once('\n').unwrap_or((rest, ""));
+    let norm = |s: &str| s.chars().filter(|c| !c.is_whitespace() && !"#*_`".contains(*c)).collect::<String>().to_lowercase();
+    let (h, t) = (norm(line), norm(title));
+    let after = after.trim_start_matches(['\n', '\r']);
+    if h.chars().count() < 2 || !t.starts_with(&h) || after.trim().is_empty() {
+        return content;
+    }
+    after
+}
+
 /// save_page 写 Markdown：用 Bot 自己的身份建文档或整篇换掉（给了 page_id 就是更新那篇）
 pub async fn save_markdown(bot_id: i64, title: &str, content: &str, page_id: Option<&str>) -> String {
     if !ready() {
@@ -901,7 +915,9 @@ pub async fn save_markdown(bot_id: i64, title: &str, content: &str, page_id: Opt
                     let patch = oad::types::PatchPage { title: oad::Nullable::Value(title.clone()), ..Default::default() };
                     c.pages().update(id, patch).await?;
                 }
-                let put = oad::types::PutContent { markdown: oad::Nullable::Value(content.to_string()), ..Default::default() };
+                // 没给新标题时，拿这篇现在的标题来比
+                let now = if title.is_empty() && content.trim_start().starts_with("# ") { c.pages().get(id).await?.title } else { title.clone() };
+                let put = oad::types::PutContent { markdown: oad::Nullable::Value(drop_title_heading(&now, content).to_string()), ..Default::default() };
                 c.pages().content().replace(id, put).await?;
                 let p = c.pages().get(id).await?;
                 Ok((p.id, p.title))
@@ -909,7 +925,7 @@ pub async fn save_markdown(bot_id: i64, title: &str, content: &str, page_id: Opt
             None => {
                 let ws = c.default_workspace().await?;
                 let body = oad::types::CreatePage { title: oad::Nullable::Value(title.clone()), ..Default::default() };
-                let p = c.pages().create_with_markdown(&ws, body, content).await?;
+                let p = c.pages().create_with_markdown(&ws, body, drop_title_heading(&title, content)).await?;
                 Ok((p.id, p.title))
             }
         }
@@ -952,5 +968,29 @@ pub async fn read_markdown(bot_id: i64, id: &str, limit: usize) -> String {
         }
         Err(e) if e.is_not_found() => format!("没有文档 {id}"),
         Err(e) => format!("没读到：{e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::drop_title_heading;
+
+    #[test]
+    fn drops_leading_heading_that_repeats_the_title() {
+        // 一样的、是标题前半截的：去掉这一行和后面的空行
+        assert_eq!(drop_title_heading("猫的报告", "# 猫的报告\n\n橘猫特别能吃。"), "橘猫特别能吃。");
+        assert_eq!(drop_title_heading("近期动态：双链笔记 App（2026-11-14–2026-11-28）", "\n# 近期动态：双链笔记 App\n\n**时间范围**"), "**时间范围**");
+        assert_eq!(drop_title_heading("Weekly Report", "# **weekly report**\r\n\r\nbody"), "body");
+        // 一级标题比文档标题多出内容、只有一个字、不是一级标题、去掉以后什么都不剩：原样
+        for (t, c) in [
+            ("周报", "# 周报：第 48 周\n\n正文"),
+            ("猫的报告", "# 猫\n\n橘猫特别能吃。"),
+            ("猫的报告", "## 猫的报告\n\n正文"),
+            ("猫的报告", "正文里提到 # 猫的报告"),
+            ("猫的报告", "# 猫的报告\n\n"),
+            ("", "# 猫的报告\n\n正文"),
+        ] {
+            assert_eq!(drop_title_heading(t, c), c);
+        }
     }
 }
