@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+## [0.29.1] - 2026-11-28
+
 ### 修复
 - 对话顶上和侧栏显示 Bot 的职责时，不再把设定开头写给模型的那半句（“你是 Radar，”“你是我的……”）原样露出来，只留后面的职责
 - 群聊里 Bot 把工作交给另一个 Bot 的那张卡片：交代的话保留换行，长的先露三行，能展开、收起（原来整段挤成一行排下去）
@@ -831,7 +833,8 @@
 - 按角色、任务和天统计费用，区分高峰和空闲价格；每日预算
 - MCP 应用接入；写操作前的确认卡片
 
-[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.29.0...HEAD
+[未发布]: https://github.com/kadaliao/open-super-agent/compare/v0.29.1...HEAD
+[0.29.1]: https://github.com/kadaliao/open-super-agent/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/kadaliao/open-super-agent/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/kadaliao/open-super-agent/compare/v0.27.3...v0.28.0
 [0.27.3]: https://github.com/kadaliao/open-super-agent/compare/v0.27.2...v0.27.3
