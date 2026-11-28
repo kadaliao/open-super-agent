@@ -9,6 +9,7 @@ import { DoubtCard, QuestionCard } from './Chat'
 import { notice } from './Dialog'
 import NeedTag from './NeedTag'
 import { Icon } from '../icons'
+import { taskTone } from '../cards'
 
 // 右栏“任务”：Bot 做过的后台任务。正在做的实时更新，做完的点开回看每一步
 
@@ -97,15 +98,13 @@ function TaskList({ botId, chatId }: { botId?: number; chatId?: number }) {
           <Fragment key={tk.id}>
             {head && <h4>{d}</h4>}
             <button className={`task-row ${tk.status}${taskWaiting(tk) ? ' waiting' : ''}`} onClick={() => showTask(tk.id)}>
-              <span className="dot" />
-              <span className="task-row-main">
-                <span className="task-row-goal">{owner && <BotAvatar avatar={owner.avatar} size={16} />}<span>{firstLine(tk.goal)}</span></span>
-                <span className="task-row-meta">
-                  {[hm(tk.ts), taskLabel(tk), (tk.round || 1) > 1 ? t('第 {n} 轮', { n: tk.round! }) : '', duration(tk, now), tk.steps ? t('{n} 步', { n: tk.steps }) : '', tk.mode === 'heavy' ? 'Heavy' : ''].filter(Boolean).join(' · ')}
-                </span>
-                {running && tk.last_action && <span className="task-action"><Icon name="arrow-right" size={14} className="lead" />{tk.last_action}</span>}
-                {tk.need && <span className="task-row-need"><NeedTag need={tk.need} /></span>}
+              <span className="task-row-goal">{owner && <BotAvatar avatar={owner.avatar} size={16} />}<span>{firstLine(tk.goal)}</span></span>
+              <span className="task-row-meta">
+                <span className={'tag with-dot ' + taskTone(tk)}>{taskLabel(tk)}</span>
+                <span>{[hm(tk.ts), (tk.round || 1) > 1 ? t('第 {n} 轮', { n: tk.round! }) : '', duration(tk, now), tk.steps ? t('{n} 步', { n: tk.steps }) : '', tk.mode === 'heavy' ? 'Heavy' : ''].filter(Boolean).join(' · ')}</span>
               </span>
+              {running && tk.last_action && <span className="task-action"><Icon name="arrow-right" size={14} /><span>{tk.last_action}</span></span>}
+              {tk.need && <span className="task-row-need"><NeedTag need={tk.need} /></span>}
             </button>
           </Fragment>
         )
@@ -197,9 +196,9 @@ function TaskDetail({ id, group }: { id: number; group: boolean }) {
               title={tk.can_continue ? t('从停下的地方接着做') : t('从头再做一遍')}>{t('重试')}</button>}
           </span></div>
         <div className={`td-head ${tk.status}${waiting ? ' waiting' : ''}`}>
-          <span className="dot" /><b>{heavy ? t('Heavy 任务') : t('后台任务')} #{tk.id}</b>
-          {round > 1 && <span className="td-round">{t('第 {n} 轮', { n: round })}</span>}
-          <span className="muted">{taskLabel(tk)}</span>
+          <span className={'tag with-dot ' + taskTone(tk)}>{taskLabel(tk)}</span>
+          <b>{heavy ? t('Heavy 任务') : t('后台任务')} #{tk.id}</b>
+          {round > 1 && <span className="tag">{t('第 {n} 轮', { n: round })}</span>}
         </div>
         <div className="td-meta">
           {[group && owner?.name, t('{day} {time}', { day: day(tk.ts), time: hm(tk.ts) }), duration(tk, now), tk.steps ? t('{n} 步', { n: tk.steps }) : '',
@@ -321,8 +320,8 @@ function Step({ s, waiting }: { s: TaskStep; waiting: string }) {
         <span className="step-icon">{live ? <span className="spin" /> : <Icon name={ICON[s.status] || 'check'} size={14} />}</span>
         <span className={'step-title' + (live && s.kind === 'think' ? ' pulse' : '')}>{title}</span>
         {tag}
-        {(waiting || s.status === 'waiting') && <span className="step-state">{waiting || t('等你确认')}</span>}
-        {s.status === 'rejected' && <span className="step-state bad">{t('被拒绝')}</span>}
+        {(waiting || s.status === 'waiting') && <span className="tag warn">{waiting || t('等你确认')}</span>}
+        {s.status === 'rejected' && <span className="tag bad">{t('被拒绝')}</span>}
         <span className="step-dur">{dur}</span>
         <span className="chev"><Icon name="right" size={14} /></span>
       </button>
